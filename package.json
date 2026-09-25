@@ -1,0 +1,150 @@
+{
+  "name": "shieldepy",
+  "displayName": "ShielDepy — Guardião de Arquitetura",
+  "description": "Copilot arquitetural que mapeia o workspace em um grafo em memória (AST + dependências) para prevenir loops entre serviços, race conditions e regressões antes do commit.",
+  "version": "0.0.1",
+  "publisher": "shieldepy",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shieldepy",
+          "title": "ShielDepy",
+          "icon": "media/icon.svg"
+        },
+        {
+          "id": "shieldepy-settings",
+          "title": "ShielDepy: Configurações",
+          "icon": "media/icon-settings.svg"
+        }
+      ]
+    },
+    "views": {
+      "shieldepy": [
+        {
+          "id": "shieldepy.panel",
+          "name": "Guardião de Arquitetura",
+          "type": "webview"
+        },
+        {
+          "id": "shieldepy.chat",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ],
+      "shieldepy-settings": [
+        {
+          "id": "shieldepy.settings",
+          "name": "Configurações",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "shieldepy.reviewImpact",
+        "title": "ShielDepy: Revisar Impacto no Grafo"
+      },
+      {
+        "command": "shieldepy.toggleInlineSuggestions",
+        "title": "ShielDepy: Ativar/Desativar Sugestões Inline"
+      },
+      {
+        "command": "shieldepy.scanWorkspace",
+        "title": "ShielDepy: Analisar Pasta Inteira"
+      },
+      {
+        "command": "shieldepy.setApiKey",
+        "title": "ShielDepy: Configurar Chave da API"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "editor.action.inlineSuggest.commit",
+        "key": "enter",
+        "when": "inlineSuggestionVisible && !suggestWidgetVisible && editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "ShielDepy",
+      "properties": {
+        "shieldepy.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OBSOLETO — use o comando 'ShielDepy: Configurar Chave da API' em vez disso (fica salvo de forma segura e global, funciona em qualquer projeto). Esta setting só existe como fallback e só vale para o workspace onde foi definida."
+        },
+        "shieldepy.fastModel": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Modelo usado nas sugestões inline (ghost text) — prioriza latência e custo."
+        },
+        "shieldepy.deepModel": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Modelo usado na revisão arquitetural de impacto (comando 'Revisar Impacto no Grafo')."
+        },
+        "shieldepy.inlineSuggestions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Habilita sugestões inline (ghost text) geradas via Claude com base no subgrafo de arquitetura."
+        },
+        "shieldepy.inlineSuggestions.debounceMs": {
+          "type": "number",
+          "default": 250,
+          "description": "Tempo de espera após parar de digitar antes de solicitar uma sugestão inline."
+        },
+        "shieldepy.backgroundAnalysis.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Analisa automaticamente o arquivo (digitação, colar código, ou edição programática) em busca de riscos de arquitetura — ciclos entre componentes, race conditions, memory leaks — e publica os achados como Diagnostics (sublinhado + painel Problems)."
+        },
+        "shieldepy.backgroundAnalysis.idleMs": {
+          "type": "number",
+          "default": 1200,
+          "description": "Tempo de inatividade (ms) após uma edição antes de rodar a análise automática de arquitetura em background."
+        },
+        "shieldepy.language": {
+          "type": "string",
+          "enum": ["pt-BR", "en-US", "es", "ru"],
+          "enumDescriptions": ["Português (Brasil)", "English (US)", "Español", "Русский"],
+          "default": "pt-BR",
+          "description": "Idioma usado pela IA para escrever achados, respostas do chat e revisões. Não traduz a interface da extensão (botões, rótulos) — só o conteúdo gerado pela IA."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "postinstall": "node scripts/copy-wasm.js",
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc -p . --noEmit",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "graphology": "^0.25.4",
+    "web-tree-sitter": "^0.22.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.23.1",
+    "tree-sitter-wasms": "^0.1.13",
+    "typescript": "^5.5.4"
+  }
+}
