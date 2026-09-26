@@ -4,3 +4,6 @@ out/
 *.vsix
 .vscode-test/
 .vscode/settings.json
+.env
+.env.*
+!.env.example

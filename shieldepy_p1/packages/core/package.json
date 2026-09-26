@@ -1,0 +1,22 @@
+{
+  "name": "@shieldepy/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Núcleo sem vscode e sem rede: grafo estrutural (Tree-sitter) + motor de colisões entre regras reativas.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./wasm-path": "./src/wasm-path.ts"
+  },
+  "scripts": {
+    "postinstall": "node scripts/copy-wasm.cjs"
+  },
+  "dependencies": {
+    "graphology": "^0.25.4",
+    "web-tree-sitter": "^0.22.6"
+  },
+  "devDependencies": {
+    "graphology-types": "^0.24.7",
+    "tree-sitter-wasms": "^0.1.13"
+  }
+}

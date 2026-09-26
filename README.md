@@ -1,54 +1,44 @@
-# ShielDepy — Guardião de Arquitetura
+# ShielDepy — TCC
 
-Extensão de VS Code que mantém um **grafo em memória** do workspace (arquivos, funções/classes,
-imports, chamadas) via Tree-sitter, e usa esse grafo — nunca o texto bruto do projeto inteiro —
-como contexto para o Claude. Duas superfícies:
+Este repositório tem **um sistema ativo** e **dois legados**. Cada um fica na sua pasta e é
+independente dos outros (cada um tem o próprio `package.json`, `node_modules` e testes).
 
-1. **Sugestão inline (ghost text)**, estilo Copilot, gerada com Haiku (rápido/barato) enquanto você digita.
-2. **Comando "ShielDepy: Revisar Impacto no Grafo"**, que envia o arquivo alterado + seu subgrafo de
-   impacto (vizinhança de profundidade 2) para uma revisão arquitetural completa, com 5 testes obrigatórios.
-3. **Análise automática em background**: toda edição (digitar, colar, ou mudança programática), depois de
-   um idle, reparseia o grafo, checa ciclos de chamada de graça e manda uma varredura leve pro Haiku — os
-   riscos aparecem como marca-texto colorido (vermelho/amarelo/verde) com hover, no painel Problems, e em
-   tempo real na lista da sidebar do plugin.
-
-## Setup
-
-```bash
-npm install
+```
+ShielDepyExtension/
+├── shieldepy_p1/                  ← ✅ SISTEMA ATUAL — é aqui que se trabalha
+├── legado_grafo_arvore/           ← 🗄️ LEGADO — extensão original (grafo em árvore)
+└── legado_api_leitura_metadados/  ← 🗄️ LEGADO — Projeto18 (Grafo de Interações)
 ```
 
-Isso já baixa e copia sozinho os três `.wasm` do Tree-sitter para `wasm/` (via `postinstall` →
-`scripts/copy-wasm.js`, usando o pacote `tree-sitter-wasms`) — não precisa baixar nada manualmente.
-Se por algum motivo o `wasm/` ficar vazio (ex: rodou `npm install` antes dessa mudança), rode:
+## ✅ Sistema atual: `shieldepy_p1/`
+
+A **fusão dos dois legados**: um monorepo com núcleo compartilhado, extensão VS Code, CLI e web.
+O grafo estrutural prova ciclos, o grafo de interações prova colisões, e a IA (Claude, Gemini ou
+nenhuma) só explica o que foi provado.
+
+Todo desenvolvimento novo, correção e entrega acontece aqui. O [README do `shieldepy_p1`](shieldepy_p1/README.md)
+explica como o sistema funciona, onde fica cada coisa e como rodar.
 
 ```bash
-node scripts/copy-wasm.js
+cd shieldepy_p1 && npm install && npm run check     # F5 abrindo a pasta shieldepy_p1
 ```
 
-### 1. Chave da API Anthropic
+## 🗄️ Legados
 
-Defina a variável de ambiente `ANTHROPIC_API_KEY`, ou configure `shieldepy.anthropicApiKey` nas settings
-do VS Code (menos recomendado — evite comitar a chave).
+> **Sistemas incompletos, mantidos só como referência histórica do TCC.**
+> Não recebem correções nem funcionalidades novas. Tudo o que foi aproveitado deles já está
+> no `shieldepy_p1/`, geralmente corrigido. Não use os legados como base para trabalho novo.
 
-### 2. Rodar em modo de desenvolvimento
+| Pasta | O que era | Por que é legado |
+|---|---|---|
+| [`legado_grafo_arvore/`](legado_grafo_arvore/) | Extensão VS Code original do ShielDepy. Monta o grafo estrutural do código (arquivos, funções, imports, chamadas) com Tree-sitter e usa o Claude para apontar riscos. | Só a etapa 1 do seu [`PLANO_DE_CORRECOES.md`](legado_grafo_arvore/PLANO_DE_CORRECOES.md) foi feita aqui. As etapas 2 a 5 (vazamento de memória, segurança dos webviews, custo de IA…) foram resolvidas no `shieldepy_p1`. Os achados vinham da IA, sem prova. |
+| [`legado_api_leitura_metadados/`](legado_api_leitura_metadados/) | Projeto18 da equipe: o Grafo de Interações. Lê regras reativas (handlers, listeners, signals, triggers do Postgres), prova colisões entre elas e usa o Gemini para explicar. CLI e web. | Extratores só por regex; a web não validava entrada nem tinha limites; havia três registros de linguagem duplicados. O motor, os extratores e os exemplos foram portados e corrigidos no `shieldepy_p1`. |
+
+Os legados ainda rodam, caso seja preciso comparar com a versão atual:
 
 ```bash
-npm run watch
+cd legado_grafo_arvore && npm install && npm test          # F5 abrindo a pasta legado_grafo_arvore
+cd legado_api_leitura_metadados && npm install && npm test # npm run web para a interface
 ```
 
-Depois pressione `F5` no VS Code para abrir uma janela de Extension Development Host com a extensão carregada.
-
-## Decisões de arquitetura
-
-- **Grafo, não texto**: cada save/edição reparseia só o arquivo tocado; nós antigos daquele arquivo são
-  descartados e recriados. O contexto enviado ao Claude é sempre um subgrafo (vizinhança), nunca o repo inteiro.
-- **Dois modelos, dois SLAs**: `shieldepy.fastModel` (sugestão inline, poucos tokens, sem os 5 testes) e
-  `shieldepy.deepModel` (revisão de impacto, mais tokens, formato de saída estruturado). Ambos usam Haiku por
-  padrão — troque via settings se quiser mais qualidade ao custo de latência/preço.
-- **Ghost text nativo**: o `InlineSuggestionProvider` usa a API `InlineCompletionItemProvider` do próprio
-  VS Code — o "texto sombra" na frente do cursor, o cancelamento ao mover o cursor/clicar fora, e a aceitação
-  são todos comportamento nativo do editor. `Tab` aceita por padrão; a keybinding em `package.json` também liga
-  `Enter` à aceitação quando uma sugestão está visível (`inlineSuggestionVisible`).
-- **Cancelamento de requisições obsoletas**: cada chamada inline tem um `requestId` incremental — se o usuário
-  digitar de novo antes da resposta chegar, a resposta antiga é descartada silenciosamente.
+No VS Code, abra **a pasta do sistema** (não a raiz) para o F5 usar a configuração certa de `.vscode/`.

@@ -1,0 +1,12 @@
+body { padding: 12px; }
+h4 { margin: 0 0 4px; }
+p.hint { margin: 0 0 12px; font-size: 11px; line-height: 1.4; color: var(--vscode-descriptionForeground); }
+section { margin-bottom: 22px; }
+.toggle-row { display: flex; align-items: center; gap: 10px; }
+.toggle-label { font-size: 12px; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.toggle-label.active { color: var(--sd-accent); }
+.option-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.option-row:hover { background: var(--vscode-list-hoverBackground); }
+.option-row input { accent-color: var(--sd-accent); }
+#engineStatus { margin-top: 8px; }
+#keyBtn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 2px; padding: 5px 10px; cursor: pointer; font-size: 12px; }

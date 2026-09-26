@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.vsix
+.env
+apps/vscode/wasm/
+.vscode-test/

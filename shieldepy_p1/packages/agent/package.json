@@ -1,0 +1,17 @@
+{
+  "name": "@shieldepy/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Camada de IA plugável (Anthropic / Gemini / offline). O motor prova, a IA explica.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@shieldepy/core": "*"
+  },
+  "devDependencies": {
+    "@shieldepy/extractors": "*"
+  }
+}

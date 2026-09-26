@@ -1,0 +1,175 @@
+{
+  "name": "shieldepy",
+  "displayName": "ShielDepy — Guardião de Arquitetura",
+  "description": "Mapeia o workspace em grafos em memória — estrutura (imports/chamadas via Tree-sitter) e interações (quem lê/escreve cada campo em cada evento) — e PROVA ciclos e colisões antes do commit. A IA só explica o que o motor provou.",
+  "version": "0.1.0",
+  "publisher": "shieldepy",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shieldepy",
+          "title": "ShielDepy",
+          "icon": "media/icon.svg"
+        },
+        {
+          "id": "shieldepy-settings",
+          "title": "ShielDepy: Configurações",
+          "icon": "media/icon-settings.svg"
+        }
+      ]
+    },
+    "views": {
+      "shieldepy": [
+        {
+          "id": "shieldepy.panel",
+          "name": "Guardião de Arquitetura",
+          "type": "webview"
+        },
+        {
+          "id": "shieldepy.chat",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ],
+      "shieldepy-settings": [
+        {
+          "id": "shieldepy.settings",
+          "name": "Configurações",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "shieldepy.reviewImpact",
+        "title": "ShielDepy: Revisar Impacto no Grafo"
+      },
+      {
+        "command": "shieldepy.explainCollisions",
+        "title": "ShielDepy: Explicar Colisões do Workspace"
+      },
+      {
+        "command": "shieldepy.toggleInlineSuggestions",
+        "title": "ShielDepy: Ativar/Desativar Sugestões Inline"
+      },
+      {
+        "command": "shieldepy.scanWorkspace",
+        "title": "ShielDepy: Analisar Pasta Inteira"
+      },
+      {
+        "command": "shieldepy.setApiKey",
+        "title": "ShielDepy: Configurar Chave da IA"
+      },
+      {
+        "command": "shieldepy.attachFinding",
+        "title": "ShielDepy: Anexar Achado ao Chat",
+        "enablement": "false"
+      }
+    ],
+    "configuration": {
+      "title": "ShielDepy",
+      "properties": {
+        "shieldepy.aiProvider": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "anthropic",
+            "gemini",
+            "offline"
+          ],
+          "enumDescriptions": [
+            "Usa a primeira chave configurada: Anthropic, depois Gemini. Sem chave, modo offline.",
+            "Sempre Claude (Anthropic).",
+            "Sempre Google Gemini.",
+            "Nunca chama IA: só os achados determinísticos (ciclos e colisões)."
+          ],
+          "default": "auto",
+          "description": "Qual IA explica os achados. Ciclos e colisões são provados sem IA em qualquer modo."
+        },
+        "shieldepy.fastModel": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Modelo Anthropic das tarefas rápidas (sugestão inline, varredura em background)."
+        },
+        "shieldepy.deepModel": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Modelo Anthropic das tarefas profundas (chat, revisão de impacto, explicação de colisões)."
+        },
+        "shieldepy.geminiModel": {
+          "type": "string",
+          "default": "gemini-3.6-flash",
+          "description": "Modelo usado quando a IA ativa é o Gemini."
+        },
+        "shieldepy.inlineSuggestions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Habilita sugestões inline (ghost text) baseadas no subgrafo de arquitetura."
+        },
+        "shieldepy.inlineSuggestions.debounceMs": {
+          "type": "number",
+          "default": 250,
+          "description": "Tempo de espera após parar de digitar antes de solicitar uma sugestão inline."
+        },
+        "shieldepy.backgroundAnalysis.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Analisa automaticamente o arquivo (digitação, colar código, ou edição programática): ciclos e colisões (grátis, determinísticos) e riscos via IA, publicados como Diagnostics."
+        },
+        "shieldepy.backgroundAnalysis.idleMs": {
+          "type": "number",
+          "default": 1200,
+          "description": "Tempo de inatividade (ms) após uma edição antes de rodar a análise automática."
+        },
+        "shieldepy.language": {
+          "type": "string",
+          "enum": [
+            "pt-BR",
+            "en-US",
+            "es",
+            "ru"
+          ],
+          "enumDescriptions": [
+            "Português (Brasil)",
+            "English (US)",
+            "Español",
+            "Русский"
+          ],
+          "default": "pt-BR",
+          "description": "Idioma usado pela IA para escrever achados, respostas do chat e revisões. Não traduz a interface."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "package": "npm run build && vsce package --no-dependencies",
+    "test:e2e": "npm run build && node test-e2e/run.mjs"
+  },
+  "dependencies": {
+    "@shieldepy/agent": "*",
+    "@shieldepy/core": "*",
+    "@shieldepy/extractors": "*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.28.2"
+  }
+}

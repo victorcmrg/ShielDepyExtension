@@ -1,0 +1,18 @@
+{
+  "name": "@shieldepy/extractors",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tradutores de código/banco para Rule[]: Tree-sitter para TS/JS, regex para Java/Python/C#/PL-pgSQL.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres-connect": "./src/regex/postgres/connect.ts"
+  },
+  "dependencies": {
+    "@shieldepy/core": "*",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
+  }
+}

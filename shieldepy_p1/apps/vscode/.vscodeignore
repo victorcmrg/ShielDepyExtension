@@ -1,0 +1,6 @@
+src/**
+test/**
+node_modules/**
+esbuild.mjs
+**/*.map
+test-e2e/**
