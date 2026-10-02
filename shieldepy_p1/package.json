@@ -4,7 +4,7 @@
   "type": "module",
   "description": "ShielDepy (grafo estrutural + Tree-sitter) fundido com o Grafo de Interações (colisões entre regras reativas).",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.6"
   },
   "workspaces": [
     "packages/*",
@@ -21,7 +21,7 @@
     "package:vscode": "npm run package -w shieldepy"
   },
   "devDependencies": {
-    "@types/node": "^20.14.9",
+    "@types/node": "^22.15.0",
     "typescript": "^5.5.4",
     "vitest": "^2.1.9"
   }

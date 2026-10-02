@@ -3,18 +3,28 @@
   const vscode = acquireVsCodeApi();
   const initial = window.__INITIAL__ || {};
   const $ = (id) => document.getElementById(id);
-  const toggle = $('toggle');
-  const status = $('status');
   const findingsEl = $('findings');
-  const analyzingRow = $('analyzingRow');
-  const analyzingText = $('analyzingText');
   const summaryEl = $('summary');
-  const expandedFiles = new Set(); // lembra quais gavetas o usuário abriu entre re-renders
-  const SEVERITIES = { error: 'Importante', warning: 'Atenção', info: 'Ajuste leve' };
-  const ORIGINS = { colisao: 'colisão', grafo: 'grafo', ia: 'IA' };
-  const ENGINES = { anthropic: 'Claude (Anthropic)', gemini: 'Gemini', offline: 'offline — só achados provados' };
+  const tilesEl = $('stats');
+  // Textos no idioma escolhido nas configurações (vêm prontos da extensão).
+  const STR = initial.t || {};
+  const T = (key, vars) => (STR[key] || key).replace(/\{(\w+)\}/g, (m, name) => (vars && name in vars ? String(vars[name]) : m));
+  const SEVERITIES = { error: T('sevError'), warning: T('sevWarning'), info: T('sevInfo') };
+  const COUNT_IDS = { error: 'countError', warning: 'countWarning', info: 'countInfo' };
+
+  const openFiles = new Set(); // gavetas abertas sobrevivem aos re-renders
+  const openBalloons = new Set(); // balões abertos idem
+  const seenFindings = new Set(); // só achado NOVO ganha destaque
+  let firstRender = true;
+  let lastGroups = [];
+  let lastSystemDisabled = false;
+  let severityFilter = null;
+  let company = '';
+  const counts = { error: 0, warning: 0, info: 0 };
 
   $('graphNotice').hidden = initial.graphReady !== false;
+  // Sem transições/animações até o primeiro estado chegar: abrir a aba não "pisca" nada.
+  document.body.classList.add('preload');
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -23,78 +33,235 @@
     return node;
   }
 
-  function setToggle(value) {
-    toggle.checked = value;
-    status.textContent = value ? 'Protegendo' : 'Pausado';
-    status.classList.toggle('active', value);
+  /** Reinicia uma animação de classe (o navegador só anima de novo se a classe sair e voltar). */
+  function replay(node, className) {
+    node.classList.remove(className);
+    void node.offsetWidth;
+    node.classList.add(className);
   }
-  setToggle(initial.inlineEnabled !== false);
 
-  toggle.addEventListener('change', () => {
-    vscode.postMessage({ type: 'toggle', value: toggle.checked });
-    setToggle(toggle.checked);
+  /** A forma da severidade (quadrado, triângulo, círculo) — o ícone de achados e arquivos. */
+  function badge(severity, size) {
+    const sev = SEVERITIES[severity] ? severity : 'info';
+    const shape = el('span', 'shape ' + sev + (size ? ' ' + size : ''));
+    shape.title = SEVERITIES[sev];
+    return shape;
+  }
+
+  // --- bloqueio (sem login / empresa suspensa) --------------------------------------------
+  const LOCKS = {
+    loggedOut: { title: T('lockOutTitle'), text: T('lockOutText'), action: T('signIn'), message: 'login' },
+    suspended: {
+      title: T('lockSuspendedTitle'),
+      text: T('lockSuspendedText'),
+      action: T('checkAgain'),
+      message: 'refreshAccess',
+      secondary: T('openDashboard'),
+      secondaryMessage: 'openDashboard',
+    },
+  };
+
+  function setAccess(state, companyName) {
+    company = companyName || '';
+    renderHeader();
+    const lock = LOCKS[state];
+    $('lock').hidden = !lock;
+    $('main').hidden = Boolean(lock);
+    if (!lock) return;
+    $('lock').className = 'lock ' + state;
+    $('lockTitle').textContent = lock.title;
+    $('lockText').textContent = lock.text.replace('{company}', company || T('yourCompany'));
+    const action = $('lockAction');
+    action.textContent = lock.action;
+    action.disabled = false;
+    action.onclick = () => {
+      action.disabled = true;
+      vscode.postMessage({ type: lock.message });
+      setTimeout(() => (action.disabled = false), 2500);
+    };
+    const secondary = $('lockSecondary');
+    secondary.hidden = !lock.secondary;
+    if (lock.secondary) {
+      secondary.textContent = lock.secondary;
+      secondary.onclick = () => vscode.postMessage({ type: lock.secondaryMessage });
+    }
+  }
+
+  function renderHeader() {
+    $('status').textContent = lastSystemDisabled ? T('guardPaused') : T('guardTitle');
+    $('statusSub').textContent = company;
+  }
+
+  // --- ladrilhos: contagem + filtro -------------------------------------------------------
+  function setCounts(next) {
+    for (const sev of Object.keys(COUNT_IDS)) {
+      const value = (next && next[sev]) || 0;
+      const node = $(COUNT_IDS[sev]);
+      if (value !== counts[sev]) {
+        node.textContent = String(value);
+        if (!firstRender) replay(node, 'changed');
+      }
+      counts[sev] = value;
+    }
+  }
+
+  tilesEl.querySelectorAll('.tile').forEach((tile) => {
+    tile.addEventListener('click', () => {
+      const sev = tile.dataset.severity;
+      severityFilter = severityFilter === sev ? null : sev;
+      replay(tile, 'tapped');
+      tilesEl.classList.toggle('filtering', Boolean(severityFilter));
+      tilesEl.querySelectorAll('.tile').forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.severity === severityFilter)));
+      renderGroups(lastGroups, lastSystemDisabled);
+    });
   });
 
+  // --- balão de detalhes ------------------------------------------------------------------
+  function codeBlock(snippet) {
+    const code = el('pre', 'code');
+    for (const line of snippet.lines) {
+      const row = el('div', 'code-line' + (line.hit ? ' hit' : ''));
+      row.append(el('span', 'ln', String(line.number)), el('span', '', line.text || ' '));
+      code.appendChild(row);
+    }
+    return code;
+  }
+
+  function renderBalloon(item) {
+    const wrap = el('div', 'balloon-wrap');
+    const clip = el('div', 'balloon-clip');
+    const balloon = el('div', 'balloon');
+    balloon.setAttribute('role', 'region');
+    balloon.setAttribute('aria-label', T('detailsOf', { ref: item.ref }));
+
+    if (item.conflicts.length > 0) {
+      // Colisão: o código de quem está do outro lado. O nome do arquivo abre ele.
+      for (const c of item.conflicts) {
+        const head = el('button', 'balloon-file');
+        head.append(el('strong', '', c.fileName), ' ' + T('lineLower', { n: c.line + 1 }));
+        if (c.folder) head.title = c.folder + '/' + c.fileName;
+        head.addEventListener('click', () => vscode.postMessage({ type: 'openRelated', file: c.file, line: c.line }));
+        balloon.append(head, codeBlock(c));
+      }
+    } else {
+      if (item.snippet) balloon.appendChild(codeBlock(item.snippet));
+      if (item.impact) balloon.appendChild(el('p', 'balloon-note', item.impact));
+    }
+
+    const actions = el('div', 'balloon-actions');
+    const goTo = el('button', 'text-btn', T('goToLine', { n: item.line + 1 }));
+    goTo.addEventListener('click', () => vscode.postMessage({ type: 'reveal', fileId: item.fileId, line: item.line }));
+    // "Perguntar para IA" fecha o card, no canto direito (CSS: margin-left auto).
+    const ask = el('button', 'text-btn ask', T('askAI'));
+    ask.addEventListener('click', () =>
+      vscode.postMessage({ type: 'askAI', finding: { id: item.id, ref: item.ref, fileId: item.fileId, fileName: item.fileName, line: item.line, message: item.message } })
+    );
+    actions.append(goTo, ask);
+    balloon.appendChild(actions);
+
+    clip.appendChild(balloon);
+    wrap.appendChild(clip);
+    return wrap;
+  }
+
+  // --- achados ---------------------------------------------------------------------------
   function renderFinding(item) {
-    const row = el('div', 'finding');
-    // Classe só de uma lista fechada — o valor vem da extensão, mas nada de string livre em className/HTML.
-    row.appendChild(el('span', 'marker ' + (SEVERITIES[item.severity] ? item.severity : 'info')));
-    row.title = (SEVERITIES[item.severity] || '') + (item.impact ? ' — Impacto: ' + item.impact : '');
+    const finding = el('div', 'finding ' + (SEVERITIES[item.severity] ? item.severity : 'info'));
+    const conflictNames = item.conflicts.map((c) => c.fileName).join(', ');
+    if (!seenFindings.has(item.id) && !firstRender) finding.classList.add('new');
+    seenFindings.add(item.id);
 
-    const body = el('span', 'finding-body');
-    const line = el('div', 'finding-line', 'Linha ' + (item.line + 1) + ' · #' + item.id);
-    if (ORIGINS[item.source]) line.appendChild(el('span', 'origin ' + item.source, ORIGINS[item.source]));
-    body.appendChild(line);
-    body.appendChild(el('div', 'finding-message', item.message));
-    row.appendChild(body);
-    row.addEventListener('click', () => vscode.postMessage({ type: 'reveal', fileId: item.fileId, line: item.line }));
+    // A linha inteira é o alvo do clique: passar o mouse já "espia" o balão, clicar abre.
+    const row = el('button', 'finding-row');
+    row.appendChild(badge(item.severity));
+    const text = el('span', 'finding-text');
+    text.appendChild(el('span', 'finding-message', item.message));
+    const meta = el('span', 'finding-meta');
+    meta.append(el('span', 'ref', '#' + item.ref), el('span', '', T('lineN', { n: item.line + 1 })));
+    if (conflictNames) meta.appendChild(el('span', 'conflict', T('conflictWith', { files: conflictNames })));
+    text.appendChild(meta);
+    row.appendChild(text);
 
-    const ask = el('button', 'link-btn', 'Ask AI');
-    ask.addEventListener('click', (e) => {
-      e.stopPropagation();
-      vscode.postMessage({ type: 'askAI', finding: { id: item.id, fileId: item.fileId, fileName: item.fileName, line: item.line, message: item.message } });
+    row.addEventListener('click', () => {
+      const open = finding.classList.toggle('balloon-open');
+      row.setAttribute('aria-expanded', String(open));
+      if (open) openBalloons.add(item.id);
+      else openBalloons.delete(item.id);
     });
-    row.appendChild(ask);
-    return row;
+
+    const open = openBalloons.has(item.id);
+    finding.classList.toggle('balloon-open', open);
+    row.setAttribute('aria-expanded', String(open));
+    finding.append(row, renderBalloon(item));
+    return finding;
   }
 
   function renderGroups(groups, systemDisabled) {
+    lastGroups = groups || [];
+    lastSystemDisabled = systemDisabled;
+    renderHeader();
+    const previousCounts = new Map([...findingsEl.querySelectorAll('.file')].map((n) => [n.dataset.file, n.dataset.count]));
     findingsEl.replaceChildren();
+    findingsEl.classList.remove('is-empty');
+
     if (systemDisabled) {
-      findingsEl.appendChild(el('div', 'empty', 'Sistema desativado — ative em Configurações (ícone escudo + engrenagem).'));
+      findingsEl.classList.add('is-empty');
+      const empty = el('div', 'empty', T('analysisOff') + ' ');
+      const link = el('button', 'text-btn', T('turnOn'));
+      link.addEventListener('click', () => vscode.postMessage({ type: 'openSettings' }));
+      empty.appendChild(link);
+      findingsEl.appendChild(empty);
       return;
     }
-    if (!groups || groups.length === 0) {
-      findingsEl.appendChild(el('div', 'empty', 'Nenhum problema encontrado ainda.'));
+    const visible = lastGroups
+      .map((g) => ({ ...g, items: severityFilter ? g.items.filter((i) => i.severity === severityFilter) : g.items }))
+      .filter((g) => g.items.length > 0);
+    if (visible.length === 0) {
+      // Uma área vazia só, com uma frase no meio — o resumo fica no fim dela.
+      findingsEl.classList.add('is-empty');
+      findingsEl.appendChild(el('div', 'empty', T('emptyState')));
       return;
     }
-    for (const group of groups) {
-      const island = el('div', 'island' + (expandedFiles.has(group.fileId) ? ' expanded' : ''));
-      const header = el('div', 'island-header');
-      header.appendChild(el('span', 'island-chevron'));
-      header.appendChild(el('span', 'island-name', group.fileName));
-      header.appendChild(el('span', 'island-count', String(group.items.length)));
-      header.addEventListener('click', () => {
-        if (island.classList.toggle('expanded')) expandedFiles.add(group.fileId);
-        else expandedFiles.delete(group.fileId);
+
+    for (const group of visible) {
+      const worst = severityFilter || group.worst;
+      const file = el('div', 'file ' + worst + (openFiles.has(group.fileId) ? ' open' : ''));
+      file.dataset.file = group.fileId;
+      file.dataset.count = String(group.items.length);
+
+      const row = el('button', 'file-row');
+      row.setAttribute('aria-expanded', String(openFiles.has(group.fileId)));
+      row.appendChild(badge(worst, 'large'));
+      const id = el('span', 'file-id');
+      id.appendChild(el('span', 'file-name', group.fileName));
+      if (group.folder) id.appendChild(el('span', 'file-folder', group.folder));
+      row.appendChild(id);
+      const count = el('span', 'count', String(group.items.length));
+      const before = previousCounts.get(group.fileId);
+      if (before !== undefined && before !== String(group.items.length)) count.classList.add('changed');
+      row.append(count, el('span', 'chevron'));
+      row.addEventListener('click', () => {
+        const open = file.classList.toggle('open');
+        row.setAttribute('aria-expanded', String(open));
+        if (open) openFiles.add(group.fileId);
+        else openFiles.delete(group.fileId);
       });
-      const body = el('div', 'island-body');
-      for (const item of group.items) body.appendChild(renderFinding(item));
-      island.appendChild(header);
-      island.appendChild(body);
-      findingsEl.appendChild(island);
+
+      const body = el('div', 'file-body');
+      const inner = el('div', 'file-inner');
+      for (const item of group.items) inner.appendChild(renderFinding(item));
+      body.appendChild(inner);
+      file.append(row, body);
+      findingsEl.appendChild(file);
     }
   }
 
   function renderSummary(msg) {
     summaryEl.replaceChildren();
-    const ia = el('div');
-    ia.append('IA: ', el('strong', '', ENGINES[msg.engine] || msg.engine));
-    const rules = el('div');
-    rules.append('Regras reativas: ', el('strong', '', String(msg.rules)), ' · colisões provadas: ', el('strong', '', String(msg.collisions)));
-    summaryEl.append(ia, rules);
+    if (!msg.rules) return;
+    summaryEl.append(T('summary', { rules: msg.rules, collisions: msg.collisions }) + ' ');
     if (msg.collisions > 0) {
-      const btn = el('button', 'link-btn', 'Explicar colisões');
+      const btn = el('button', 'text-btn', T('explainCollisions'));
       btn.addEventListener('click', () => vscode.postMessage({ type: 'explainCollisions' }));
       summaryEl.appendChild(btn);
     }
@@ -102,12 +269,16 @@
 
   window.addEventListener('message', (event) => {
     const msg = event.data || {};
-    if (msg.type === 'syncToggle') setToggle(Boolean(msg.value));
-    else if (msg.type === 'findingsByFile') renderGroups(msg.groups, msg.systemDisabled);
-    else if (msg.type === 'summary') renderSummary(msg);
+    if (msg.type === 'access') setAccess(msg.state, msg.company);
+    else if (msg.type === 'findingsByFile') {
+      setCounts(msg.counts);
+      renderGroups(msg.groups, msg.systemDisabled);
+      if (firstRender) setTimeout(() => document.body.classList.remove('preload'), 80); // rAF não roda com a aba escondida
+      firstRender = false;
+    } else if (msg.type === 'summary') renderSummary(msg);
     else if (msg.type === 'analyzing') {
-      analyzingRow.classList.toggle('visible', Boolean(msg.active));
-      analyzingText.textContent = msg.active ? 'Analisando ' + (msg.fileName || '') : '';
+      $('analyzingRow').classList.toggle('visible', Boolean(msg.active));
+      if (msg.active) $('analyzingText').textContent = T('analyzing', { file: msg.fileName || '' });
     }
   });
 

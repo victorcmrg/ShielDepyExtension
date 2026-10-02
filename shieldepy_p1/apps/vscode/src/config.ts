@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { languageName } from '@shieldepy/agent';
 
 export type AiProviderSetting = 'auto' | 'anthropic' | 'gemini' | 'offline';
+export type AnalysisTrigger = 'onType' | 'onSave';
+export type MinSeverity = 'info' | 'warning' | 'error';
 
 /** Leitura tipada das settings — um só lugar sabe os nomes e os padrões (item 5.1). */
 export const config = {
@@ -36,6 +38,24 @@ export const config = {
   /** Nome do idioma pra colocar no prompt. */
   languageName(): string {
     return languageName(this.languageCode());
+  },
+  webBaseUrl(): string {
+    return this.raw.get<string>('webBaseUrl', 'http://localhost:3000');
+  },
+  /** Quando a análise automática roda: a cada pausa na digitação, ou só ao salvar/abrir. */
+  analysisTrigger(): AnalysisTrigger {
+    return this.raw.get<AnalysisTrigger>('backgroundAnalysis.trigger', 'onType');
+  },
+  /** Severidade mínima exibida (Problems, marca-texto, painel). Abaixo disso, some. */
+  minSeverity(): MinSeverity {
+    return this.raw.get<MinSeverity>('display.minSeverity', 'info');
+  },
+  /** Globs extras ignorados pela análise, além de node_modules/dist/etc. */
+  excludeGlobs(): string[] {
+    return this.raw.get<string[]>('analysis.exclude', []).map((g) => g.trim()).filter(Boolean);
+  },
+  statusBarEnabled(): boolean {
+    return this.raw.get<boolean>('statusBar.enabled', true);
   },
   update(key: string, value: unknown): Thenable<void> {
     return this.raw.update(key, value, vscode.ConfigurationTarget.Global);

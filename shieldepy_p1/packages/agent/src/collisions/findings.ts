@@ -9,13 +9,15 @@ const TO_FINDING: Record<Severity, FindingSeverity> = {
   Baixo: 'info',
 };
 
-function headline(c: Collision, rules: Map<string, Rule>): string {
-  const name = (id: string) => rules.get(id)?.name ?? id;
-  if (c.type === 'write-write') {
-    return `Colisão write-write em "${c.field}" (${c.resource}/${c.event}): ${name(c.rules[0])} × ${name(c.rules[1])}.`;
-  }
-  const ordem = c.ordering === 'unknown' ? 'ordem imprevisível' : c.ordering === 'reader-first' ? 'lê antes da escrita' : 'lê depois da escrita';
-  return `Leitura de "${c.field}" depende de ${name(c.writer)} (${ordem}) — ${c.resource}/${c.event}.`;
+/**
+ * Frase curta do achado. Quem está do outro lado NÃO entra aqui: vai em `related` (Problems mostra
+ * como informação relacionada, o painel e o hover mostram o código) — repetir no texto só alongava.
+ */
+function headline(c: Collision): string {
+  if (c.type === 'write-write') return `Escrita dupla em "${c.field}" no evento ${c.event}.`;
+  if (c.ordering === 'reader-first') return `"${c.field}" é lido antes de ser escrito no evento ${c.event}.`;
+  if (c.ordering === 'writer-first') return `"${c.field}" é lido depois de ser escrito no evento ${c.event}.`;
+  return `"${c.field}" é lido e escrito sem ordem garantida no evento ${c.event}.`;
 }
 
 /**
@@ -38,7 +40,7 @@ export function collisionsToFindings(collisions: Collision[], rules: Rule[], rep
         startLine: rule.location.line,
         endLine: rule.location.line,
         severity: TO_FINDING[diagnosis?.severity ?? 'Alto'],
-        message: headline(c, byId),
+        message: headline(c),
         impact: diagnosis ? `${diagnosis.rootCause} ${diagnosis.recommendation}` : undefined,
         source: 'colisao',
         related: others.map((o) => ({ file: o!.location!.file, line: o!.location!.line, message: `outra ponta da colisão: ${o!.name}` })),

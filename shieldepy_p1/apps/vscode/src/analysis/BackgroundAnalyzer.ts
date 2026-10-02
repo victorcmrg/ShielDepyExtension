@@ -32,12 +32,14 @@ export class BackgroundAnalyzer implements vscode.Disposable {
     private readonly findings: FindingsManager,
     private readonly analyzing: AnalyzingDecorationProvider,
     private readonly animator: ScanAnimator,
-    private readonly log: (message: string) => void
+    private readonly log: (message: string) => void,
+    /** Sistema ligado nas settings E a conta com acesso liberado — sem isso, nada roda. */
+    private readonly isActive: () => boolean
   ) {}
 
   /** Debounced — em todo `onDidChangeTextDocument` (digitar, colar, edição programática). */
   schedule(doc: vscode.TextDocument): void {
-    if (!config.analysisEnabled() || !isAnalyzable(doc)) return;
+    if (!this.isActive() || config.analysisTrigger() === 'onSave' || !isAnalyzable(doc)) return;
     const key = toFileId(doc.uri.fsPath);
     clearTimeout(this.timers.get(key));
     this.timers.set(
@@ -51,7 +53,7 @@ export class BackgroundAnalyzer implements vscode.Disposable {
 
   /** Imediato — ao salvar/abrir. Pula se essa MESMA versão já foi analisada. */
   runNow(doc: vscode.TextDocument): void {
-    if (!config.analysisEnabled() || !isAnalyzable(doc)) return;
+    if (!this.isActive() || !isAnalyzable(doc)) return;
     const key = toFileId(doc.uri.fsPath);
     if (this.analyzedVersion.get(key) === doc.version && !this.timers.has(key)) return;
     clearTimeout(this.timers.get(key));
@@ -66,6 +68,7 @@ export class BackgroundAnalyzer implements vscode.Disposable {
   ): Promise<{ filesScanned: number; totalFindings: number }> {
     let filesScanned = 0;
     let totalFindings = 0;
+    if (!this.isActive()) return { filesScanned, totalFindings };
     const files = await findWorkspaceFiles(500);
     for (let i = 0; i < files.length; i++) {
       if (token?.isCancellationRequested) break;
@@ -102,10 +105,17 @@ export class BackgroundAnalyzer implements vscode.Disposable {
     this.findings.clear(key);
   }
 
-  dispose(): void {
+  /** Acesso perdido: cancela tudo que está pendente/em voo e esquece o "já verificado". */
+  cancelAll(): void {
     for (const t of this.timers.values()) clearTimeout(t);
     for (const c of this.controllers.values()) c.abort();
     this.timers.clear();
+    this.analyzedVersion.clear();
+    this.lastScannedText.clear();
+  }
+
+  dispose(): void {
+    this.cancelAll();
   }
 
   private async analyze(doc: vscode.TextDocument): Promise<void> {
@@ -118,6 +128,20 @@ export class BackgroundAnalyzer implements vscode.Disposable {
     } finally {
       this.analyzing.stop(doc.uri);
     }
+  }
+
+  /** Onde ficam os outros símbolos de um ciclo (sem repetir e sem o próprio símbolo). */
+  private cycleParticipants(self: string, path: string[]): Array<{ file: string; line: number; message: string }> {
+    const seen = new Set<string>();
+    const out: Array<{ file: string; line: number; message: string }> = [];
+    for (const id of path) {
+      if (id === self || seen.has(id)) continue;
+      seen.add(id);
+      const attrs = this.model.graph.nodeAttributes(id);
+      if (!attrs || attrs.kind === 'file') continue;
+      out.push({ file: attrs.file, line: attrs.startLine, message: attrs.name });
+    }
+    return out.slice(0, 3); // balão legível: no máximo três trechos
   }
 
   private async analyzeUnsafe(doc: vscode.TextDocument): Promise<void> {
@@ -143,6 +167,8 @@ export class BackgroundAnalyzer implements vscode.Disposable {
       const chain = cycle.labels.join(' → ');
       provenFacts.push(`ciclo de chamadas: ${chain}`);
       findings.push({
+        // As outras funções do ciclo: o hover e o balão mostram o código delas ("o que isto afeta").
+        related: this.cycleParticipants(cycle.symbolId, cycle.path),
         file: key,
         startLine: cycle.startLine,
         endLine: cycle.endLine,
@@ -233,6 +259,7 @@ export class BackgroundAnalyzer implements vscode.Disposable {
       }
     }
 
-    if (!stale()) this.findings.set(key, 'analysis', findings);
+    // Acesso pode ter caído enquanto a IA respondia — não republica achados de conta suspensa.
+    if (!stale() && this.isActive()) this.findings.set(key, 'analysis', findings);
   }
 }

@@ -9,6 +9,16 @@ import { collisionChatReply, explainCollisions, type LLMProvider, type Logger } 
 import { loadRulesFromFiles, loadRulesFromPath, type Registry, type SourceFile } from '@shieldepy/extractors';
 import { RateLimiter, SessionStore } from './sessions';
 
+// Import tardio (só quando uma /api/* de verdade chega): node:sqlite é um builtin
+// recente demais pra alguns pipelines de transform de teste reconhecerem no grafo
+// estático de import — carregar sob demanda evita puxar auth/db.ts (e node:sqlite)
+// pra dentro de suites que nunca tocam em rota nenhuma de autenticação.
+let authRoutes: typeof import('./auth/routes') | undefined;
+async function getAuthRoutes(): Promise<typeof import('./auth/routes')> {
+  authRoutes ??= await import('./auth/routes');
+  return authRoutes;
+}
+
 const MAX_BODY = 5_000_000; // 5 MB
 const MAX_FILES = 50;
 const MAX_MESSAGE = 4000;
@@ -23,7 +33,10 @@ const MIME: Record<string, string> = {
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
-  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+  // style-src/font-src liberam só o Google Fonts (Manrope/Inter/JetBrains Mono, mesmo
+  // link exato do design system do site) — resto continua 'self' estrito.
+  'content-security-policy':
+    "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
 };
 
 /** Exemplos que a UI oferece — allowlist: o nome vindo do navegador nunca vira caminho nem conexão de banco. */
@@ -44,7 +57,7 @@ export interface AppDeps {
   log?: Logger;
 }
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string
@@ -116,7 +129,15 @@ export function createHandler(deps: AppDeps): (req: IncomingMessage, res: Server
 
   return async (req, res) => {
     try {
-      const url = (req.url ?? '/').split('?')[0]!;
+      const parsedUrl = new URL(req.url ?? '/', 'http://localhost');
+      const url = parsedUrl.pathname;
+
+      if (url.startsWith('/api/')) {
+        const { handleAuthRoute } = await getAuthRoutes();
+        const handled = await handleAuthRoute(req, res, url, parsedUrl);
+        if (handled) return;
+        throw new HttpError(404, 'rota não encontrada');
+      }
       if (req.method === 'GET') return await serveStatic(res, url);
       if (req.method !== 'POST' || (url !== '/analyze' && url !== '/chat')) throw new HttpError(405, 'método não permitido');
 
@@ -141,12 +162,12 @@ export function createHandler(deps: AppDeps): (req: IncomingMessage, res: Server
   };
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
+export function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { ...SECURITY_HEADERS, 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+export function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;

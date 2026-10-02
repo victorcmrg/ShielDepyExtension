@@ -1,45 +1,152 @@
-body { padding: 12px; }
-.protect-row { display: flex; align-items: center; gap: 10px; padding-bottom: 4px; }
-.protect-label { font-size: 12px; font-weight: 600; color: var(--vscode-descriptionForeground); transition: color .15s ease; }
-.protect-label.active { color: var(--sd-accent); }
-.analyzing-row { display: none; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 11px; color: var(--vscode-descriptionForeground); }
-.analyzing-row.visible { display: flex; }
-.analyzing-row .morph-shape { width: 10px; height: 10px; }
-.notice {
-  font-size: 11px; line-height: 1.45; margin: 12px 0; padding: 2px 0 2px 10px;
-  border-left: 3px solid var(--sd-warning); color: var(--vscode-descriptionForeground);
-}
-.summary { font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 10px; line-height: 1.5; }
-.summary strong { color: var(--vscode-foreground); }
+body { padding: 14px 12px 16px; }
+/* Coluna que ocupa a altura toda: a lista (ou a área vazia) cresce e o resumo fica no fim. */
+#main { display: flex; flex-direction: column; min-height: calc(100vh - 30px); }
+/* Tela de bloqueio no meio da altura toda do painel (descontado o padding do body). */
+#lock { min-height: calc(100vh - 30px); justify-content: center; }
 
-.island { border: 1px solid var(--vscode-panel-border, transparent); border-radius: 6px; margin-bottom: 6px; overflow: hidden; }
-.island-header {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer;
-  background: var(--vscode-list-hoverBackground, transparent); font-size: 12px; font-weight: 600;
-}
-.island-header:hover { background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground)); }
-.island-chevron {
-  width: 8px; height: 8px; flex-shrink: 0; border-right: 2px solid var(--vscode-foreground);
-  border-bottom: 2px solid var(--vscode-foreground); transform: rotate(-45deg); transition: transform .15s ease;
-}
-.island.expanded .island-chevron { transform: rotate(45deg); }
-.island-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.island-count { font-size: 10px; font-weight: 600; color: var(--vscode-editor-background); background: var(--sd-accent); border-radius: 999px; padding: 1px 7px; flex-shrink: 0; }
-.island-body { display: none; padding: 2px 10px 6px; }
-.island.expanded .island-body { display: block; }
+/* --- Cabeçalho: estado da proteção ---------------------------------------------------------- */
+.guard-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--sd-muted); }
+.guard-sub { font-size: 11.5px; color: var(--sd-muted); min-height: 1em; }
 
-.finding { display: flex; gap: 8px; padding: 7px 0; cursor: pointer; align-items: flex-start; border-top: 1px solid var(--vscode-panel-border, transparent); }
-.finding:first-child { border-top: none; }
-.finding:hover .finding-message { color: var(--vscode-textLink-activeForeground); }
-.marker { width: 9px; height: 9px; margin-top: 4px; flex-shrink: 0; }
-.marker.error { background: var(--sd-error); clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
-.marker.warning { background: var(--sd-warning); clip-path: polygon(50% 5%, 100% 95%, 0% 95%); }
-.marker.info { background: var(--sd-info); border-radius: 50%; }
-.finding-body { min-width: 0; flex: 1; }
-.finding-line { font-size: 10px; font-family: var(--vscode-editor-font-family, monospace); color: var(--vscode-descriptionForeground); }
-.finding-message { font-size: 12px; line-height: 1.4; word-wrap: break-word; }
-.origin { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; border-radius: 3px; padding: 0 4px; margin-left: 4px; border: 1px solid currentColor; }
-.origin.colisao { color: var(--sd-error); }
-.origin.grafo { color: var(--sd-warning); }
-.origin.ia { color: var(--vscode-descriptionForeground); }
-.finding .link-btn { align-self: flex-start; flex-shrink: 0; white-space: nowrap; font-size: 10px; }
+.analyzing {
+  display: flex; align-items: center; gap: 8px; height: 0; overflow: hidden; opacity: 0;
+  font-size: 11.5px; color: var(--sd-muted); transition: height 0.3s var(--sd-ease), opacity 0.2s ease, margin 0.3s var(--sd-ease);
+}
+.analyzing.visible { height: 18px; opacity: 1; margin-top: 8px; }
+.analyzing .morph-shape { width: 10px; height: 10px; }
+.notice { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--sd-yellow) 12%, transparent); font-size: 11.5px; }
+
+
+/* --- Formas nas listas ---------------------------------------------------------------------- */
+.file-row > .shape.large { width: 11px; height: 11px; margin: 0 3px 0 4px; }
+.finding-row > .shape { margin-top: 5px; }
+
+/* --- Ladrilhos de severidade (também são o filtro) ------------------------------------------ */
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.tile {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0;
+  padding: 10px 10px 9px; border: none; border-radius: var(--sd-radius); cursor: pointer; text-align: left;
+  background: var(--sd-fill); color: var(--vscode-foreground);
+  transition: transform 0.45s var(--sd-spring), background 0.25s var(--sd-ease), opacity 0.25s var(--sd-ease), box-shadow 0.25s var(--sd-ease);
+}
+.tile[data-severity="error"] { --c: var(--sd-error); }
+.tile[data-severity="warning"] { --c: var(--sd-warning); }
+.tile[data-severity="info"] { --c: var(--sd-info); }
+.tile:hover { background: var(--sd-fill-strong); }
+.tile:active { transform: scale(0.94); transition-duration: 0.1s; }
+.tile[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 16%, transparent); box-shadow: inset 0 0 0 1.5px var(--c); }
+.tiles.filtering .tile[aria-pressed="false"] { opacity: 0.45; }
+.tile-num { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile-label { font-size: 11px; color: var(--sd-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tile[aria-pressed="true"] .tile-label { color: var(--vscode-foreground); }
+.tile .shape { position: absolute; top: 10px; right: 10px; width: 11px; height: 11px; }
+
+/* Gesto de cada forma ao tocar: o quadrado gira, o triângulo pula, o círculo emite uma onda. */
+.tile.tapped .shape.error { animation: sd-spin-square 0.6s var(--sd-spring); }
+.tile.tapped .shape.warning { animation: sd-hop 0.55s var(--sd-ease); }
+.tile.tapped .shape.info { animation: sd-ripple 0.6s var(--sd-ease); }
+@keyframes sd-spin-square { from { transform: rotate(0) scale(1); } 40% { transform: rotate(60deg) scale(1.35); } to { transform: rotate(90deg) scale(1); } }
+@keyframes sd-hop { 0% { transform: none; } 35% { transform: translateY(-6px) scale(1.15, 0.9); } 60% { transform: translateY(0) scale(0.9, 1.1); } 80% { transform: translateY(-1px); } 100% { transform: none; } }
+@keyframes sd-ripple { 0% { box-shadow: 0 0 0 0 var(--sd-info); transform: scale(1); } 40% { transform: scale(1.3); } 100% { box-shadow: 0 0 0 9px transparent; transform: scale(1); } }
+.tile-num.changed, .count.changed { animation: sd-tick 0.4s var(--sd-ease); }
+@keyframes sd-tick { 0% { transform: translateY(0); } 35% { transform: translateY(-3px); opacity: 0.6; } 100% { transform: none; opacity: 1; } }
+
+/* --- Lista de arquivos (lista agrupada, estilo iOS) ----------------------------------------- */
+.list-head { margin: 22px 2px 8px; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+
+.files { border-radius: var(--sd-radius); background: var(--sd-fill); overflow: hidden; }
+.files.is-empty { flex: 1; min-height: 120px; display: grid; place-items: center; padding: 16px; text-align: center; }
+.files.is-empty > .empty { font-size: 12.5px; }
+.file + .file { border-top: 1px solid var(--sd-hairline); }
+.file-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px 9px 10px; border: none; background: none;
+  color: inherit; font-size: inherit; text-align: left; cursor: pointer; transition: background 0.15s ease;
+}
+.file-row:hover { background: var(--sd-fill); }
+.file-row:active { background: var(--sd-fill-strong); }
+.file-id { flex: 1; min-width: 0; }
+.file-name { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-folder { display: block; font-size: 11px; color: var(--sd-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Contador: círculo de borda verde com o número centralizado de verdade. */
+.count {
+  display: inline-grid; place-items: center; flex-shrink: 0; min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 999px; border: 1.5px solid var(--sd-green); color: var(--sd-green);
+  font-size: 11px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+  /* Apara a caixa do texto à altura dos algarismos: o centro do grid vira o centro visual do número. */
+  text-box: trim-both cap alphabetic;
+}
+.chevron {
+  width: 7px; height: 7px; flex-shrink: 0; margin: 0 2px 0 0; border-right: 1.5px solid var(--sd-muted); border-bottom: 1.5px solid var(--sd-muted);
+  transform: rotate(-45deg); transition: transform 0.35s var(--sd-spring);
+}
+.file.open .chevron { transform: rotate(45deg); }
+
+/* Gaveta: grid 0fr → 1fr anima a altura real sem medir no JS. */
+.file-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s var(--sd-ease); }
+.file.open .file-body { grid-template-rows: 1fr; }
+.file-inner { overflow: hidden; min-height: 0; }
+.file.open .file-inner { padding-bottom: 4px; }
+
+/* --- Achado --------------------------------------------------------------------------------- */
+.finding { --c: var(--sd-info); position: relative; margin: 0 6px; border-radius: 9px; transition: background 0.2s ease; }
+.finding.error { --c: var(--sd-error); }
+.finding.warning { --c: var(--sd-warning); }
+.finding:hover, .finding.balloon-open { background: var(--sd-fill); }
+.finding-row {
+  display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 8px 8px 8px 22px; border: none; background: none;
+  color: inherit; font-size: inherit; text-align: left; cursor: pointer;
+}
+.finding-text { flex: 1; min-width: 0; }
+.finding-message { display: block; font-weight: 500; word-wrap: break-word; }
+.finding-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 11px; color: var(--sd-muted); margin-top: 2px; }
+.finding-meta .ref { color: var(--c); font-weight: 600; font-variant-numeric: tabular-nums; }
+.finding-meta .conflict { color: var(--sd-mint); }
+.finding.new { animation: sd-arrive 0.8s var(--sd-ease); }
+@keyframes sd-arrive { from { background: var(--sd-mint-wash); } to { background: transparent; } }
+
+/* --- Balão de detalhes ---------------------------------------------------------------------- */
+/* Fechado: altura zero. Mouse em cima: "espia" uns pixels e empurra o resto pra baixo — é o
+   convite pra clicar. Aberto: altura inteira, com mola. */
+.balloon-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s var(--sd-ease); }
+.finding.balloon-open .balloon-wrap { grid-template-rows: 1fr; }
+.balloon-clip { overflow: hidden; min-height: 0; transition: min-height 0.3s var(--sd-ease); }
+.finding:not(.balloon-open):hover .balloon-clip {
+  min-height: 26px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
+  mask-image: linear-gradient(to bottom, #000 45%, transparent);
+}
+.balloon {
+  position: relative; margin: 4px 8px 10px 22px; padding: 10px 10px 8px; border-radius: 12px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 0 0 1px var(--sd-hairline), 0 8px 24px rgba(0, 0, 0, 0.22);
+  transform-origin: 14px 0; transform: scale(0.96) translateY(-2px); opacity: 0.85;
+  transition: transform 0.45s var(--sd-spring), opacity 0.2s ease;
+}
+.finding.balloon-open .balloon { transform: none; opacity: 1; }
+/* Rabicho apontando pra pastilha do achado. */
+.balloon::before {
+  content: ""; position: absolute; top: -5px; left: 6px; width: 10px; height: 10px; transform: rotate(45deg);
+  background: inherit; box-shadow: -1px -1px 0 0 var(--sd-hairline);
+}
+.balloon-file {
+  display: block; margin: 0 0 6px; padding: 0; border: none; background: none; cursor: pointer; text-align: left;
+  font-size: 11.5px; color: var(--sd-muted);
+}
+.balloon-file strong { color: var(--vscode-textLink-foreground); font-weight: 600; }
+.balloon-file:hover strong { text-decoration: underline; text-underline-offset: 2px; }
+.code + .balloon-file { margin-top: 10px; }
+.code {
+  margin: 0; padding: 6px 0; border-radius: 8px; overflow-x: auto; background: var(--vscode-textCodeBlock-background, var(--sd-fill));
+  font-family: var(--sd-code); font-size: 11.5px; line-height: 1.55;
+}
+.code-line { display: flex; padding: 0 10px 0 0; white-space: pre; }
+.code-line .ln { flex-shrink: 0; width: 3.2em; padding-right: 10px; text-align: right; color: var(--sd-muted); opacity: 0.7; user-select: none; }
+.code-line.hit { background: color-mix(in srgb, var(--c) 14%, transparent); box-shadow: inset 2px 0 0 var(--c); }
+.code-line.hit .ln { color: var(--c); opacity: 1; }
+.balloon-note { margin: 8px 0 0; font-size: 11.5px; color: var(--sd-muted); }
+.balloon-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 10px; }
+.balloon-actions .ask { margin-left: auto; font-weight: 600; }
+
+.summary { margin: 12px 2px 0; font-size: 11.5px; color: var(--sd-muted); }
+.summary .text-btn { font-size: 11.5px; }

@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import * as vscode from 'vscode';
 import {
   codeChat,
@@ -15,7 +16,9 @@ import type { BackgroundAnalyzer } from '../analysis/BackgroundAnalyzer';
 import type { FindingsManager } from '../analysis/FindingsManager';
 import type { StoredFinding } from '../analysis/FindingsCache';
 import type { AiService } from '../services/AiService';
-import { renderWebview } from '../views/webview';
+import type { AuthService } from '../services/AuthService';
+import { strings, t, type Key } from '../i18n';
+import { escapeHtml, renderWebview } from '../views/webview';
 import { workspaceRoots } from '../workspace/files';
 import { resolveInsideWorkspace } from '../workspace/path-guard';
 import { verifyProposedFix, type RiskScan } from '../workspace/verify-fix';
@@ -24,13 +27,35 @@ import type { WorkspaceModel } from '../workspace/WorkspaceModel';
 interface Turn {
   id: number;
   role: 'user' | 'assistant';
+  /** O que a IA lê (completo: citações, impacto, tudo). */
   text: string;
   /** Correção proposta — fica AQUI, na extensão; o webview só recebe o caminho e devolve o id do turno. */
   fix?: { path: string; content: string };
+  /** O que a pessoa vê, quando difere do texto da IA: frase curta + achados como cards que expandem. */
+  view?: TurnView;
+}
+
+interface TurnView {
+  display: string;
+  cards?: FindingCard[];
+  outro?: string;
+}
+
+/** Achado citado no chat, em forma de card (fechado: forma + #n + frase; aberto: arquivo, linha, por quê). */
+interface FindingCard {
+  ref: number;
+  severity: string;
+  message: string;
+  fileName: string;
+  line: number;
+  impact: string;
+  conflicts: string[];
 }
 
 export interface FindingAttachment {
   id: string;
+  /** Número curto da sessão (#3) — é o que aparece pra pessoa e pra IA. */
+  ref?: number;
   fileId: string;
   fileName?: string;
   line: number;
@@ -57,30 +82,38 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private readonly model: WorkspaceModel,
     private readonly findings: FindingsManager,
     private readonly analyzer: BackgroundAnalyzer,
+    private readonly auth: AuthService,
     private readonly log: (message: string) => void
   ) {}
+
+  private postAccess(): void {
+    this.post({ type: 'access', state: this.auth.accessState(), company: this.auth.getCachedMe()?.companyName ?? null });
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
     webviewView.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')] };
-    webviewView.webview.html = renderWebview({
-      webview: webviewView.webview,
-      extensionUri: this.extensionUri,
-      asset: 'chat',
-      body: `
-  <div id="messages"><div class="empty-hint">Pergunte sobre um erro, peça uma correção, ou peça pra analisar a pasta inteira.</div></div>
-  <div id="thinking"><span class="morph-shape"></span><span id="thinkingText"></span><button id="stopBtn" title="Parar">parar</button></div>
-  <div id="attachmentsRow" class="attachments-row"></div>
-  <div id="inputRow">
-    <textarea id="inputBox" rows="2" placeholder="Pergunte sobre um erro, peça uma correção…"></textarea>
-    <button id="sendBtn">Enviar</button>
-  </div>`,
+    this.render(webviewView);
+    const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
+      // Idioma novo: remonta o HTML; o "ready" dele recebe o histórico de novo.
+      if (e.affectsConfiguration('shieldepy.language')) this.render(webviewView);
     });
 
+    const authListener = this.auth.onDidChangeAuth((state) => {
+      if (state !== 'active') this.inFlight?.abort();
+      this.postAccess();
+    });
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message?.type) {
         case 'ready':
           this.post({ type: 'history', turns: this.turns.map(toView) });
+          this.postAccess();
+          break;
+        case 'login':
+          void vscode.commands.executeCommand(CMD.login);
+          break;
+        case 'refreshAccess':
+          void vscode.commands.executeCommand(CMD.refreshAccess);
           break;
         case 'send':
           await this.handleSend(String(message.text ?? ''), Array.isArray(message.attachments) ? message.attachments : []);
@@ -96,7 +129,50 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
       }
     });
-    webviewView.onDidDispose(() => (this.view = undefined));
+    webviewView.onDidDispose(() => {
+      authListener.dispose();
+      configListener.dispose();
+      this.view = undefined;
+    });
+  }
+
+  private render(webviewView: vscode.WebviewView): void {
+    const h = (key: Key) => escapeHtml(t(key));
+    webviewView.webview.html = renderWebview({
+      webview: webviewView.webview,
+      extensionUri: this.extensionUri,
+      asset: 'chat',
+      initial: { t: strings() },
+      body: `
+  <div id="lock" class="lock" hidden>
+    <span class="lock-mark" aria-hidden="true"></span>
+    <h2 class="lock-title" id="lockTitle"></h2>
+    <p class="lock-text" id="lockText"></p>
+    <button id="lockAction" class="pill-btn"></button>
+  </div>
+  <div id="messages"><div class="empty-hint">${h('chatEmpty')}</div></div>
+  <div id="thinking"><span class="morph-shape"></span><span id="thinkingText"></span><button id="stopBtn" class="text-btn">${h('stop')}</button></div>
+  <div id="attachmentsRow" class="attachments-row"></div>
+  <div id="inputRow">
+    <textarea id="inputBox" rows="1" placeholder="${h('chatPlaceholder')}" aria-label="${h('message')}"></textarea>
+    <button id="sendBtn" aria-label="${h('send')}" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M3.75 7.5 8 3.25l4.25 4.25" /></svg></button>
+  </div>`,
+    });
+  }
+
+  /** Card de um achado pelo #id estável (o que o chat mostra no lugar do texto longo). */
+  private cardFor(id: string): FindingCard | undefined {
+    const f = this.findings.getById(id);
+    if (!f) return undefined;
+    return {
+      ref: this.findings.refOf(f.id),
+      severity: f.severity,
+      message: f.message,
+      fileName: basename(vscode.workspace.asRelativePath(vscode.Uri.file(f.file))),
+      line: f.startLine,
+      impact: f.impact ?? '',
+      conflicts: (f.related ?? []).map((r) => basename(r.file)),
+    };
   }
 
   /** "Ask AI" na sidebar: não pergunta nada sozinho, só ANEXA o achado na caixa de entrada. */
@@ -110,20 +186,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   async runFullScan(): Promise<void> {
     try {
       await vscode.commands.executeCommand(CMD.focusChat);
-      this.append('assistant', '🧹 Analisando todos os arquivos do workspace, um instante…');
+      this.append('assistant', t('scanStart'));
       const result = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'ShielDepy: analisando a pasta inteira', cancellable: true },
+        { location: vscode.ProgressLocation.Notification, title: t('scanProgress'), cancellable: true },
         (progress, token) => this.analyzer.scanWorkspace((fileName, i, total) => progress.report({ message: `${fileName} (${i}/${total})` }), token)
       );
-      const collisions = this.model.collisions().length;
       this.append(
         'assistant',
         result.totalFindings > 0
-          ? `Analisei ${result.filesScanned} arquivo(s) e encontrei ${result.totalFindings} problema(s) no total${collisions ? `, incluindo ${collisions} colisão(ões) entre regras` : ''}. Eles já aparecem no painel "Problemas encontrados" e no Problems.`
-          : `Analisei ${result.filesScanned} arquivo(s) e não encontrei nenhum problema. 🎉`
+          ? t('scanFound', { files: result.filesScanned, total: result.totalFindings })
+          : t('scanClean', { files: result.filesScanned })
       );
     } catch (err) {
-      this.append('assistant', `Falha ao analisar a pasta: ${err instanceof Error ? err.message : err}`);
+      this.append('assistant', t('scanFailed', { error: err instanceof Error ? err.message : String(err) }));
     }
   }
 
@@ -131,8 +206,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage(message);
   }
 
-  private append(role: Turn['role'], text: string, fix?: Turn['fix']): Turn {
-    const turn: Turn = { id: this.nextId++, role, text, fix };
+  private append(role: Turn['role'], text: string, fix?: Turn['fix'], view?: TurnView): Turn {
+    const turn: Turn = { id: this.nextId++, role, text, fix, view };
     this.turns.push(turn);
     if (this.turns.length > MAX_TURNS_KEPT) this.turns = this.turns.slice(-MAX_TURNS_KEPT);
     this.post({ type: 'append', turn: toView(turn) });
@@ -147,14 +222,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async handleSend(text: string, attachments: FindingAttachment[]): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed && attachments.length === 0) return;
+    // O webview já trava a caixa, mas a extensão é quem decide — confirma no servidor.
+    if ((await this.auth.refresh()) !== 'active') {
+      this.postAccess();
+      return;
+    }
 
-    this.append('user', citedMessage(trimmed, attachments));
+    // A IA lê a citação completa; a pessoa vê só a pergunta e os achados como cards.
+    const cards = attachments.map((a) => this.cardFor(a.id)).filter((c) => c !== undefined);
+    this.append('user', citedMessage(trimmed, attachments), undefined, cards.length ? { display: trimmed, cards } : undefined);
     if (FULL_SCAN_RE.test(trimmed)) return this.runFullScan();
 
     const target = await this.resolveTarget(trimmed, attachments);
     const provider = await this.ai.provider();
     if (!provider) {
-      this.append('assistant', this.offlineReply(target));
+      const reply = this.offlineReply(target);
+      this.append('assistant', reply.text, undefined, reply.view);
       this.post({ type: 'needsKey' });
       return;
     }
@@ -169,8 +252,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const fix = parseFixedFile(final);
       this.append('assistant', final, fix ? { path: fix.path, content: fix.content } : undefined);
     } catch (err) {
-      if (isAbortError(err)) this.append('assistant', '(resposta interrompida)');
-      else this.append('assistant', `Erro ao falar com a IA (${provider.name}): ${err instanceof Error ? err.message : err}`);
+      if (isAbortError(err)) this.append('assistant', t('interrupted'));
+      else this.append('assistant', t('aiError', { name: provider.name, error: err instanceof Error ? err.message : String(err) }));
     } finally {
       if (this.inFlight === controller) this.inFlight = undefined;
       this.post({ type: 'thinking', value: false });
@@ -184,21 +267,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       language: config.languageName(),
       activeFile: { path: vscode.workspace.asRelativePath(doc.uri), text: overrideText ?? doc.getText() },
       subgraph: this.model.graph.getImpactSubgraph(fileId, 2),
-      findings: this.findings.get(fileId).map(serializeForPrompt),
+      findings: this.findings.get(fileId).map((f) => serializeForPrompt(f, this.findings.refOf(f.id))),
     };
   }
 
-  /** Sem IA: responde com o que é determinístico (achados do arquivo) e aponta como configurar. */
-  private offlineReply(doc: vscode.TextDocument | undefined): string {
-    const found = doc ? this.findings.get(toFileId(doc.uri.fsPath)) : [];
-    const lines = ['Nenhuma IA configurada — respondo só com o que foi PROVADO sem IA.'];
-    if (found.length === 0) lines.push(doc ? 'Neste arquivo não há ciclos nem colisões.' : 'Abra um arquivo ou anexe um achado pra eu olhar.');
-    for (const f of found.filter((x) => x.source !== 'ia')) {
-      lines.push('', `#${f.id} · linha ${f.startLine + 1}: ${f.message}`);
+  /**
+   * Sem IA: responde com o que é determinístico (achados do arquivo) e aponta como configurar.
+   * O texto completo fica no histórico (se uma IA entrar depois, ela lê tudo); a tela mostra cards.
+   */
+  private offlineReply(doc: vscode.TextDocument | undefined): { text: string; view: TurnView } {
+    const found = (doc ? this.findings.get(toFileId(doc.uri.fsPath)) : []).filter((x) => x.source !== 'ia');
+    const empty = doc ? t('offlineNone') : t('offlineNoFile');
+    const lines = [t('offlineIntro')];
+    if (found.length === 0) lines.push(empty);
+    for (const f of found) {
+      lines.push('', `#${this.findings.refOf(f.id)}, ${t('lineLower', { n: f.startLine + 1 })}: ${f.message}`);
       if (f.impact) lines.push(f.impact);
     }
-    lines.push('', 'Pra conversar e pedir correções, configure uma chave (Anthropic ou Gemini).');
-    return lines.join('\n');
+    lines.push('', t('offlineOutro'));
+    const cards = found.map((f) => this.cardFor(f.id)).filter((c) => c !== undefined);
+    return {
+      text: lines.join('\n'),
+      view: { display: found.length ? t('offlineIntro') : `${t('offlineIntro')}\n${empty}`, cards, outro: t('offlineOutro') },
+    };
   }
 
   /**
@@ -208,8 +299,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async resolveTarget(text: string, attachments: FindingAttachment[]): Promise<vscode.TextDocument | undefined> {
     let uri: vscode.Uri | undefined;
     if (attachments[0]?.fileId) uri = vscode.Uri.file(attachments[0].fileId);
-    for (const match of uri ? [] : text.matchAll(/#([0-9a-f]{6,12})/gi)) {
-      const entry = this.findings.getById(match[1]!);
+    for (const match of uri ? [] : text.matchAll(/#(\d{1,5})\b/g)) {
+      const entry = this.findings.getByRef(Number(match[1]));
       if (entry) {
         uri = vscode.Uri.file(entry.file);
         break;
@@ -294,18 +385,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
-function toView(t: Turn) {
-  const fix = t.role === 'assistant' ? parseFixedFile(t.text) : undefined;
-  return { id: t.id, role: t.role, text: fix ? fix.explanation || t.text : t.text, fixPath: t.fix?.path };
+function toView(turn: Turn) {
+  if (turn.view) return { id: turn.id, role: turn.role, text: turn.view.display, cards: turn.view.cards ?? [], outro: turn.view.outro ?? '', fixPath: turn.fix?.path };
+  const fix = turn.role === 'assistant' ? parseFixedFile(turn.text) : undefined;
+  return { id: turn.id, role: turn.role, text: fix ? fix.explanation || turn.text : turn.text, cards: [], outro: '', fixPath: turn.fix?.path };
 }
 
-function serializeForPrompt(f: StoredFinding) {
-  return { id: f.id, line: f.startLine + 1, severity: f.severity, message: f.message, impact: f.impact, source: f.source };
+function serializeForPrompt(f: StoredFinding, ref: number) {
+  return { id: String(ref), line: f.startLine + 1, severity: f.severity, message: f.message, impact: f.impact, source: f.source };
 }
 
 /** Junta os anexos (achados citados) na frente do texto digitado. */
 function citedMessage(text: string, attachments: FindingAttachment[]): string {
   if (attachments.length === 0) return text;
-  const citations = attachments.map((a) => `[#${a.id} · ${a.fileName ?? 'arquivo'}:${a.line + 1}] ${a.message}`).join('\n');
-  return text ? `${citations}\n\n${text}` : `${citations}\n\nComo eu resolvo isso?`;
+  const citations = attachments.map((a) => `[#${a.ref ?? a.id} em ${a.fileName ?? 'arquivo'}:${a.line + 1}] ${a.message}`).join('\n');
+  return text ? `${citations}\n\n${text}` : `${citations}\n\n${t('defaultQuestion')}`;
 }

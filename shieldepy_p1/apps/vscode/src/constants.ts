@@ -12,10 +12,18 @@ export const CMD = {
   setApiKey: 'shieldepy.setApiKey',
   attachFinding: 'shieldepy.attachFinding',
   focusChat: 'shieldepy.chat.focus',
+  login: 'shieldepy.login',
+  logout: 'shieldepy.logout',
+  openDashboard: 'shieldepy.openDashboard',
+  refreshAccess: 'shieldepy.refreshAccess',
+  focusPanel: 'shieldepy.panel.focus',
+  focusSettings: 'shieldepy.settings.focus',
+  openLocation: 'shieldepy.openLocation',
 } as const;
 
 export const SECRET_ANTHROPIC = 'shieldepy.anthropicApiKey';
 export const SECRET_GEMINI = 'shieldepy.geminiApiKey';
+export const SECRET_AUTH_TOKEN = 'shieldepy.authToken';
 
 /** Linguagens com grafo estrutural (Tree-sitter / HTML / CSS). */
 export const GRAPH_LANGUAGES = ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'html', 'css'];

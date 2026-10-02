@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minha conta — ShielDepy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <header class="dash-header">
+    <div class="dash-header-inner">
+      <a href="/" class="logo-link"><img src="/logo-mark.svg" alt="" /><span>ShielDepy</span></a>
+      <div class="dash-header-actions">
+        <button id="themeToggle" class="theme-toggle" type="button"></button>
+        <nav class="account-nav" id="accountNav"></nav>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="dash gated-hidden">
+    <section class="dash-hero enter">
+      <div>
+        <p class="eyebrow-brand" id="companyEyebrow">Minha conta</p>
+        <h1 class="dash-title" id="greeting">Olá</h1>
+        <p class="dash-sub">Seu acesso ao ShielDepy, os VS Codes conectados e a segurança da conta.</p>
+      </div>
+      <a href="/app.html" id="openToolBtn" class="btn-brand"></a>
+    </section>
+
+    <section class="stat-grid three" id="status">
+      <div class="stat-card skeleton"></div>
+      <div class="stat-card skeleton"></div>
+      <div class="stat-card skeleton"></div>
+    </section>
+
+    <div class="dash-columns">
+      <section class="dash-section panel-card" id="devicesSection">
+        <div class="dash-section-head"><h2>VS Codes conectados</h2></div>
+        <div id="devices"></div>
+      </section>
+
+      <section class="dash-section panel-card" id="connectSection">
+        <div class="dash-section-head"><h2>Conectar o VS Code</h2></div>
+        <ol class="steps">
+          <li><span class="step-n">1</span><div><strong>Instale a extensão ShielDepy</strong><p>Abra a pasta do projeto no VS Code e aperte F5, ou instale o .vsix.</p></div></li>
+          <li><span class="step-n">2</span><div><strong>Abra Configurações do ShielDepy</strong><p>Ícone escudo + engrenagem na barra lateral → seção Conta.</p></div></li>
+          <li><span class="step-n">3</span><div><strong>Clique em "Entrar" e confie</strong><p>O navegador abre nesta conta; clique em "Confiar" e o VS Code já fica liberado.</p></div></li>
+        </ol>
+      </section>
+
+      <section class="dash-section panel-card" id="teamSection">
+        <div class="dash-section-head"><h2>Sua equipe</h2></div>
+        <ul id="team" class="team-list"></ul>
+      </section>
+
+      <section class="dash-section panel-card" id="securitySection">
+        <div class="dash-section-head"><h2 id="passwordTitle">Trocar senha</h2></div>
+        <form id="passwordForm" class="password-form">
+          <label class="field" id="currentField"><span class="field-label">Senha atual</span><input type="password" id="currentPassword" autocomplete="current-password" /></label>
+          <label class="field"><span class="field-label">Nova senha</span><input type="password" id="newPassword" autocomplete="new-password" minlength="8" required /></label>
+          <label class="field"><span class="field-label">Confirmar nova senha</span><input type="password" id="confirmPassword" autocomplete="new-password" minlength="8" required /></label>
+          <div class="strength" id="strength"><span></span><span></span><span></span><span></span></div>
+          <button type="submit" class="btn-brand" id="passwordBtn">Salvar senha</button>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script src="/dashboard.js"></script>
+  <script src="/auth-gate.js"></script>
+  <script src="/account.js"></script>
+</body>
+</html>

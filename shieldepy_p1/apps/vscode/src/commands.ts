@@ -6,7 +6,9 @@ import { explainCollisions, reviewChange, type DiagnosisReport } from '@shieldep
 import { toFileId } from '@shieldepy/core';
 import { config } from './config';
 import { CMD } from './constants';
+import { t } from './i18n';
 import type { AiService } from './services/AiService';
+import type { AuthService } from './services/AuthService';
 import type { WorkspaceModel } from './workspace/WorkspaceModel';
 
 /** "Configurar Chave da IA": escolhe o provedor e guarda a chave no Secret Storage. */
@@ -29,6 +31,50 @@ export async function setApiKey(ai: AiService): Promise<void> {
   if (!key?.trim()) return;
   await ai.setKey(pick.value, key.trim());
   void vscode.window.showInformationMessage(`ShielDepy: chave de ${pick.label} salva com segurança.`);
+}
+
+/** "Entrar": abre o navegador no device-confirm; espera a confirmação de "Confiar". */
+export async function login(auth: AuthService): Promise<void> {
+  try {
+    await auth.login();
+    void vscode.window.showInformationMessage(t('nLoginDone'));
+  } catch (err) {
+    void vscode.window.showErrorMessage(t('nLoginFailed', { error: err instanceof Error ? err.message : String(err) }));
+  }
+}
+
+/**
+ * Porteiro dos comandos: confirma no servidor (não só no cache) antes de rodar algo que usa o
+ * workspace/IA. Bloqueado → explica o porquê e oferece a saída certa pro estado.
+ */
+export async function requireAccess(auth: AuthService): Promise<boolean> {
+  const state = await auth.refresh();
+  if (state === 'active') return true;
+  if (state === 'loggedOut') {
+    const choice = await vscode.window.showWarningMessage(t('nNeedLogin'), t('signIn'));
+    if (choice) void vscode.commands.executeCommand(CMD.login);
+  } else {
+    const company = auth.getCachedMe()?.companyName ?? t('yourCompany');
+    const dashboard = t('openDashboard');
+    const again = t('checkAgain');
+    const choice = await vscode.window.showWarningMessage(t('nSuspended', { company }), dashboard, again);
+    if (choice === dashboard) void auth.openDashboard();
+    else if (choice === again) void vscode.commands.executeCommand(CMD.refreshAccess);
+  }
+  return false;
+}
+
+/** "Rechecar acesso": força o /api/me e diz o resultado. */
+export async function refreshAccess(auth: AuthService): Promise<void> {
+  const state = await auth.refresh();
+  const text = { active: t('nAccessActive'), suspended: t('nAccessSuspended'), loggedOut: t('nAccessOut') }[state];
+  vscode.window.setStatusBarMessage(text, 4000);
+}
+
+/** "Sair": revoga o token de dispositivo e limpa o Secret Storage. */
+export async function logout(auth: AuthService): Promise<void> {
+  await auth.logout();
+  void vscode.window.showInformationMessage(t('nLoggedOut'));
 }
 
 /** "Explicar Colisões do Workspace": relatório declarativo (IA ou offline) em markdown. */

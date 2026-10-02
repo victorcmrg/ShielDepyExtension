@@ -1,47 +1,142 @@
-:root {
-  --sd-accent: #10ef7c;
-  --sd-error: #f85149;
-  --sd-warning: #eab308;
-  --sd-info: #3fb950;
-}
+/*
+ * ShielDepy — tokens comuns dos webviews.
+ * Verde-guarda = estado ativo. Hortelã = subcor (nível leve, destaque do trecho em conflito).
+ * Severidade segue o semáforo do macOS: quadrado vermelho, triângulo amarelo, círculo hortelã.
+ */
 body {
-  font-family: var(--vscode-font-family);
+  --sd-green: #10ef7c;
+  --sd-on-green: #04210f;
+  --sd-mint: #a8f5cb;
+  --sd-mint-wash: rgba(168, 245, 203, 0.1);
+  --sd-red: #ff5f57;
+  --sd-yellow: #febc2e;
+  --sd-error: var(--sd-red);
+  --sd-warning: var(--sd-yellow);
+  --sd-info: var(--sd-mint);
+
+  --sd-fill: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  --sd-fill-strong: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  --sd-hairline: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  --sd-muted: var(--vscode-descriptionForeground);
+
+  --sd-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", var(--vscode-font-family), system-ui, sans-serif;
+  --sd-code: var(--vscode-editor-font-family, ui-monospace, monospace);
+
+  /* Mola com um leve passo além do alvo — a "sensação Apple" dos toques. */
+  --sd-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sd-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --sd-spring: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001);
+  --sd-radius: 10px;
+}
+/* Tema claro: as mesmas cores, mais escuras, pra continuar legíveis sobre branco. */
+body.vscode-light {
+  --sd-green: #0b9e55;
+  --sd-on-green: #ffffff;
+  --sd-mint: #1f9d63;
+  --sd-mint-wash: rgba(31, 157, 99, 0.09);
+  --sd-red: #e5484d;
+  --sd-yellow: #c98a00;
+}
+body.vscode-high-contrast {
+  --sd-hairline: var(--vscode-contrastBorder);
+  --sd-fill: transparent;
+}
+
+body {
+  font-family: var(--sd-font);
+  font-size: 12.5px;
+  line-height: 1.45;
   color: var(--vscode-foreground);
+  -webkit-font-smoothing: antialiased;
 }
 [hidden] { display: none !important; }
-h4 { margin: 20px 0 8px; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground); }
-.empty, .empty-hint { font-size: 12px; color: var(--vscode-descriptionForeground); }
+*, *::before, *::after { box-sizing: border-box; }
+/* Até o primeiro estado chegar, nada anima: abrir uma aba não "pisca" switches, cores nem setas. */
+body.preload *, body.preload *::before, body.preload *::after { transition: none !important; animation: none !important; }
+/* Espaço da barra de rolagem sempre reservado: filtrar pra uma lista curta não muda a largura de nada. */
+html { scrollbar-gutter: stable; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent; border-radius: 999px; background-clip: padding-box;
+  background-color: var(--vscode-scrollbarSlider-background, var(--sd-fill-strong));
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--vscode-scrollbarSlider-hoverBackground, var(--sd-fill-strong)); }
+button { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--sd-green)); outline-offset: 2px; }
+.empty, .empty-hint { font-size: 12px; color: var(--sd-muted); }
 
-/* Switch */
-.switch { position: relative; width: 34px; height: 18px; flex-shrink: 0; }
-.switch input { opacity: 0; width: 0; height: 0; }
+/* --- Formas de severidade ------------------------------------------------------------------ */
+.shape { display: inline-block; width: 9px; height: 9px; flex-shrink: 0; }
+.shape.error { background: var(--sd-error); border-radius: 2px; }
+.shape.warning { background: var(--sd-warning); clip-path: polygon(50% 4%, 100% 96%, 0% 96%); }
+.shape.info { background: var(--sd-info); border-radius: 50%; }
+
+/* --- Switch no estilo iOS ------------------------------------------------------------------- */
+.switch { position: relative; width: 36px; height: 22px; flex-shrink: 0; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
 .slider {
-  position: absolute; inset: 0; cursor: pointer;
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--vscode-contrastBorder, transparent));
-  border-radius: 999px; transition: background .15s ease;
+  position: absolute; inset: 0; pointer-events: none;
+  background: var(--sd-fill-strong); border-radius: 999px; transition: background 0.25s var(--sd-ease);
 }
 .slider::before {
-  content: ""; position: absolute; height: 12px; width: 12px; left: 2px; top: 2px;
-  background: var(--vscode-foreground); border-radius: 50%; transition: transform .15s ease;
+  content: ""; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.4s var(--sd-spring), width 0.2s var(--sd-ease);
 }
-input:checked + .slider { background: var(--sd-accent); }
-input:checked + .slider::before { transform: translateX(16px); background: #06210f; }
+.switch:active .slider::before { width: 22px; }
+input:checked + .slider { background: var(--sd-green); }
+input:checked + .slider::before { transform: translateX(14px); }
+.switch:active input:checked + .slider::before { transform: translateX(10px); }
+.switch input:focus-visible + .slider { outline: 2px solid var(--vscode-focusBorder, var(--sd-green)); outline-offset: 2px; }
 
-/* Forma que "morfa" (mesmos 16 vértices em cada quadro — o navegador interpola de verdade). */
-.morph-shape { flex-shrink: 0; background: var(--sd-accent); animation: sd-morph 2.4s ease-in-out infinite; }
+/* Forma que "morfa" enquanto analisa (mesmos 16 vértices em cada quadro). */
+.morph-shape { flex-shrink: 0; background: var(--sd-green); animation: sd-morph 2.4s ease-in-out infinite; }
 @keyframes sd-morph {
   0%, 100% { clip-path: polygon(50.0% 2.0%, 68.4% 5.7%, 83.9% 16.1%, 94.3% 31.6%, 98.0% 50.0%, 94.3% 68.4%, 83.9% 83.9%, 68.4% 94.3%, 50.0% 98.0%, 31.6% 94.3%, 16.1% 83.9%, 5.7% 68.4%, 2.0% 50.0%, 5.7% 31.6%, 16.1% 16.1%, 31.6% 5.7%); }
   25%  { clip-path: polygon(50.0% 2.0%, 58.7% 19.4%, 67.4% 36.7%, 76.0% 54.1%, 84.7% 71.5%, 93.4% 88.8%, 88.8% 98.0%, 69.4% 98.0%, 50.0% 98.0%, 30.6% 98.0%, 11.2% 98.0%, 6.6% 88.8%, 15.3% 71.5%, 24.0% 54.1%, 32.6% 36.7%, 41.3% 19.4%); }
   50%  { clip-path: polygon(50.0% 2.0%, 62.0% 14.0%, 74.0% 26.0%, 86.0% 38.0%, 98.0% 50.0%, 86.0% 62.0%, 74.0% 74.0%, 62.0% 86.0%, 50.0% 98.0%, 38.0% 86.0%, 26.0% 74.0%, 14.0% 62.0%, 2.0% 50.0%, 14.0% 38.0%, 26.0% 26.0%, 38.0% 14.0%); }
   75%  { clip-path: polygon(50.0% 0.0%, 57.7% 31.5%, 85.4% 14.6%, 68.5% 42.3%, 100.0% 50.0%, 68.5% 57.7%, 85.4% 85.4%, 57.7% 68.5%, 50.0% 100.0%, 42.3% 68.5%, 14.6% 85.4%, 31.5% 57.7%, 0.0% 50.0%, 31.5% 42.3%, 14.6% 14.6%, 42.3% 31.5%); }
 }
+
+/* --- Botões --------------------------------------------------------------------------------- */
+.pill-btn {
+  background: var(--sd-green); color: var(--sd-on-green); border: none; border-radius: 999px;
+  padding: 7px 18px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: transform 0.35s var(--sd-spring), filter 0.15s ease;
+}
+.pill-btn:hover { filter: brightness(1.06); }
+.pill-btn:active { transform: scale(0.96); transition-duration: 0.08s; }
+.pill-btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+.text-btn {
+  background: none; border: none; padding: 2px 0; cursor: pointer; font-size: 12px;
+  color: var(--vscode-textLink-foreground);
+}
+.text-btn:hover { color: var(--vscode-textLink-activeForeground); }
+
+/* --- Tela de bloqueio (sem login / empresa suspensa) ---------------------------------------- */
+.lock {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+  padding: 0 16px;
+}
+.lock-mark {
+  width: 40px; height: 46px; margin-bottom: 10px; background: var(--sd-green);
+  clip-path: polygon(4% 0%, 50% 9%, 96% 0%, 92% 75%, 50% 100%, 6% 75%);
+}
+.lock.suspended .lock-mark { background: var(--sd-yellow); }
+/* Mascote "pensando": braços e pernas na cor do texto do tema (no escuro, o cinza original sumia). */
+/* Parado de propósito: é uma tela de espera, não precisa chamar atenção. Um pouco mais escuro pra não ofuscar no tema escuro. */
+.lock-mascot { width: 120px; margin-bottom: 6px; filter: brightness(0.86) saturate(0.9); }
+.lock-mascot svg { display: block; width: 100%; height: auto; }
+.lock-mascot .sd-limb { stroke: color-mix(in srgb, var(--vscode-foreground) 42%, transparent); }
+.lock-mascot .sd-limb-stop { stop-color: color-mix(in srgb, var(--vscode-foreground) 42%, transparent); }
+.lock.suspended .lock-mascot { filter: brightness(0.86) hue-rotate(-75deg) saturate(1.1); }
+.lock-title { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.lock-text { margin: 0 0 10px; font-size: 12px; color: var(--sd-muted); max-width: 250px; }
+@keyframes sd-appear { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+
 @media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   .morph-shape { animation: none; clip-path: none; border-radius: 50%; }
 }
-
-.link-btn {
-  font-size: 11px; background: transparent; color: var(--vscode-textLink-foreground);
-  border: none; padding: 2px 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
-}
-.link-btn:hover { color: var(--vscode-textLink-activeForeground); }

@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 import { toFileId, type Finding, type FindingSeverity } from '@shieldepy/core';
+import { config } from '../config';
+import { CMD } from '../constants';
+import { t } from '../i18n';
+import { readSnippet, snippetMarkdown } from './conflictSnippet';
 import type { FindingsCache, StoredFinding } from './FindingsCache';
 
 /**
@@ -17,7 +21,7 @@ const SOURCE_LABEL: Record<Finding['source'], string> = {
 
 /**
  * Dona única do estado de "problemas encontrados" por arquivo. Cada `set` vira, ao mesmo tempo:
- *   1. um #id estável (via FindingsCache) citável no chat
+ *   1. um #id estável (via FindingsCache) e um número curto da sessão (#1, #2…) citável no chat
  *   2. `vscode.Diagnostic` (painel Problems + sublinhado), com a outra ponta da colisão em relatedInformation
  *   3. marca-texto por severidade com hover
  *   4. um evento que a sidebar escuta
@@ -25,18 +29,31 @@ const SOURCE_LABEL: Record<Finding['source'], string> = {
 export class FindingsManager implements vscode.Disposable {
   private readonly groups = new Map<string, Map<FindingGroup, Finding[]>>();
   private readonly store = new Map<string, StoredFinding[]>();
+  /**
+   * Número curto de cada achado, fácil de falar no chat ("o #3"). Só em memória: recomeça do 1
+   * quando o VS Code reinicia. O #id estável do cache continua sendo a identidade de verdade.
+   */
+  private readonly refs = new Map<string, number>();
+  private readonly byRef = new Map<number, string>();
+  private nextRef = 1;
   private readonly diagnostics = vscode.languages.createDiagnosticCollection('shieldepy');
   private readonly changeEmitter = new vscode.EventEmitter<string>();
   readonly onDidChange = this.changeEmitter.event;
 
-  private readonly decorationTypes: Record<FindingSeverity, vscode.TextEditorDecorationType> = {
-    error: this.decoration('248, 81, 73'),
-    warning: this.decoration('234, 179, 8'),
-    info: this.decoration('63, 185, 80'),
-  };
+  // Mesmas formas do painel na calha: quadrado = importante, triângulo = atenção, círculo = leve.
+  private readonly decorationTypes: Record<FindingSeverity, vscode.TextEditorDecorationType>;
   private readonly visibleEditorsListener: vscode.Disposable;
 
-  constructor(private readonly cache: FindingsCache) {
+  constructor(
+    private readonly cache: FindingsCache,
+    private readonly extensionUri: vscode.Uri
+  ) {
+    // No construtor (não como inicializador de campo): precisa do extensionUri já atribuído.
+    this.decorationTypes = {
+      error: this.decoration('255, 95, 87', 'error'),
+      warning: this.decoration('254, 188, 46', 'warning'),
+      info: this.decoration('74, 222, 150', 'info'),
+    };
     this.visibleEditorsListener = vscode.window.onDidChangeVisibleTextEditors((editors) => {
       for (const editor of editors) this.applyDecorations(editor);
     });
@@ -59,6 +76,23 @@ export class FindingsManager implements vscode.Disposable {
   }
 
   /** Acha pelo #id em QUALQUER arquivo já visto — o chat entende "o erro #a1b2c3" sem o arquivo em foco. */
+  /** Número curto do achado nesta sessão (atribuído na primeira vez que ele é publicado). */
+  refOf(id: string): number {
+    let ref = this.refs.get(id);
+    if (ref === undefined) {
+      ref = this.nextRef++;
+      this.refs.set(id, ref);
+      this.byRef.set(ref, id);
+    }
+    return ref;
+  }
+
+  /** "#3" citado no chat → o achado (mesmo de um arquivo que não está aberto). */
+  getByRef(ref: number): StoredFinding | undefined {
+    const id = this.byRef.get(ref);
+    return id ? this.cache.get(id) : undefined;
+  }
+
   getById(id: string): StoredFinding | undefined {
     return this.cache.get(id);
   }
@@ -76,6 +110,30 @@ export class FindingsManager implements vscode.Disposable {
     this.publish(fileId);
   }
 
+  /** Achados visíveis nesta linha que encostam em outro código (colisões com a outra ponta conhecida). */
+  conflictsAt(fileId: string, line: number): StoredFinding[] {
+    return this.get(fileId).filter((f) => f.related?.length && line >= f.startLine && line <= f.endLine);
+  }
+
+  /** Totais por severidade do que está VISÍVEL agora (status bar, contadores do painel). */
+  counts(): Record<FindingSeverity, number> {
+    const counts: Record<FindingSeverity, number> = { error: 0, warning: 0, info: 0 };
+    for (const list of this.store.values()) for (const f of list) counts[f.severity] += 1;
+    return counts;
+  }
+
+  /** Republica tudo — ex.: mudou `shieldepy.display.minSeverity`, o filtro vale pro que já foi achado. */
+  refreshAll(): void {
+    for (const fileId of [...this.groups.keys()]) this.publish(fileId);
+  }
+
+  /** Acesso perdido/logout: some com tudo (Problems, marca-texto, painel) de uma vez. */
+  clearAll(): void {
+    const files = [...this.groups.keys()];
+    this.groups.clear();
+    for (const fileId of files) this.publish(fileId);
+  }
+
   dispose(): void {
     this.diagnostics.dispose();
     this.visibleEditorsListener.dispose();
@@ -84,14 +142,18 @@ export class FindingsManager implements vscode.Disposable {
   }
 
   private publish(fileId: string): void {
-    const merged = [...(this.groups.get(fileId)?.values() ?? [])].flat();
+    const minRank = FindingsManager.SEVERITY_RANK[config.minSeverity()] ?? 0;
+    const all = [...(this.groups.get(fileId)?.values() ?? [])].flat();
+    // O filtro só esconde: os grupos guardam tudo, então baixar o mínimo depois traz os achados de volta.
+    const merged = all.filter((f) => FindingsManager.SEVERITY_RANK[f.severity] >= minRank);
+    if (all.length === 0) this.groups.delete(fileId);
     const uri = vscode.Uri.file(fileId);
     if (merged.length === 0) {
-      this.groups.delete(fileId);
       this.store.delete(fileId);
       this.diagnostics.delete(uri);
     } else {
       const stored = this.cache.record(fileId, merged);
+      for (const f of stored) this.refOf(f.id);
       this.store.set(fileId, stored);
       this.diagnostics.set(uri, stored.map((f) => this.toDiagnostic(f)));
     }
@@ -129,21 +191,40 @@ export class FindingsManager implements vscode.Disposable {
     }
   }
 
+  /**
+   * O "balão" do editor: aparece no hover e, numa linha de colisão, ao clicar (ConflictBalloon).
+   * Para colisões, expõe o código da outra ponta — quem está encostando neste trecho.
+   */
   private hoverForGroup(group: StoredFinding[]): vscode.MarkdownString {
     const md = new vscode.MarkdownString(undefined, true);
-    md.isTrusted = false;
+    // Só os comandos do próprio balão podem rodar a partir de links — nada vindo do texto do achado.
+    md.isTrusted = { enabledCommands: [CMD.openLocation, CMD.attachFinding] };
+    // Só <span style="color"> — é o pouco de HTML que o hover do VS Code aceita; dá a cor da forma.
+    md.supportHtml = true;
     group.forEach((f, i) => {
-      const glyph = f.severity === 'error' ? '◆' : f.severity === 'warning' ? '▲' : '●';
-      const origin = f.source === 'ia' ? 'IA' : f.source === 'colisao' ? 'colisão provada' : 'grafo';
-      md.appendMarkdown(`**${glyph} linha ${f.startLine + 1} · #${f.id}** _(${origin})_\n\n`);
+      const ref = this.refOf(f.id);
+      // Cabeçalho: forma colorida, severidade, #número e linha.
+      md.appendMarkdown(
+        `<span style="color:${GLYPH_COLOR[f.severity]};">${GLYPH[f.severity]}</span>&nbsp; **${t(SEVERITY_KEY[f.severity])}** &nbsp;#${ref} &nbsp;${t('lineLower', { n: f.startLine + 1 })}\n\n`
+      );
       md.appendText(f.message);
       if (f.impact) {
-        md.appendMarkdown('\n\n---\n**Pode afetar outra área:** ');
+        md.appendMarkdown(`\n\n**${t('hoverImpact')}**\n\n`);
         md.appendText(f.impact);
       }
-      if (i < group.length - 1) md.appendMarkdown('\n\n---\n');
+      // O que este achado afeta em outro lugar (outra ponta da colisão, outras funções do ciclo): com o código.
+      for (const related of f.related ?? []) {
+        const snippet = readSnippet(related);
+        if (!snippet) continue;
+        const where = snippet.folder ? `${snippet.folder}/${snippet.fileName}` : snippet.fileName;
+        const open = commandLink(CMD.openLocation, [snippet.file, snippet.line]);
+        md.appendMarkdown(`\n\n**${t('hoverAffects')}** [${escapeMd(where)}](${open}) &nbsp;${t('lineLower', { n: snippet.line + 1 })}\n\n`);
+        md.appendMarkdown(snippetMarkdown(snippet));
+      }
+      const ask = commandLink(CMD.attachFinding, [{ id: f.id, ref, fileId: f.file, line: f.startLine, message: f.message }]);
+      md.appendMarkdown(`\n\n---\n\n[$(sparkle) ${t('askAI')}](${ask})`);
+      if (i < group.length - 1) md.appendMarkdown('\n\n---\n\n');
     });
-    md.appendMarkdown('\n\n---\n_Pergunte no chat do ShielDepy citando o #id específico._');
     return md;
   }
 
@@ -151,7 +232,7 @@ export class FindingsManager implements vscode.Disposable {
     const doc = vscode.workspace.textDocuments.find((d) => sameFile(d.uri, f.file));
     const diagnostic = new vscode.Diagnostic(toRange(doc, f.startLine, f.endLine), f.message, SEVERITY[f.severity]);
     diagnostic.source = SOURCE_LABEL[f.source];
-    diagnostic.code = f.id;
+    diagnostic.code = `#${this.refOf(f.id)}`;
     if (f.related?.length) {
       diagnostic.relatedInformation = f.related.map(
         (r) => new vscode.DiagnosticRelatedInformation(new vscode.Location(vscode.Uri.file(r.file), new vscode.Position(r.line, 0)), r.message)
@@ -160,13 +241,27 @@ export class FindingsManager implements vscode.Disposable {
     return diagnostic;
   }
 
-  private decoration(rgb: string): vscode.TextEditorDecorationType {
+  private decoration(rgb: string, severity: FindingSeverity): vscode.TextEditorDecorationType {
     return vscode.window.createTextEditorDecorationType({
-      backgroundColor: `rgba(${rgb}, 0.26)`,
+      backgroundColor: `rgba(${rgb}, 0.16)`,
       overviewRulerColor: `rgba(${rgb}, 0.9)`,
       overviewRulerLane: vscode.OverviewRulerLane.Right,
+      gutterIconPath: vscode.Uri.joinPath(this.extensionUri, 'media', 'gutter', `${severity}.svg`),
+      gutterIconSize: 'contain',
     });
   }
+}
+
+const SEVERITY_KEY: Record<FindingSeverity, 'sevError' | 'sevWarning' | 'sevInfo'> = { error: 'sevError', warning: 'sevWarning', info: 'sevInfo' };
+const GLYPH: Record<FindingSeverity, string> = { error: '■', warning: '▲', info: '●' };
+const GLYPH_COLOR: Record<FindingSeverity, string> = { error: '#ff5f57', warning: '#febc2e', info: '#4ade96' };
+
+function commandLink(command: string, args: unknown[]): string {
+  return `command:${command}?${encodeURIComponent(JSON.stringify(args))}`;
+}
+
+function escapeMd(text: string): string {
+  return text.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
 }
 
 const SEVERITY: Record<FindingSeverity, vscode.DiagnosticSeverity> = {

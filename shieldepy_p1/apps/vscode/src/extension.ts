@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_NAME } from '@shieldepy/agent';
-import { CodeGraph, isFileOnDisk, type Host } from '@shieldepy/core';
+import { CodeGraph, isFileOnDisk, toFileId, type Host } from '@shieldepy/core';
 import { createRegistry } from '@shieldepy/extractors';
 import { AnalyzingDecorationProvider } from './analysis/AnalyzingDecorationProvider';
 import { BackgroundAnalyzer } from './analysis/BackgroundAnalyzer';
@@ -10,25 +10,64 @@ import { FindingsCache } from './analysis/FindingsCache';
 import { FindingsManager } from './analysis/FindingsManager';
 import { ScanAnimator } from './analysis/ScanAnimator';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
-import { explainWorkspaceCollisions, reviewImpact, setApiKey } from './commands';
+import { explainWorkspaceCollisions, login, logout, refreshAccess, requireAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
 import { CMD, FILE_GLOB, INLINE_LANGUAGES, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
 import { InlineSuggestionProvider } from './inline/InlineSuggestionProvider';
 import { AiService } from './services/AiService';
+import { AuthService } from './services/AuthService';
 import { SettingsViewProvider } from './views/SettingsViewProvider';
 import { ShieldepyViewProvider } from './views/ShieldepyViewProvider';
+import { StatusBar } from './views/StatusBar';
+import { ConflictBalloon, openLocation } from './views/ConflictBalloon';
+import { ExplorerDecorations } from './views/ExplorerDecorations';
 import { indexWorkspace, isAnalyzable, reindexFromDisk } from './workspace/files';
 import { WorkspaceModel } from './workspace/WorkspaceModel';
 
 let model: WorkspaceModel | undefined;
 
 /** Raiz de composição: cria os serviços, liga eventos e registra views/comandos. Nenhuma regra de negócio aqui. */
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+/** API exposta só no Extension Host de teste (E2E). */
+interface TestApi {
+  signInWithToken(token: string): Promise<unknown>;
+  decorationFor(fsPath: string): { badge?: string; tooltip?: string; color?: string; propagate?: boolean } | undefined;
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<TestApi | undefined> {
   const output = vscode.window.createOutputChannel('ShielDepy');
   const log = (m: string) => output.appendLine(m);
   const host: Host = { log, isFile: isFileOnDisk };
   const push = (...d: vscode.Disposable[]) => context.subscriptions.push(...d);
   push(output);
+
+  const auth = new AuthService(context.secrets, log);
+  push(auth);
+  await auth.ensureLoaded(context.extension.id);
+  // Sem acesso, o Chat some da barra lateral: a tela de bloqueio aparece uma vez só, no painel.
+  const syncUnlocked = () => vscode.commands.executeCommand('setContext', 'shieldepy.unlocked', auth.canUse());
+  void syncUnlocked();
+  push(auth.onDidChangeAuth(() => void syncUnlocked()));
+
+  // vscode://<publisher>.<name>/callback — recebe o retorno do navegador depois de
+  // "Confiar" no device-confirm.html (ver AuthService.completeLogin). A authority vem
+  // de context.extension.id, não hardcoded.
+  push(
+    vscode.window.registerUriHandler({
+      handleUri(uri) {
+        if (uri.path !== '/callback') return;
+        const query = new URLSearchParams(uri.query);
+        const code = query.get('code');
+        const state = query.get('state');
+        if (!code || !state) {
+          log('[extension] callback de login recebido sem code/state — ignorado.');
+          return;
+        }
+        void auth.completeLogin(code, state);
+      },
+    }),
+    vscode.commands.registerCommand(CMD.login, () => login(auth)),
+    vscode.commands.registerCommand(CMD.logout, () => logout(auth))
+  );
 
   // Grafo estrutural. Sem as gramáticas .wasm, segue com HTML/CSS e regras via regex — a
   // extensão nunca deixa de ativar por causa disso.
@@ -47,35 +86,69 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await cache.load();
   push({ dispose: () => void cache.dispose() });
 
-  const findings = new FindingsManager(cache);
-  const ai = new AiService(context.secrets, log);
+  // Gate único: sistema ligado nas settings E conta com acesso liberado pela empresa.
+  const isActive = () => config.analysisEnabled() && auth.canUse();
+
+  const findings = new FindingsManager(cache, context.extensionUri);
+  const ai = new AiService(context.secrets, log, auth);
   const analyzing = new AnalyzingDecorationProvider();
   const animator = new ScanAnimator();
-  const analyzer = new BackgroundAnalyzer(workspace, ai, findings, analyzing, animator, log);
-  const collisions = new CollisionPublisher(workspace, findings, () => config.analysisEnabled());
-  push(findings, ai, analyzing, animator, analyzer, collisions, vscode.window.registerFileDecorationProvider(analyzing));
+  const analyzer = new BackgroundAnalyzer(workspace, ai, findings, analyzing, animator, log, isActive);
+  const collisions = new CollisionPublisher(workspace, findings, isActive);
+  const statusBar = new StatusBar(auth, findings, analyzing);
+  const balloon = new ConflictBalloon(findings);
+  const explorer = new ExplorerDecorations(findings, analyzing);
+  void context.workspaceState.update('shieldepy.pins', undefined); // resto do antigo "tirar da lista"
+  push(findings, ai, analyzing, animator, analyzer, collisions, statusBar, balloon, explorer, vscode.window.registerFileDecorationProvider(explorer));
+
+  // Acesso caiu (logout, token revogado, empresa suspensa): para tudo e limpa o que estava na tela.
+  // Voltou: republica as colisões e reanalisa os arquivos abertos.
+  const reanalyzeOpen = () => {
+    for (const doc of vscode.workspace.textDocuments) analyzer.runNow(doc);
+  };
+  push(
+    auth.onDidChangeAuth((state) => {
+      if (state === 'active') {
+        collisions.publish();
+        reanalyzeOpen();
+      } else {
+        analyzer.cancelAll();
+        findings.clearAll();
+      }
+    })
+  );
 
   // --- views ----------------------------------------------------------------------------
-  const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, log);
+  const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
   push(
     // retainContextWhenHidden: trocar de aba não descarta o rascunho não enviado do chat.
     vscode.window.registerWebviewViewProvider(VIEW_CHAT, chat, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.window.registerWebviewViewProvider(VIEW_PANEL, new ShieldepyViewProvider(context.extensionUri, findings, workspace, analyzing, ai)),
-    vscode.window.registerWebviewViewProvider(VIEW_SETTINGS, new SettingsViewProvider(context.extensionUri, ai))
+    vscode.window.registerWebviewViewProvider(VIEW_PANEL, new ShieldepyViewProvider(context.extensionUri, findings, workspace, analyzing, ai, auth)),
+    vscode.window.registerWebviewViewProvider(VIEW_SETTINGS, new SettingsViewProvider(context.extensionUri, ai, auth))
   );
 
   // --- comandos -------------------------------------------------------------------------
+  /** Comando que usa o workspace/IA: só roda com acesso confirmado no servidor. */
+  const guarded = <A extends unknown[]>(fn: (...args: A) => unknown) =>
+    async (...args: A) => {
+      if (await requireAccess(auth)) await fn(...args);
+    };
   push(
     vscode.commands.registerCommand(CMD.setApiKey, () => setApiKey(ai)),
-    vscode.commands.registerCommand(CMD.scanWorkspace, () => chat.runFullScan()),
-    vscode.commands.registerCommand(CMD.attachFinding, (finding: FindingAttachment) => chat.attachFinding(finding)),
+    vscode.commands.registerCommand(CMD.openDashboard, () => auth.openDashboard()),
+    vscode.commands.registerCommand(CMD.refreshAccess, () => refreshAccess(auth)),
+    vscode.commands.registerCommand(CMD.openLocation, (file: unknown, line: unknown) => {
+      if (typeof file === 'string') return openLocation(file, Number(line));
+    }),
+    vscode.commands.registerCommand(CMD.scanWorkspace, guarded(() => chat.runFullScan())),
+    vscode.commands.registerCommand(CMD.attachFinding, guarded((finding: FindingAttachment) => chat.attachFinding(finding))),
     vscode.commands.registerCommand(CMD.toggleInline, async () => {
       const next = !config.inlineEnabled();
       await config.update('inlineSuggestions.enabled', next);
       vscode.window.setStatusBarMessage(`ShielDepy: sugestões inline ${next ? 'ativadas' : 'desativadas'}`, 3000);
     }),
-    vscode.commands.registerCommand(CMD.reviewImpact, () => reviewImpact(workspace, ai)),
-    vscode.commands.registerCommand(CMD.explainCollisions, () => explainWorkspaceCollisions(workspace, ai, log)),
+    vscode.commands.registerCommand(CMD.reviewImpact, guarded(() => reviewImpact(workspace, ai))),
+    vscode.commands.registerCommand(CMD.explainCollisions, guarded(() => explainWorkspaceCollisions(workspace, ai, log))),
     vscode.languages.registerInlineCompletionItemProvider(
       INLINE_LANGUAGES.map((language) => ({ language, scheme: 'file' })),
       new InlineSuggestionProvider(workspace, ai, log)
@@ -107,7 +180,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('shieldepy.backgroundAnalysis.enabled')) collisions.schedule(0);
+      if (e.affectsConfiguration('shieldepy.backgroundAnalysis.enabled')) {
+        collisions.schedule(0);
+        if (config.analysisEnabled()) reanalyzeOpen();
+        else analyzer.cancelAll();
+      }
+      // Severidade mínima ou idioma: republica tudo (o filtro vale pra trás; o hover sai no idioma novo).
+      if (e.affectsConfiguration('shieldepy.display.minSeverity') || e.affectsConfiguration('shieldepy.language')) findings.refreshAll();
+      if (e.affectsConfiguration('shieldepy.analysis.exclude')) {
+        // Recém-excluído: some da tela. Recém-incluído: analisa agora.
+        for (const doc of vscode.workspace.textDocuments) {
+          if (doc.uri.scheme !== 'file') continue;
+          if (isAnalyzable(doc)) analyzer.runNow(doc);
+          else findings.clear(toFileId(doc.uri.fsPath), 'analysis');
+        }
+      }
     })
   );
 
@@ -127,6 +214,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     .catch((err) => log(`[ShielDepy] indexação inicial falhou: ${err}`));
 
   log(`ShielDepy ativo — grafo ${graph.isReady ? 'com' : 'SEM'} Tree-sitter, agente ${AGENT_NAME}.`);
+
+  // Só no Extension Host de teste: o E2E entra com um token do servidor falso, sem abrir navegador.
+  if (context.extensionMode !== vscode.ExtensionMode.Test) return undefined;
+  return {
+    signInWithToken: (token) => auth.signInWithToken(token),
+    decorationFor: (fsPath) => {
+      const d = explorer.provideFileDecoration(vscode.Uri.file(fsPath));
+      return d && { badge: d.badge, tooltip: d.tooltip, color: d.color?.id, propagate: d.propagate };
+    },
+  };
 }
 
 export function deactivate(): void {

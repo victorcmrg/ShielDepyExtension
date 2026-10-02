@@ -4,3 +4,4 @@ dist/
 .env
 apps/vscode/wasm/
 .vscode-test/
+apps/web/data/

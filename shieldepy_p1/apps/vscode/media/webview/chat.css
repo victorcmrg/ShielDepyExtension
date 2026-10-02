@@ -1,43 +1,108 @@
 html, body { height: 100%; margin: 0; padding: 0; }
 body { display: flex; flex-direction: column; }
-#messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
-.empty-hint { padding: 10px 10px 10px 13px; font-size: 11px; }
-/* Bot à esquerda, humano à direita. */
-.turn { display: flex; gap: 8px; padding: 8px 0; align-items: flex-start; max-width: 90%; }
+#messages { flex: 1; overflow-y: auto; padding: 12px 12px 4px; display: flex; flex-direction: column; gap: 10px; }
+.empty-hint { margin: auto 0; padding: 0 8px; text-align: center; font-size: 12px; }
+
+/* Bot à esquerda em texto corrido; pessoa à direita num balão hortelã. */
+.turn { display: flex; gap: 8px; align-items: flex-start; max-width: 92%; }
 .turn.assistant { margin-right: auto; }
 .turn.user { margin-left: auto; flex-direction: row-reverse; }
-.avatar { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; }
-.avatar.assistant { background: var(--sd-accent); }
-.avatar.assistant svg { width: 10px; height: 10px; fill: #06210f; }
-.avatar.user { border: 1px solid var(--vscode-panel-border, var(--vscode-descriptionForeground)); }
-.turn-content { flex: 1; min-width: 0; padding-top: 2px; }
-.turn.assistant .turn-content { background: rgba(16, 239, 124, 0.07); border-radius: 8px; padding: 8px 10px; margin-top: -2px; }
-.turn.user .turn-content { text-align: right; }
-.turn-text { font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; }
+.avatar { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.avatar.assistant { background: var(--sd-green); }
+.avatar.assistant svg { width: 10px; height: 10px; fill: var(--sd-on-green); }
+.avatar.user { display: none; }
+.turn-content { flex: 1; min-width: 0; }
+.turn.assistant .turn-content { padding-top: 1px; }
+.turn.user .turn-content { background: var(--sd-mint-wash); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sd-mint) 25%, transparent); border-radius: 16px 16px 4px 16px; padding: 7px 12px; }
+.turn-text { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; }
 .action-btn {
-  margin-top: 8px; display: block; font-size: 11px; background: transparent;
-  color: var(--sd-accent); border: 1px solid var(--sd-accent); border-radius: 2px; padding: 5px 8px; cursor: pointer;
+  margin-top: 8px; display: inline-flex; font-size: 12px; font-weight: 600; cursor: pointer;
+  background: var(--sd-green); color: var(--sd-on-green); border: none; border-radius: 999px; padding: 5px 14px;
+  transition: transform 0.35s var(--sd-spring), opacity 0.15s ease;
 }
-.action-btn:hover { background: var(--sd-accent); color: #06210f; }
-.action-btn:disabled { opacity: .5; cursor: default; background: transparent; color: var(--sd-accent); }
-/* Altura fixa e texto sem quebra: a frase digitando/apagando não empurra o ícone. */
-#thinking { display: none; align-items: flex-start; gap: 8px; font-size: 11px; color: var(--sd-accent); padding: 2px 10px 10px 38px; height: 18px; overflow: hidden; }
+.action-btn:active { transform: scale(0.96); transition-duration: 0.08s; }
+.action-btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+/* Mensagem nova entra deslizando do lado de quem falou. */
+.turn.enter.assistant { animation: sd-in-left 0.4s var(--sd-ease) both; }
+.turn.enter.user { animation: sd-in-right 0.45s var(--sd-spring) both; transform-origin: right bottom; }
+@keyframes sd-in-left { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+@keyframes sd-in-right { from { opacity: 0; transform: scale(0.9) translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Altura fixa e texto sem quebra: a frase digitando/apagando não empurra nada. */
+#thinking { display: none; align-items: center; gap: 8px; font-size: 11.5px; color: var(--sd-muted); padding: 2px 12px 8px 40px; height: 18px; overflow: hidden; }
 #thinking.visible { display: flex; }
-#thinking .morph-shape { width: 16px; height: 16px; }
+#thinking .morph-shape { width: 12px; height: 12px; }
 #thinkingText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
-#stopBtn { background: none; border: none; color: var(--vscode-descriptionForeground); cursor: pointer; font-size: 10px; text-decoration: underline; }
-.attachments-row { display: none; flex-wrap: wrap; gap: 6px; padding: 8px 8px 0; }
+#stopBtn { font-size: 11.5px; }
+
+.attachments-row { display: none; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
 .attachments-row.visible { display: flex; }
 .attachment-chip {
-  display: flex; align-items: center; gap: 5px; font-size: 10px; line-height: 1.3;
-  background: rgba(16, 239, 124, 0.1); border: 1px solid var(--sd-accent); color: var(--sd-accent);
-  border-radius: 999px; padding: 3px 6px 3px 9px; max-width: 100%;
+  display: flex; align-items: center; gap: 5px; max-width: 100%; font-size: 11px; line-height: 1.3;
+  background: var(--sd-mint-wash); color: var(--vscode-foreground); border-radius: 999px; padding: 3px 6px 3px 10px;
+  animation: sd-appear 0.3s var(--sd-spring) both;
 }
 .attachment-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.attachment-chip button { background: none; border: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; flex-shrink: 0; }
-#inputRow { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--vscode-panel-border, transparent); }
-#inputBox {
-  flex: 1; resize: none; background: var(--vscode-input-background); color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 6px; font-family: inherit; font-size: 12px;
+.attachment-chip button { background: none; border: none; color: var(--sd-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
+
+/* Compositor em cápsula, com o botão de enviar dentro. */
+#inputRow {
+  display: flex; align-items: flex-end; gap: 6px; margin: 8px 10px 10px; padding: 4px 4px 4px 12px; border-radius: 18px;
+  background: var(--vscode-input-background); box-shadow: inset 0 0 0 1px var(--vscode-input-border, var(--sd-hairline));
+  transition: box-shadow 0.2s ease;
 }
-#sendBtn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 2px; padding: 0 12px; cursor: pointer; }
+#inputRow:focus-within { box-shadow: inset 0 0 0 1.5px var(--sd-green); }
+#inputBox {
+  /* Uma linha = 5 + 18 + 5 = 28px, a mesma altura do botão: os dois ficam centrados na cápsula. */
+  flex: 1; resize: none; max-height: 140px; height: 28px; padding: 5px 0; border: none; outline: none; background: none;
+  color: var(--vscode-input-foreground); font-family: inherit; font-size: 12.5px; line-height: 18px;
+}
+#sendBtn {
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0; flex-shrink: 0; border: none; border-radius: 50%; cursor: pointer;
+  background: var(--sd-green); color: var(--sd-on-green); transition: transform 0.4s var(--sd-spring), background 0.2s ease, color 0.2s ease;
+}
+#sendBtn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#sendBtn:disabled { background: var(--sd-fill-strong); color: var(--sd-muted); cursor: default; }
+#sendBtn:not(:disabled):active { transform: scale(0.88); transition-duration: 0.08s; }
+#sendBtn.sent { animation: sd-send 0.45s var(--sd-spring); }
+@keyframes sd-send { 0% { transform: scale(1); } 30% { transform: scale(0.85) translateY(-2px); } 100% { transform: none; } }
+
+.lock { flex: 1; justify-content: center; }
+
+/* --- Achados citados: card que expande ------------------------------------------------------ */
+.cards { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.turn.user .cards { align-items: stretch; text-align: left; }
+.turn-text + .cards { margin-top: 8px; }
+.turn-outro { margin-top: 8px; color: var(--sd-muted); font-size: 12px; }
+.card {
+  --c: var(--sd-info);
+  border-radius: 10px; background: var(--sd-fill); box-shadow: inset 0 0 0 1px var(--sd-hairline); overflow: hidden;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+.card.error { --c: var(--sd-error); }
+.card.warning { --c: var(--sd-warning); }
+.card.open { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, transparent); }
+.card-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: none; background: none;
+  color: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.card-head:hover { background: var(--sd-fill); }
+.card-ref { flex-shrink: 0; color: var(--c); font-weight: 600; font-variant-numeric: tabular-nums; }
+.card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.card.open .card-title { white-space: normal; }
+.card-chevron {
+  width: 6px; height: 6px; flex-shrink: 0; margin: 0 2px; border-right: 1.5px solid var(--sd-muted); border-bottom: 1.5px solid var(--sd-muted);
+  transform: rotate(-45deg); transition: transform 0.35s var(--sd-spring);
+}
+.card.open .card-chevron { transform: rotate(45deg); }
+.card-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s var(--sd-ease); }
+.card.open .card-body { grid-template-rows: 1fr; }
+.card-inner { overflow: hidden; min-height: 0; padding: 0 10px 0 28px; }
+.card.open .card-inner { padding-bottom: 10px; }
+.card-where { font-size: 11px; color: var(--sd-muted); }
+.card-conflict { color: var(--sd-mint); }
+.card-label { margin: 8px 0 2px; font-size: 11px; font-weight: 600; color: var(--sd-muted); }
+.card-sentence { margin: 0 0 4px; font-size: 12px; line-height: 1.5; }
+.turn.user .turn-content.cards-only { background: none; box-shadow: none; padding: 0; }
+.turn.user .turn-content.cards-only .card { min-width: 220px; }

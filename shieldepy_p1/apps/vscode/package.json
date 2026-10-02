@@ -14,7 +14,8 @@
     "Linters"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onUri"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -36,13 +37,14 @@
       "shieldepy": [
         {
           "id": "shieldepy.panel",
-          "name": "Guardião de Arquitetura",
+          "name": "Lista de erros",
           "type": "webview"
         },
         {
           "id": "shieldepy.chat",
           "name": "Chat",
-          "type": "webview"
+          "type": "webview",
+          "when": "shieldepy.unlocked"
         }
       ],
       "shieldepy-settings": [
@@ -78,6 +80,49 @@
         "command": "shieldepy.attachFinding",
         "title": "ShielDepy: Anexar Achado ao Chat",
         "enablement": "false"
+      },
+      {
+        "command": "shieldepy.login",
+        "title": "ShielDepy: Entrar"
+      },
+      {
+        "command": "shieldepy.logout",
+        "title": "ShielDepy: Sair"
+      },
+      {
+        "command": "shieldepy.openDashboard",
+        "title": "ShielDepy: Abrir Painel Web da Conta"
+      },
+      {
+        "command": "shieldepy.refreshAccess",
+        "title": "ShielDepy: Verificar Acesso da Empresa"
+      },
+      {
+        "command": "shieldepy.openLocation",
+        "title": "ShielDepy: Abrir Trecho em Conflito",
+        "enablement": "false"
+      }
+    ],
+    "colors": [
+      {
+        "id": "shieldepy.importantForeground",
+        "description": "ShielDepy: arquivos com achado importante (quadrado) no Explorer.",
+        "defaults": { "dark": "#FF5F57", "light": "#D93A3F", "highContrast": "#FF6B63", "highContrastLight": "#B4232A" }
+      },
+      {
+        "id": "shieldepy.attentionForeground",
+        "description": "ShielDepy: arquivos com achado de atenção (triângulo) no Explorer.",
+        "defaults": { "dark": "#FEBC2E", "light": "#B87A00", "highContrast": "#FFD15C", "highContrastLight": "#8A5A00" }
+      },
+      {
+        "id": "shieldepy.lightForeground",
+        "description": "ShielDepy: arquivos só com achados leves (círculo) no Explorer.",
+        "defaults": { "dark": "#A8F5CB", "light": "#1F8F5A", "highContrast": "#B8FAD6", "highContrastLight": "#146B42" }
+      },
+      {
+        "id": "shieldepy.analyzingForeground",
+        "description": "ShielDepy: arquivo sendo analisado agora.",
+        "defaults": { "dark": "#10EF7C", "light": "#0B9E55", "highContrast": "#10EF7C", "highContrastLight": "#0A7A42" }
       }
     ],
     "configuration": {
@@ -133,7 +178,50 @@
         "shieldepy.backgroundAnalysis.idleMs": {
           "type": "number",
           "default": 1200,
-          "description": "Tempo de inatividade (ms) após uma edição antes de rodar a análise automática."
+          "description": "Tempo de inatividade (ms) após uma edição antes de rodar a análise automática.",
+          "minimum": 300,
+          "maximum": 5000
+        },
+        "shieldepy.backgroundAnalysis.trigger": {
+          "type": "string",
+          "enum": [
+            "onType",
+            "onSave"
+          ],
+          "enumDescriptions": [
+            "Analisa a cada pausa na digitação (após idleMs).",
+            "Analisa só ao salvar ou abrir o arquivo — mais econômico."
+          ],
+          "default": "onType",
+          "description": "Quando a análise automática roda."
+        },
+        "shieldepy.display.minSeverity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ],
+          "enumDescriptions": [
+            "Mostra tudo.",
+            "Esconde os ajustes leves.",
+            "Mostra só o que é importante."
+          ],
+          "default": "info",
+          "description": "Severidade mínima exibida no Problems, no marca-texto e no painel."
+        },
+        "shieldepy.analysis.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Globs extras ignorados pela análise (além de node_modules, dist, etc.). Ex.: **/*.test.ts"
+        },
+        "shieldepy.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostra o estado do ShielDepy (acesso, análise, contagem de achados) na barra de status."
         },
         "shieldepy.language": {
           "type": "string",
@@ -150,7 +238,12 @@
             "Русский"
           ],
           "default": "pt-BR",
-          "description": "Idioma usado pela IA para escrever achados, respostas do chat e revisões. Não traduz a interface."
+          "description": "Idioma da interface do ShielDepy (painéis, hover, Explorer, barra de status) e das respostas da IA."
+        },
+        "shieldepy.webBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "URL base do site da ShielDepy (login, confirmação de dispositivo e API de conta). Aponte para localhost durante o desenvolvimento; troque para a URL de produção quando o site estiver publicado."
         }
       }
     }

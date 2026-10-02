@@ -183,7 +183,7 @@ describe('collisionsToFindings', () => {
     const findings = collisionsToFindings(springCollisions, springRules);
     // ww (2 pontas) + 2 raw (2 pontas cada) = 6
     expect(findings.length).toBe(6);
-    const ww = findings.filter((f) => f.message.startsWith('Colisão write-write'));
+    const ww = findings.filter((f) => f.message.startsWith('Escrita dupla'));
     expect(ww.map((f) => path.basename(f.file)).sort()).toEqual(['PricingListener.java', 'TaxListener.java']);
     for (const f of findings) {
       expect(f.source).toBe('colisao');

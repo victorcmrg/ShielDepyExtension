@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Painel admin — ShielDepy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/theme.js"></script>
+</head>
+<body data-require-admin>
+  <header class="dash-header">
+    <div class="dash-header-inner">
+      <a href="/" class="logo-link"><img src="/logo-mark.svg" alt="" /><span>ShielDepy</span></a>
+      <div class="dash-header-actions">
+        <button id="themeToggle" class="theme-toggle" type="button"></button>
+        <nav class="account-nav" id="accountNav"></nav>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="dash gated-hidden">
+    <section class="dash-hero enter">
+      <div>
+        <p class="eyebrow-brand">Painel admin</p>
+        <h1 class="dash-title">Empresas e acessos</h1>
+        <p class="dash-sub">Crie empresas, libere e-mails e controle quem pode usar a extensão e a IA.</p>
+      </div>
+      <button id="newCompanyBtn" class="btn-brand" type="button"></button>
+    </section>
+
+    <section class="stat-grid" id="stats">
+      <div class="stat-card skeleton"></div>
+      <div class="stat-card skeleton"></div>
+      <div class="stat-card skeleton"></div>
+      <div class="stat-card skeleton"></div>
+      <div class="stat-card skeleton"></div>
+    </section>
+
+    <section class="dash-section">
+      <div class="dash-section-head">
+        <h2>Empresas</h2>
+        <label class="search-box">
+          <span id="searchIcon"></span>
+          <input type="search" id="search" placeholder="Buscar empresa ou e-mail…" autocomplete="off" />
+        </label>
+      </div>
+      <div id="companies" class="company-list">
+        <div class="company-row skeleton"></div>
+        <div class="company-row skeleton"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/dashboard.js"></script>
+  <script src="/auth-gate.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>
