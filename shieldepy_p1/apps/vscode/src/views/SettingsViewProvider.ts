@@ -58,6 +58,7 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         engine: await this.ai.engine(),
         me: this.auth.getCachedMe(),
         access: this.auth.accessState(),
+        project: this.auth.folderAccess().find((f) => f.allowed)?.project?.name ?? null,
         trigger: config.analysisTrigger(),
         idleMs: config.idleMs(),
         minSeverity: config.minSeverity(),

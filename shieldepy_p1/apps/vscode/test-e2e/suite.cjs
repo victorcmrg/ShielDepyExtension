@@ -73,6 +73,13 @@ exports.run = async function run() {
     assert(state === 'active', `estado inesperado: ${state}`);
   });
 
+  await check('a extensão identifica o repositório pelo .git (remote + branch) ao liberar', async () => {
+    const sent = await (await fetch(`${process.env.SHIELDEPY_E2E_ACCOUNT_URL}/__e2e/last-repo-check`)).json();
+    const repo = (sent.repos || [])[0] || {};
+    assert(repo.remote === 'https://github.com/e2e/pedidos.git', `remote enviado: ${repo.remote}`);
+    assert(repo.branch === 'main', `branch enviada: ${repo.branch}`);
+  });
+
   await check('escrita dupla em "total" aparece como ERRO em pricing E em tax (sem abrir os arquivos)', async () => {
     for (const uri of [pricing, tax]) {
       const d = await waitFor(`diagnóstico em ${uri.fsPath}`, () =>
@@ -174,6 +181,21 @@ exports.run = async function run() {
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
     await waitFor('ciclo voltar', () => ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
     await waitFor('colisões de audit voltarem', () => ours(audit, COLISAO).length === auditBefore, 15000);
+  });
+
+  const setRepoAllowed = (allowed) =>
+    fetch(`${process.env.SHIELDEPY_E2E_ACCOUNT_URL}/__e2e/repo`, { method: 'POST', body: JSON.stringify({ allowed }) });
+
+  await check('repositório tirado do projeto: a extensão trava e limpa os achados', async () => {
+    await setRepoAllowed(false);
+    await vscode.commands.executeCommand('shieldepy.refreshAccess');
+    await waitFor('achados sumirem', () => ours(file('a.ts')).length === 0 && ours(audit).length === 0, 10000);
+  });
+
+  await check('repositório conectado de novo: volta sozinho', async () => {
+    await setRepoAllowed(true);
+    await vscode.commands.executeCommand('shieldepy.refreshAccess');
+    await waitFor('ciclo voltar', () => ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
   });
 
   console.log('');

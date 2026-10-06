@@ -31,6 +31,7 @@ import {
   getCompanyById,
   getCompanyPermissions,
   getOverview,
+  getRole,
   linkOAuthIdentity,
   listCompaniesWithPermissions,
   listCompanyMembers,
@@ -39,9 +40,11 @@ import {
   removeEmailAssignment,
   renameCompany,
   setCompanyPermission,
+  setRole,
   setUserPassword,
   touchLastLogin,
 } from './companies';
+import { PROJECT_ROUTES } from './projectRoutes';
 
 const loginLimiter = new RateLimiter(8, 60_000);
 const passwordLimiter = new RateLimiter(6, 60_000);
@@ -65,9 +68,9 @@ function redirectTo(res: ServerResponse, location: string): void {
   res.end();
 }
 
-/** Painel de destino depois do login: admin vai pro painel admin, o resto pro painel da conta. */
-function homeFor(user: { email: string }): string {
-  return isAdmin(user) ? '/admin.html' : '/account.html';
+/** Depois do login, todo mundo começa pelos projetos (o admin da plataforma tem o painel dele no menu). */
+function homeFor(_user: { email: string }): string {
+  return '/projects.html';
 }
 
 function meBody(user: AuthUser) {
@@ -78,6 +81,7 @@ function meBody(user: AuthUser) {
     companyName: company?.name ?? '',
     permissions: getCompanyPermissions(user.companyId),
     isAdmin: isAdmin(user),
+    role: getRole(user.email),
   };
 }
 
@@ -304,12 +308,22 @@ function requireCompany(id: number) {
 
 async function handleAdminCreateCompany(req: IncomingMessage, res: ServerResponse): Promise<void> {
   requireAdminUser(req);
-  const body = await parseJsonBody<{ name?: string; aiEnabled?: boolean }>(req);
+  const body = await parseJsonBody<{ name?: string; aiEnabled?: boolean; ownerEmail?: string; ownerPassword?: string }>(req);
   const name = body.name?.trim();
   if (!name) throw new HttpError(400, "envie 'name'");
   if (name.length > 80) throw new HttpError(400, 'nome longo demais (máx. 80)');
+  // Dono opcional já na criação: é ele quem monta projetos, repositórios e equipe depois.
+  const ownerEmail = body.ownerEmail?.trim().toLowerCase();
+  if (ownerEmail) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw new HttpError(400, 'e-mail do dono inválido');
+    if (findUserByEmail(ownerEmail)) throw new HttpError(409, 'esse e-mail já tem conta em outra empresa');
+    if (body.ownerPassword && body.ownerPassword.length < MIN_PASSWORD) {
+      throw new HttpError(400, `a senha inicial precisa ter pelo menos ${MIN_PASSWORD} caracteres`);
+    }
+  }
   const company = createCompany(name);
   if (body.aiEnabled === true) setCompanyPermission(company.id, 'aiEnabled', true);
+  if (ownerEmail) addEmailAssignment(ownerEmail, company.id, body.ownerPassword || null, 'owner');
   sendJson(res, 200, company);
 }
 
@@ -349,7 +363,7 @@ async function handleAdminSetPermission(req: IncomingMessage, res: ServerRespons
 async function handleAdminAddEmail(req: IncomingMessage, res: ServerResponse, companyId: number): Promise<void> {
   requireAdminUser(req);
   requireCompany(companyId);
-  const body = await parseJsonBody<{ email?: string; initialPassword?: string }>(req);
+  const body = await parseJsonBody<{ email?: string; initialPassword?: string; role?: string }>(req);
   const email = body.email?.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'e-mail inválido');
   const existing = findUserByEmail(email);
@@ -359,7 +373,15 @@ async function handleAdminAddEmail(req: IncomingMessage, res: ServerResponse, co
   if (body.initialPassword && body.initialPassword.length < MIN_PASSWORD) {
     throw new HttpError(400, `a senha inicial precisa ter pelo menos ${MIN_PASSWORD} caracteres`);
   }
-  addEmailAssignment(email, companyId, body.initialPassword || null);
+  addEmailAssignment(email, companyId, body.initialPassword || null, body.role === 'owner' ? 'owner' : 'member');
+  sendJson(res, 200, { ok: true });
+}
+
+async function handleAdminSetRole(req: IncomingMessage, res: ServerResponse, email: string): Promise<void> {
+  requireAdminUser(req);
+  const body = await parseJsonBody<{ role?: string }>(req);
+  if (body.role !== 'owner' && body.role !== 'member') throw new HttpError(400, "envie 'role' (owner | member)");
+  setRole(decodeURIComponent(email), body.role);
   sendJson(res, 200, { ok: true });
 }
 
@@ -443,8 +465,10 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ],
   ['POST', /^\/api\/admin\/companies\/(\d+)\/emails$/, (req, res, p) => handleAdminAddEmail(req, res, id(p))],
   ['DELETE', /^\/api\/admin\/emails\/([^/]+)$/, (req, res, p) => handleAdminRemoveEmail(req, res, p[0]!)],
+  ['PATCH', /^\/api\/admin\/emails\/([^/]+)\/role$/, (req, res, p) => handleAdminSetRole(req, res, p[0]!)],
   ['DELETE', /^\/api\/admin\/users\/(\d+)$/, (req, res, p) => handleAdminDeleteUser(req, res, id(p))],
   ['POST', /^\/api\/admin\/users\/(\d+)\/revoke-devices$/, (req, res, p) => handleAdminRevokeDevices(req, res, id(p))],
+  ...PROJECT_ROUTES,
 ];
 
 export async function handleAuthRoute(req: IncomingMessage, res: ServerResponse, pathname: string, url: URL): Promise<boolean> {

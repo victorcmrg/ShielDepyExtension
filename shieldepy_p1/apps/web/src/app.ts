@@ -28,7 +28,11 @@ const MIME: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.png': 'image/png',
 };
+// Imagens mudam pouco: o navegador pode reaproveitar por um dia. HTML/CSS/JS seguem sem cache explícito.
+const IMAGE_CACHE = new Set(['.svg', '.webp', '.png']);
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -120,7 +124,12 @@ export function createHandler(deps: AppDeps): (req: IncomingMessage, res: Server
     if (!filePath.startsWith(publicDir + path.sep)) throw new HttpError(403, 'proibido');
     try {
       const buf = await readFile(filePath);
-      res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': MIME[path.extname(filePath)] ?? 'application/octet-stream' });
+      const ext = path.extname(filePath);
+      res.writeHead(200, {
+        ...SECURITY_HEADERS,
+        'content-type': MIME[ext] ?? 'application/octet-stream',
+        ...(IMAGE_CACHE.has(ext) ? { 'cache-control': 'public, max-age=86400' } : {}),
+      });
       res.end(buf);
     } catch {
       throw new HttpError(404, 'não encontrado');

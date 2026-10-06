@@ -22,9 +22,12 @@ export interface StoredUser {
   passwordHash: string | null;
 }
 
+export type Role = 'owner' | 'member';
+
 export interface Member {
   id: number | null;
   email: string;
+  role: Role;
   status: 'active' | 'pending';
   lastLoginAt: number | null;
   activeDevices: number;
@@ -130,21 +133,22 @@ export function listCompanyMembers(companyId: number): Member[] {
   const users = db
     .prepare(
       `SELECT u.id as id, u.email as email, u.last_login_at as lastLoginAt,
+              COALESCE((SELECT a.role FROM email_company_assignments a WHERE a.email = u.email), 'member') as role,
               (SELECT COUNT(*) FROM device_tokens d
                  WHERE d.user_id = u.id AND d.revoked_at IS NULL AND d.expires_at > ?) as activeDevices
        FROM users u WHERE u.company_id = ? ORDER BY u.email`
     )
-    .all(now, companyId) as { id: number; email: string; lastLoginAt: number | null; activeDevices: number }[];
+    .all(now, companyId) as { id: number; email: string; role: Role; lastLoginAt: number | null; activeDevices: number }[];
   const pending = db
     .prepare(
-      `SELECT a.email as email FROM email_company_assignments a
+      `SELECT a.email as email, a.role as role FROM email_company_assignments a
        WHERE a.company_id = ? AND NOT EXISTS (SELECT 1 FROM users u WHERE u.email = a.email)
        ORDER BY a.email`
     )
-    .all(companyId) as { email: string }[];
+    .all(companyId) as { email: string; role: Role }[];
   return [
-    ...users.map((u) => ({ id: u.id, email: u.email, status: 'active' as const, lastLoginAt: u.lastLoginAt, activeDevices: Number(u.activeDevices) })),
-    ...pending.map((p) => ({ id: null, email: p.email, status: 'pending' as const, lastLoginAt: null, activeDevices: 0 })),
+    ...users.map((u) => ({ id: u.id, email: u.email, role: u.role, status: 'active' as const, lastLoginAt: u.lastLoginAt, activeDevices: Number(u.activeDevices) })),
+    ...pending.map((p) => ({ id: null, email: p.email, role: p.role, status: 'pending' as const, lastLoginAt: null, activeDevices: 0 })),
   ];
 }
 
@@ -171,14 +175,31 @@ export function getOverview(): {
   };
 }
 
-export function addEmailAssignment(email: string, companyId: number, initialPassword?: string | null): void {
+export function addEmailAssignment(email: string, companyId: number, initialPassword?: string | null, role?: Role): void {
   const now = Date.now();
   const hash = initialPassword ? hashPassword(initialPassword) : null;
   db.prepare(
-    `INSERT INTO email_company_assignments (email, company_id, initial_password_hash, created_at) VALUES (?, ?, ?, ?)
+    `INSERT INTO email_company_assignments (email, company_id, initial_password_hash, created_at, role) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT (email) DO UPDATE SET company_id = excluded.company_id,
-       initial_password_hash = COALESCE(excluded.initial_password_hash, email_company_assignments.initial_password_hash)`
-  ).run(email.toLowerCase(), companyId, hash, now);
+       initial_password_hash = COALESCE(excluded.initial_password_hash, email_company_assignments.initial_password_hash),
+       role = CASE WHEN ? IS NULL THEN email_company_assignments.role ELSE excluded.role END`
+  ).run(email.toLowerCase(), companyId, hash, now, role ?? 'member', role ?? null);
+}
+
+/** Papel do e-mail na empresa dele ('member' se não houver registro). */
+export function getRole(email: string): Role {
+  const row = db.prepare(`SELECT role FROM email_company_assignments WHERE email = ?`).get(email.toLowerCase()) as { role: Role } | undefined;
+  return row?.role === 'owner' ? 'owner' : 'member';
+}
+
+export function setRole(email: string, role: Role): void {
+  db.prepare(`UPDATE email_company_assignments SET role = ? WHERE email = ?`).run(role, email.toLowerCase());
+}
+
+export function countOwners(companyId: number): number {
+  return Number(
+    (db.prepare(`SELECT COUNT(*) as n FROM email_company_assignments WHERE company_id = ? AND role = 'owner'`).get(companyId) as { n: number }).n
+  );
 }
 
 export function removeEmailAssignment(email: string): { ok: true } | { ok: false; reason: 'user_exists' } {

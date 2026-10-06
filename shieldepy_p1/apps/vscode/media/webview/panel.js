@@ -20,6 +20,7 @@
   let lastSystemDisabled = false;
   let severityFilter = null;
   let company = '';
+  let projectName = '';
   const counts = { error: 0, warning: 0, info: 0 };
 
   $('graphNotice').hidden = initial.graphReady !== false;
@@ -59,18 +60,36 @@
       secondary: T('openDashboard'),
       secondaryMessage: 'openDashboard',
     },
+    // Conta ok, mas o repositório aberto não está em nenhum projeto da pessoa (ou nem tem .git).
+    repoBlocked: {
+      title: T('lockRepoTitle'),
+      text: T('lockRepoText'),
+      action: T('checkAgain'),
+      message: 'refreshAccess',
+      secondary: T('openProjects'),
+      secondaryMessage: 'openDashboard',
+    },
+    noGit: {
+      title: T('lockNoGitTitle'),
+      text: T('lockNoGitText'),
+      action: T('checkAgain'),
+      message: 'refreshAccess',
+      secondary: T('openProjects'),
+      secondaryMessage: 'openDashboard',
+    },
   };
 
-  function setAccess(state, companyName) {
+  function setAccess(state, companyName, remote, project) {
     company = companyName || '';
+    projectName = project || '';
     renderHeader();
-    const lock = LOCKS[state];
+    const lock = LOCKS[state === 'repoBlocked' && !remote ? 'noGit' : state];
     $('lock').hidden = !lock;
     $('main').hidden = Boolean(lock);
     if (!lock) return;
     $('lock').className = 'lock ' + state;
     $('lockTitle').textContent = lock.title;
-    $('lockText').textContent = lock.text.replace('{company}', company || T('yourCompany'));
+    $('lockText').textContent = lock.text.replace('{company}', company || T('yourCompany')).replace('{remote}', remote || '');
     const action = $('lockAction');
     action.textContent = lock.action;
     action.disabled = false;
@@ -89,7 +108,8 @@
 
   function renderHeader() {
     $('status').textContent = lastSystemDisabled ? T('guardPaused') : T('guardTitle');
-    $('statusSub').textContent = company;
+    // Empresa e o projeto do repositório aberto — deixa claro "em nome de quê" a extensão está ligada.
+    $('statusSub').textContent = [company, projectName && T('projectLabel', { name: projectName })].filter(Boolean).join(' / ');
   }
 
   // --- ladrilhos: contagem + filtro -------------------------------------------------------
@@ -269,7 +289,7 @@
 
   window.addEventListener('message', (event) => {
     const msg = event.data || {};
-    if (msg.type === 'access') setAccess(msg.state, msg.company);
+    if (msg.type === 'access') setAccess(msg.state, msg.company, msg.remote, msg.project);
     else if (msg.type === 'findingsByFile') {
       setCounts(msg.counts);
       renderGroups(msg.groups, msg.systemDisabled);

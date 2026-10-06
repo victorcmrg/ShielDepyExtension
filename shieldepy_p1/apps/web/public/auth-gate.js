@@ -15,7 +15,7 @@ window.shieldepyAuth = (function () {
   }
 
   function homeFor(me) {
-    return me.isAdmin ? '/admin.html' : '/account.html';
+    return '/projects.html';
   }
 
   function navLink(href, label, active) {
@@ -80,7 +80,7 @@ window.shieldepyAuth = (function () {
       return null;
     }
     if (document.body.hasAttribute('data-require-admin') && !me.isAdmin) {
-      window.location.href = '/account.html';
+      window.location.href = '/projects.html';
       return null;
     }
     renderNav(me);

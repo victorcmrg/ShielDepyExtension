@@ -138,6 +138,19 @@ const pt = {
   nAccessActive: 'ShielDepy: acesso liberado.',
   nAccessSuspended: 'ShielDepy: acesso da empresa ainda suspenso.',
   nAccessOut: 'ShielDepy: você não está conectado.',
+  // repositório fora dos projetos da pessoa
+  lockRepoTitle: 'Este repositório não está liberado',
+  lockRepoText: 'Peça ao dono da empresa para conectar {remote} a um projeto seu. Assim que ele conectar, o ShielDepy liga sozinho.',
+  lockNoGitTitle: 'Abra um repositório Git',
+  lockNoGitText: 'O ShielDepy funciona nos repositórios dos seus projetos e reconhece cada um pelo remote do .git. Esta pasta não tem um.',
+  openProjects: 'Ver meus projetos',
+  stateRepoBlocked: 'Repositório não liberado',
+  repoBlockedHint: 'Este repositório não está em nenhum projeto seu. Os seus projetos estão no painel web.',
+  projectLabel: 'Projeto {name}',
+  sbRepoBlocked: 'ShielDepy: repositório não liberado',
+  sbRepoBlockedTip: 'Este repositório não está em nenhum projeto seu. Clique para verificar de novo.',
+  nRepoBlocked: 'ShielDepy: este repositório não está em nenhum projeto seu. Peça ao dono da empresa para conectá-lo.',
+  nAccessRepo: 'ShielDepy: repositório ainda não liberado.',
 } as const;
 
 export type Key = keyof typeof pt;
@@ -271,6 +284,18 @@ const en: Dict = {
   nAccessActive: 'ShielDepy: access active.',
   nAccessSuspended: 'ShielDepy: company access still suspended.',
   nAccessOut: 'ShielDepy: you are not signed in.',
+  lockRepoTitle: "This repository isn't enabled",
+  lockRepoText: 'Ask your company owner to connect {remote} to one of your projects. ShielDepy turns on by itself once they do.',
+  lockNoGitTitle: 'Open a Git repository',
+  lockNoGitText: "ShielDepy works in your projects' repositories and recognizes each one by its .git remote. This folder has none.",
+  openProjects: 'See my projects',
+  stateRepoBlocked: 'Repository not enabled',
+  repoBlockedHint: "This repository isn't in any of your projects. Your projects are on the web dashboard.",
+  projectLabel: 'Project {name}',
+  sbRepoBlocked: 'ShielDepy: repository not enabled',
+  sbRepoBlockedTip: "This repository isn't in any of your projects. Click to check again.",
+  nRepoBlocked: "ShielDepy: this repository isn't in any of your projects. Ask your company owner to connect it.",
+  nAccessRepo: 'ShielDepy: repository not enabled yet.',
 };
 
 const es: Dict = {
@@ -401,6 +426,18 @@ const es: Dict = {
   nAccessActive: 'ShielDepy: acceso activo.',
   nAccessSuspended: 'ShielDepy: el acceso de la empresa sigue suspendido.',
   nAccessOut: 'ShielDepy: no has iniciado sesión.',
+  lockRepoTitle: 'Este repositorio no está habilitado',
+  lockRepoText: 'Pide al dueño de la empresa que conecte {remote} a uno de tus proyectos. En cuanto lo haga, ShielDepy se activa solo.',
+  lockNoGitTitle: 'Abre un repositorio Git',
+  lockNoGitText: 'ShielDepy funciona en los repositorios de tus proyectos y reconoce cada uno por el remote del .git. Esta carpeta no tiene uno.',
+  openProjects: 'Ver mis proyectos',
+  stateRepoBlocked: 'Repositorio no habilitado',
+  repoBlockedHint: 'Este repositorio no está en ninguno de tus proyectos. Tus proyectos están en el panel web.',
+  projectLabel: 'Proyecto {name}',
+  sbRepoBlocked: 'ShielDepy: repositorio no habilitado',
+  sbRepoBlockedTip: 'Este repositorio no está en ninguno de tus proyectos. Haz clic para verificar de nuevo.',
+  nRepoBlocked: 'ShielDepy: este repositorio no está en ninguno de tus proyectos. Pide al dueño de la empresa que lo conecte.',
+  nAccessRepo: 'ShielDepy: repositorio aún no habilitado.',
 };
 
 const ru: Dict = {
@@ -531,6 +568,18 @@ const ru: Dict = {
   nAccessActive: 'ShielDepy: доступ активен.',
   nAccessSuspended: 'ShielDepy: доступ компании всё ещё приостановлен.',
   nAccessOut: 'ShielDepy: вход не выполнен.',
+  lockRepoTitle: 'Этот репозиторий не разрешён',
+  lockRepoText: 'Попросите владельца компании подключить {remote} к одному из ваших проектов. После этого ShielDepy включится сам.',
+  lockNoGitTitle: 'Откройте Git-репозиторий',
+  lockNoGitText: 'ShielDepy работает в репозиториях ваших проектов и узнаёт каждый по remote из .git. В этой папке его нет.',
+  openProjects: 'Мои проекты',
+  stateRepoBlocked: 'Репозиторий не разрешён',
+  repoBlockedHint: 'Этот репозиторий не входит ни в один ваш проект. Ваши проекты — в веб-кабинете.',
+  projectLabel: 'Проект {name}',
+  sbRepoBlocked: 'ShielDepy: репозиторий не разрешён',
+  sbRepoBlockedTip: 'Этот репозиторий не входит ни в один ваш проект. Нажмите, чтобы проверить снова.',
+  nRepoBlocked: 'ShielDepy: этот репозиторий не входит ни в один ваш проект. Попросите владельца компании подключить его.',
+  nAccessRepo: 'ShielDepy: репозиторий пока не разрешён.',
 };
 
 const DICTS: Record<string, Dict> = { 'pt-BR': pt, 'en-US': en, es, ru };

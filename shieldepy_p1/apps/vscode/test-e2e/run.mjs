@@ -21,10 +21,24 @@ cpSync(join(here, '..', '..', '..', 'examples', 'pedidos-microservices'), worksp
 writeFileSync(join(workspace, 'a.ts'), "import { b } from './b';\nexport function a() { b(); }\n");
 writeFileSync(join(workspace, 'b.ts'), "import { a } from './a';\nexport function b() { a(); }\n");
 
-// Servidor de conta falso: a extensão só funciona com acesso liberado pelo /api/me. A suíte liga e
-// desliga o acesso da "empresa" via POST /__e2e/access pra testar o bloqueio de verdade.
+// Um .git mínimo: a extensão identifica o repositório pelo remote (e manda a branch do HEAD).
+const E2E_REMOTE = 'https://github.com/e2e/pedidos.git';
+mkdirSync(join(workspace, '.git'), { recursive: true });
+writeFileSync(join(workspace, '.git', 'config'), `[core]\n\tbare = false\n[remote "origin"]\n\turl = ${E2E_REMOTE}\n`);
+writeFileSync(join(workspace, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+
+// Servidor de conta falso: a extensão só funciona com acesso liberado pelo /api/me E com o
+// repositório num projeto (/api/repos/check). A suíte liga e desliga os dois via /__e2e/*.
 const E2E_TOKEN = 'e2e-token';
 let accessEnabled = true;
+let repoAllowed = true;
+let lastRepoCheck = null;
+const readJson = (req) =>
+  new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => resolve(JSON.parse(raw || '{}')));
+  });
 const accountServer = createServer((req, res) => {
   const send = (status, body) => {
     res.writeHead(status, { 'content-type': 'application/json' });
@@ -35,11 +49,30 @@ const accountServer = createServer((req, res) => {
     return send(200, { email: 'e2e@shieldepy.test', companyId: 1, companyName: 'E2E', permissions: { accessEnabled, aiEnabled: false } });
   }
   if (req.method === 'POST' && req.url === '/__e2e/access') {
-    let raw = '';
-    req.on('data', (c) => (raw += c));
-    req.on('end', () => {
-      accessEnabled = JSON.parse(raw || '{}').enabled !== false;
+    readJson(req).then((b) => {
+      accessEnabled = b.enabled !== false;
       send(200, { accessEnabled });
+    });
+    return;
+  }
+  if (req.method === 'POST' && req.url === '/__e2e/repo') {
+    readJson(req).then((b) => {
+      repoAllowed = b.allowed !== false;
+      send(200, { repoAllowed });
+    });
+    return;
+  }
+  if (req.method === 'GET' && req.url === '/__e2e/last-repo-check') return send(200, lastRepoCheck ?? {});
+  if (req.method === 'POST' && req.url === '/api/repos/check') {
+    if (req.headers.authorization !== `Bearer ${E2E_TOKEN}`) return send(401, { error: 'não autenticado' });
+    readJson(req).then((b) => {
+      lastRepoCheck = b;
+      const repos = (b.repos ?? []).map((r) => ({
+        remote: r.remote,
+        allowed: repoAllowed && r.remote === E2E_REMOTE,
+        project: repoAllowed && r.remote === E2E_REMOTE ? { id: 1, name: 'Pedidos' } : null,
+      }));
+      send(200, { repos });
     });
     return;
   }

@@ -6,7 +6,8 @@
   "description": "UI web: analisa exemplos/uploads, mostra os diagnósticos e conversa ancorada nos fatos provados.",
   "scripts": {
     "start": "tsx --env-file-if-exists=../../.env src/server.ts",
-    "bootstrap": "tsx --env-file-if-exists=../../.env src/auth/bootstrap.ts"
+    "bootstrap": "tsx --env-file-if-exists=../../.env src/auth/bootstrap.ts",
+    "seed:demo": "tsx --env-file-if-exists=../../.env src/auth/seedDemo.ts"
   },
   "dependencies": {
     "@shieldepy/agent": "*",

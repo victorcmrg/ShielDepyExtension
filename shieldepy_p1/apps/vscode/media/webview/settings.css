@@ -8,7 +8,7 @@ body { padding: 14px 12px 24px; }
   background: linear-gradient(145deg, var(--sd-mint), var(--sd-green)); color: var(--sd-on-green);
   font-weight: 600; font-size: 15px; letter-spacing: -0.01em; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
-.account.suspended .avatar { background: linear-gradient(145deg, #ffe08a, var(--sd-yellow)); }
+.account.repoBlocked .avatar, .account.suspended .avatar { background: linear-gradient(145deg, #ffe08a, var(--sd-yellow)); }
 .account.loggedOut .avatar { background: var(--sd-fill-strong); box-shadow: none; }
 .account-id { flex: 1; min-width: 0; }
 .account-email { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -20,7 +20,7 @@ body { padding: 14px 12px 24px; }
 }
 .state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .state.active { color: var(--sd-green); background: color-mix(in srgb, var(--sd-green) 14%, transparent); }
-.state.suspended { color: var(--sd-yellow); background: color-mix(in srgb, var(--sd-yellow) 14%, transparent); }
+.state.suspended, .state.repoBlocked { color: var(--sd-yellow); background: color-mix(in srgb, var(--sd-yellow) 14%, transparent); }
 .account-hint { margin: -4px 12px 12px; font-size: 11.5px; color: var(--sd-muted); }
 .account-login { padding: 0 12px 14px; }
 .account-login .pill-btn { width: 100%; }

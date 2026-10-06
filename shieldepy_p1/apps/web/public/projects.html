@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Projetos — ShielDepy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/theme.js"></script>
+</head>
+<body data-page="projects">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Menu"></aside>
+    <div class="side-scrim" id="sideScrim"></div>
+    <div class="app-main">
+      <header class="topbar"><button id="menuToggle" class="icon-btn" type="button" aria-label="Abrir menu"></button><span class="topbar-title">Projetos</span></header>
+
+      <main id="main" class="page gated-hidden">
+        <section class="page-head">
+          <div>
+            <h1 class="page-title">Projetos</h1>
+            <p class="page-sub" id="pageSub"></p>
+          </div>
+          <button id="newProject" class="btn-brand" type="button" hidden>Novo projeto</button>
+        </section>
+
+        <div id="notice"></div>
+        <section class="setup" id="setup" hidden aria-label="Primeiros passos"></section>
+
+        <div class="toolbar">
+          <label class="search-box">
+            <span class="sr-only">Pesquisar</span>
+            <input id="search" type="text" placeholder="Pesquisar em projetos…" autocomplete="off" />
+          </label>
+          <div class="filter-tabs" id="filter" role="group" aria-label="Filtrar projetos">
+            <button type="button" data-filter="all" aria-pressed="true">Todos</button>
+            <button type="button" data-filter="live" aria-pressed="false">Em uso</button>
+            <button type="button" data-filter="norepo" aria-pressed="false">Sem repositório</button>
+          </div>
+        </div>
+
+        <div class="project-grid" id="grid">
+          <div class="project-card skeleton"></div>
+          <div class="project-card skeleton"></div>
+          <div class="project-card skeleton"></div>
+        </div>
+        <p class="page-foot" id="foot"></p>
+      </main>
+    </div>
+  </div>
+
+  <script src="/dashboard.js"></script>
+  <script src="/auth-gate.js"></script>
+  <script src="/shell.js"></script>
+  <script src="/projects.js"></script>
+</body>
+</html>

@@ -55,19 +55,20 @@ export async function requireAccess(auth: AuthService): Promise<boolean> {
     if (choice) void vscode.commands.executeCommand(CMD.login);
   } else {
     const company = auth.getCachedMe()?.companyName ?? t('yourCompany');
-    const dashboard = t('openDashboard');
+    const dashboard = state === 'repoBlocked' ? t('openProjects') : t('openDashboard');
     const again = t('checkAgain');
-    const choice = await vscode.window.showWarningMessage(t('nSuspended', { company }), dashboard, again);
+    const message = state === 'repoBlocked' ? t('nRepoBlocked') : t('nSuspended', { company });
+    const choice = await vscode.window.showWarningMessage(message, dashboard, again);
     if (choice === dashboard) void auth.openDashboard();
     else if (choice === again) void vscode.commands.executeCommand(CMD.refreshAccess);
   }
   return false;
 }
 
-/** "Rechecar acesso": força o /api/me e diz o resultado. */
+/** "Rechecar acesso": força o /api/me (e a checagem do repositório) e diz o resultado. */
 export async function refreshAccess(auth: AuthService): Promise<void> {
   const state = await auth.refresh();
-  const text = { active: t('nAccessActive'), suspended: t('nAccessSuspended'), loggedOut: t('nAccessOut') }[state];
+  const text = { active: t('nAccessActive'), suspended: t('nAccessSuspended'), loggedOut: t('nAccessOut'), repoBlocked: t('nAccessRepo') }[state];
   vscode.window.setStatusBarMessage(text, 4000);
 }
 

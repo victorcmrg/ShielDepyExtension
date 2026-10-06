@@ -7,7 +7,7 @@
   const devicesEl = document.getElementById('devices');
   const teamEl = document.getElementById('team');
   const openTool = document.getElementById('openToolBtn');
-  openTool.append(icon('arrow'), el('span', '', 'Abrir ferramenta'));
+  openTool.append(icon('grid'), el('span', '', 'Ver meus projetos'));
 
   let account = null;
 
@@ -31,8 +31,6 @@
     const ai = Boolean(account.permissions.aiEnabled);
     document.getElementById('greeting').textContent = 'Olá, ' + account.email.split('@')[0];
     document.getElementById('companyEyebrow').textContent = account.companyName;
-    openTool.classList.toggle('disabled', !access);
-    openTool.setAttribute('aria-disabled', String(!access));
 
     statusEl.replaceChildren(
       statusCard({

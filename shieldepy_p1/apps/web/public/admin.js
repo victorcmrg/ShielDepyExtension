@@ -233,12 +233,22 @@
     const li = el('li', 'member ' + m.status);
     const who = el('div', 'member-who');
     who.append(el('span', 'member-dot'), el('span', 'member-email', m.email));
+    if (m.role === 'owner') who.appendChild(el('span', 'badge badge-brand', 'Dono'));
     const detail = el(
       'span',
       'member-detail',
       m.status === 'pending' ? 'convite pendente — ainda não entrou' : 'último login ' + relativeTime(m.lastLoginAt) + ' · ' + m.activeDevices + ' VS Code(s)'
     );
     const actions = el('div', 'member-actions');
+    const nextRole = m.role === 'owner' ? 'member' : 'owner';
+    actions.appendChild(
+      textButton(nextRole === 'owner' ? 'Tornar dono' : 'Tornar membro', async () => {
+        await run(async () => {
+          await api('/api/admin/emails/' + encodeURIComponent(m.email) + '/role', { method: 'PATCH', body: { role: nextRole } });
+          await refresh();
+        }, m.email + (nextRole === 'owner' ? ' agora é dono' : ' agora é membro'));
+      })
+    );
 
     if (m.status === 'pending') {
       actions.appendChild(
@@ -292,16 +302,23 @@
   newBtn.addEventListener('click', async () => {
     const values = await modal({
       title: 'Nova empresa',
-      body: 'Ela já nasce com acesso liberado e a IA desligada — dá pra mudar depois.',
-      fields: [{ name: 'name', label: 'Nome da empresa', placeholder: 'Ex.: Acme Ltda', required: true }],
+      body: 'Ela nasce com acesso liberado e a IA desligada. O dono entra e monta os projetos, os repositórios e a equipe.',
+      fields: [
+        { name: 'name', label: 'Nome da empresa', placeholder: 'Ex.: Acme Ltda', required: true },
+        { name: 'ownerEmail', label: 'E-mail do dono', type: 'email', placeholder: 'dono@empresa.com', autocomplete: 'off' },
+        { name: 'ownerPassword', label: 'Senha inicial do dono', type: 'password', placeholder: 'Pelo menos 8 caracteres', autocomplete: 'new-password', hint: 'Opcional. Sem senha, o dono entra pelo Google ou GitHub.' },
+      ],
       confirmLabel: 'Criar empresa',
     });
     if (!values || !values.name.trim()) return;
     await run(async () => {
-      const company = await api('/api/admin/companies', { method: 'POST', body: { name: values.name.trim() } });
+      const company = await api('/api/admin/companies', {
+        method: 'POST',
+        body: { name: values.name.trim(), ownerEmail: values.ownerEmail.trim() || undefined, ownerPassword: values.ownerPassword || undefined },
+      });
       expanded.add(company.id);
       await refresh();
-    }, 'Empresa criada — libere os e-mails dela abaixo');
+    }, 'Empresa criada');
   });
 
   search.addEventListener('input', renderCompanies);

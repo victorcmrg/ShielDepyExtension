@@ -49,6 +49,10 @@ export class StatusBar implements vscode.Disposable {
       this.item.tooltip = t('sbSuspendedTip', { company: this.auth.getCachedMe()?.companyName ?? t('yourCompany') });
       this.item.command = CMD.refreshAccess;
       this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    } else if (state === 'repoBlocked') {
+      this.item.text = `$(lock) ${t('sbRepoBlocked')}`;
+      this.item.tooltip = t('sbRepoBlockedTip');
+      this.item.command = CMD.refreshAccess;
     } else if (!config.analysisEnabled()) {
       this.item.text = `$(shield) ${t('sbPaused')}`;
       this.item.tooltip = t('sbPausedTip');

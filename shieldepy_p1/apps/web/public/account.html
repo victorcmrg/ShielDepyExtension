@@ -13,25 +13,20 @@
   <link rel="stylesheet" href="/style.css" />
   <script src="/theme.js"></script>
 </head>
-<body>
-  <header class="dash-header">
-    <div class="dash-header-inner">
-      <a href="/" class="logo-link"><img src="/logo-mark.svg" alt="" /><span>ShielDepy</span></a>
-      <div class="dash-header-actions">
-        <button id="themeToggle" class="theme-toggle" type="button"></button>
-        <nav class="account-nav" id="accountNav"></nav>
-      </div>
-    </div>
-  </header>
+<body data-page="account">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Menu"></aside>
+    <div class="side-scrim" id="sideScrim"></div>
+    <div class="app-main">
+      <header class="topbar"><button id="menuToggle" class="icon-btn" type="button" aria-label="Abrir menu"></button><span class="topbar-title">Minha conta</span></header>
 
-  <main id="main" class="dash gated-hidden">
-    <section class="dash-hero enter">
+  <main id="main" class="page gated-hidden">
+    <section class="page-head spaced">
       <div>
-        <p class="eyebrow-brand" id="companyEyebrow">Minha conta</p>
-        <h1 class="dash-title" id="greeting">Olá</h1>
-        <p class="dash-sub">Seu acesso ao ShielDepy, os VS Codes conectados e a segurança da conta.</p>
+        <h1 class="page-title" id="greeting">Minha conta</h1>
+        <p class="page-sub"><span id="companyEyebrow"></span>. Seu acesso, os VS Codes conectados e a segurança da conta.</p>
       </div>
-      <a href="/app.html" id="openToolBtn" class="btn-brand"></a>
+      <a href="/projects.html" id="openToolBtn" class="btn-ghost"></a>
     </section>
 
     <section class="stat-grid three" id="status">
@@ -72,9 +67,12 @@
       </section>
     </div>
   </main>
+    </div>
+  </div>
 
   <script src="/dashboard.js"></script>
   <script src="/auth-gate.js"></script>
+  <script src="/shell.js"></script>
   <script src="/account.js"></script>
 </body>
 </html>

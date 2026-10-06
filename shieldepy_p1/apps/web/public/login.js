@@ -51,7 +51,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
     // Só aceita redirect interno (começando com "/" e não "//") — nada de mandar pra outro site.
     const safeRedirect = redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : null;
     if (deviceState) window.location.href = '/device-confirm.html?state=' + encodeURIComponent(deviceState);
-    else window.location.href = safeRedirect || data.home || '/account.html';
+    else window.location.href = safeRedirect || data.home || '/projects.html';
   } catch (err) {
     showError(err.message);
     btn.disabled = false;

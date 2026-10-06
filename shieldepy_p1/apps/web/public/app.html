@@ -13,16 +13,12 @@
   <link rel="stylesheet" href="/style.css" />
   <script src="/theme.js"></script>
 </head>
-<body data-require-access>
-  <header class="dash-header">
-    <div class="dash-header-inner">
-      <a href="/" class="logo-link"><img src="/logo-mark.svg" alt="" /><span>ShielDepy</span></a>
-      <div class="dash-header-actions">
-        <button id="themeToggle" class="theme-toggle" type="button"></button>
-        <nav class="account-nav" id="accountNav"></nav>
-      </div>
-    </div>
-  </header>
+<body data-require-access data-page="tool">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Menu"></aside>
+    <div class="side-scrim" id="sideScrim"></div>
+    <div class="app-main">
+      <header class="topbar"><button id="menuToggle" class="icon-btn" type="button" aria-label="Abrir menu"></button><span class="topbar-title">Analisar no navegador</span></header>
 
   <main id="main" class="gated-hidden">
     <!-- ZONA 1: o ambiente a testar -->
@@ -84,8 +80,12 @@
       </div>
     </section>
   </main>
+    </div>
+  </div>
 
+  <script src="/dashboard.js"></script>
   <script src="/auth-gate.js"></script>
+  <script src="/shell.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

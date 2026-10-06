@@ -21,7 +21,7 @@ import { ShieldepyViewProvider } from './views/ShieldepyViewProvider';
 import { StatusBar } from './views/StatusBar';
 import { ConflictBalloon, openLocation } from './views/ConflictBalloon';
 import { ExplorerDecorations } from './views/ExplorerDecorations';
-import { indexWorkspace, isAnalyzable, reindexFromDisk } from './workspace/files';
+import { indexWorkspace, isAnalyzable, reindexFromDisk, setPathGate } from './workspace/files';
 import { WorkspaceModel } from './workspace/WorkspaceModel';
 
 let model: WorkspaceModel | undefined;
@@ -43,6 +43,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   const auth = new AuthService(context.secrets, log);
   push(auth);
   await auth.ensureLoaded(context.extension.id);
+  // Só repositórios dos projetos da pessoa são analisados (o servidor decide pelo remote do .git).
+  setPathGate((fsPath) => auth.isAllowedPath(fsPath));
   // Sem acesso, o Chat some da barra lateral: a tela de bloqueio aparece uma vez só, no painel.
   const syncUnlocked = () => vscode.commands.executeCommand('setContext', 'shieldepy.unlocked', auth.canUse());
   void syncUnlocked();

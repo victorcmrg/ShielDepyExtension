@@ -22,7 +22,7 @@ if (existing) {
 
 const company = createCompany('ShielDepy (admin)');
 setCompanyPermission(company.id, 'aiEnabled', true);
-addEmailAssignment(adminEmail, company.id);
+addEmailAssignment(adminEmail, company.id, null, 'owner');
 
 console.log(`Empresa "${company.name}" criada (id ${company.id}) e ${adminEmail} atribuído, com aiEnabled=true.`);
 console.log('Entre pela primeira vez usando login social (Google/GitHub) ou peça uma senha inicial via /admin.html.');

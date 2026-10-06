@@ -9,7 +9,7 @@
   const excludeBox = $('excludeBox');
   const excludeSave = $('excludeSave');
   const ENGINES = { anthropic: T('engineAnthropic'), gemini: T('engineGemini'), offline: T('engineOffline') };
-  const STATES = { active: T('stateActive'), suspended: T('stateSuspended'), loggedOut: T('stateLoggedOut') };
+  const STATES = { active: T('stateActive'), suspended: T('stateSuspended'), loggedOut: T('stateLoggedOut'), repoBlocked: T('stateRepoBlocked') };
   const label = (list, code) => (list.find((o) => o.code === code) || {}).label || '';
   let savedExclude = '';
 
@@ -146,17 +146,17 @@
     }, 1200);
   });
 
-  function setAccount(me, access) {
+  function setAccount(me, access, project) {
     const state = me ? access : 'loggedOut';
     $('accountCard').className = 'account ' + state;
     $('accountBadge').textContent = STATES[state] || STATES.loggedOut;
     $('accountBadge').className = 'state ' + state;
     $('accountAvatar').textContent = me ? me.email.charAt(0).toUpperCase() : '';
     $('accountEmail').textContent = me ? me.email : T('noAccount');
-    $('accountCompany').textContent = me ? me.companyName : T('signInHint');
+    $('accountCompany').textContent = me ? [me.companyName, project && T('projectLabel', { name: project })].filter(Boolean).join(' / ') : T('signInHint');
     $('loginRow').hidden = Boolean(me);
     $('accountActions').hidden = !me;
-    $('accountHint').textContent = me && state === 'suspended' ? T('suspendedHint') : '';
+    $('accountHint').textContent = !me ? '' : state === 'suspended' ? T('suspendedHint') : state === 'repoBlocked' ? T('repoBlockedHint') : '';
     $('accountHint').hidden = !$('accountHint').textContent;
   }
 
@@ -164,7 +164,7 @@
   window.addEventListener('message', (event) => {
     const msg = event.data || {};
     if (msg.type !== 'sync') return;
-    setAccount(msg.me, msg.access);
+    setAccount(msg.me, msg.access, msg.project);
     $('systemToggle').checked = Boolean(msg.systemEnabled);
     $('inlineToggle').checked = msg.inlineEnabled !== false;
     $('statusBarToggle').checked = msg.statusBar !== false;

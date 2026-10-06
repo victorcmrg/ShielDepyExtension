@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Projeto — ShielDepy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/theme.js"></script>
+</head>
+<body data-page="project">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Menu"></aside>
+    <div class="side-scrim" id="sideScrim"></div>
+    <div class="app-main">
+      <header class="topbar"><button id="menuToggle" class="icon-btn" type="button" aria-label="Abrir menu"></button><span class="topbar-title" id="topTitle">Projeto</span></header>
+
+      <main id="main" class="page gated-hidden">
+        <nav class="crumbs" aria-label="Você está em"><a href="/projects.html">Projetos</a><span id="crumbSep"></span><span id="crumbName"></span></nav>
+
+        <section class="page-head">
+          <div class="project-hero">
+            <span class="project-tile large" id="tile"></span>
+            <div>
+              <h1 class="page-title" id="name"></h1>
+              <p class="page-sub" id="description"></p>
+            </div>
+          </div>
+          <div class="head-actions" id="headActions" hidden>
+            <button id="editBtn" class="btn-ghost small" type="button">Editar</button>
+            <button id="deleteBtn" class="text-btn danger" type="button">Excluir projeto</button>
+          </div>
+        </section>
+
+        <section class="metrics" aria-label="Resumo">
+          <div class="metric"><strong id="mRepos">0</strong><span>Repositórios conectados</span></div>
+          <div class="metric"><strong id="mPeople">0</strong><span>Pessoas no projeto</span></div>
+          <div class="metric"><strong id="mLive">0</strong><span>Em uso nas últimas 24 horas</span></div>
+        </section>
+
+        <div class="detail-grid">
+          <div>
+            <section class="pane" aria-labelledby="reposTitle">
+              <div class="pane-head">
+                <h2 id="reposTitle">Repositórios</h2>
+                <button id="addRepo" class="btn-brand small" type="button" hidden>Conectar repositório</button>
+              </div>
+              <p class="pane-note">A extensão lê o <code>.git</code> do repositório aberto no VS Code e só liga se ele estiver aqui.</p>
+              <ul class="row-list" id="repos"></ul>
+            </section>
+
+            <section class="pane" aria-labelledby="howTitle">
+              <div class="pane-head"><h2 id="howTitle">Como usar neste projeto</h2></div>
+              <ol class="steps">
+                <li><span class="step-n">1</span><div><strong>Instale a extensão ShielDepy no VS Code</strong><p>Ela aparece na barra lateral com o escudo verde.</p></div></li>
+                <li><span class="step-n">2</span><div><strong>Entre com a sua conta</strong><p>Clique em "Entrar" na extensão e confirme no navegador.</p></div></li>
+                <li><span class="step-n">3</span><div><strong>Abra um dos repositórios acima</strong><p>A extensão confere o remote do <code>.git</code> e libera sozinha. O uso aparece aqui na hora.</p></div></li>
+              </ol>
+            </section>
+          </div>
+
+          <section class="pane" aria-labelledby="peopleTitle">
+            <div class="pane-head">
+              <h2 id="peopleTitle">Pessoas</h2>
+              <button id="addPerson" class="btn-ghost small" type="button" hidden>Adicionar</button>
+            </div>
+            <p class="pane-note" id="peopleNote"></p>
+            <ul class="row-list" id="people"></ul>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/dashboard.js"></script>
+  <script src="/auth-gate.js"></script>
+  <script src="/shell.js"></script>
+  <script src="/project.js"></script>
+</body>
+</html>

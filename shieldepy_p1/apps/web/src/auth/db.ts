@@ -98,9 +98,51 @@ db.exec(`
   );
 `);
 
-// Migração leve pra bases criadas antes da coluna existir (SQLite não tem ADD COLUMN IF NOT EXISTS).
-try {
-  db.exec('ALTER TABLE device_tokens ADD COLUMN label TEXT');
-} catch {
-  // coluna já existe
+// Migrações leves pra bases criadas antes da coluna existir (SQLite não tem ADD COLUMN IF NOT EXISTS).
+for (const sql of [
+  'ALTER TABLE device_tokens ADD COLUMN label TEXT',
+  // Papel na empresa: 'owner' monta projetos/repositórios/equipe; 'member' usa o que recebeu.
+  "ALTER TABLE email_company_assignments ADD COLUMN role TEXT NOT NULL DEFAULT 'member'",
+]) {
+  try {
+    db.exec(sql);
+  } catch {
+    // coluna já existe
+  }
 }
+
+// Projetos da empresa: cada um agrupa repositórios (pelo remote do .git) e as pessoas que podem
+// usar a ferramenta neles. Membros vêm por e-mail — funciona antes mesmo do primeiro login.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS project_repos (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    remote     TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (project_id, remote)
+  );
+
+  CREATE TABLE IF NOT EXISTS project_members (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    email      TEXT NOT NULL COLLATE NOCASE,
+    added_at   INTEGER NOT NULL,
+    PRIMARY KEY (project_id, email)
+  );
+
+  -- Última vez que a extensão de alguém abriu o repositório (vem do .git do workspace).
+  CREATE TABLE IF NOT EXISTS repo_activity (
+    repo_id      INTEGER NOT NULL REFERENCES project_repos(id) ON DELETE CASCADE,
+    email        TEXT NOT NULL COLLATE NOCASE,
+    branch       TEXT,
+    last_seen_at INTEGER NOT NULL,
+    PRIMARY KEY (repo_id, email)
+  );
+`);

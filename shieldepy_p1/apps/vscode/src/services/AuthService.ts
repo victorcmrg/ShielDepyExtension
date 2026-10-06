@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { hostname } from 'node:os';
+import * as path from 'node:path';
 import { config } from '../config';
 import { SECRET_AUTH_TOKEN } from '../constants';
+import { findRepos, type WorkspaceRepo } from '../workspace/gitRemotes';
 
 export interface AuthMe {
   email: string;
@@ -13,11 +15,19 @@ export interface AuthMe {
 
 /**
  * O que a extensão pode fazer agora:
- *   loggedOut — ninguém entrou (ou o token foi revogado): tudo travado
- *   suspended — entrou, mas a empresa está com o acesso suspenso: tudo travado
- *   active    — pode usar; a IA ainda depende de `aiEnabled` à parte
+ *   loggedOut   — ninguém entrou (ou o token foi revogado): tudo travado
+ *   suspended   — entrou, mas a empresa está com o acesso suspenso: tudo travado
+ *   repoBlocked — conta ok, mas nenhum repositório aberto está num projeto da pessoa
+ *                 (o servidor reconhece o repositório pelo remote do .git)
+ *   active      — pode usar, nos repositórios liberados; a IA ainda depende de `aiEnabled`
  */
-export type AccessState = 'loggedOut' | 'suspended' | 'active';
+export type AccessState = 'loggedOut' | 'suspended' | 'repoBlocked' | 'active';
+
+/** Resultado da checagem de uma pasta aberta: liberada (e por qual projeto) ou não, e por quê. */
+export interface FolderAccess extends WorkspaceRepo {
+  allowed: boolean;
+  project: { id: number; name: string } | null;
+}
 
 const ME_CACHE_TTL_MS = 20_000; // curto de propósito — revogação/toggle de admin surte efeito rápido
 const RECHECK_INTERVAL_MS = 60_000; // sem nenhuma chamada de IA, ainda assim percebe a suspensão em até 1 min
@@ -49,6 +59,8 @@ export class AuthService implements vscode.Disposable {
   private cachedAt = 0;
   private lastSignature = '';
   private pendingLogin: PendingLogin | undefined;
+  /** Última checagem das pastas abertas (null = ainda não checou). */
+  private folders: FolderAccess[] | null = null;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly recheckTimer: ReturnType<typeof setInterval>;
 
@@ -64,7 +76,9 @@ export class AuthService implements vscode.Disposable {
       }),
       secrets.onDidChange((e) => {
         if (e.key === SECRET_AUTH_TOKEN) void this.refresh();
-      })
+      }),
+      // Abriu/fechou pasta no workspace: o repositório (e a liberação) pode ter mudado.
+      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh())
     );
   }
 
@@ -76,6 +90,7 @@ export class AuthService implements vscode.Disposable {
   async ensureLoaded(extensionId: string): Promise<void> {
     this.extensionAuthority = extensionId.toLowerCase();
     await this.fetchMe(true);
+    await this.checkRepos();
     this.lastSignature = this.signature();
   }
 
@@ -93,12 +108,60 @@ export class AuthService implements vscode.Disposable {
 
   accessState(): AccessState {
     if (!this.cachedMe) return 'loggedOut';
-    return this.cachedMe.permissions.accessEnabled === false ? 'suspended' : 'active';
+    if (this.cachedMe.permissions.accessEnabled === false) return 'suspended';
+    return this.folders?.some((f) => f.allowed) ? 'active' : 'repoBlocked';
   }
 
   /** Síncrono — pra checar em todo evento de edição sem esperar rede (usa o último /api/me). */
   canUse(): boolean {
     return this.accessState() === 'active';
+  }
+
+  /** As pastas abertas e se cada uma está liberada — a tela de bloqueio mostra qual repositório falta. */
+  folderAccess(): FolderAccess[] {
+    return this.folders ?? [];
+  }
+
+  /** O arquivo está numa pasta liberada? (multi-root: só as pastas dos projetos da pessoa são analisadas) */
+  isAllowedPath(fsPath: string): boolean {
+    return (this.folders ?? []).some((f) => {
+      if (!f.allowed) return false;
+      const rel = path.relative(f.folder, fsPath);
+      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    });
+  }
+
+  /**
+   * Pergunta ao servidor se os repositórios abertos (pelo remote do .git) estão em projetos da
+   * pessoa — e, quando estão, o servidor registra o uso (o painel web mostra "em uso por …").
+   * Falha de rede mantém a última resposta, igual ao /api/me.
+   */
+  private async checkRepos(): Promise<void> {
+    if (!this.cachedMe || this.cachedMe.permissions.accessEnabled === false) return;
+    const token = await this.secrets.get(SECRET_AUTH_TOKEN);
+    if (!token) return;
+    const repos = await findRepos((vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath));
+    const withRemote = repos.filter((r) => r.remote);
+    try {
+      const answer =
+        withRemote.length === 0
+          ? { repos: [] as Array<{ allowed: boolean; project: { id: number; name: string } | null }> }
+          : ((await (
+              await fetch(`${this.webBaseUrl()}/api/repos/check`, {
+                method: 'POST',
+                headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+                body: JSON.stringify({ repos: withRemote.map((r) => ({ remote: r.remote, branch: r.branch })) }),
+              })
+            ).json()) as { repos?: Array<{ allowed: boolean; project: { id: number; name: string } | null }> });
+      const results = answer.repos ?? [];
+      this.folders = repos.map((r) => {
+        const i = withRemote.indexOf(r);
+        const res = i >= 0 ? results[i] : undefined;
+        return { ...r, allowed: Boolean(res?.allowed), project: res?.project ?? null };
+      });
+    } catch (err) {
+      this.log(`[AuthService] falha ao checar os repositórios: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   /** Abre o navegador no device-confirm.html; a promise resolve quando completeLogin() confirmar. */
@@ -123,9 +186,9 @@ export class AuthService implements vscode.Disposable {
     return promise;
   }
 
-  /** Painel web da conta (o próprio site redireciona o admin pro painel admin). */
+  /** Painel web: os projetos da pessoa (é lá que o dono conecta repositórios e equipe). */
   async openDashboard(): Promise<void> {
-    await vscode.env.openExternal(vscode.Uri.parse(`${this.webBaseUrl()}/account.html`));
+    await vscode.env.openExternal(vscode.Uri.parse(`${this.webBaseUrl()}/projects.html`));
   }
 
   /** Chamado pelo registerUriHandler em extension.ts quando o navegador volta pro vscode://.../callback. */
@@ -170,6 +233,7 @@ export class AuthService implements vscode.Disposable {
   /** Rebusca o /api/me ignorando o cache e avisa quem escuta SE algo mudou. */
   async refresh(): Promise<AccessState> {
     await this.fetchMe(true);
+    await this.checkRepos();
     const sig = this.signature();
     if (sig !== this.lastSignature) {
       this.lastSignature = sig;
@@ -181,7 +245,12 @@ export class AuthService implements vscode.Disposable {
 
   private signature(): string {
     const me = this.cachedMe;
-    return me ? `${me.email}|${me.companyName}|${me.permissions.accessEnabled !== false}|${Boolean(me.permissions.aiEnabled)}` : 'out';
+    // Pastas liberadas fazem parte: o dono conectar/desconectar o repositório muda o estado na hora.
+    const allowed = (this.folders ?? [])
+      .filter((f) => f.allowed)
+      .map((f) => f.folder)
+      .join(',');
+    return me ? `${me.email}|${me.companyName}|${me.permissions.accessEnabled !== false}|${Boolean(me.permissions.aiEnabled)}|${allowed}` : 'out';
   }
 
   /** Único ponto que fala com GET /api/me. Cache curto — force=true ignora o cache. */
@@ -222,13 +291,14 @@ export class AuthService implements vscode.Disposable {
   /** true = acesso ativo e a empresa liberou `aiEnabled`. Consultado só por AiService.provider(). */
   async hasAiAccess(): Promise<boolean> {
     const me = await this.fetchMe();
-    return Boolean(me && me.permissions.accessEnabled !== false && me.permissions.aiEnabled);
+    return Boolean(me && me.permissions.aiEnabled && this.accessState() === 'active');
   }
 
   async logout(): Promise<void> {
     const token = await this.secrets.get(SECRET_AUTH_TOKEN);
     await this.secrets.delete(SECRET_AUTH_TOKEN);
     this.cachedMe = null;
+    this.folders = null;
     this.cacheLoaded = true;
     this.cachedAt = Date.now();
     this.lastSignature = this.signature();

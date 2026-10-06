@@ -47,6 +47,15 @@ window.sd = (function () {
       key: '<circle cx="8" cy="15" r="3.5"/><path d="m10.5 12.5 8-8M16 7l2.5 2.5M14 9l2 2"/>',
       code: '<path d="m9 8-4.5 4L9 16"/><path d="m15 8 4.5 4L15 16"/>',
       search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>',
+      folder: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/>',
+      branch: '<circle cx="7" cy="6" r="2.2"/><circle cx="7" cy="18" r="2.2"/><circle cx="17" cy="8" r="2.2"/><path d="M7 8.2v7.6M17 10.2c0 3.6-4.5 3.4-8.4 6.2"/>',
+      repo: '<path d="M6.5 4.5h11a1 1 0 0 1 1 1v13.2a.8.8 0 0 1-1.2.7L12 16.6l-5.3 2.8a.8.8 0 0 1-1.2-.7V5.5a1 1 0 0 1 1-1Z"/>',
+      logout: '<path d="M14.5 5.5h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3"/><path d="M10 8.5 6.5 12l3.5 3.5M6.5 12h9"/>',
+      menu: '<path d="M4.5 7h15M4.5 12h15M4.5 17h15"/>',
+      external: '<path d="M13.5 5.5h5v5M18.5 5.5 11 13"/><path d="M17.5 13.5v4a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h4"/>',
+      user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5c1-3.6 3.8-5.5 7-5.5s6 1.9 7 5.5"/>',
+      grid: '<rect x="4.5" y="4.5" width="6.5" height="6.5" rx="1.5"/><rect x="13" y="4.5" width="6.5" height="6.5" rx="1.5"/><rect x="4.5" y="13" width="6.5" height="6.5" rx="1.5"/><rect x="13" y="13" width="6.5" height="6.5" rx="1.5"/>',
+      globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.4 3.4 5.3 3.4 8.5s-1.1 6.1-3.4 8.5c-2.3-2.4-3.4-5.3-3.4-8.5s1.1-6.1 3.4-8.5Z"/>',
     };
     const span = el('span', 'sd-icon');
     span.innerHTML =
@@ -110,15 +119,46 @@ window.sd = (function () {
       const inputs = {};
       const form = el('form', 'modal-form');
       for (const f of fields || []) {
-        const wrap = el('label', 'field');
-        wrap.appendChild(el('span', 'field-label', f.label));
-        const input = el('input');
-        input.type = f.type || 'text';
-        input.placeholder = f.placeholder || '';
-        input.value = f.value || '';
-        if (f.required) input.required = true;
-        inputs[f.name] = input;
-        wrap.appendChild(input);
+        // Campos: texto/senha (padrão), 'select' (options) e 'checkboxes' (options → array de valores).
+        const wrap = el(f.type === 'checkboxes' ? 'fieldset' : 'label', 'field' + (f.type === 'checkboxes' ? ' field-group' : ''));
+        wrap.appendChild(el(f.type === 'checkboxes' ? 'legend' : 'span', 'field-label', f.label));
+        if (f.type === 'checkboxes') {
+          const boxes = [];
+          const list = el('div', 'check-list');
+          for (const opt of f.options || []) {
+            const row = el('label', 'check-row');
+            const box = el('input');
+            box.type = 'checkbox';
+            box.value = String(opt.value);
+            box.checked = Boolean(opt.checked);
+            boxes.push(box);
+            row.append(box, el('span', '', opt.label));
+            list.appendChild(row);
+          }
+          if (!(f.options || []).length) list.appendChild(el('p', 'field-hint', f.emptyText || 'Nada para escolher.'));
+          wrap.appendChild(list);
+          inputs[f.name] = { get value() { return boxes.filter((b) => b.checked).map((b) => b.value); } };
+        } else if (f.type === 'select') {
+          const select = el('select');
+          for (const opt of f.options || []) {
+            const o = el('option', '', opt.label);
+            o.value = String(opt.value);
+            select.appendChild(o);
+          }
+          if (f.value) select.value = f.value;
+          inputs[f.name] = select;
+          wrap.appendChild(select);
+        } else {
+          const input = el('input');
+          input.type = f.type || 'text';
+          input.placeholder = f.placeholder || '';
+          input.value = f.value || '';
+          if (f.required) input.required = true;
+          if (f.autocomplete) input.autocomplete = f.autocomplete;
+          inputs[f.name] = input;
+          wrap.appendChild(input);
+        }
+        if (f.hint) wrap.appendChild(el('span', 'field-hint', f.hint));
         form.appendChild(wrap);
       }
       const actions = el('div', 'modal-actions');
@@ -133,7 +173,7 @@ window.sd = (function () {
       document.body.appendChild(overlay);
       requestAnimationFrame(() => overlay.classList.add('open'));
       const first = Object.values(inputs)[0];
-      (first || ok).focus();
+      (first && typeof first.focus === 'function' ? first : ok).focus();
 
       function close(value) {
         overlay.classList.remove('open');

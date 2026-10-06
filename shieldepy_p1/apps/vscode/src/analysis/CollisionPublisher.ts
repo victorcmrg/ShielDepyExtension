@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 import { collisionsToFindings } from '@shieldepy/agent';
 import type { Finding } from '@shieldepy/core';
+import { isPathAllowed } from '../workspace/files';
 import type { WorkspaceModel } from '../workspace/WorkspaceModel';
 import type { FindingsManager } from './FindingsManager';
 
@@ -31,6 +32,7 @@ export class CollisionPublisher implements vscode.Disposable {
     const byFile = new Map<string, Finding[]>();
     if (this.isEnabled()) {
       for (const f of collisionsToFindings(this.model.collisions(), this.model.rules)) {
+        if (!isPathAllowed(f.file)) continue; // arquivo de um repositório não liberado pra pessoa
         byFile.set(f.file, [...(byFile.get(f.file) ?? []), f]);
       }
     }

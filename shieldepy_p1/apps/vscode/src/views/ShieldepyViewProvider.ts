@@ -124,7 +124,16 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
   }
 
   private refreshAll(): void {
-    this.post({ type: 'access', state: this.auth.accessState(), company: this.auth.getCachedMe()?.companyName ?? null });
+    const folders = this.auth.folderAccess();
+    this.post({
+      type: 'access',
+      state: this.auth.accessState(),
+      company: this.auth.getCachedMe()?.companyName ?? null,
+      // Bloqueado: qual remote falta liberar (null = a pasta nem tem .git com remote).
+      remote: folders.find((f) => !f.allowed && f.remote)?.remote ?? null,
+      // Liberado: por qual projeto.
+      project: folders.find((f) => f.allowed)?.project?.name ?? null,
+    });
     this.refreshFindings();
     this.refreshAnalyzing();
     void this.refreshSummary();
