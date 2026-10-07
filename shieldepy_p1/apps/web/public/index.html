@@ -43,13 +43,12 @@
       <div class="hero-light" aria-hidden="true"></div>
       <div class="hero-inner">
         <div class="hero-copy" id="heroCopy">
-          <p class="hero-kicker"><span class="kicker-dot"></span>Prova sem IA. Explica com IA.</p>
+          
           <h1 class="hero-title" id="heroTitle">
             <span class="w">Veja</span> <span class="w">a</span> <span class="w accent">colisão</span> <span class="w">antes</span> <span class="w">do</span> <span class="w">deploy</span> <span class="w">acontecer.</span>
           </h1>
           <p class="hero-lede">
-            O ShielDepy lê o seu código, monta o mapa de quem chama quem e de quem escreve cada campo, e prova
-            os conflitos entre regras enquanto você digita. No editor, no pull request e no banco em produção.
+            ShielDepy proteje seu código durante e depois da produção, evitando problemas invisíveis e dores de cabeça
           </p>
           <div class="hero-actions">
             <a href="#planos" class="button button-brand magnetic">Ver planos</a>
@@ -77,8 +76,8 @@
     <!-- ============ Demo: monitor 3D com um "vídeo" do sistema em motion design ============ -->
     <section class="demo" id="demo" aria-labelledby="demoTitle" data-pause>
       <div class="section-head center">
-        <h2 class="section-title split" data-accent="correção," id="demoTitle">Do aviso à correção, sem sair do editor.</h2>
-        <p class="section-lede">Uma linha nova cria uma escrita dupla. O ShielDepy prova a colisão, mostra o outro lado, testa a correção e libera o merge.</p>
+        <h2 class="section-title split" data-accent="correção," id="demoTitle">Do aviso à correção, no ambiente de produção.</h2>
+        <p class="section-lede">Verificações constantes durante a escrita, verifica por problemas escondidos e cria a correção certa para a situação. </p>
       </div>
 
       <div class="monitor-stage" id="monitorStage">
@@ -260,7 +259,7 @@
     <section class="showcase" id="produto" aria-labelledby="showcaseTitle">
       <div class="showcase-grid">
         <div class="showcase-copy">
-          <h2 class="section-title split" data-accent="primeiro," id="showcaseTitle">O que importa primeiro, sem caçar no log.</h2>
+          <h2 class="section-title split" data-accent="destaque," id="showcaseTitle">O que importa em destaque, fácil de localizar.</h2>
           <p class="section-lede">A lista de erros da extensão organiza tudo para você.</p>
           <ol class="showcase-points stagger" id="showcasePoints">
             <li data-focus="tiles">
@@ -273,7 +272,7 @@
             </li>
             <li data-focus="balloon">
               <span class="sp-num">03</span>
-              <div><strong>O outro lado da colisão</strong><p>Clique e o balão mostra o código do outro lado, com a linha marcada.</p></div>
+              <div><strong>O outro lado da colisão</strong><p>Encontre o local exato do erro diretamente sem procurar.</p></div>
             </li>
           </ol>
         </div>
@@ -340,8 +339,7 @@
         </div>
       </div>
       <p class="proof-lede section-lede">
-        Cada regra vira um nó com o que ela lê e escreve. Duas regras no mesmo evento gravando o mesmo campo é uma
-        colisão, provada por um motor determinístico. A IA entra depois, só para explicar o que foi provado.
+        Cada regra vira um nó usado pelo nosso motor para validar a funcionalidade e garantia desse nó dentro de um todo que é o projeto do usuário.
       </p>
       <ul class="proof-facts stagger">
         <li><strong>Sem IA, continua provando.</strong> Ciclos de chamada e colisões não dependem de nenhuma chave configurada.</li>
@@ -401,7 +399,7 @@
             </ol>
           </div>
           <h3>Rápido</h3>
-          <p>Reindexa só o arquivo que mudou.<br />O aviso aparece enquanto você digita.</p>
+          <p>Reindexa apenas arquivos modificados.<br />com avisos em tempo real.</p>
         </article>
 
         <article class="bento-card">
@@ -422,7 +420,7 @@
             </div>
           </div>
           <h3>Abrangente</h3>
-          <p>Seis linguagens no mesmo mapa.<br />Do serviço em Java ao trigger no banco.</p>
+          <p>Funcionalidade abrangente.<br />para maior compatibilidade.</p>
         </article>
 
         <article class="bento-card">
@@ -437,7 +435,7 @@
             <ul class="shape-labels"><li>Importante</li><li>Atenção</li><li>Leve</li><li>Protegido</li></ul>
           </div>
           <h3>Claro</h3>
-          <p>Cada gravidade com a sua forma.<br />Nada depende só de cor.</p>
+          <p>Cada gravidade claramente definida.<br />Agilizando produção.</p>
         </article>
       </div>
     </section>
@@ -451,8 +449,8 @@
 </svg></div>
         </div>
         <div>
-          <h2 class="section-title split" data-accent="liberou." id="securityTitle">Só liga onde a empresa liberou.</h2>
-          <p class="section-lede">O controle fica com quem administra. Cada pessoa usa a ferramenta só nos repositórios dos projetos dela.</p>
+          <h2 class="section-title split" data-accent="fácil." id="securityTitle">Setup fácil.</h2>
+          <p class="section-lede">O controle fica com quem administra. Cada pessoa usa a ferramenta apenas nos repositórios liberados.</p>
           <dl class="security-list stagger">
             <div><dt>Liberado por repositório</dt><dd>A extensão lê o remote do <code>.git</code> e só funciona se aquele repositório estiver num projeto seu.</dd></div>
             <div><dt>Suspender é imediato</dt><dd>Empresa suspensa ou pessoa removida: a extensão trava sozinha em até um minuto.</dd></div>
@@ -467,7 +465,7 @@
     <section class="pricing" id="planos" aria-labelledby="pricingTitle" data-pause>
       <div class="section-head center">
         <h2 class="section-title split" data-accent="editor." id="pricingTitle">Comece no seu editor. Leve para o time.</h2>
-        <p class="section-lede">O motor que prova ciclos e colisões está em todos os planos.</p>
+        <p class="section-lede">Veja qual plano combina mais com seu negócio.</p>
         <div class="billing glass" id="billing" role="group" aria-label="Forma de cobrança">
           <span class="billing-pill" id="billingPill"></span>
           <button type="button" aria-pressed="true" data-billing="monthly">Mensal</button>
@@ -530,8 +528,8 @@
     <section class="closing" aria-labelledby="closingTitle" data-pause>
       <div class="closing-card spot">
         <span class="tex-move" aria-hidden="true"></span>
-        <h2 class="section-title split" id="closingTitle">O próximo incidente pode virar um aviso no editor.</h2>
-        <a href="/login.html" class="button button-ink">Criar conta</a>
+        <h2 class="section-title split" id="closingTitle">O próximo incidente pode ser apenas um aviso durante a produção.</h2>
+        <a href="/login.html" class="button button-ink">Criar conta agora</a>
       </div>
     </section>
   </main>

@@ -242,19 +242,6 @@
       },
       { passive: true }
     );
-    // Botões com ímã: chegam um pouco em direção ao cursor.
-    document.querySelectorAll('.magnetic').forEach((b) => {
-      b.addEventListener('pointermove', (e) => {
-        if (e.pointerType !== 'mouse') return;
-        const r = b.getBoundingClientRect();
-        b.style.setProperty('--tx', ((e.clientX - r.left - r.width / 2) * 0.22).toFixed(1) + 'px');
-        b.style.setProperty('--ty', ((e.clientY - r.top - r.height / 2) * 0.3).toFixed(1) + 'px');
-      });
-      b.addEventListener('pointerleave', () => {
-        b.style.setProperty('--tx', '0px');
-        b.style.setProperty('--ty', '0px');
-      });
-    });
     // Cartões com luz: um halo verde acompanha o cursor por dentro do cartão.
     document.querySelectorAll('.spot').forEach((c) => {
       c.addEventListener('pointermove', (e) => {

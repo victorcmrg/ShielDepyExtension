@@ -48,3 +48,43 @@ window.shieldepyTheme = (function () {
 
   return { mount };
 })();
+
+// Botões com ímã: chegam um pouco em direção ao cursor. Delegado no document pra
+// pegar também os botões que as páginas do painel desenham via JS.
+(function () {
+  const SELECTOR = [
+    'button:not(:disabled)', '.button', '.icon-button', '.link-quiet', '.vid-play', '.scroll-cue',
+    '.btn-brand', '.btn-ghost', '.btn-danger', '.btn-pill', '.btn-secondary',
+    '.nav .brand', '.nav-links a', '.footer nav a', '.footer .brand',
+  ].join(', ');
+  const SKIP = '.billing button, [data-no-magnet]'; // a pílula deslizante do toggle não acompanharia
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let active = null;
+  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  function release() {
+    if (!active) return;
+    active.style.setProperty('--tx', '0px');
+    active.style.setProperty('--ty', '0px');
+    active = null;
+  }
+  document.addEventListener(
+    'pointermove',
+    (e) => {
+      if (e.pointerType !== 'mouse') return;
+      const b = e.target.closest && e.target.closest(SELECTOR);
+      if (!b || b.matches(SKIP)) return release();
+      if (b !== active) {
+        release();
+        active = b;
+        b.classList.add('magnetic');
+      }
+      const r = b.getBoundingClientRect();
+      // limita o deslocamento pra botões largos (block) não saírem voando
+      b.style.setProperty('--tx', clamp((e.clientX - r.left - r.width / 2) * 0.22, 14).toFixed(1) + 'px');
+      b.style.setProperty('--ty', clamp((e.clientY - r.top - r.height / 2) * 0.3, 8).toFixed(1) + 'px');
+    },
+    { passive: true }
+  );
+  document.addEventListener('pointerleave', release);
+})();

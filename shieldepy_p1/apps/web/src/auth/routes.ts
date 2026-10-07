@@ -249,6 +249,8 @@ function handleApiMe(req: IncomingMessage, res: ServerResponse): void {
     companyId: user.companyId,
     companyName: company?.name ?? '',
     permissions: getCompanyPermissions(user.companyId),
+    // Admin da plataforma (ADMIN_EMAIL): a extensão libera qualquer pasta, com ou sem repositório.
+    isAdmin: isAdmin(user),
   });
 }
 

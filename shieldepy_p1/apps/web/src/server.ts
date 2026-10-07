@@ -6,7 +6,7 @@ import { createRegistry } from '@shieldepy/extractors';
 import { providerFromEnv } from '@shieldepy/agent';
 import { createHandler } from './app';
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3001;
 const log = (m: string) => console.error(m);
 
 let registry;

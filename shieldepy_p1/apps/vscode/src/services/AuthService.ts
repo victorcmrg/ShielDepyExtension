@@ -11,6 +11,8 @@ export interface AuthMe {
   companyId: number;
   companyName: string;
   permissions: Record<string, boolean>;
+  /** Admin da plataforma: usa a extensão em qualquer pasta, sem depender de projeto/repositório. */
+  isAdmin?: boolean;
 }
 
 /**
@@ -108,6 +110,7 @@ export class AuthService implements vscode.Disposable {
 
   accessState(): AccessState {
     if (!this.cachedMe) return 'loggedOut';
+    if (this.cachedMe.isAdmin) return 'active';
     if (this.cachedMe.permissions.accessEnabled === false) return 'suspended';
     return this.folders?.some((f) => f.allowed) ? 'active' : 'repoBlocked';
   }
@@ -124,6 +127,7 @@ export class AuthService implements vscode.Disposable {
 
   /** O arquivo está numa pasta liberada? (multi-root: só as pastas dos projetos da pessoa são analisadas) */
   isAllowedPath(fsPath: string): boolean {
+    if (this.cachedMe?.isAdmin) return true;
     return (this.folders ?? []).some((f) => {
       if (!f.allowed) return false;
       const rel = path.relative(f.folder, fsPath);
@@ -250,7 +254,7 @@ export class AuthService implements vscode.Disposable {
       .filter((f) => f.allowed)
       .map((f) => f.folder)
       .join(',');
-    return me ? `${me.email}|${me.companyName}|${me.permissions.accessEnabled !== false}|${Boolean(me.permissions.aiEnabled)}|${allowed}` : 'out';
+    return me ? `${me.email}|${me.companyName}|${Boolean(me.isAdmin)}|${me.permissions.accessEnabled !== false}|${Boolean(me.permissions.aiEnabled)}|${allowed}` : 'out';
   }
 
   /** Único ponto que fala com GET /api/me. Cache curto — force=true ignora o cache. */

@@ -80,16 +80,16 @@ img, svg { display: block; }
 
 /* ---------------- botões ---------------- */
 .button {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 24px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 40px; min-width: 180px;
   border-radius: 999px; border: 1px solid transparent; font: 600 15px/1 var(--font-sans); text-decoration: none; cursor: pointer;
   transition: transform 0.35s var(--spring), box-shadow 0.25s ease, background 0.2s ease, border-color 0.2s ease;
 }
 .button:active { transform: scale(0.97); transition-duration: 0.1s; }
-.button.small { height: 38px; padding: 0 16px; font-size: 14px; }
+.button.small { height: 38px; padding: 0 24px; min-width: 0; font-size: 14px; }
 .button.block { width: 100%; }
-.button-brand { color: var(--on-brand); background-image: var(--tex-fill); box-shadow: 0 10px 30px -12px rgba(16, 239, 124, 0.6); }
+.button-brand { color: var(--on-brand); background-image: var(--tex-fill); }
 .button-brand { background-size: auto, 600px auto; background-position: 20% 30%; transition: transform 0.35s var(--spring), box-shadow 0.25s ease, background-position 0.9s var(--ease), translate 0.35s var(--ease); }
-.button-brand:hover { transform: translateY(-2px); box-shadow: 0 16px 36px -12px rgba(16, 239, 124, 0.7); }
+.button-brand:hover { transform: translateY(-2px); }
 .button-ghost { color: var(--ink); border-color: var(--line); background: color-mix(in srgb, var(--surface) 70%, transparent); }
 .button-ghost:hover { border-color: color-mix(in srgb, var(--ink) 30%, transparent); transform: translateY(-2px); }
 .button-ink { color: var(--bg); background: var(--ink); }
@@ -613,7 +613,7 @@ section { position: relative; }
 :root[data-theme="dark"] .billing-pill { background: #34393c; }
 
 /* ---------------- botões: ímã + ícone de play ---------------- */
-.magnetic { translate: var(--tx, 0px) var(--ty, 0px); transition: translate 0.35s var(--ease), transform 0.35s var(--spring), box-shadow 0.25s ease, background-color 0.2s ease, background-position 0.9s var(--ease), border-color 0.2s ease; }
+.magnetic { translate: var(--tx, 0px) var(--ty, 0px); transition: translate 0.35s var(--ease), transform 0.35s var(--spring), box-shadow 0.25s ease, background-color 0.2s ease, background-position 0.9s var(--ease), border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, filter 0.2s ease; }
 .play-ico { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--brand-to) 22%, transparent); }
 .play-ico::after { content: ""; width: 7px; height: 8px; margin-left: 2px; background: var(--brand-ink); clip-path: polygon(0 0, 100% 50%, 0 100%); }
 
