@@ -21,6 +21,8 @@ const files = [
   { from: fromPackage('tree-sitter-wasms', 'out/tree-sitter-java.wasm'), name: 'tree-sitter-java.wasm' },
   { from: fromPackage('tree-sitter-wasms', 'out/tree-sitter-python.wasm'), name: 'tree-sitter-python.wasm' },
   { from: fromPackage('tree-sitter-wasms', 'out/tree-sitter-c_sharp.wasm'), name: 'tree-sitter-c_sharp.wasm' },
+  { from: fromPackage('tree-sitter-wasms', 'out/tree-sitter-html.wasm'), name: 'tree-sitter-html.wasm' },
+  { from: fromPackage('tree-sitter-wasms', 'out/tree-sitter-css.wasm'), name: 'tree-sitter-css.wasm' },
 ];
 
 fs.mkdirSync(wasmDir, { recursive: true });

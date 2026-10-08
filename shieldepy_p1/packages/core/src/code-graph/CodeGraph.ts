@@ -6,7 +6,7 @@ import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
 import { extractCalls, extractSymbols, type CallDesc, type RawCall, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
-import { TsParser } from './parser';
+import { GrammarParser, TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
 import {
   isSymbolNode,
@@ -30,6 +30,11 @@ export type ParsedListener = (file: { id: string; fsPath: string; root: import('
 export const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.html', '.htm', '.css'];
 
 type G = Graph<NodeAttrs, EdgeAttrs>;
+
+export interface WebParsers {
+  html?: GrammarParser;
+  css?: GrammarParser;
+}
 
 /** Para onde um especificador de import de um arquivo aponta (já resolvido). */
 type SpecTarget = { kind: 'file'; id: string } | { kind: 'package'; name: string } | { kind: 'unresolved' };
@@ -88,16 +93,24 @@ export class CodeGraph {
 
   constructor(
     private readonly parser: TsParser | undefined,
-    private readonly host: Host
+    private readonly host: Host,
+    /** Gramáticas de HTML/CSS. Sem uma delas, arquivos daquele tipo ficam fora do grafo. */
+    private readonly web: WebParsers = {}
   ) {
     this.resolver = new ModuleResolver(host);
   }
 
   static async create(wasmDir: string, host: Host): Promise<CodeGraph> {
-    return new CodeGraph(await TsParser.load(wasmDir), host);
+    const optional = (name: 'html' | 'css') =>
+      GrammarParser.load(wasmDir, name).catch((err) => {
+        host.log(`[CodeGraph] gramática ${name} indisponível — arquivos .${name} ficam fora do grafo: ${err}`);
+        return undefined;
+      });
+    const [ts, html, css] = await Promise.all([TsParser.load(wasmDir), optional('html'), optional('css')]);
+    return new CodeGraph(ts, host, { html, css });
   }
 
-  /** false se o Tree-sitter não carregou (ex: .wasm faltando) — só HTML/CSS entram no grafo. */
+  /** false se a gramática de TS não carregou (ex: .wasm faltando) — o grafo fica sem código TS/JS. */
   get isReady(): boolean {
     return this.parser !== undefined;
   }
@@ -146,7 +159,7 @@ export class CodeGraph {
    * (verificação de fix) sem que a análise em background leia um estado falso (item 2.3).
    */
   fork(): CodeGraph {
-    const copy = new CodeGraph(this.parser, this.host);
+    const copy = new CodeGraph(this.parser, this.host, this.web);
     copy.graph = this.graph.copy();
     copy.rawCalls = new Map([...this.rawCalls].map(([k, v]) => [k, v.map((c) => ({ ...c }))]));
     copy.moduleInfo = new Map(this.moduleInfo);
@@ -183,8 +196,11 @@ export class CodeGraph {
     if (!CodeGraph.isSupported(fsPath)) return;
     try {
       const ext = extOf(fsPath);
-      if (ext === '.css') this.updateCssFile(fsPath, text);
-      else if (ext === '.html' || ext === '.htm') this.updateHtmlFile(fsPath, text);
+      if (ext === '.css') {
+        if (this.web.css) this.updateCssFile(fsPath, text, this.web.css);
+      } else if (ext === '.html' || ext === '.htm') {
+        if (this.web.html) this.updateHtmlFile(fsPath, text, this.web.html);
+      }
       else if (this.parser) this.updateCodeFile(fsPath, text);
     } catch (err) {
       this.host.log(`[CodeGraph] falha inesperada atualizando o grafo de ${fsPath}: ${err}`);
@@ -474,11 +490,11 @@ export class CodeGraph {
   }
 
   /** CSS: seletores viram símbolos "selector" deste arquivo; `@import` vira aresta de import. */
-  private updateCssFile(fsPath: string, text: string): void {
+  private updateCssFile(fsPath: string, text: string, css: GrammarParser): void {
     const fileId = toFileId(fsPath);
     this.resetFileNode(fileId, { kind: 'file', path: fsPath });
 
-    const { selectors, imports } = parseCss(text);
+    const { selectors, imports } = css.withTree(text, parseCss);
     for (const selector of selectors) {
       const symId = `${fileId}#${selector}`;
       this.graph.mergeNode(symId, { kind: 'selector', name: selector, file: fileId, startLine: 0, endLine: 0 });
@@ -491,9 +507,9 @@ export class CodeGraph {
    * HTML: `<link>`/`<script>` viram imports; os `class=`/`id=` usados ficam no próprio nó do
    * arquivo — é o que `findUnresolvedHtmlReferences` cruza contra os seletores do CSS vinculado.
    */
-  private updateHtmlFile(fsPath: string, text: string): void {
+  private updateHtmlFile(fsPath: string, text: string, html: GrammarParser): void {
     const fileId = toFileId(fsPath);
-    const { usages, refs } = parseHtml(text);
+    const { usages, refs } = html.withTree(text, parseHtml);
     this.resetFileNode(fileId, { kind: 'file', path: fsPath, htmlUsages: usages });
     this.addWebImports(fileId, fsPath, refs);
   }

@@ -56,19 +56,18 @@ interface PathsConfig {
 
 const CONFIG_FILES = ['tsconfig.json', 'jsconfig.json'];
 
-/** JSON com comentários e vírgulas finais (formato do tsconfig). */
+/** JSON com comentários e vírgulas finais (formato do tsconfig). Um passo só, ciente de strings. */
 export function parseJsonc(text: string): unknown {
   let out = '';
   let inString = false;
+  // posição em `out` de uma vírgula ainda sem valor depois dela (candidata a vírgula final)
+  let pendingComma = -1;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!;
     if (inString) {
       out += ch;
       if (ch === '\\') out += text[++i] ?? '';
       else if (ch === '"') inString = false;
-    } else if (ch === '"') {
-      inString = true;
-      out += ch;
     } else if (ch === '/' && text[i + 1] === '/') {
       while (i < text.length && text[i] !== '\n') i++;
       out += '\n';
@@ -76,9 +75,18 @@ export function parseJsonc(text: string): unknown {
       i = text.indexOf('*/', i + 2);
       if (i < 0) break;
       i++;
-    } else out += ch;
+    } else if (ch === '}' || ch === ']') {
+      if (pendingComma >= 0) out = out.slice(0, pendingComma) + out.slice(pendingComma + 1);
+      pendingComma = -1;
+      out += ch;
+    } else {
+      if (ch === ',') pendingComma = out.length;
+      else if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r') pendingComma = -1;
+      if (ch === '"') inString = true;
+      out += ch;
+    }
   }
-  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+  return JSON.parse(out);
 }
 
 /**

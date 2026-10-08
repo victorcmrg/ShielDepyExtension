@@ -71,7 +71,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     vscode.commands.registerCommand(CMD.logout, () => logout(auth))
   );
 
-  // Grafo estrutural. Sem as gramáticas .wasm, segue com HTML/CSS — a
+  // Grafo estrutural. Sem as gramáticas .wasm, segue sem o grafo (as regras ainda funcionam) — a
   // extensão nunca deixa de ativar por causa disso.
   let graph: CodeGraph;
   try {

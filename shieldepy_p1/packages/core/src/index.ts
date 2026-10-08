@@ -10,6 +10,7 @@ export * from './code-graph/parser';
 export * from './code-graph/cycles';
 export * from './code-graph/resolve-import';
 export * from './code-graph/extract-module';
+export { parseCss, parseHtml, resolveWebRef } from './code-graph/extract-web';
 export * from './code-graph/indexer';
 
 export * from './system-graph';

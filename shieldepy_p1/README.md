@@ -30,7 +30,7 @@ O sistema mantém dois grafos em memória, construídos a partir do mesmo códig
 |---|---|---|
 | **Pergunta que responde** | Quem importa e quem chama quem? | Quem lê e quem escreve qual campo, em qual evento? |
 | **Nós** | arquivos, funções, métodos, classes, seletores CSS, pacotes externos | regras reativas (um handler, listener, signal ou trigger) |
-| **Como é lido** | Tree-sitter (a árvore sintática real do TS/JS), leitura de tags no HTML/CSS | Tree-sitter no TS/JS, Java, Python e C#; analisador léxico no PL/pgSQL |
+| **Como é lido** | Tree-sitter (a árvore sintática real) no TS/JS, HTML e CSS | Tree-sitter no TS/JS, Java, Python e C#; analisador léxico no PL/pgSQL |
 | **O que prova** | ciclos de chamada; cadeia de chamadas (rota → serviço → repositório → pacote); classe do HTML sem CSS correspondente | colisões write-write e read-after-write |
 | **Onde vive** | `packages/core/src/code-graph/` | `packages/core/src/interactions/` |
 
@@ -146,7 +146,7 @@ apps/vscode   apps/cli   apps/web        ← interfaces (só aqui existe `vscode
 | Imports/exports/re-exports de um arquivo (tabela de módulo) | `packages/core/src/code-graph/extract-module.ts` |
 | Resolução de especificadores (relativo, tsconfig `paths`, pacote) | `packages/core/src/code-graph/resolve-import.ts` |
 | Artefato do mapa do sistema (`shieldepy graph`) | `packages/core/src/system-graph.ts` |
-| O que é lido de HTML/CSS | `packages/core/src/code-graph/extract-web.ts` |
+| O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
 | Suporte a Java / Python / C# | `packages/extractors/src/treesitter/*` (gramáticas em `packages/core/wasm`) |
 | Triggers do Postgres (PL/pgSQL) | `packages/extractors/src/postgres/*` (tokenizador em `lexer.ts`) |

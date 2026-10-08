@@ -43,8 +43,8 @@ async function initRuntime(wasmDir: string): Promise<void> {
   }
 }
 
-/** Gramáticas além de TS/TSX, usadas pelos extratores de regras (sem regex). */
-export type GrammarName = 'java' | 'python' | 'c_sharp';
+/** Gramáticas além de TS/TSX: extratores de regras (Java/Python/C#) e HTML/CSS do grafo (sem regex). */
+export type GrammarName = 'java' | 'python' | 'c_sharp' | 'html' | 'css';
 
 /** Parser de UMA gramática (Java, Python, C#). Mesmo contrato de memória do `TsParser`. */
 export class GrammarParser {

@@ -13,7 +13,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança. Cada etapa tem sua branch. **O merge na `main` é feito pelo usuário** quando a etapa inteira estiver completa.
 
-- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente.
+- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, aguardando merge do usuário.**
 - **E2 — Topologia** (tarefa 2), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
 
 | Tarefa | Branch | Status |
@@ -21,7 +21,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído |
 | 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído |
 | 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído |
-| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | em andamento |
+| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído |
 | 2. Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`) | a definir | pendente |
 | 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
@@ -94,6 +94,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - CLI, web, extensão do VS Code e testes foram migrados. A extensão chamava `createRegistry()` sem parser e ficaria sem Java/Python/C# em silêncio.
   - Os testes antigos de regex foram trocados por `languages.test.ts`, com as mesmas expectativas mais os casos novos. Os 4 cenários de exemplo (TS/Java/Python/C#) continuam com as 3 colisões plantadas.
   - Suíte: 196 testes. A extensão compila (`build:vscode`) e empacota as 6 gramáticas.
+- 2026-10-07: **1d concluído, e com ele a E1.**
+  - HTML/CSS do grafo também passaram para a AST: gramáticas `tree-sitter-html/css`, carregadas pelo `CodeGraph.create` (sem uma delas, aquele tipo de arquivo fica fora do grafo).
+  - **O que a AST resolve sozinha:** pseudo-classe (`.a:hover`), seletores em `@media`/`:is()`, comentário HTML, atributo sem aspas ou em maiúsculas, `<link/>` auto-fechado e as duas formas de `@import`.
+  - `resolveWebRef` e `parseJsonc` (tsconfig) também deixaram de usar regex. O `parseJsonc` agora sabe quando uma vírgula está dentro de uma string.
+  - Regex que restou no core/extractors: só manipulação de caminho de arquivo (`\` → `/`). Nenhuma lê código.
+  - Suíte: 199 testes. Typecheck limpo, e a extensão compila e empacota as 8 gramáticas.
+  - Não rodado: o E2E da extensão (`apps/vscode/test-e2e`), que baixa um VS Code real.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

@@ -144,6 +144,8 @@ describe('ModuleResolver / utilitários', () => {
 
   it('parseJsonc ignora comentários e vírgula final sem mexer em strings', () => {
     expect(parseJsonc('{ "a": "http://x//y", /* c */ "b": [1,], }')).toEqual({ a: 'http://x//y', b: [1] });
+    // vírgula "final" dentro de string não é tocada
+    expect(parseJsonc('{ "p": "a,}", "q": ["x,]" , ] }')).toEqual({ p: 'a,}', q: ['x,]'] });
   });
 
   it('sem tsconfig, especificador não relativo é pacote', () => {
