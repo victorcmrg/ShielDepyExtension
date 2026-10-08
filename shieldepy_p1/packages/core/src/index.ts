@@ -19,6 +19,7 @@ export * from './topology/types';
 export * from './topology/routes';
 export * from './topology/io';
 export * from './topology/build';
+export * from './topology/surface';
 export * from './sql/classify';
 
 export * from './system-graph';

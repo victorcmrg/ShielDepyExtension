@@ -1,8 +1,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
+  attackSurface,
   buildGraph,
   buildSystemGraph,
+  buildTopology,
   canonicalJson,
   CodeGraph,
   findCollisions,
@@ -14,7 +16,7 @@ import {
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extractors';
 import { explainCollisions, explainOffline, providerFromEnv, severityRank, type Severity } from '@shieldepy/agent';
-import { printCollisions, printCycles, printReport, printSystemGraph } from './print';
+import { printCollisions, printCycles, printReport, printSystemGraph, printTopology } from './print';
 import { renderGraphHtml } from '@shieldepy/viewer';
 
 export interface Io {
@@ -31,6 +33,9 @@ const USAGE = `uso:
   shieldepy graph   <pasta> [--json] [--out <arquivo>] [--html <arquivo>]
                                                      mapa do sistema: código + regras + cobertura
                                                      (--html gera um visualizador interativo, offline)
+  shieldepy topology <pasta> [--json] [--surface] [--out <arquivo>] [--html <arquivo>]
+                                                     rotas Express, operações de I/O em ordem e tags de risco
+                                                     (--surface: só o recorte que vai para a IA)
 
   report  = só o motor (determinístico, sem rede)
   explain = motor + IA (ANTHROPIC_API_KEY ou GEMINI_API_KEY); sem chave, explicador offline
@@ -44,16 +49,18 @@ interface Args {
   failOn?: Severity;
   out?: string;
   html?: string;
+  surface: boolean;
 }
 
 const SEVERITY_ALIASES: Record<string, Severity> = { critico: 'Crítico', crítico: 'Crítico', alto: 'Alto', medio: 'Médio', médio: 'Médio', baixo: 'Baixo' };
 
 export function parseArgs(argv: string[]): Args {
-  const args: Args = { json: false, pg: false };
+  const args: Args = { json: false, pg: false, surface: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') args.json = true;
     else if (a === '--pg') args.pg = true;
+    else if (a === '--surface') args.surface = true;
     else if (a === '--out' || a.startsWith('--out=') || a === '--html' || a.startsWith('--html=')) {
       const flag = a.startsWith('--out') ? 'out' : 'html';
       const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
@@ -143,6 +150,28 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
         }
         if (args.json) io.out(canonicalJson(system, 2));
         else printSystemGraph(system, args.target, io.out);
+        return 0;
+      }
+      case 'topology': {
+        if (!args.target) throw new Error('informe a pasta');
+        const graph = await CodeGraph.create(defaultWasmDir(), silentHost);
+        await indexFiles(graph, await listSourceFiles(args.target), silentHost);
+        const { rules } = loadRulesFromPath(args.target, await registryWithTreeSitter());
+        const system = buildSystemGraph(graph, rules, args.target);
+        const topology = buildTopology(graph, system, args.target);
+        const result = args.surface ? attackSurface(topology) : topology;
+        if (args.out) {
+          await mkdir(path.dirname(path.resolve(args.out)), { recursive: true });
+          await writeFile(args.out, canonicalJson(result, 2) + '\n', 'utf8');
+          io.err(`✓ ${args.surface ? 'superfície de ataque' : 'topologia'} salva em ${args.out}`);
+        }
+        if (args.html) {
+          await mkdir(path.dirname(path.resolve(args.html)), { recursive: true });
+          await writeFile(args.html, renderGraphHtml(system, args.target, { kind: 'inline' }, topology), 'utf8');
+          io.err(`✓ visualizador (mapa + rotas) salvo em ${args.html} (abra no navegador)`);
+        }
+        if (args.json) io.out(canonicalJson(result, 2));
+        else printTopology(topology, args.target, io.out);
         return 0;
       }
       default:

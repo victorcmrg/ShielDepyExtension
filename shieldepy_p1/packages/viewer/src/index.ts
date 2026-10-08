@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import type { SystemGraph } from '@shieldepy/core';
+import type { SystemGraph, TopologyGraph } from '@shieldepy/core';
 import libraries from '../libraries.json' with { type: 'json' };
 
 /**
@@ -45,7 +45,11 @@ function escapeHtml(text: string): string {
   return text.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;');
 }
 
-export function renderGraphHtml(system: SystemGraph, label: string, mode: ViewerMode = { kind: 'inline' }): string {
+/**
+ * Com `topology`, o mapa ganha as rotas e as operações de I/O como nós (rota → handlers → ... →
+ * `db_write stock`) e uma lista de rotas que abre o fluxo de cada uma.
+ */
+export function renderGraphHtml(system: SystemGraph, label: string, mode: ViewerMode = { kind: 'inline' }, topology?: TopologyGraph): string {
   const nonce = mode.kind === 'webview' ? ` nonce="${mode.nonce}"` : '';
   const csp =
     mode.kind === 'webview'
@@ -81,6 +85,7 @@ ${csp}
   </section>
   <section class="filters">
     <h2>Mostrar</h2>
+    ${topology ? '<label><input type="checkbox" data-filter="routes" checked> <span class="sw route"></span> rotas e operações de I/O</label>' : ''}
     <label><input type="checkbox" data-filter="calls" checked> <span class="sw calls"></span> chamadas</label>
     <label><input type="checkbox" data-filter="references" checked> <span class="sw references"></span> referências (handler passado como valor)</label>
     <label><input type="checkbox" data-filter="imports"> <span class="sw imports"></span> imports entre arquivos</label>
@@ -91,6 +96,7 @@ ${csp}
     <p class="muted small"><span class="sw heuristic"></span> chamada ligada só por nome (heurística)</p>
   </section>
   <section id="details" hidden></section>
+  <section id="routes" hidden></section>
   <section id="weak"></section>
   <footer class="muted small">hash <code id="hash"></code></footer>
 </aside>
@@ -99,7 +105,7 @@ ${csp}
   <div id="cy" aria-label="Grafo do sistema"></div>
 </main>
 ${libraries}
-<script${nonce}>const SYSTEM = ${embedJson(system)};</script>
+<script${nonce}>const SYSTEM = ${embedJson(system)}; const TOPOLOGY = ${embedJson(topology ?? null)};</script>
 <script${nonce}>${APP}</script>
 </body>
 </html>
@@ -111,14 +117,14 @@ const STYLE = `
   --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0;
   --file: #eef2f7; --file-border: #c9d3e0; --fn: #2f6fdf; --method: #7a4fd1; --class: #0f8a6a;
   --pkg: #b5651d; --calls: #4a5568; --refs: #2f6fdf; --imports: #b9bcc4; --heur: #e0861a;
-  --hl: #e5484d; --accent: #2f6fdf;
+  --hl: #e5484d; --accent: #2f6fdf; --route: #c2255c; --db: #0b7285; --api: #d9480f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #141416; --panel: #1c1c1f; --text: #ececee; --muted: #9a9aa2; --line: #2c2c31;
     --file: #22262e; --file-border: #3a4150; --fn: #6aa0ff; --method: #b294ff; --class: #3fcf9f;
     --pkg: #e3a15c; --calls: #a0a7b4; --refs: #6aa0ff; --imports: #4a4e57; --heur: #f0a040;
-    --hl: #ff6b6f; --accent: #6aa0ff;
+    --hl: #ff6b6f; --accent: #6aa0ff; --route: #f06595; --db: #3bc9db; --api: #ff922b;
   }
 }
 * { box-sizing: border-box; }
@@ -141,6 +147,9 @@ input[type=search] { width: 100%; padding: 8px 10px; border-radius: 8px; border:
 .sw.references { border-color: var(--refs); border-top-style: dashed; }
 .sw.imports { border-color: var(--imports); }
 .sw.heuristic { border-color: var(--heur); border-top-style: dashed; }
+.sw.route { border-color: var(--route); border-top-width: 3px; }
+.route-item { text-align: left; display: block; width: 100%; }
+.route-item small { display: block; color: var(--muted); }
 .meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
 .meter > div { height: 100%; background: var(--accent); }
 .big { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -163,7 +172,26 @@ const APP = String.raw`
   const fileOf = (n) => (n.kind === 'file' ? n.id : n.file);
   // dentro do webview do VS Code: o botão "Abrir código" fala com a extensão
   const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : undefined;
-  const state = { group: true, filters: { calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
+  const state = { group: true, filters: { routes: true, calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
+
+  // ---- topologia (opcional): rota → handlers e símbolo → operação de I/O
+  const routeId = (r) => 'route:' + r.id;
+  const ioId = (o) => 'io:' + o.kind + ':' + o.target;
+  const topo = { nodes: [], edges: [] };
+  if (TOPOLOGY) {
+    const seen = new Set();
+    for (const r of TOPOLOGY.routes) {
+      topo.nodes.push({ id: routeId(r), kind: 'route', name: r.id, route: r });
+      for (const h of r.handlers) for (const s of h.symbols) topo.edges.push({ source: routeId(r), target: s, type: 'route' });
+      for (const o of r.operations) {
+        if (!seen.has(ioId(o))) {
+          seen.add(ioId(o));
+          topo.nodes.push({ id: ioId(o), kind: o.kind === 'api_call' ? 'io-api' : 'io-db', name: o.kind + ' ' + o.target, op: o });
+        }
+        topo.edges.push({ source: o.symbol, target: ioId(o), type: 'io' });
+      }
+    }
+  }
 
   // ---- painel de cobertura
   const s = SYSTEM.stats;
@@ -190,8 +218,12 @@ const APP = String.raw`
       if (n.kind === 'package' && !f.packages) return false;
       return true;
     });
+    const withTopo = !!TOPOLOGY && f.routes;
+    if (withTopo) candidates.push(...topo.nodes);
     const present = new Set(candidates.map((n) => n.id));
-    const edges = SYSTEM.edges.filter((e) => e.type !== 'defines' && f[e.type] && present.has(e.source) && present.has(e.target));
+    const edges = SYSTEM.edges
+      .concat(withTopo ? topo.edges : [])
+      .filter((e) => e.type !== 'defines' && (f[e.type] || e.type === 'route' || e.type === 'io') && present.has(e.source) && present.has(e.target));
     const linked = new Set(edges.flatMap((e) => [e.source, e.target]));
 
     // símbolo sem nenhuma aresta visível só polui a leitura do fluxo (a menos que pedido)
@@ -206,9 +238,12 @@ const APP = String.raw`
       out.push({ data, classes: 'k-' + n.kind });
     }
     const shown = new Set(out.map((e) => e.data.id));
+    const edgeIds = new Set();
     for (const e of edges) {
-      if (!shown.has(e.source) || !shown.has(e.target)) continue;
-      out.push({ data: { id: e.source + '|' + e.type + '|' + e.target, source: e.source, target: e.target, type: e.type }, classes: 'e-' + e.type + (e.heuristic ? ' heuristic' : '') });
+      const id = e.source + '|' + e.type + '|' + e.target;
+      if (!shown.has(e.source) || !shown.has(e.target) || edgeIds.has(id)) continue;
+      edgeIds.add(id);
+      out.push({ data: { id, source: e.source, target: e.target, type: e.type }, classes: 'e-' + e.type + (e.heuristic ? ' heuristic' : '') });
     }
     return out;
   }
@@ -225,6 +260,11 @@ const APP = String.raw`
     { selector: '.e-references', style: { 'line-style': 'dashed', 'line-color': css('--refs'), 'target-arrow-color': css('--refs') } },
     { selector: '.e-imports', style: { 'line-color': css('--imports'), 'target-arrow-color': css('--imports'), opacity: 0.5 } },
     { selector: '.heuristic', style: { 'line-style': 'dashed', 'line-color': css('--heur'), 'target-arrow-color': css('--heur') } },
+    { selector: '.k-route', style: { 'background-color': css('--route'), shape: 'tag', width: 26, height: 18, 'font-weight': 700, 'font-size': 11 } },
+    { selector: '.k-io-db', style: { 'background-color': css('--db'), shape: 'barrel', width: 20, height: 20, 'font-weight': 600 } },
+    { selector: '.k-io-api', style: { 'background-color': css('--api'), shape: 'hexagon', width: 22, height: 20, 'font-weight': 600 } },
+    { selector: '.e-route', style: { width: 2, 'line-color': css('--route'), 'target-arrow-color': css('--route') } },
+    { selector: '.e-io', style: { width: 2, 'line-color': css('--db'), 'target-arrow-color': css('--db') } },
     { selector: '.faded', style: { opacity: 0.08 } },
     { selector: '.hl', style: { opacity: 1, 'z-index': 10 } },
     { selector: 'edge.hl', style: { width: 2.4 } },
@@ -265,7 +305,8 @@ const APP = String.raw`
   document.getElementById('back').onclick = () => build();
 
   // ---- seleção e cadeias
-  const flowEdges = (eles) => eles.filter((e) => e.isEdge() && (e.data('type') === 'calls' || e.data('type') === 'references'));
+  const FLOW_TYPES = new Set(['calls', 'references', 'route', 'io']);
+  const flowEdges = (eles) => eles.filter((e) => e.isEdge() && FLOW_TYPES.has(e.data('type')));
   function highlight(collection) {
     cy.elements().addClass('faded').removeClass('hl');
     collection.removeClass('faded').addClass('hl');
@@ -292,6 +333,18 @@ const APP = String.raw`
     node.select();
     highlight(node.closedNeighborhood().union(node.descendants()));
     const rows = [['tipo', raw.kind]];
+    if (raw.route) {
+      const r = raw.route;
+      rows.push(['registro', r.file + ':' + (r.line + 1)], ['handlers', r.handlers.map((h) => h.label).join(' → ')]);
+      rows.push(['operações', r.operations.map((o) => o.order + '. ' + o.kind + ' ' + o.target).join(' · ') || '—']);
+      rows.push(['tags', r.tags.map((t) => t.tag + (t.targets ? '(' + t.targets.join(',') + ')' : '')).join(', ') || '—']);
+      rows.push(['confiança', r.confidence + (r.truncated ? ' (percurso truncado)' : '')]);
+    }
+    if (raw.op) {
+      rows.push(['via', raw.op.via + (raw.op.operation ? ' · ' + raw.op.operation : '')]);
+      if (raw.op.timeout) rows.push(['timeout', raw.op.timeout]);
+      if (raw.op.lock) rows.push(['trava', 'FOR UPDATE']);
+    }
     if (raw.file) rows.push(['arquivo', raw.file]);
     if (raw.startLine !== undefined) rows.push(['linhas', (raw.startLine + 1) + '–' + (raw.endLine + 1)]);
     if (raw.container) rows.push(['contêiner', raw.container]);
@@ -359,11 +412,36 @@ const APP = String.raw`
     }
   }
 
+  // ---- lista de rotas (com topologia): cada uma abre o fluxo rota → handlers → ... → I/O
+  if (TOPOLOGY) {
+    const list = document.getElementById('routes');
+    list.hidden = false;
+    list.innerHTML = '<h2>Rotas (' + TOPOLOGY.routes.length + ')</h2>' + (TOPOLOGY.routes.length === 0 ? '<p class="muted small">Nenhuma rota Express encontrada.</p>' : '');
+    for (const r of TOPOLOGY.routes) {
+      const b = document.createElement('button');
+      b.className = 'route-item';
+      b.textContent = r.id;
+      const tags = document.createElement('small');
+      tags.textContent = r.operations.length + ' operação(ões)' + (r.tags.length ? ' · ' + r.tags.map((t) => t.tag).join(', ') : '');
+      b.appendChild(tags);
+      b.onclick = () => {
+        if (!state.filters.routes) { state.filters.routes = true; document.querySelector('[data-filter=routes]').checked = true; build(); }
+        const node = cy.getElementById(routeId(r));
+        if (!node.empty()) showFlow(chain(node, 'down'), node, r.id);
+      };
+      list.appendChild(b);
+    }
+  }
+
   build();
 
-  // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele
+  // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota
   const hash = decodeURIComponent(location.hash.slice(1));
   const [mode, target] = [hash.slice(0, hash.indexOf('=')), hash.slice(hash.indexOf('=') + 1)];
+  if (mode === 'rota' && TOPOLOGY) {
+    const node = cy.getElementById('route:' + target);
+    if (!node.empty()) showFlow(chain(node, 'down'), node, target);
+  }
   if (target && (mode === 'foco' || mode === 'fluxo')) {
     const node = cy.nodes().filter((n) => n.id() === target || n.id().startsWith(target + ':'))[0];
     if (node && mode === 'foco') focus(node.id());

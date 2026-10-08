@@ -171,6 +171,11 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Formato:** `TopologyGraph { version, contentHash, systemGraphHash, stats, routes, skipped, collisions }`, com ids relativos (`relativeIds`, extraído do `system-graph.ts`) e JSON canônico. O hash é o mesmo independente da ordem de indexação.
   - **Aceitação no `checkout-express`: atingida.** `POST /checkout` sai com `db_read stock → api_call api.stripe.com → db_write stock → db_write orders` e as tags `external-io, no-timeout, no-transaction(stock), read-then-write(stock), write-after-api-call(orders,stock)`, tudo `proven`. `GET /orders/:id` sai com `db_read orders`.
   - Suíte: **230 testes**.
+- 2026-10-08: **2e concluído (superfície de ataque + CLI + visualizador).**
+  - **`attackSurface(topology)`** (`topology/surface.ts`): só as rotas sensíveis (com I/O ou colisão no caminho) e as colisões. Cada operação traz `at: arquivo:linha` (1-based) e `in: função`, sem nenhuma linha de código. Leva o `topologyHash`, para amarrar a resposta da IA a este mapa.
+  - **CLI:** `shieldepy topology <pasta> [--json] [--surface] [--out arquivo] [--html arquivo]`. Na saída de texto, cada rota vem com a cadeia de handlers, as operações em ordem com `arquivo:linha` e detalhe (`sem timeout`, `FOR UPDATE`, `por nome`), as tags e os registros que não deu para ler.
+  - **Visualizador:** `renderGraphHtml(system, label, mode, topology?)`. Com a topologia, rotas viram nós (ligados aos handlers) e cada operação de I/O vira um nó (`db_write stock`, `api_call api.stripe.com`, ligado ao símbolo que a faz). Também ganha a lista lateral de rotas com as tags, o filtro "rotas e operações de I/O" e o link `#rota=POST /checkout`, que abre o fluxo da rota. Conferido em screenshot no Chrome headless (mapa geral e fluxo do `POST /checkout`). Sem a topologia, o visualizador da E1 continua igual.
+  - Suíte: **233 testes**. A extensão compila.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -267,7 +272,7 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
     - `no-transaction` (read-then-write fora de transação/lock).
   - Anexar os baldes com colisão do `SystemGraph`.
   - `confidence` por operação: `proven` ou `heuristic`, conforme as arestas usadas.
-- **2e. Superfície de ataque + CLI.**
+- **2e. Superfície de ataque + CLI.** ✅ Concluída em 2026-10-08.
   - `attackSurface(topology)`: só rotas com I/O e baldes com colisão. É isto, e não o código, que vai para a IA.
   - `shieldepy topology <pasta> [--json] [--out .shieldepy/topology-graph.json]`.
   - O `--html` do V1 mostra rotas e operações como nós.
