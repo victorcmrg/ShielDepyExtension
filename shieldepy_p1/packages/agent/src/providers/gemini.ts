@@ -1,5 +1,5 @@
 // Cliente da API do Google Gemini via fetch nativo (sem SDK), com retry nos status transitórios.
-import type { CompletionRequest, LLMProvider, Logger } from '../provider';
+import type { Completion, CompletionRequest, LLMProvider, Logger } from '../provider';
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -18,6 +18,9 @@ export interface GeminiProviderOptions {
 
 interface GeminiResponse {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
+  /** Tokens cobrados; o raciocínio (`thoughtsTokenCount`) é cobrado como saída. */
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; cachedContentTokenCount?: number };
+  modelVersion?: string;
 }
 
 export class GeminiProvider implements LLMProvider {
@@ -31,6 +34,10 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async complete(request: CompletionRequest): Promise<string> {
+    return (await this.completeWithUsage(request)).text;
+  }
+
+  async completeWithUsage(request: CompletionRequest): Promise<Completion> {
     const model = this.options.model || DEFAULT_GEMINI_MODEL;
     const body = JSON.stringify({
       systemInstruction: { parts: [{ text: request.system }] },
@@ -49,7 +56,21 @@ export class GeminiProvider implements LLMProvider {
         signal: request.signal,
       });
 
-      if (res.ok) return extractText((await res.json()) as GeminiResponse);
+      if (res.ok) {
+        const data = (await res.json()) as GeminiResponse;
+        const u = data.usageMetadata;
+        return {
+          text: extractText(data),
+          model: data.modelVersion ?? model,
+          ...(u && {
+            usage: {
+              inputTokens: u.promptTokenCount ?? 0,
+              outputTokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0),
+              ...(u.cachedContentTokenCount ? { cacheReadTokens: u.cachedContentTokenCount } : {}),
+            },
+          }),
+        };
+      }
 
       const wait = this.backoffMs[attempt];
       if (TRANSIENT.has(res.status) && wait !== undefined) {

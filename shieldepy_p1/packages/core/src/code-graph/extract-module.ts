@@ -33,6 +33,12 @@ export interface ModuleInfo {
    * → orderService: ['OrderService']. É o que liga `orderService.create()` em OUTRO arquivo ao método.
    */
   valueTypes: Map<string, TypeRef>;
+  /**
+   * Membros de objeto literal do topo que apontam para um nome: `export default { createApp }` →
+   * `default.createApp` → `createApp`; `const api = { v1: { list: listOrders } }` → `api.v1.list` → `listOrders`.
+   * É o que liga `config.createApp()` em outro arquivo à função de verdade.
+   */
+  objectRefs: Map<string, string>;
 }
 
 /** Nome dado ao símbolo de `export default function () {}` / `export default () => {}`. */
@@ -49,6 +55,25 @@ function stringValue(node: SyntaxNode | null | undefined): string | undefined {
   if (!node || (node.type !== 'string' && node.type !== 'template_string')) return undefined;
   if (node.type === 'template_string' && node.namedChildren.some((c) => c.type === 'template_substitution')) return undefined;
   return node.text.slice(1, -1);
+}
+
+/** Chave de uma propriedade de objeto literal (`a`, `'a'`); computada (`[x]`) fica de fora. */
+export function propertyKey(key: SyntaxNode | null | undefined): string | undefined {
+  if (key?.type === 'property_identifier') return key.text;
+  return stringValue(key);
+}
+
+/** `{ a, b: c, d: { e } }` em `path` → `path.a`→a, `path.b`→c, `path.d.e`→e. */
+function collectObjectRefs(object: SyntaxNode, path: string, out: Map<string, string>): void {
+  for (const p of object.namedChildren) {
+    if (p.type === 'shorthand_property_identifier') out.set(`${path}.${p.text}`, p.text);
+    if (p.type !== 'pair') continue;
+    const key = propertyKey(p.childForFieldName('key'));
+    const value = p.childForFieldName('value');
+    if (!key || !value) continue;
+    if (value.type === 'identifier') out.set(`${path}.${key}`, value.text);
+    else if (value.type === 'object') collectObjectRefs(value, `${path}.${key}`, out);
+  }
 }
 
 function hasToken(node: SyntaxNode, token: string): boolean {
@@ -223,22 +248,28 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
   });
 
   const valueTypes = new Map<string, TypeRef>();
+  const objectRefs = new Map<string, string>();
   for (const stmt of root.namedChildren) {
     const inner = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') ?? stmt.childForFieldName('value') : stmt;
     if (!inner) continue;
-    if (stmt.type === 'export_statement' && inner === stmt.childForFieldName('value')) {
+    // `export default <expressão>` (sem declaração). Nada de `===` entre nós: o web-tree-sitter
+    // cria um objeto novo a cada acesso, e a comparação por identidade nunca batia.
+    if (stmt.type === 'export_statement' && !stmt.childForFieldName('declaration')) {
       const type = constructedType(inner); // export default new OrderService()
       if (type) valueTypes.set('default', type);
+      if (inner.type === 'object') collectObjectRefs(inner, DEFAULT_EXPORT_NAME, objectRefs);
       continue;
     }
     if (inner.type !== 'lexical_declaration' && inner.type !== 'variable_declaration') continue;
     for (const d of inner.namedChildren) {
       const name = d.type === 'variable_declarator' ? d.childForFieldName('name') : undefined;
       if (name?.type !== 'identifier') continue;
-      const type = typeRef(d.childForFieldName('type')) ?? constructedType(d.childForFieldName('value'));
+      const value = d.childForFieldName('value');
+      const type = typeRef(d.childForFieldName('type')) ?? constructedType(value);
       if (type) valueTypes.set(name.text, type);
+      if (value?.type === 'object') collectObjectRefs(value, name.text, objectRefs);
     }
   }
 
-  return { specs, imports, exports, reexports, valueTypes };
+  return { specs, imports, exports, reexports, valueTypes, objectRefs };
 }

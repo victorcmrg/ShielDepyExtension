@@ -1,0 +1,25 @@
+{
+  "name": "checkout-express-fixed",
+  "private": true,
+  "type": "module",
+  "description": "Exemplo do ShielDepy: o mesmo checkout, corrigido — reserva o estoque num UPDATE atômico antes de cobrar, devolve se a cobrança falhar, e chama o Stripe com timeout.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.11.10",
+    "@types/supertest": "^6.0.2",
+    "msw": "^2.7.0",
+    "supertest": "^7.0.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9"
+  }
+}

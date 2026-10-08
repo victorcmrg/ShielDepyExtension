@@ -19,7 +19,11 @@ const workspace = mkdtempSync(join(tmpdir(), 'shieldepy-e2e-'));
 
 cpSync(join(here, '..', '..', '..', 'examples', 'pedidos-microservices'), workspace, { recursive: true });
 // Um sistema Express de verdade (DI, barrel, tsconfig `paths`, interface): o mapa tem que sair provado.
-cpSync(join(here, '..', '..', '..', 'examples', 'checkout-express'), join(workspace, 'checkout'), { recursive: true });
+// sem o node_modules do exemplo (ele é executável desde a E3): só o código interessa ao mapa
+cpSync(join(here, '..', '..', '..', 'examples', 'checkout-express'), join(workspace, 'checkout'), {
+  recursive: true,
+  filter: (src) => !src.split(/[\\/]/).includes('node_modules'),
+});
 writeFileSync(join(workspace, 'a.ts'), "import { b } from './b';\nexport function a() { b(); }\n");
 writeFileSync(join(workspace, 'b.ts'), "import { a } from './a';\nexport function b() { a(); }\n");
 

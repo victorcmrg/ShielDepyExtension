@@ -118,7 +118,7 @@ describe('CLI', () => {
     expect((await run('report', 'x', '--fail-on', 'grave')).code).toBe(2);
     expect((await run('voar')).code).toBe(2);
     expect((await run('report', '/nao/existe')).err).toMatch(/erro:/);
-    expect(parseArgs(['explain', 'p', '--json'])).toEqual({ command: 'explain', target: 'p', json: true, pg: false, surface: false });
+    expect(parseArgs(['explain', 'p', '--json'])).toEqual({ command: 'explain', target: 'p', json: true, pg: false, surface: false, noRun: false, offline: false });
   });
 
   it('topology: rotas, operações em ordem e tags do checkout-express', async () => {
@@ -166,6 +166,54 @@ describe('CLI', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('CLI chaos (E3)', () => {
+  const chaosDir = (ex: string) => path.join(example(ex), '.shieldepy', 'chaos-tests');
+
+  it('--no-run --offline: gera os testes do checkout-express, com custo zero e o hash da topologia', async () => {
+    try {
+      const { code, out } = await run('chaos', example('checkout-express'), '--no-run', '--offline', '--json');
+      expect(code).toBe(0);
+      const r = JSON.parse(out);
+      expect(r.engine).toBe('offline');
+      expect(r.cost).toMatchObject({ calls: 0, usd: 0 });
+      expect(r.topologyHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(r.written).toContain('.shieldepy/chaos-tests/POST__checkout__race_condition__stock.spec.ts');
+      expect(r.written).toContain('.shieldepy/chaos-tests/POST__checkout__timeout__api.stripe.com.spec.ts');
+      expect(r.warnings).toEqual([]);
+      // a rota só de leitura não ganha teste de corrida nem de rede
+      expect(r.specs.every((s: { routeId: string }) => s.routeId === 'POST /checkout')).toBe(true);
+      expect(fs.readdirSync(chaosDir('checkout-express')).filter((f) => f.endsWith('.spec.ts'))).toHaveLength(4);
+    } finally {
+      fs.rmSync(path.join(example('checkout-express'), '.shieldepy'), { recursive: true, force: true });
+    }
+  });
+
+  it('regera do zero: teste de uma hipótese que sumiu não fica para trás', async () => {
+    const stale = path.join(chaosDir('checkout-express-fixed'), 'POST__checkout__timeout__api.stripe.com.spec.ts');
+    try {
+      fs.mkdirSync(path.dirname(stale), { recursive: true });
+      fs.writeFileSync(stale, '// velho');
+      const { code, out } = await run('chaos', example('checkout-express-fixed'), '--no-run', '--offline');
+      expect(code).toBe(0);
+      expect(out).toMatch(/3 teste\(s\) de caos/);
+      expect(fs.existsSync(stale)).toBe(false); // o corrigido tem timeout: não há mais hipótese de timeout
+    } finally {
+      fs.rmSync(path.join(example('checkout-express-fixed'), '.shieldepy'), { recursive: true, force: true });
+    }
+  });
+
+  it('sem shieldepy.chaos.config.ts: aborta com o modelo do arquivo; sem --no-run: avisa que rodar é a E4', async () => {
+    const noConfig = await run('chaos', example('pedidos-microservices'), '--no-run', '--offline');
+    expect(noConfig.code).toBe(2);
+    expect(noConfig.err).toMatch(/falta shieldepy\.chaos\.config\.ts/);
+    expect(noConfig.err).toMatch(/requests:/);
+
+    const noRun = await run('chaos', example('checkout-express'), '--offline');
+    expect(noRun.code).toBe(2);
+    expect(noRun.err).toMatch(/chega na E4/);
   });
 });
 

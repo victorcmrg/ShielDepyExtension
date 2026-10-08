@@ -37,5 +37,5 @@ export const INLINE_LANGUAGES = ['typescript', 'typescriptreact', 'javascript', 
 /** tsconfig/jsconfig (inclusive `tsconfig.base.json`): mudou → o grafo refaz a resolução de imports. */
 export const MODULE_CONFIG_GLOB = '**/{tsconfig,jsconfig}*.json';
 export const FILE_GLOB = '**/*.{ts,tsx,js,jsx,mjs,cjs,html,htm,css,java,py,cs}';
-export const EXCLUDE_GLOB = '**/{node_modules,dist,out,.git,bin,obj,.venv,venv,__pycache__}/**';
+export const EXCLUDE_GLOB = '**/{node_modules,dist,out,.git,bin,obj,.venv,venv,__pycache__,.shieldepy}/**';
 export const MAX_ANALYZABLE_BYTES = 2 * 1024 * 1024;

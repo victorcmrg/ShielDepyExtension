@@ -1,6 +1,7 @@
 // Camada de IA. O core nunca importa daqui; os apps escolhem o provider e chamam os casos de uso.
 export * from './provider';
 export * from './select';
+export * from './cost';
 export * from './text';
 export { AnthropicProvider, DEFAULT_ANTHROPIC_MODELS, type AnthropicProviderOptions } from './providers/anthropic';
 export { GeminiProvider, DEFAULT_GEMINI_MODEL, type GeminiProviderOptions } from './providers/gemini';
@@ -17,3 +18,6 @@ export * from './code/scan';
 export * from './code/review';
 export * from './code/inline';
 export * from './code/chat';
+
+// O caos (LangGraph) fica em `@shieldepy/agent/chaos`: exportar daqui puxaria o LangGraph para o
+// bundle da extensão (611 KB → 1,9 MB) sem que ela use nada disso.

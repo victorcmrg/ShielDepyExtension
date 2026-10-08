@@ -7,3 +7,6 @@ out/
 .env
 .env.*
 !.env.example
+
+# artefatos do ShielDepy (topologia exportada, testes de caos gerados)
+.shieldepy/

@@ -173,6 +173,39 @@ Tudo é decidido pelo **pacote para o qual a chamada resolveu** no grafo, nunca 
 (`rotas.html#rota=POST /checkout` abre o fluxo da rota). O JSON é canônico, com hash, e aponta
 para o hash do mapa de onde saiu.
 
+### Testes de caos gerados pela topologia
+
+`shieldepy chaos <pasta> --no-run` transforma a topologia em testes de caos para as rotas
+sensíveis. O pipeline é um grafo do LangGraph (`@shieldepy/agent/chaos`):
+
+1. **Threat Modeler** (IA, tier `deep`, ou o motor offline): recebe só a superfície de ataque, sem
+   código, e propõe hipóteses do catálogo (`race_condition`, `timeout`, `http_5xx_intermittent`,
+   `malformed_response`, ...). O motor gera a lista-base pelas tags; **a IA não tira nada dela**, só
+   explica, prioriza e acrescenta, e o que ela inventa (rota, falha ou alvo) é descartado.
+2. **Especialistas Network e Concurrency** (IA, tier `fast`): preenchem uma spec validada
+   (atraso, status, corpo inválido, requisições em paralelo, invariantes). A IA **não escreve código**.
+3. **Templates**: cada spec vira um `.spec.ts` (Vitest + supertest + MSW) com um bloco de
+   **controle** (a mesma requisição, sem caos) e o de **caos**.
+
+O projeto declara o contrato em `shieldepy.chaos.config.ts`, que o ShielDepy lê pela AST, sem executar:
+
+```ts
+export default {
+  createApp,                                   // o app sem abrir porta
+  setupFiles: ['chaos/setup.ts'],              // ex.: o banco vira PGlite em memória
+  async reset() { /* estado limpo antes de cada teste */ },
+  invariants: { async stockNeverNegative() { /* ... */ } },
+  apis: { 'api.stripe.com': () => ({ id: 'ch_test', status: 'succeeded' }) }, // resposta saudável
+  requests: { 'POST /checkout': { path: '/checkout', body: { /* válido */ } } },
+};
+```
+
+No `examples/checkout-express`, os 4 testes de caos falham (corrida no estoque, Stripe sem
+timeout, e a rota pendurada com 5xx ou corpo inválido), enquanto os controles passam. No
+`examples/checkout-express-fixed`, tudo passa. O relatório do comando traz o custo da IA (tokens e US$)
+e o hash da topologia. Rodar os testes e bloquear o PR é a próxima etapa (E4); até lá:
+`npx vitest run --config .shieldepy/chaos-tests/vitest.config.ts` dentro do projeto.
+
 ## Mapa do código
 
 As dependências andam numa direção só:
@@ -198,6 +231,10 @@ apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode
 | Artefato do mapa do sistema (`shieldepy graph`) | `packages/core/src/system-graph.ts` |
 | Rotas, operações de I/O, tags e superfície de ataque (`shieldepy topology`) | `packages/core/src/topology/*` |
 | SQL por tokens (triggers e `pool.query`) | `packages/core/src/sql/*` |
+| Contrato `shieldepy.chaos.config.ts` lido pela AST | `packages/core/src/chaos-config.ts` |
+| Catálogo de falhas, hipóteses, Threat Modeler, especialistas, templates e grafo LangGraph | `packages/agent/src/chaos/*` |
+| Tokens e custo de cada chamada à IA | `packages/agent/src/cost.ts` |
+| Comando `shieldepy chaos` | `apps/cli/src/chaos.ts` |
 | Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
@@ -266,6 +303,7 @@ npm run cli -- graph   <pasta> [--json] [--out mapa.json]      # mapa do sistema
 npm run cli -- graph   <pasta> --html mapa.html              # visualizador interativo (offline)
 npm run cli -- topology <pasta> [--json] [--surface] [--out .shieldepy/topology-graph.json] [--html rotas.html]
                                                                # rotas, I/O em ordem e tags de risco
+npm run cli -- chaos   <pasta> --no-run [--offline] [--json]   # gera testes de caos em .shieldepy/chaos-tests/
 npm run cli -- report  --pg postgres://user:pass@host/db       # triggers de um Postgres real
 ```
 
@@ -346,5 +384,8 @@ Do Projeto18:
   recebido como parâmetro (sai sem o prefixo de quem chama), SQL que não é literal
   (`db_unknown`) e chamadas dentro de callbacks passados a funções (`prisma.$transaction(async (tx) => ...)`:
   o `tx` não tem tipo, então as operações de dentro não aparecem).
+- Caos: só falhas de rede e de concorrência têm teste. Falha no banco depois da chamada externa
+  (`partial_failure_after_external_call`) e `retry_storm` aparecem como hipótese, mas sem teste. Host
+  de API dinâmico (URL montada em runtime) não gera teste de rede, porque não se sabe o que interceptar.
 - O painel, o chat e as configurações são testados no E2E só indiretamente (via comandos e
   Diagnostics), não clicando na interface.
