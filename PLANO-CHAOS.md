@@ -9,14 +9,16 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-08: tudo até o V3 na `main`; próxima, E6 — DB_Chaos)
+## Como retomar num chat novo (atualizado em 2026-10-08: E6 — DB_Chaos pronta na `feat/db-chaos`, esperando o merge)
 
 **Onde estamos (2026-10-08):** **tudo até o V3 está na `main`** (`297c964`): E1, V1, E2, E3, E4, E5 (com a 5g), V2 e V3. O sistema funciona de ponta a ponta: mapa do código → rotas sensíveis → hipóteses (motor + IA) → testes de caos com controle → portão no CI (só o que o PR tocou) → relatório no PR → mapa com o resultado (CLI e extensão) → portal com o histórico.
 
-**Próxima etapa: E6 — DB_Chaos**, na branch `feat/db-chaos`, já criada a partir da `main` (`297c964`). Ela só tem esta atualização do plano. Leia, nesta ordem:
+**E6 — DB_Chaos: concluída** na branch `feat/db-chaos` (D1–D6, sem push), esperando o usuário subir e fazer o merge. O catálogo não tem mais falha "sem teste no MVP" além do `retry_storm`. O DB_Chaos achou a falha parcial **no exemplo corrigido** (cobrava e não gravava o pedido), e o corrigido ganhou a compensação.
+
+**Depois do merge, a próxima etapa é a E7** (grafo de chamadas para Java/C#/Python; ver a avaliação em "Grafo de chamadas para outras linguagens"). Ela ainda precisa de um desenho e de uma branch. Leia, nesta ordem:
 1. esta seção (inclui o que foi validado e o que ainda depende do usuário);
-2. a seção **"E6 — DB_Chaos"** (o problema, o que reaproveitar, o desenho, as tarefas D1–D6 e a aceitação);
-3. o fim do **Registro**, para os detalhes das etapas anteriores.
+2. a seção **"E6 — DB_Chaos"** e o fim do **Registro** (D1–D6), para as decisões que mudaram o desenho;
+3. a avaliação das outras linguagens, para desenhar a E7.
 
 **Validado em 2026-10-08, depois do merge de tudo:**
 - **CI no GitHub (antes só tinha sido simulado):** o workflow "ShielDepy chaos" rodou nos PRs #5–#7 e no push da `main`, e **tudo passou** (lido pela API pública do GitHub). Na última execução da `main`:
@@ -27,7 +29,8 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - **Comentário no PR:** o bot comentou o relatório no PR #7, com **um** comentário só, apesar de várias execuções (o `--edit-last` funciona).
 - **E2E na `main`:** 27/27 num VS Code real.
 - **Ainda não validado (depende do usuário, nada a fazer no código):**
-  1. **O PR de teste com check vermelho.** Roteiro no registro da 4e: uma branch que só apaga `signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),` do `StripeGateway` do `checkout-express-fixed`. Esperado: o `chaos-gate` vermelho e um comentário com o achado de timeout. **Depois do DB_Chaos** vale repetir com um PR que tire a compensação do corrigido.
+  1. **O PR de teste com check vermelho.** Roteiro no registro da 4e: uma branch que só apaga `signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),` do `StripeGateway` do `checkout-express-fixed`. Esperado: o `chaos-gate` vermelho e um comentário com o achado de timeout. **Com o DB_Chaos na `main`**, vale repetir com um PR que tire a compensação do `CheckoutService` do corrigido (voltar o `try/catch` do `orders.insert` para um `return` direto): esperado o achado Crítico `partial_failure_after_external_call` em `orders`, com `noChargeWithoutOrder`.
+  4. **O self-test do CI com o DB_Chaos:** na primeira execução depois do merge, conferir que o `self-test` passa no Linux do GitHub exigindo também a falha parcial.
   2. **A medição de custo real:** `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (menos de US$ 0,50). Hoje o `RELATORIO-CUSTO-IA.md` é uma estimativa.
   3. **O portal no ar:** hospedar o `apps/frontend` com `PUBLIC_URL`, criar o token na página do projeto e configurar o secret `SHIELDEPY_PORTAL_TOKEN` e a variável `SHIELDEPY_PORTAL_URL` no GitHub. Até lá, o passo de publicar fica `skipped`.
 
@@ -42,10 +45,10 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - Mudança visual (relatório, visualizador, portal): conferir em screenshot antes de dar por pronta. O roteiro do portal está no registro da V3c/V3d: banco temporário com `SHIELDEPY_DATA_DIR`, `chaos` + `publish` de verdade, screenshot pelo protocolo do Chrome com a sessão. Lembrar de **matar o servidor** no fim; no Windows o processo do tsx sobrevive ao fim do terminal.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**321** na `main`, depois do V3).
+- `npm run check`: typecheck + testes unitários (**326** na `feat/db-chaos`).
 - `npm run build:vscode`: extensão (~636 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**27/27**, leva alguns minutos).
-- `npm run cli -- chaos examples/checkout-express --offline [--report r.md] [--html mapa.html] [--base origin/main]`: gera, roda e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). `--no-run` só gera.
+- `npm run cli -- chaos examples/checkout-express --offline [--report r.md] [--html mapa.html] [--base origin/main]`: gera, roda e aplica o portão (exit 1 no vulnerável, com 6 achados, e 0 no `-fixed`, com 4 aguentando e 1 inválido). `--no-run` só gera.
 - `npm run cli -- diff <pasta> --base <ref>` e `npm run cli -- publish <pasta> --portal <url>`.
 - `npm run estimate:chaos` (grátis) e `npm run measure:chaos -- --sim-gastar` (pago).
 - Dentro de um exemplo (`examples/checkout-express` e `-fixed`, que precisam de `npm install` próprio): `npm test` roda o teste de fumaça.
@@ -54,7 +57,9 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ainda não feito, de propósito (não é bug):**
 - Os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram: falta a medição paga.
-- `partial_failure` aparece como "sem teste no MVP" (é a E6) e `retry_storm` também (o exemplo não tem retry).
+- `retry_storm` continua sem teste (o exemplo não tem retry). O DB_Chaos só injeta no `pg`: Prisma, TypeORM e Knex ficam sem teste, e falha no meio de transação também.
+- A falha parcial em `stock` no corrigido sai **inválida** ("a falha não disparou"): o `stock` só é gravado depois da API no caminho de erro. É o comportamento esperado, não bug.
+- Com 7 operações, a linha do tempo do portal rola na horizontal sem dica visual (observação da D5).
 - Nenhum secret de IA ou de portal foi configurado no GitHub: o CI roda `--offline` e não publica.
 - As observações do registro da 3a: 5 heurísticas e 2 sem alvo no `packages/` do próprio ShielDepy.
 
@@ -64,7 +69,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 
 - **Mergeados na `main`:** E1 (PR #1), V1 (PR #2), E2 (PR #3), E3 (PR #4), E4 (`feat/chaos-gate`), E5 com a 5g (`feat/mapa-incremental`, PR #5), V2 (PR #6) e V3 (PR #7), até o `297c964`.
 - **Reordenações (decididas com o usuário):** em 2026-10-08, "outras linguagens" passou de E5 para E6, abrindo espaço para a E5 (mapa incremental e custo). No mesmo dia passou para **E7**, abrindo espaço para o **DB_Chaos (E6)**, a última falha do catálogo sem teste.
-- **E6 — DB_Chaos: próxima**, na branch `feat/db-chaos`.
+- **E6 — DB_Chaos: concluída** na branch `feat/db-chaos`, esperando o merge. Depois, a E7.
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -76,7 +81,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 5. E5: mapa incremental e custo, tarefas 5a–5g | `feat/mapa-incremental` | concluído, mergeado; falta a medição paga (5e) |
 | V2. Caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado |
 | V3. Portal: o caos enviado pelo CI, com histórico, tarefas V3a–V3e | `feat/portal-v3` | concluído, mergeado; falta pôr o portal no ar |
-| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1–D5 feitas) |
+| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | concluído (D1–D6), **esperando o merge** |
 | 7. E7: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (ver avaliação) |
 
 ### Registro
@@ -665,6 +670,18 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - Servidor, Chrome headless e banco temporário desligados e apagados.
   - **Observação (não mexi):** com 7 operações, a linha do tempo do corrigido passa da largura no desktop e rola na horizontal (`overflow-x`, como no V3), sem uma dica visual de que há mais à direita. No celular, ela fica vertical e aparece inteira.
   - Suíte **326**.
+- 2026-10-08: **D6 concluído, e com ele a E6 (DB_Chaos).**
+  - **Docs:**
+    - README: o especialista DB_Chaos no pipeline, um parágrafo do DB_Chaos (onde a falha é injetada, `ctx.apiCalls`, o "não disparou", só `pg`), os números novos dos exemplos e o limite reescrito;
+    - `docs/chaos-ci.md`: a falha no banco na introdução e os limites (só `pg`, sem transação, o "não disparou", `retry_storm`).
+  - **Aceitação (conferida):**
+    - `chaos examples/checkout-express --offline` → **exit 1, 6 achados**: os 4 de antes e a falha parcial em `orders` e em `stock`, as duas Crítico, com `noChargeWithoutOrder` violada;
+    - `chaos examples/checkout-express-fixed --offline` → **antes da compensação**, exit 1 com a falha parcial em `orders` (D2+D3); **depois** (D4), exit 0, com 4 aguentando e 1 inválido (`stock`, a falha não disparou);
+    - os testes gerados compilam contra os dois exemplos;
+    - suíte **326**, extensão com **636 KB** (sem mudança) e E2E **27/27** num VS Code real;
+    - o portal mostra a falha parcial em "grava orders" (screenshots da D5);
+    - o self-test do CI foi simulado com o relatório real. A execução no GitHub fica para depois do merge.
+  - **Fica para o usuário:** subir a branch e fazer o merge; depois, o PR de teste sem a compensação (roteiro em "Como retomar").
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -1173,7 +1190,7 @@ O DB_Chaos tem que **pegar isso no corrigido** (e no vulnerável). Depois o corr
   - **corrigido:** **antes de corrigir**, rodar e registrar que o DB_Chaos pega a falha (o "achado no corrigido"). Depois implementar a compensação (`StripeGateway.refund`, `release` da reserva, 502) e conferir que passa;
   - atualizar os testes de topologia da E2 (o corrigido ganha o `api_call` do estorno) e os de fumaça (`npm test` no exemplo).
 - ✅ **D5. Superfícies:** CLI (o texto e o JSON já servem; conferir), relatório markdown, visualizador e portal (sem "sem teste no MVP" para a falha parcial; o rótulo do achado já existe); o `self-test` do CI passa a exigir também a falha parcial no vulnerável; e o `RELATORIO-CUSTO-IA.md`, se o número de chamadas mudar (um especialista a mais por hipótese).
-- **D6. Aceitação e docs:** README, `docs/chaos-ci.md` e o registro no plano.
+- ✅ **D6. Aceitação e docs:** README, `docs/chaos-ci.md` e o registro no plano.
 
 ### Aceitação do DB_Chaos
 - `chaos examples/checkout-express --offline` → os achados de antes **mais** a falha parcial em `orders` e em `stock` (Crítico), com a invariante `noChargeWithoutOrder` violada.

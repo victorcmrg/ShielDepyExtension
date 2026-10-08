@@ -1,6 +1,6 @@
 # Caos no CI: o ShielDepy como portão de PR
 
-O ShielDepy lê o código (Tree-sitter, sem executar nada), acha as rotas HTTP que fazem I/O arriscado e gera testes de caos **só para elas**. Depois roda esses testes com o Vitest do seu projeto e bloqueia o PR quando o código quebra sob uma falha física: corrida entre requisições, API externa lenta, fora do ar ou respondendo lixo.
+O ShielDepy lê o código (Tree-sitter, sem executar nada), acha as rotas HTTP que fazem I/O arriscado e gera testes de caos **só para elas**. Depois roda esses testes com o Vitest do seu projeto e bloqueia o PR quando o código quebra sob uma falha física: corrida entre requisições, API externa lenta, fora do ar ou respondendo lixo, e o banco caindo logo depois de a API cobrar.
 
 Um achado só conta quando o **controle** (a mesma requisição, sem falha injetada) passou. Se o controle falha, o problema é do ambiente ou do teste: o resultado sai como inválido e não bloqueia.
 
@@ -113,5 +113,7 @@ Sem o secret, o workflow roda `--offline`: só o motor, custo zero, com os mesmo
 ## Limites conhecidos
 
 - Só Express. NestJS, Fastify e Next.js ainda não.
-- `partial_failure_after_external_call` (falhar o banco depois da cobrança) e `retry_storm` aparecem no relatório como "sem teste no MVP" e não bloqueiam.
+- A falha no banco depois da chamada externa (`partial_failure_after_external_call`, o DB_Chaos) só é injetada no `pg`. Com Prisma, TypeORM ou Knex, ela aparece como hipótese sem teste e não bloqueia. Falha no meio de uma transação (`BEGIN … COMMIT`) ainda não é testada.
+- Quando a gravação alvo do DB_Chaos não acontece depois da API (ex.: só existe no caminho de erro, como devolver a reserva), o resultado sai inválido ("a falha não disparou"), não achado.
+- `retry_storm` aparece no relatório como hipótese sem teste e não bloqueia.
 - O teste de timeout espera a paciência inteira (6 s), e uma rota que fica pendurada custa 10 s por teste. Os arquivos rodam em paralelo.
