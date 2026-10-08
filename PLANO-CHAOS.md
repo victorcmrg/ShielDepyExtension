@@ -76,7 +76,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 5. E5: mapa incremental e custo, tarefas 5a–5g | `feat/mapa-incremental` | concluído, mergeado; falta a medição paga (5e) |
 | V2. Caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado |
 | V3. Portal: o caos enviado pelo CI, com histórico, tarefas V3a–V3e | `feat/portal-v3` | concluído, mergeado; falta pôr o portal no ar |
-| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1–D4 feitas) |
+| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1–D5 feitas) |
 | 7. E7: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (ver avaliação) |
 
 ### Registro
@@ -640,6 +640,31 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Topologia (teste da E2): o corrigido ganhou `api_call api.stripe.com refund` (com timeout) e um segundo `db_write stock release`; as tags não mudaram.
   - Fumaça: o corrigido ganhou "o banco cai no INSERT do pedido, depois da cobrança: 502, cobrança estornada e estoque de volta" (espiã no `Pool` do PGlite). No vulnerável **não** entrou o equivalente: lá o erro vira promise rejeitada sem tratamento (Express 4), e o Vitest derruba o `npm test` com "Unhandled Rejection". O teste de caos gerado já prova esse defeito.
   - Suíte **326**; `npm test` (5) e `tsc` no corrigido.
+- 2026-10-08: **D5 concluído (superfícies, CI e custo).**
+  - **CLI:** o texto e o JSON já serviam; a linha "sem teste" usa o `untestedReason` do catálogo.
+  - **Relatório markdown:**
+    - a seção virou "Hipóteses sem teste (não bloqueiam)";
+    - o resumo do motor ganhou a frase da falha parcial ("a gravação em orders falha depois da chamada externa e nada é compensado");
+    - o prompt do parágrafo da IA cita a correção típica (estornar a cobrança).
+  - **Visualizador (achado pelo screenshot):** a rota pegava o pior status e "inválido" pesava mais que "aguentou". No corrigido, ela aparecia como `? POST /checkout` tracejada, com 4 testes aguentando e 1 inválido. **Decisão:** inválido não prova nada, então a rota só fica inválida quando nenhum teste dela valeu (ordem: achado > aguentou > inválido).
+  - **Portal:**
+    - o chip de inválido mostra o alvo ("Falha parcial em stock: inválido");
+    - os hints das métricas mudaram: inválidos = "o controle falhou, ou a falha não disparou"; sem teste = "sem template, ou banco fora do pg";
+    - **a falha parcial só marca a gravação.** Antes, a marcação era pelo nome da tabela, e a falha parcial em `stock` acendia também "lê stock" (achado no screenshot).
+  - **CI:** o `self-test` exige também `partial_failure_after_external_call` em `orders` no relatório do vulnerável, e os comentários do workflow citam a compensação. YAML validado e o self-test simulado com o relatório real.
+  - **Custo (`RELATORIO-CUSTO-IA.md`, estimativa grátis refeita):**
+    - o script de estimativa ganhou a resposta do especialista `db` e os 6 achados do vulnerável;
+    - vulnerável: 8 chamadas, **~US$ 0,017** no Haiku (era 0,012) e ~US$ 0,031 com o Threat Modeler no Sonnet;
+    - 100 rotas sensíveis: US$ 0,70 a 1,08;
+    - com `--base`, ~US$ 0,25 por mês;
+    - a recomendação não mudou.
+  - **Conferência visual (roteiro da V3):** portal num banco temporário, `chaos` + `publish` de verdade dos dois exemplos e screenshots pelo protocolo do Chrome com sessão, em desktop e celular.
+    - **vulnerável:** "6 achados barraram este PR", com **"Falha parcial" na estação "grava orders"**; "lê stock" só com a Corrida;
+    - **corrigido:** "O código aguentou todas as falhas injetadas", 4 aguentaram e 1 inválido, com o estorno e o segundo `release` na linha do tempo;
+    - o visualizador (`--html`) foi conferido nos dois exemplos.
+    - Servidor, Chrome headless e banco temporário desligados e apagados.
+  - **Observação (não mexi):** com 7 operações, a linha do tempo do corrigido passa da largura no desktop e rola na horizontal (`overflow-x`, como no V3), sem uma dica visual de que há mais à direita. No celular, ela fica vertical e aparece inteira.
+  - Suíte **326**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -1147,7 +1172,7 @@ O DB_Chaos tem que **pegar isso no corrigido** (e no vulnerável). Depois o corr
   - **vulnerável:** continua sem compensação → achados Crítico (`orders`, `stock`);
   - **corrigido:** **antes de corrigir**, rodar e registrar que o DB_Chaos pega a falha (o "achado no corrigido"). Depois implementar a compensação (`StripeGateway.refund`, `release` da reserva, 502) e conferir que passa;
   - atualizar os testes de topologia da E2 (o corrigido ganha o `api_call` do estorno) e os de fumaça (`npm test` no exemplo).
-- **D5. Superfícies:** CLI (o texto e o JSON já servem; conferir), relatório markdown, visualizador e portal (sem "sem teste no MVP" para a falha parcial; o rótulo do achado já existe); o `self-test` do CI passa a exigir também a falha parcial no vulnerável; e o `RELATORIO-CUSTO-IA.md`, se o número de chamadas mudar (um especialista a mais por hipótese).
+- ✅ **D5. Superfícies:** CLI (o texto e o JSON já servem; conferir), relatório markdown, visualizador e portal (sem "sem teste no MVP" para a falha parcial; o rótulo do achado já existe); o `self-test` do CI passa a exigir também a falha parcial no vulnerável; e o `RELATORIO-CUSTO-IA.md`, se o número de chamadas mudar (um especialista a mais por hipótese).
 - **D6. Aceitação e docs:** README, `docs/chaos-ci.md` e o registro no plano.
 
 ### Aceitação do DB_Chaos

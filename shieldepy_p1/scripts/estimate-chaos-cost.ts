@@ -76,12 +76,14 @@ function cannedResponse(req: CompletionRequest): { node: Node; text: string } {
     return { node: 'threat_modeler', text: JSON.stringify({ summary, hypotheses }) };
   }
   if (req.system.includes('especialista')) {
-    const input = JSON.parse(user) as { default: { kind: string; fault?: { mode: string; delayMs?: number; status?: number; body?: string }; parallel?: number; expect: unknown[] } };
+    const input = JSON.parse(user) as { default: { kind: string; fault?: { mode: string; delayMs?: number; status?: number; body?: string }; parallel?: number; op?: string; error?: string; expect: unknown[] } };
     const d = input.default;
     const param =
       d.kind === 'concurrency'
         ? { parallel: d.parallel }
-        : d.fault?.mode === 'delay'
+        : d.kind === 'db'
+          ? { op: d.op, error: d.error }
+          : d.fault?.mode === 'delay'
           ? { delayMs: d.fault.delayMs }
           : d.fault?.mode === 'status'
             ? { status: d.fault.status }
@@ -110,12 +112,14 @@ function recorder(example: string): LLMProvider {
   return { name: 'anthropic', complete, completeWithUsage: async (req) => ({ text: await complete(req), model: 'estimativa' }) };
 }
 
-// os 4 achados medidos no vulnerável (E4), para o parágrafo do relatório entrar na conta
+// os 6 achados medidos no vulnerável (E4 + a falha parcial da E6), para o parágrafo do relatório entrar na conta
 const VULNERABLE_RESULTS: TestResult[] = [
   { hypothesisId: 'POST /checkout__race_condition__stock', status: 'failed', message: 'stateCheck: stockNeverNegative', durationMs: 200 },
   { hypothesisId: 'POST /checkout__timeout__api.stripe.com', status: 'failed', message: 'respondsWithin: o cliente ficou mais de 6000 ms sem resposta', durationMs: 6000 },
   { hypothesisId: 'POST /checkout__http_5xx_intermittent__api.stripe.com', status: 'failed', message: 'statusIn: a rota não respondeu em 10010 ms', durationMs: 10000 },
   { hypothesisId: 'POST /checkout__malformed_response__api.stripe.com', status: 'failed', message: 'statusIn: a rota não respondeu em 10009 ms', durationMs: 10000 },
+  { hypothesisId: 'POST /checkout__partial_failure_after_external_call__orders', status: 'failed', message: 'stateCheck: noChargeWithoutOrder', durationMs: 6000 },
+  { hypothesisId: 'POST /checkout__partial_failure_after_external_call__stock', status: 'failed', message: 'stateCheck: noChargeWithoutOrder', durationMs: 6000 },
 ];
 
 const examples: Record<string, { routes: number; sensitive: number; hypotheses: number; specs: number; surfaceChars: number }> = {};

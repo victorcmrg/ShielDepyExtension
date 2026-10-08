@@ -1,12 +1,13 @@
 # Relatório de custo da IA no ShielDepy (pipeline de caos)
 
-**Data:** 2026-10-08 (atualizado com os lotes do Threat Modeler) · **Base:** branch `feat/mapa-incremental` (E5) · **Preços:** Claude API, primeira parte, conferidos em 2026-10-08 · **Câmbio assumido:** R$ 5,50 por dólar
+**Data:** 2026-10-08 (atualizado com os lotes do Threat Modeler e com o DB_Chaos) · **Base:** branch `feat/db-chaos` (E6) · **Preços:** Claude API, primeira parte, conferidos em 2026-10-08 · **Câmbio assumido:** R$ 5,50 por dólar
 
 ## 1. Resumo
 
-- **Uma execução completa custa cerca de um centavo de dólar** no exemplo `checkout-express` (2 rotas), com todos os nós no Haiku 4.5: **~US$ 0,012 (~R$ 0,07)**. Com o Threat Modeler no Sonnet 5.5, fica em **~US$ 0,026 (~R$ 0,14)**.
+- **Uma execução completa custa menos de dois centavos de dólar** no exemplo `checkout-express` (2 rotas), com todos os nós no Haiku 4.5: **~US$ 0,017 (~R$ 0,09)**. Com o Threat Modeler no Sonnet 5.5, fica em **~US$ 0,031 (~R$ 0,17)**.
+- **O DB_Chaos (E6) somou ~US$ 0,005 por execução no Haiku:** um especialista a mais por tabela gravada depois da API (2 no exemplo) e um parágrafo do relatório com mais achados.
 - **Na maioria dos PRs o custo é zero.** Com `--base`, só as rotas sensíveis que o PR tocou vão para a IA. Um PR que não toca nenhuma não faz chamada alguma.
-- **O custo não decide a escolha do modelo.** Mesmo para 100 rotas sensíveis, uma execução completa fica entre US$ 0,49 (só Haiku) e US$ 0,87 (Threat Modeler no Sonnet). A decisão deve vir da qualidade das hipóteses, que só a medição paga mostra.
+- **O custo não decide a escolha do modelo.** Mesmo para 100 rotas sensíveis, uma execução completa fica entre US$ 0,70 (só Haiku) e US$ 1,08 (Threat Modeler no Sonnet). A decisão deve vir da qualidade das hipóteses, que só a medição paga mostra.
 - **Achado já corrigido:** o limite de 4000 tokens de saída do Threat Modeler estourava a partir de ~7 rotas que gravam dados. Agora a superfície vai em **lotes de 5 rotas** (seção 6), e os valores deste relatório já incluem o custo dos lotes.
 - **Estes números são uma estimativa** (seção 2). O comando da seção 9 mede o custo real, em menos de US$ 0,50 no total.
 
@@ -27,14 +28,15 @@ Valores centrais e faixa, em tokens.
 
 | Exemplo | Nó | Tier | `max_tokens` | Entrada | Saída (sem raciocínio) |
 |---|---|---|---|---|---|
-| `checkout-express` | Threat Modeler | deep | 4000 | 1.423 (1.186–1.779) | 513 (427–641) |
-| `checkout-express` | Especialista (×4) | fast | 800 | 1.043–1.171 cada | 72–85 cada |
-| `checkout-express` | Parágrafo do relatório | fast | 800 | 1.395 (1.162–1.743) | 155 (129–193) |
-| `checkout-express-fixed` | Threat Modeler | deep | 4000 | 1.360 (1.134–1.700) | 513 (427–641) |
-| `checkout-express-fixed` | Especialista (×3) | fast | 800 | 987–1.115 cada | 72–85 cada |
+| `checkout-express` | Threat Modeler | deep | 4000 | 1.415 (1.179–1.768) | 513 (427–641) |
+| `checkout-express` | Especialista (×6) | fast | 800 | 1.076–1.288 cada | 87–115 cada |
+| `checkout-express` | Parágrafo do relatório | fast | 800 | 1.981 (1.651–2.476) | 155 (129–193) |
+| `checkout-express-fixed` | Threat Modeler | deep | 4000 | 1.518 (1.265–1.898) | 793 (661–992) |
+| `checkout-express-fixed` | Especialista (×5) | fast | 800 | 1.175–1.392 cada | 87–115 cada |
 
-- **Vulnerável:** 6 chamadas, ~7.300 tokens de entrada e ~1.000 de saída. O parágrafo do relatório só existe quando há achado.
-- **Corrigido:** 4 chamadas, ~4.600 de entrada e ~750 de saída. Ele não tem hipótese de timeout nem achado.
+- **Vulnerável:** 8 chamadas, ~10.600 tokens de entrada e ~1.300 de saída. O parágrafo do relatório só existe quando há achado (6 achados).
+- **Corrigido:** 6 chamadas, ~8.000 de entrada e ~1.300 de saída. Ele não tem hipótese de timeout nem achado; o estorno (E6) deixou a rota maior.
+- **Especialistas:** corrida, timeout, 5xx e corpo inválido, como antes, mais **um do DB_Chaos por tabela gravada depois da API** (`orders` e `stock`). O do DB_Chaos recebe também os verbos possíveis (`writesAfterApi`).
 - **A entrada pesa mais que a saída.** Cada chamada leva o prompt de sistema (~270 a ~600 tokens) mais a rota em JSON. Nenhum código-fonte vai para a IA, só a superfície de ataque.
 
 ## 4. Custo por execução, por configuração de modelos
@@ -43,25 +45,25 @@ Preços por milhão de tokens (entrada / saída): Haiku 4.5 US$ 1 / 5 · Sonnet 
 
 | Configuração | `checkout-express` (US$) | `checkout-express-fixed` (US$) | Vulnerável em R$ (central) |
 |---|---|---|---|
-| **A.** Tudo no Haiku 4.5 (padrão atual) | **0,012** (0,010–0,015) | 0,008 (0,007–0,010) | ~R$ 0,07 |
-| **B.** Threat Modeler no Sonnet 5.5, resto no Haiku | **0,026** (0,014–0,050) | 0,022 (0,010–0,045) | ~R$ 0,14 |
-| **C.** Threat Modeler no Opus 5.5, resto no Haiku | 0,044 (0,020–0,090) | 0,040 (0,017–0,085) | ~R$ 0,24 |
-| **D.** Tudo no Sonnet 5.5 | 0,085 (0,020–0,211) | 0,057 (0,014–0,141) | ~R$ 0,46 |
+| **A.** Tudo no Haiku 4.5 (padrão atual) | **0,017** (0,014–0,021) | 0,015 (0,012–0,018) | ~R$ 0,09 |
+| **B.** Threat Modeler no Sonnet 5.5, resto no Haiku | **0,031** (0,017–0,056) | 0,030 (0,017–0,055) | ~R$ 0,17 |
+| **C.** Threat Modeler no Opus 5.5, resto no Haiku | 0,049 (0,024–0,096) | 0,051 (0,026–0,099) | ~R$ 0,27 |
+| **D.** Tudo no Sonnet 5.5 | 0,114 (0,028–0,282) | 0,089 (0,024–0,217) | ~R$ 0,63 |
 
 **Leitura:**
 - A diferença entre A e B é de ~US$ 0,014 por execução, e quase toda vem do **raciocínio** do Sonnet, não do preço por token.
-- A configuração D é a mais cara e a mais incerta: o raciocínio entra em todas as 6 chamadas, e os especialistas só preenchem parâmetros validados, sem ganho visível de qualidade.
-- **Comparação com a estimativa antiga do plano** (~8k de entrada / ~6k de saída, ~R$ 0,21 no Haiku): a entrada bateu (~7,3k), mas a saída real é ~6× menor (~1k), porque as respostas são JSON curto e validado.
+- A configuração D é a mais cara e a mais incerta: o raciocínio entra em todas as 8 chamadas, e os especialistas só preenchem parâmetros validados, sem ganho visível de qualidade.
+- **Comparação com a estimativa antiga do plano** (~8k de entrada / ~6k de saída, ~R$ 0,21 no Haiku): a entrada ficou perto (~10,6k, já com o DB_Chaos), mas a saída real é ~5× menor (~1,3k), porque as respostas são JSON curto e validado.
 
 ## 5. Escala: sistemas maiores
 
-Hipótese da projeção: metade das rotas sensíveis grava dados com uma API externa no meio, como o `POST /checkout` (4 especialistas cada); a outra metade só lê, como o `GET /orders/:id` (nenhum teste). Valores centrais, com 1.000 tokens de raciocínio por chamada nos modelos que raciocinam.
+Hipótese da projeção: metade das rotas sensíveis grava dados com uma API externa no meio, como o `POST /checkout` (6 especialistas cada, com os 2 do DB_Chaos); a outra metade só lê, como o `GET /orders/:id` (nenhum teste). Valores centrais, com 1.000 tokens de raciocínio por chamada nos modelos que raciocinam.
 
 | Rotas sensíveis | Entrada do Threat Modeler | Saída do Threat Modeler | Chamadas de especialista | A (US$) | B (US$) | C (US$) | D (US$) |
 |---|---|---|---|---|---|---|---|
-| 2 | 1.423 | 513 | 4 | 0,012 | 0,026 | 0,044 | 0,084 |
-| 20 (4 lotes) | 10.660 | 5.130 | 40 | 0,099 | 0,176 | 0,288 | 0,649 |
-| 100 (20 lotes) | 53.300 | 25.650 | 200 | 0,487 | 0,870 | 1,432 | 3,186 |
+| 2 | 1.415 | 513 | 6 | 0,017 | 0,031 | 0,049 | 0,114 |
+| 20 (4 lotes) | 10.660 | 5.130 | 60 | 0,141 | 0,217 | 0,330 | 0,932 |
+| 100 (20 lotes) | 53.300 | 25.650 | 300 | 0,695 | 1,076 | 1,639 | 4,600 |
 
 Com lotes, a entrada do Threat Modeler soma o prompt de sistema repetido em cada lote (~595 tokens), e, no Sonnet e no Opus, cada lote tem o seu raciocínio. É isso que separa as configurações B, C e D da A em sistemas grandes.
 
@@ -80,10 +82,10 @@ Com lotes, a entrada do Threat Modeler soma o prompt de sistema repetido em cada
 
 | Cenário | Premissas | A (só Haiku) | B (Threat Modeler no Sonnet) |
 |---|---|---|---|
-| PRs com `--base` | 100 PRs/mês, sistema de 20 rotas sensíveis; 15% dos PRs tocam ~2 delas | ~US$ 0,18 | ~US$ 0,39 |
-| PRs sem `--base` | 100 PRs/mês, sistema de 20 rotas sensíveis | ~US$ 9,90 | ~US$ 17,60 |
-| Rodada noturna completa | 30 noites, 20 rotas sensíveis | ~US$ 2,97 | ~US$ 5,28 |
-| Rodada noturna pela Batch API | igual, com 50% de desconto | ~US$ 1,49 | ~US$ 2,64 |
+| PRs com `--base` | 100 PRs/mês, sistema de 20 rotas sensíveis; 15% dos PRs tocam ~2 delas | ~US$ 0,25 | ~US$ 0,46 |
+| PRs sem `--base` | 100 PRs/mês, sistema de 20 rotas sensíveis | ~US$ 14,10 | ~US$ 21,70 |
+| Rodada noturna completa | 30 noites, 20 rotas sensíveis | ~US$ 4,23 | ~US$ 6,51 |
+| Rodada noturna pela Batch API | igual, com 50% de desconto | ~US$ 2,12 | ~US$ 3,26 |
 
 O `--base` (E5) é a maior alavanca: ele reduz o custo dos PRs em ~50×. O modo `--offline` continua custando zero, e é o padrão do CI quando não há chave.
 
@@ -118,7 +120,7 @@ O script roda os dois exemplos com o Threat Modeler no Haiku 4.5 e no Sonnet 5.5
 
 1. **Manter o padrão atual (tudo no Haiku 4.5)** até a medição real. É o mais barato e não corre risco de corte.
 2. **O limite do Threat Modeler já foi corrigido (lotes).** Num repositório grande, confira na medição real se o raciocínio do Sonnet cabe nos 7.000 tokens de um lote de 5 rotas.
-3. **Decidir o Threat Modeler no Sonnet 5.5 pela qualidade, não pelo custo.** A diferença é de ~US$ 0,014 por execução, ou ~US$ 0,20 por mês com `--base`.
+3. **Decidir o Threat Modeler no Sonnet 5.5 pela qualidade, não pelo custo.** A diferença é de ~US$ 0,014 por execução, ou ~US$ 0,21 por mês com `--base`.
 4. **Não usar o Sonnet nos especialistas** (configuração D): custa 3 a 4 vezes a configuração B (e ~7 vezes a A), sem ganho esperado.
 
 ---
