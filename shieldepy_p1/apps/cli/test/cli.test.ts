@@ -57,6 +57,42 @@ describe('CLI', () => {
     }
   });
 
+  it('graph: checkout-express mapeado 100% e a cadeia rota → controller → service → repositórios → pg', async () => {
+    const { code, out } = await run('graph', example('checkout-express'), '--json');
+    expect(code).toBe(0);
+    const system = JSON.parse(out);
+    expect(system.stats).toMatchObject({ callsUnresolved: 0, callsHeuristic: 0, importsUnresolved: 0 });
+
+    const has = (source: string, target: string, type: string) =>
+      system.edges.some((e: { source: string; target: string; type: string }) => e.source.startsWith(source) && e.target.startsWith(target) && e.type === type);
+    expect(has('src/routes/checkout.ts', 'src/middleware/validate.ts#validateCheckout', 'references')).toBe(true);
+    expect(has('src/routes/checkout.ts', 'src/controllers/CheckoutController.ts#create', 'references')).toBe(true);
+    expect(has('src/controllers/CheckoutController.ts#create', 'src/services/CheckoutService.ts#checkout', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#checkout', 'src/repositories/StockRepository.ts#available', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#checkout', 'src/repositories/StockRepository.ts#decrement', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#checkout', 'src/repositories/OrderRepository.ts#insert', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#checkout', 'src/gateways/StripeGateway.ts#charge', 'calls')).toBe(true);
+    expect(has('src/repositories/OrderRepository.ts#insert', 'pkg:pg', 'calls')).toBe(true);
+    // handler inline do GET /orders/:id também entra no mapa
+    expect(has("src/routes/checkout.ts#checkoutRouter.get('/orders/:id')", 'src/services/CheckoutService.ts#find', 'calls')).toBe(true);
+    // ids relativos: o artefato não carrega o caminho da máquina
+    expect(out).not.toContain(ROOT.replace(/\\/g, '/'));
+  });
+
+  it('graph: mapa determinístico (mesmo hash) e --out grava o arquivo', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-graph-'));
+    try {
+      const file = path.join(dir, 'sub', 'system-graph.json');
+      const first = await run('graph', example('checkout-express'), '--out', file);
+      const second = JSON.parse((await run('graph', example('checkout-express'), '--json')).out);
+      expect(first.code).toBe(0);
+      expect(first.out).toMatch(/100\.0% provadas/);
+      expect(JSON.parse(fs.readFileSync(file, 'utf8')).contentHash).toBe(second.contentHash);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('argumentos inválidos → código 2 com o uso', async () => {
     expect((await run('report', 'x', '--fail-on', 'grave')).code).toBe(2);
     expect((await run('voar')).code).toBe(2);

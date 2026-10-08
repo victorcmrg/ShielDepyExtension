@@ -80,6 +80,9 @@ export class CodeGraph {
   private moduleInfo = new Map<string, ModuleInfo>();
   private specTargets = new Map<string, Map<string, SpecTarget>>();
   private coverage = new Map<string, FileCoverage>();
+  // Quem resolveu algum tipo por `implements` (interface → classes). Esses arquivos não importam a
+  // classe que implementa, então a religação por import não os alcança: religam por aqui.
+  private interfaceDependents = new Map<string, Set<string>>();
   private readonly parsedListeners = new Set<ParsedListener>();
   private readonly resolver: ModuleResolver;
 
@@ -149,6 +152,7 @@ export class CodeGraph {
     copy.moduleInfo = new Map(this.moduleInfo);
     copy.specTargets = new Map([...this.specTargets].map(([k, v]) => [k, new Map(v)]));
     copy.coverage = new Map(this.coverage);
+    copy.interfaceDependents = new Map([...this.interfaceDependents].map(([k, v]) => [k, new Set(v)]));
     copy.pendingImports = new Map(
       [...this.pendingImports].map(([k, v]) => [k, { fromPath: v.fromPath, specs: [...v.specs] }])
     );
@@ -162,6 +166,7 @@ export class CodeGraph {
     this.moduleInfo.clear();
     this.specTargets.clear();
     this.coverage.clear();
+    this.interfaceDependents.clear();
     this.parsedListeners.clear();
   }
 
@@ -189,6 +194,7 @@ export class CodeGraph {
   /** Arquivo deletado de verdade — remove o nó e tudo ligado a ele (diferente de reparsear). */
   removeFile(fsPath: string): void {
     const fileId = toFileId(fsPath);
+    const implemented = this.implementedNames(fileId);
     this.clearFileContents(fileId);
     this.rawCalls.delete(fileId);
     this.pendingImports.delete(fileId);
@@ -196,6 +202,7 @@ export class CodeGraph {
     this.specTargets.delete(fileId);
     this.coverage.delete(fileId);
     if (this.graph.hasNode(fileId)) this.graph.dropNode(fileId);
+    this.relinkInterfaceDependents(implemented, fileId);
   }
 
   hasFile(fileId: string): boolean {
@@ -310,6 +317,14 @@ export class CodeGraph {
     return { nodes, edges };
   }
 
+  /** O grafo inteiro (nós + arestas), pra exportar — `buildSystemGraph` é quem deixa isso estável e portátil. */
+  toSnapshot(): GraphSnapshot {
+    return {
+      nodes: this.graph.mapNodes((id, attributes) => ({ id, attributes })),
+      edges: this.graph.mapEdges((_e, attributes, source, target) => ({ source, target, attributes })),
+    };
+  }
+
   findCycleThrough(nodeId: string): string[] | null {
     // Só `calls`: passar uma função como valor (`references`) não é um laço de execução.
     return findCycleThrough(
@@ -412,6 +427,7 @@ export class CodeGraph {
 
     try {
       const root = tree.rootNode;
+      const implementedBefore = this.implementedNames(fileId);
       this.resetFileNode(fileId, { kind: 'file', path: fsPath });
 
       const symbols = extractSymbols(root, fileId);
@@ -442,6 +458,8 @@ export class CodeGraph {
       // Os símbolos deste arquivo acabaram de ser recriados (com ids novos se as linhas mudaram) —
       // quem importa este arquivo (direto ou via barrel) precisa religar as chamadas que apontavam pra cá.
       this.relinkImporters(fileId);
+      // ...e quem chega aqui por uma interface (`repo: IRepo` → `class PgRepo implements IRepo`) também.
+      this.relinkInterfaceDependents(new Set([...implementedBefore, ...this.implementedNames(fileId)]), fileId);
 
       for (const listener of this.parsedListeners) {
         try {
@@ -616,11 +634,13 @@ export class CodeGraph {
         : this.resolveCall(fileId, call, ctx);
       if (!isRef && outcome !== 'unbound') coverage[outcome] += 1;
       // referência só entra com prova: `res.json(order)` não pode virar aresta pra uma função `order`
-      if (isRef && outcome === 'callsHeuristic') continue;
+      if (isRef && outcome !== 'callsResolved') continue;
       const type = isRef ? 'references' : 'calls';
       const heuristic = outcome === 'callsHeuristic';
       for (const target of targets) {
         if (target === call.caller) continue;
+        // referência é a uma FUNÇÃO (handler, callback); passar um valor/classe não executa nada
+        if (isRef && !this.isCallable(target)) continue;
         const key = `${call.caller}->${type}->${target}`;
         const prev = edges.get(key);
         // ligação provada vence a heurística quando as duas apontam pro mesmo alvo
@@ -652,6 +672,9 @@ export class CodeGraph {
         return legacyScope.get(name) ?? [];
       },
       implementers: (iface) => {
+        let dependents = this.interfaceDependents.get(iface);
+        if (!dependents) this.interfaceDependents.set(iface, (dependents = new Set()));
+        dependents.add(fileId);
         if (!implementers) {
           implementers = new Map();
           this.graph.forEachNode((id, attrs) => {
@@ -964,6 +987,27 @@ export class CodeGraph {
     // Script/CommonJS sem export declarado: o que está no topo do arquivo é o que existe.
     if (info.exports.size === 0 && info.reexports.length === 0) return { file: fileId, local: exported };
     return undefined;
+  }
+
+  private isCallable(nodeId: string): boolean {
+    const kind = this.graph.getNodeAttribute(nodeId, 'kind');
+    return kind === 'function' || kind === 'method';
+  }
+
+  /** Nomes de interface que as classes do arquivo declaram em `implements`. */
+  private implementedNames(fileId: string): Set<string> {
+    const names = new Set<string>();
+    for (const id of this.ownedSymbols(fileId)) {
+      const attrs = this.graph.getNodeAttributes(id);
+      if (attrs.kind === 'class') for (const n of attrs.implements ?? []) names.add(n);
+    }
+    return names;
+  }
+
+  private relinkInterfaceDependents(interfaces: Set<string>, changedFile: string): void {
+    const files = new Set<string>();
+    for (const name of interfaces) for (const f of this.interfaceDependents.get(name) ?? []) files.add(f);
+    for (const f of files) if (f !== changedFile && this.graph.hasNode(f)) this.relinkCalls(f);
   }
 
   private declaresTopLevel(fileId: string, name: string): boolean {

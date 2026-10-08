@@ -20,8 +20,8 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 |---|---|---|
 | 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído |
 | 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído |
-| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | em andamento |
-| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter (gramáticas já no `tree-sitter-wasms`); PL/pgSQL precisa de gramática SQL à parte | a definir | pendente |
+| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído |
+| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter (gramáticas já no `tree-sitter-wasms`); PL/pgSQL precisa de gramática SQL à parte | `feat/chaos-grafo` | próximo |
 | 2. Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`) | a definir | pendente |
 | 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
@@ -66,6 +66,16 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Receptor que não dá pra seguir (`a[0].b()`) só usa o fallback pelo nome do método, nunca o de função solta.
   - **Medição no ShielDepy:** `packages/` 99,9% e `apps/` 99,0% resolvidas com prova, 0 sem resolução.
   - Suíte: 196 testes.
+- 2026-10-07: **1c concluído.**
+  - `buildSystemGraph` (`packages/core/src/system-graph.ts`) é o mapa do sistema num artefato só. Contém o grafo de código, os baldes de regras ligados ao símbolo que implementa cada regra (o handler), as colisões, a cobertura e `weakSpots` por arquivo.
+  - O JSON é canônico, com ids relativos e `contentHash` SHA-256: mesma entrada, mesmo hash.
+  - CLI: `shieldepy graph <pasta> [--json] [--out arquivo]`.
+  - Exemplo `examples/checkout-express`: Express com DI, barrel, tsconfig `paths`, interface `PaymentGateway`, race condition proposital no checkout e Stripe sem timeout. **Mapa 100% provado.** A cadeia `POST /checkout` → `CheckoutController.create` → `CheckoutService.checkout` → `StockRepository`/`OrderRepository` → `pg` e → `StripeGateway.charge` (via interface) está coberta por teste.
+  - Bug corrigido: a ligação por interface dependia da ordem de indexação. Agora quem usa uma interface é religado quando uma classe passa a implementá-la, ou deixa de implementar.
+  - `references` só aponta para função ou método do projeto. Valores passados como argumento (`req.body`) não viram aresta.
+  - README do `shieldepy_p1` atualizado (como uma chamada vira aresta, mapa do código, limites).
+  - Suíte: 199 testes.
+  - **Medição atual:** `packages/` 99,5%, `apps/` 99,0%, `checkout-express` 100%, sempre com 0 chamadas sem alvo e 0 imports quebrados.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -157,7 +167,7 @@ I/O (escrever arquivos, rodar processo) é injetado nos nós via interface `Chao
 
 ## Verificação
 0. **Gate do marco 1 (grafo):**
-   - `shieldepy topology examples/checkout-express --json` mostra `callsUnresolved = 0`.
+   - `shieldepy graph examples/checkout-express --json` mostra `callsUnresolved = 0` (atingido no 1c, com `callsHeuristic = 0`).
    - A rota mostra a cadeia completa handler → service → repo → `pg` e `fetch`.
    - Os testes das fixtures da Fase 0 passam.
    - Só depois disso começa a Fase 2.

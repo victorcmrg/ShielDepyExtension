@@ -29,9 +29,9 @@ O sistema mantém dois grafos em memória, construídos a partir do mesmo códig
 | | Grafo estrutural | Grafo de interações |
 |---|---|---|
 | **Pergunta que responde** | Quem importa e quem chama quem? | Quem lê e quem escreve qual campo, em qual evento? |
-| **Nós** | arquivos, funções, métodos, classes, seletores CSS | regras reativas (um handler, listener, signal ou trigger) |
+| **Nós** | arquivos, funções, métodos, classes, seletores CSS, pacotes externos | regras reativas (um handler, listener, signal ou trigger) |
 | **Como é lido** | Tree-sitter (a árvore sintática real do TS/JS), regex no HTML/CSS | Tree-sitter no TS/JS; regex no Java, Python, C# e PL/pgSQL |
-| **O que prova** | ciclos de chamada; classe do HTML sem CSS correspondente | colisões write-write e read-after-write |
+| **O que prova** | ciclos de chamada; cadeia de chamadas (rota → serviço → repositório → pacote); classe do HTML sem CSS correspondente | colisões write-write e read-after-write |
 | **Onde vive** | `packages/core/src/code-graph/` | `packages/core/src/interactions/` |
 
 Um exemplo do que vira regra:
@@ -91,6 +91,38 @@ Se criar, pede à IA uma segunda tentativa. O botão só escreve dentro do works
 
 ---
 
+### Como uma chamada vira aresta
+
+Cada arquivo TS/JS gera uma **tabela de módulo**:
+- imports com o nome local de cada ligação: alias, `default`, `* as ns` e `require`;
+- exports e re-exports (barrels);
+- o tipo das instâncias de topo.
+
+Os especificadores são resolvidos com o `paths`/`baseUrl` do tsconfig. O que não é do projeto vira nó `pkg:<nome>`.
+
+Uma chamada é resolvida nesta ordem:
+
+1. **Tipo do receptor**:
+   - `this` e `super`;
+   - campos tipados, `= new X()` e `constructor(private repo: Repo)`;
+   - variáveis e parâmetros tipados;
+   - retorno anotado de funções (`Promise<T>` vira `T`);
+   - chamadas encadeadas.
+
+   A resolução segue `extends`. Para uma interface, liga às classes que a implementam (`implements`).
+2. **Ligação de import**, seguindo barrels até onde o símbolo é declarado. Inclui instâncias e objetos exportados.
+3. **Símbolo do próprio arquivo.**
+4. **Fallback por nome.** A aresta sai marcada `heuristic: true`.
+
+Não se adivinha quando o receptor é sabidamente de fora do projeto (`X[]`, `Map`, `console`, `res.status().json()`). Função passada como valor, como `app.post('/x', auth, ctrl.create)`, vira aresta `references`, que não conta para ciclos. Callback anônimo no topo do arquivo vira símbolo próprio, como `app.post('/checkout')`.
+
+`shieldepy graph <pasta>` mede a qualidade do mapa:
+- **cobertura:** % das chamadas internas provadas, por heurística ou sem alvo;
+- **pontos fracos** por arquivo;
+- **saída** em JSON determinístico (`--json`/`--out`, ids relativos e `contentHash`), com o grafo de código, os baldes de regras e as colisões.
+
+Esse artefato é a entrada das próximas etapas (veja `PLANO-CHAOS.md` na raiz).
+
 ## Mapa do código
 
 As dependências andam numa direção só:
@@ -110,7 +142,10 @@ apps/vscode   apps/cli   apps/web        ← interfaces (só aqui existe `vscode
 | Como uma colisão é detectada | `packages/core/src/interactions/detector.ts` |
 | O formato de uma regra (`Rule`, `Collision`) | `packages/core/src/interactions/model.ts` |
 | Como o grafo de imports e chamadas é mantido | `packages/core/src/code-graph/CodeGraph.ts` |
-| O que é lido de um arquivo TS/JS (funções, imports, chamadas) | `packages/core/src/code-graph/extract-ts.ts` |
+| O que é lido de um arquivo TS/JS (funções, chamadas, tipos do receptor) | `packages/core/src/code-graph/extract-ts.ts` |
+| Imports/exports/re-exports de um arquivo (tabela de módulo) | `packages/core/src/code-graph/extract-module.ts` |
+| Resolução de especificadores (relativo, tsconfig `paths`, pacote) | `packages/core/src/code-graph/resolve-import.ts` |
+| Artefato do mapa do sistema (`shieldepy graph`) | `packages/core/src/system-graph.ts` |
 | O que é lido de HTML/CSS | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
 | Suporte a Java / Python / C# / Postgres | `packages/extractors/src/regex/*` |
@@ -171,6 +206,7 @@ npm run cli -- report  examples/pedidos-spring/services        # só o motor
 npm run cli -- explain fixtures/postgres-example.json          # motor + IA (ou offline)
 npm run cli -- report  <pasta> --fail-on critico               # portão de CI: sai com 1
 npm run cli -- cycles  <pasta>                                 # ciclos de chamada
+npm run cli -- graph   <pasta> [--json] [--out mapa.json]      # mapa do sistema + cobertura
 npm run cli -- report  --pg postgres://user:pass@host/db       # triggers de um Postgres real
 ```
 
@@ -180,8 +216,9 @@ Chaves para a CLI e a web: copie `.env.example` para `.env`.
 
 ### O que os testes cobrem
 
-- **157 testes** (vitest), cobrindo:
+- **199 testes** (vitest), cobrindo:
   - o motor
+  - a resolução do grafo (imports, tipos do receptor, interfaces, ordem de indexação)
   - todos os extratores, incluindo os 4 stacks de exemplo
   - a IA com provedores falsos (sem rede)
   - o modelo do workspace, a verificação de correções e o cache
@@ -231,7 +268,8 @@ Do Projeto18:
 
 - Java, Python, C# e Postgres ainda são lidos por regex; só TS/JS usa a árvore sintática.
 - `condition` das regras não é avaliada: regras que nunca rodam juntas ainda aparecem como colisão.
-- Chamadas são ligadas por nome, dentro do arquivo e dos imports diretos. Import com alias,
-  namespace e `require` dinâmico ainda não são entendidos.
+- O grafo não infere tipo sem anotação além de `new X()` e retornos anotados. `const x = f()`
+  com `f` sem tipo de retorno, ou um campo atribuído a partir de uma chamada, caem no fallback
+  por nome (aresta `heuristic`). `require` com caminho dinâmico não é seguido.
 - O painel, o chat e as configurações são testados no E2E só indiretamente (via comandos e
   Diagnostics), não clicando na interface.

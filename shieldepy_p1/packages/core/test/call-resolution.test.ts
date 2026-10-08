@@ -128,6 +128,25 @@ describe('Fase 0 — resolução de chamadas por tipo do receptor', () => {
     expect(graph.hasEdge(methodId(graph, 'Svc', 'run', svc), methodId(graph, 'PgRepo', 'save', impl), 'calls')).toBe(true);
   });
 
+  it('interface: classe que implementa indexada DEPOIS do usuário (e removida depois) religa o usuário', () => {
+    indexFile(graph, fx, 'types.ts', 'export interface Gateway { charge(): void }\n');
+    const svc = indexFile(
+      graph,
+      fx,
+      'svc.ts',
+      "import type { Gateway } from './types';\nexport class Svc { constructor(private g: Gateway) {} pay() { this.g.charge(); } }\n"
+    );
+    const impl = indexFile(graph, fx, 'stripe.ts', "import type { Gateway } from './types';\nexport class Stripe implements Gateway { charge() {} }\n");
+    const pay = methodId(graph, 'Svc', 'pay', svc);
+    expect(graph.hasEdge(pay, methodId(graph, 'Stripe', 'charge', impl), 'calls')).toBe(true);
+
+    // editar a classe (ids mudam) mantém a ligação; apagar a remove
+    const edited = indexFile(graph, fx, 'stripe.ts', "\n\nimport type { Gateway } from './types';\nexport class Stripe implements Gateway { charge() {} }\n");
+    expect(graph.hasEdge(pay, methodId(graph, 'Stripe', 'charge', edited), 'calls')).toBe(true);
+    graph.removeFile(fx.path('stripe.ts'));
+    expect(graph.getSymbolContext(pay)).toEqual([]);
+  });
+
   it('tipos e bases de pacote viram chamada externa', () => {
     const f = indexFile(
       graph,
