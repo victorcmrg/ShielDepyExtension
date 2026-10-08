@@ -161,6 +161,16 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - SQL que não é literal (`db.query(sql)`) vira `db_unknown dynamic`: fala com o banco, mas não se sabe o quê.
   - **`checkout-express`:** `api_call api.stripe.com (fetch, sem timeout)`, `db_read stock`, `db_write stock`, `db_write orders` e `db_read orders`, cada uma no método certo do repositório.
   - Suíte: **223 testes**.
+- 2026-10-08: **2d concluído (topologia)**, em `topology/build.ts` (`buildTopology`, `sensitivityTags`, `isSensitive`).
+  - **Percurso:** handlers em ordem (pulando os `opaque` e os de pacote). Dentro de cada um, as chamadas em ordem, em profundidade.
+    - Não há "visitado global": uma função chamada duas vezes conta duas vezes (é o que faz `multi-write` aparecer). Recursão é cortada pela pilha.
+    - Limites: profundidade 16 e 5000 passos por rota. Se algum estourar, a rota sai `truncated`.
+  - **Confiança:** a operação alcançada por uma ligação `heuristic` sai `heuristic`, e a rota também. Cada operação traz `through`, a cadeia de símbolos do handler até ela.
+  - **Tags:** como no plano, com uma decisão anotada. Transação **sem** `FOR UPDATE` tira o `no-transaction`, mas o `read-then-write` continua, porque no READ COMMITTED do Postgres a corrida ainda existe; quem decide é o teste de concorrência. Leitura feita **antes** do `BEGIN` continua desprotegida. Alvo `dynamic` não gera `read-then-write`/`multi-write`.
+  - **Colisões:** a rota recebe a colisão quando o percurso passa pelo símbolo que implementa uma das regras (ligação já feita pelo `SystemGraph`). A lista global de colisões traz as rotas de cada uma.
+  - **Formato:** `TopologyGraph { version, contentHash, systemGraphHash, stats, routes, skipped, collisions }`, com ids relativos (`relativeIds`, extraído do `system-graph.ts`) e JSON canônico. O hash é o mesmo independente da ordem de indexação.
+  - **Aceitação no `checkout-express`: atingida.** `POST /checkout` sai com `db_read stock → api_call api.stripe.com → db_write stock → db_write orders` e as tags `external-io, no-timeout, no-transaction(stock), read-then-write(stock), write-after-api-call(orders,stock)`, tudo `proven`. `GET /orders/:id` sai com `db_read orders`.
+  - Suíte: **230 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -246,7 +256,7 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
   - `pg` (`query` com SQL literal): o tokenizador dá o verbo (`SELECT` → `db_read`; `INSERT/UPDATE/DELETE` → `db_write`), a tabela e `FOR UPDATE`/transação (`BEGIN`) anotados.
   - `@prisma/client` (`prisma.<model>.<op>`): `create|update|upsert|delete*` = write; `find*|count|aggregate` = read; `$transaction` anotado.
   - `fetch` global (não sombreado) e `axios` (`pkg:axios`): `api_call`, alvo = host da URL literal, ou `dynamic`. Anotar timeout presente ou ausente (`AbortSignal.timeout`, `signal`, `timeout:` do axios).
-- **2d. Topologia** (`topology/build.ts` + `types.ts`):
+- **2d. Topologia** (`topology/build.ts` + `types.ts`): ✅ Concluída em 2026-10-08.
   - Para cada rota, percorrer handlers em ordem → `callsOf` em ordem de linha, em profundidade (limite de profundidade, sem repetir nó).
   - Gerar a lista ordenada de operações e as `SensitivityTag`s:
     - `external-io`;

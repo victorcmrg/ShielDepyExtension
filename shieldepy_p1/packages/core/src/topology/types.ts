@@ -2,6 +2,8 @@
 // Ids de arquivo/símbolo são os do CodeGraph (absolutos); `buildTopology` os deixa relativos na saída.
 // Linhas são 0-based, como no CodeGraph e no SystemGraph.
 
+import type { Collision } from '../interactions/model';
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'ALL';
 
 /** Um passo da cadeia de uma rota: middleware ou handler, na ordem em que o Express os executa. */
@@ -67,4 +69,76 @@ export interface IoOperation {
 export interface RouteScan {
   routes: Route[];
   skipped: SkippedRoute[];
+}
+
+/**
+ * O que torna uma rota alvo de caos. Cada tag habilita falhas do catálogo da E3:
+ * - `external-io`: chama API externa;
+ * - `read-then-write`: lê e depois escreve o mesmo alvo (janela de corrida);
+ * - `multi-write-same-target`: escreve o mesmo alvo mais de uma vez;
+ * - `write-after-api-call`: grava depois de chamar uma API (falha parcial se a API cair no meio);
+ * - `no-timeout`: chamada de API sem timeout;
+ * - `no-transaction`: read-then-write sem transação nem `FOR UPDATE` antes da leitura.
+ */
+export type SensitivityTag =
+  | 'external-io'
+  | 'read-then-write'
+  | 'multi-write-same-target'
+  | 'write-after-api-call'
+  | 'no-timeout'
+  | 'no-transaction';
+
+export interface RouteTag {
+  tag: SensitivityTag;
+  /** Tabelas/hosts envolvidos (`read-then-write` → `['stock']`). */
+  targets?: string[];
+}
+
+export interface RouteOperation extends IoOperation {
+  /** Posição na ordem de execução aproximada da rota (1, 2, 3...). */
+  order: number;
+  /** `heuristic`: o caminho até aqui passou por uma ligação só por nome. */
+  confidence: 'proven' | 'heuristic';
+  /** Símbolos do handler até quem faz a operação. */
+  through: string[];
+}
+
+export interface TopologyRoute extends Route {
+  operations: RouteOperation[];
+  tags: RouteTag[];
+  /** Colisões entre regras reativas cujo handler está no caminho da rota. */
+  collisions: string[];
+  confidence: 'proven' | 'heuristic';
+  /** O percurso parou no limite de profundidade ou de passos: pode faltar operação. */
+  truncated?: true;
+}
+
+export interface TopologyCollision {
+  /** `collisionKey` — o mesmo id que `TopologyRoute.collisions` usa. */
+  key: string;
+  bucket: string;
+  collision: Collision;
+  /** Rotas que passam por um dos handlers da colisão. */
+  routes: string[];
+}
+
+export interface TopologyGraph {
+  version: 1;
+  /** SHA-256 do conteúdo (sem o próprio campo): mesma entrada, mesmo hash. */
+  contentHash: string;
+  /** Hash do `SystemGraph` de onde a topologia saiu. */
+  systemGraphHash: string;
+  stats: {
+    routes: number;
+    sensitiveRoutes: number;
+    operations: number;
+    skippedRoutes: number;
+    truncatedRoutes: number;
+    collisions: number;
+    callsHeuristic: number;
+    callsUnresolved: number;
+  };
+  routes: TopologyRoute[];
+  skipped: SkippedRoute[];
+  collisions: TopologyCollision[];
 }
