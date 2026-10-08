@@ -2,8 +2,25 @@
 // a severidade sai da falha injetada e da invariante que quebrou, nunca da IA.
 
 import { severityRank, type Severity } from '../collisions/types';
-import type { FailureId } from './catalog';
+import type { CostReport } from '../cost';
+import type { Engine } from '../provider';
+import { catalogEntry, type FailureId } from './catalog';
 import type { Hypothesis } from './hypotheses';
+import { CHAOS_TESTS_DIR, specFileName } from './templates';
+
+/** `--base` (E5): só as rotas sensíveis que o PR tocou foram testadas. */
+export interface ChaosScope {
+  /** O ref pedido (`origin/main`) e o merge-base usado. */
+  base: string;
+  commit: string;
+  /** Todas as rotas entraram, e por quê (config, dependência, setup). */
+  all?: string;
+  /** Rotas sensíveis testadas nesta execução. */
+  tested: string[];
+  affected: { id: string; why: string[] }[];
+  /** Rotas sensíveis que o PR não tocou (ficaram de fora). */
+  untouched: string[];
+}
 
 export type TestStatus = 'passed' | 'failed' | 'invalid';
 
@@ -58,4 +75,76 @@ export function chaosOutcomes(results: TestResult[], hypotheses: Hypothesis[]): 
 /** Achados com severidade `failOn` ou pior (o portão do CI). */
 export function gateHits(outcomes: ChaosOutcome[], failOn: Severity): ChaosOutcome[] {
   return outcomes.filter((o) => o.status === 'failed' && severityRank(o.severity!) <= severityRank(failOn));
+}
+
+/** Arquivo que a CLI grava a cada execução e o visualizador (CLI e extensão) põe sobre o mapa. */
+export const CHAOS_RESULTS_FILE = '.shieldepy/chaos-results.json';
+
+/** O resultado de uma execução do `shieldepy chaos`, para o visualizador (V2) e para outras ferramentas. */
+export interface ChaosResults {
+  version: 1;
+  /** Nome do projeto (a pasta). */
+  project: string;
+  /** A topologia de onde as hipóteses saíram: o visualizador avisa quando o mapa aberto é outro. */
+  topologyHash: string;
+  /** Quem escreveu as hipóteses. */
+  engine: Engine;
+  /** Os testes rodaram (`false` com `--no-run` ou erro de ambiente). */
+  ran: boolean;
+  runError?: string;
+  failOn: Severity;
+  /** Achados no portão (severidade `failOn` ou pior). */
+  hits: number;
+  scope?: ChaosScope;
+  /** Cada teste que rodou, com o arquivo do teste (relativo ao projeto). */
+  outcomes: (ChaosOutcome & { testFile: string })[];
+  /** Hipóteses sem teste nesta execução, e por quê. */
+  untested: { id: string; routeId: string; failure: FailureId; target: string; reason: string }[];
+  cost: CostReport;
+}
+
+export function buildChaosResults(input: {
+  project: string;
+  topologyHash: string;
+  engine: Engine;
+  hypotheses: Hypothesis[];
+  outcomes?: ChaosOutcome[];
+  runError?: string;
+  failOn: Severity;
+  hits: number;
+  scope?: ChaosScope;
+  cost: CostReport;
+}): ChaosResults {
+  const outcomes = input.outcomes ?? [];
+  const tested = new Set(outcomes.map((o) => o.hypothesisId));
+  return {
+    version: 1,
+    project: input.project,
+    topologyHash: input.topologyHash,
+    engine: input.engine,
+    ran: !!input.outcomes,
+    ...(input.runError && { runError: input.runError }),
+    failOn: input.failOn,
+    hits: input.hits,
+    ...(input.scope && { scope: input.scope }),
+    outcomes: outcomes.map((o) => ({ ...o, testFile: `${CHAOS_TESTS_DIR}/${specFileName(o.hypothesisId)}` })),
+    untested: input.hypotheses
+      .filter((h) => !tested.has(h.id))
+      .map((h) => ({
+        id: h.id,
+        routeId: h.routeId,
+        failure: h.failure,
+        target: h.target,
+        reason: !h.testable
+          ? catalogEntry(h.failure)?.agent === 'db_chaos'
+            ? 'precisa de falha injetada no banco (DB_Chaos, depois)'
+            : 'sem template de teste no MVP'
+          : input.runError
+            ? 'os testes não rodaram (erro de ambiente)'
+            : input.outcomes
+              ? 'sem resultado'
+              : 'não executado (--no-run)',
+      })),
+    cost: input.cost,
+  };
 }

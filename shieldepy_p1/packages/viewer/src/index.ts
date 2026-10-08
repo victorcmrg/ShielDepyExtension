@@ -2,12 +2,12 @@
 //   - `inline`: HTML autocontido, bibliotecas e dados embutidos — a CLI grava e abre offline;
 //   - `webview`: a extensão do VS Code serve as bibliotecas como recursos do webview, com CSP
 //     por nonce (nada inline sem nonce), e ganha o botão "Abrir código" (postMessage → editor).
-// É a ferramenta de CONFERÊNCIA do mapeamento (E1). O visualizador "de produto" (topologia e
-// resultados do caos) vem depois — ver PLANO-CHAOS.md.
+// Nasceu como ferramenta de CONFERÊNCIA do mapeamento (E1); a E2 pôs rotas e operações de I/O
+// como nós, e o V2 põe por cima o resultado do caos e o diff do PR (`ViewerOverlay`).
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import type { SystemGraph, TopologyGraph } from '@shieldepy/core';
+import type { MapDiff, SystemGraph, TopologyGraph } from '@shieldepy/core';
 import libraries from '../libraries.json' with { type: 'json' };
 
 /**
@@ -36,6 +36,35 @@ export type ViewerMode =
       cspSource: string;
     };
 
+/**
+ * Resultado do caos (o `.shieldepy/chaos-results.json` da CLI), no formato mínimo que o
+ * visualizador lê. É estruturalmente o `ChaosResults` do `@shieldepy/agent/chaos`, declarado
+ * aqui para o visualizador não depender do pacote de agentes (que puxa o LangGraph).
+ */
+export interface ViewerChaos {
+  project: string;
+  topologyHash: string;
+  ran: boolean;
+  runError?: string;
+  failOn: string;
+  hits: number;
+  scope?: { base: string; commit: string; all?: string; tested: string[]; affected: { id: string; why: string[] }[]; untouched: string[] };
+  outcomes: { hypothesisId: string; routeId: string; failure: string; target: string; status: 'passed' | 'failed' | 'invalid'; severity?: string; message?: string; durationMs: number; testFile: string }[];
+  untested: { id: string; routeId: string; failure: string; target: string; reason: string }[];
+}
+
+/** O que vai por cima do mapa (V2): o resultado do caos e o diff do PR. */
+export interface ViewerOverlay {
+  chaos?: ViewerChaos;
+  diff?: {
+    base: string;
+    commit: string;
+    diff: MapDiff;
+    /** Rotas tocadas pelo PR, com o motivo (sem o caos, vem do `affectedRoutes`). */
+    routes?: { all?: string; affected: { id: string; why: string[] }[]; untouched: string[] };
+  };
+}
+
 /** JSON seguro dentro de <script>: `<` vira `<` (no JSON, `<` só aparece dentro de strings). */
 function embedJson(value: unknown): string {
   return JSON.stringify(value).split('<').join('\u003c');
@@ -49,7 +78,13 @@ function escapeHtml(text: string): string {
  * Com `topology`, o mapa ganha as rotas e as operações de I/O como nós (rota → handlers → ... →
  * `db_write stock`) e uma lista de rotas que abre o fluxo de cada uma.
  */
-export function renderGraphHtml(system: SystemGraph, label: string, mode: ViewerMode = { kind: 'inline' }, topology?: TopologyGraph): string {
+export function renderGraphHtml(
+  system: SystemGraph,
+  label: string,
+  mode: ViewerMode = { kind: 'inline' },
+  topology?: TopologyGraph,
+  overlay: ViewerOverlay = {}
+): string {
   const nonce = mode.kind === 'webview' ? ` nonce="${mode.nonce}"` : '';
   const csp =
     mode.kind === 'webview'
@@ -105,7 +140,7 @@ ${csp}
   <div id="cy" aria-label="Grafo do sistema"></div>
 </main>
 ${libraries}
-<script${nonce}>const SYSTEM = ${embedJson(system)}; const TOPOLOGY = ${embedJson(topology ?? null)};</script>
+<script${nonce}>const SYSTEM = ${embedJson(system)}; const TOPOLOGY = ${embedJson(topology ?? null)}; const OVERLAY = ${embedJson(overlay)};</script>
 <script${nonce}>${APP}</script>
 </body>
 </html>

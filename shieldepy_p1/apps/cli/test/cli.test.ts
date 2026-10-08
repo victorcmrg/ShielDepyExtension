@@ -252,6 +252,33 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
     expect(r.err).toContain('portão: 2 achado(s) de caos.');
   });
 
+  it('V2a: grava .shieldepy/chaos-results.json sempre, e --html põe o resultado por cima do mapa', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-v2a-'));
+    const html = path.join(tmp, 'mapa.html');
+    try {
+      const io = { out: () => {}, err: () => {}, env: {} };
+      const code = await runChaosCommand({ target: dir, json: false, noRun: false, offline: true, html }, io, registry, results({ [RACE]: ['failed', 'stateCheck: stockNeverNegative'] }));
+      expect(code).toBe(1);
+      const file = JSON.parse(fs.readFileSync(path.join(dir, '.shieldepy', 'chaos-results.json'), 'utf8'));
+      expect(file).toMatchObject({ version: 1, project: 'checkout-express', ran: true, failOn: 'Baixo', hits: 1 });
+      expect(file.topologyHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(file.outcomes.find((o: { hypothesisId: string }) => o.hypothesisId === RACE)).toMatchObject({
+        status: 'failed',
+        severity: 'Crítico',
+        testFile: '.shieldepy/chaos-tests/POST__checkout__race_condition__stock.spec.ts',
+      });
+      expect(file.untested.map((u: { failure: string }) => u.failure)).toEqual(['partial_failure_after_external_call', 'partial_failure_after_external_call']);
+      const scripts = fs.readFileSync(html, 'utf8').split('<script>').slice(1).map((s) => s.slice(0, s.indexOf('</script>')));
+      const { topology, overlay } = embedded(scripts[4]!);
+      expect(overlay.chaos.topologyHash).toBe(topology.contentHash);
+      expect(overlay.chaos.outcomes).toHaveLength(4);
+      expect(() => new Function(scripts[5]!)).not.toThrow();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.rmSync(path.join(dir, '.shieldepy'), { recursive: true, force: true });
+    }
+  });
+
   it('--report grava o markdown do PR, inclusive quando o ambiente falhou', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-report-'));
     const report = path.join(tmp, 'sub', 'chaos-report.md');
@@ -329,5 +356,5 @@ describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', ()
 
 /** Os dados embutidos no HTML do visualizador (`const SYSTEM = ...; const TOPOLOGY = ...;`). */
 function embedded(script: string) {
-  return new Function(`${script}; return { system: SYSTEM, topology: TOPOLOGY };`)() as { system: any; topology: any };
+  return new Function(`${script}; return { system: SYSTEM, topology: TOPOLOGY, overlay: OVERLAY };`)() as { system: any; topology: any; overlay: any };
 }

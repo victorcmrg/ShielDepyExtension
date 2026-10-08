@@ -10,7 +10,7 @@ import { completeDetailed, isAbortError, type Completion, type Engine, type LLMP
 import { stripFences } from '../text';
 import { catalogEntry } from './catalog';
 import type { Hypothesis } from './hypotheses';
-import type { ChaosOutcome } from './results';
+import type { ChaosOutcome, ChaosScope } from './results';
 import { CHAOS_TESTS_DIR, specFileName } from './templates';
 
 /** Marca do comentário no PR: o workflow edita o último comentário em vez de empilhar. */
@@ -31,20 +31,6 @@ export interface ChaosReportInput {
   runError?: string;
   explanation?: ChaosExplanation;
   scope?: ChaosScope;
-}
-
-/** `--base` (E5): só as rotas sensíveis que o PR tocou foram testadas. */
-export interface ChaosScope {
-  /** O ref pedido (`origin/main`) e o merge-base usado. */
-  base: string;
-  commit: string;
-  /** Todas as rotas entraram, e por quê (config, dependência, setup). */
-  all?: string;
-  /** Rotas sensíveis testadas nesta execução. */
-  tested: string[];
-  affected: { id: string; why: string[] }[];
-  /** Rotas sensíveis que o PR não tocou (ficaram de fora). */
-  untouched: string[];
 }
 
 export interface ChaosExplanation {

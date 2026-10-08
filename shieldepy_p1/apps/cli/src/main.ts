@@ -38,10 +38,10 @@ const USAGE = `uso:
   shieldepy topology <pasta> [--json] [--surface] [--out <arquivo>] [--html <arquivo>]
                                                      rotas Express, operações de I/O em ordem e tags de risco
                                                      (--surface: só o recorte que vai para a IA)
-  shieldepy diff    <pasta> --base <ref> [--json]
+  shieldepy diff    <pasta> --base <ref> [--json] [--html <arquivo>]
                                                      o que mudou na estrutura do código desde o merge-base com <ref>
                                                      (símbolos novos/removidos/renomeados/com corpo alterado, topo dos arquivos, arestas)
-  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--report <arquivo.md>] [--base <ref>] [--no-run] [--json]
+  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--report <arquivo.md>] [--base <ref>] [--html <arquivo>] [--no-run] [--json]
                                                      gera testes de caos para as rotas sensíveis em
                                                      .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts),
                                                      roda com o Vitest do projeto e serve de portão:
@@ -50,6 +50,7 @@ const USAGE = `uso:
                                                      --offline: só o motor, sem IA (custo zero);
                                                      --report: relatório markdown (resumo do CI / comentário do PR);
                                                      --base: só as rotas que o PR tocou desde o merge-base com <ref>;
+                                                     --html: mapa com o resultado (e o diff do PR) por cima;
                                                      --no-run: só gera os testes
 
   report  = só o motor (determinístico, sem rede)
@@ -198,11 +199,11 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
       case 'diff': {
         if (!args.target) throw new Error('informe a pasta');
         if (!args.base) throw new Error('informe o ref base: --base origin/main');
-        return await runDiffCommand({ target: args.target, base: args.base, json: args.json }, io, registryWithTreeSitter);
+        return await runDiffCommand({ target: args.target, base: args.base, json: args.json, html: args.html }, io, registryWithTreeSitter);
       }
       case 'chaos': {
         if (!args.target) throw new Error('informe a pasta do projeto');
-        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report, base: args.base }, io, registryWithTreeSitter);
+        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report, base: args.base, html: args.html }, io, registryWithTreeSitter);
       }
       default:
         io.err(USAGE);

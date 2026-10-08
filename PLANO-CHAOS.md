@@ -454,6 +454,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Achado:** o `max_tokens: 4000` do Threat Modeler estoura a partir de ~7 rotas de escrita. Virou a tarefa **5g**.
   - **Recomendação do relatório:** manter tudo no Haiku até a medição real; corrigir os lotes; decidir o Sonnet no Threat Modeler pela qualidade (a diferença de custo é de ~US$ 0,014 por execução); não usar o Sonnet nos especialistas.
   - A medição real continua pendente: `npm run measure:chaos -- --sim-gastar`.
+- 2026-10-08: **V2 iniciado** (branch `feat/visualizador-v2`, empilhada sobre a `feat/mapa-incremental`). O portal virou o **V3**: precisa que o CI envie os resultados (endpoint autenticado e armazenamento), o que é uma etapa à parte.
+- 2026-10-08: **V2a concluído (resultado do caos persistido).**
+  - **`ChaosResults`** (`agent/src/chaos/results.ts`, com `buildChaosResults`): projeto, `topologyHash`, motor, se rodou, erro de ambiente, portão (`failOn`, `hits`), escopo do PR, cada resultado com severidade, mensagem e **arquivo do teste**, e as hipóteses sem teste com o motivo ("precisa de falha injetada no banco", "não executado (--no-run)" etc.). O `ChaosScope` mudou do `report.ts` para o `results.ts`.
+  - O `chaos` grava **sempre** o `.shieldepy/chaos-results.json` (também com `--no-run`, com `ran: false`).
+  - **`--html <arquivo>`** no `chaos` e no `diff`: o visualizador com a topologia e o overlay. No `chaos --base`, o diff do PR vai junto. No `diff`, as rotas tocadas (`affectedRoutes`) também vão, e a saída de texto lista cada rota tocada com o motivo.
+  - **Visualizador:** `renderGraphHtml(..., overlay?)`, com `ViewerOverlay { chaos?, diff? }` embutido como `OVERLAY`. Os tipos são **mínimos e próprios** do visualizador (estruturalmente iguais aos do agent), para ele não depender do pacote de agentes, que puxa o LangGraph. Sem overlay, nada muda.
+  - Suíte: **308 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -487,7 +494,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 **Contrato:** `ViewerOverlay { chaos?: ChaosResults; diff?: { base, commit, diff: MapDiff } }`, um parâmetro novo e opcional do `renderGraphHtml`. Sem overlay, o visualizador continua igual ao V1.
 
 **Tarefas:**
-- **V2a. Resultado do caos persistido.** O `chaos` grava sempre `.shieldepy/chaos-results.json` (`ChaosResults`): `topologyHash`, escopo, resultados com severidade e mensagem, hipóteses sem teste, portão e custo. Com `--html <arquivo>`, grava também o visualizador com a topologia e o resultado.
+- **V2a. Resultado do caos persistido.** ✅ Concluída em 2026-10-08. O `chaos` grava sempre `.shieldepy/chaos-results.json` (`ChaosResults`): `topologyHash`, escopo, resultados com severidade e mensagem, hipóteses sem teste, portão e custo. Com `--html <arquivo>`, grava também o visualizador com a topologia e o resultado.
 - **V2b. Caos no visualizador.**
   - Rota com achado em vermelho (com a severidade), aguentou em verde, inválido tracejado, fora do escopo ou sem teste neutra.
   - Lista lateral "Caos": achados com falha, alvo, invariante violada e arquivo do teste. Clicar abre o fluxo da rota, com a operação-alvo destacada.

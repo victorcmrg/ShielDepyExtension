@@ -22,13 +22,16 @@ import {
   readChaosConfig,
   silentHost,
   type AttackSurface,
+  type MapDiff,
   type SystemGraph,
   type TopologyGraph,
 } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { CostMeter, providerFromEnv, type Severity } from '@shieldepy/agent';
 import {
+  buildChaosResults,
   CATALOG,
+  CHAOS_RESULTS_FILE,
   CHAOS_TESTS_DIR,
   chaosOutcomes,
   explainChaosOutcomes,
@@ -44,6 +47,7 @@ import {
 import { loadRulesFromPath } from '@shieldepy/extractors';
 import type { Registry } from '@shieldepy/extractors';
 import { ChaosRunError, runChaosTests } from './chaos-run';
+import { renderGraphHtml } from '@shieldepy/viewer';
 import { buildMapOf } from './diff';
 import { GitBaseError, withBaseCheckout } from './git-base';
 
@@ -58,6 +62,8 @@ export interface ChaosArgs {
   report?: string;
   /** Só as rotas que o PR tocou desde o merge-base com este ref (E5). */
   base?: string;
+  /** Grava o visualizador do mapa com o resultado do caos (e o diff, com `--base`) por cima (V2). */
+  html?: string;
 }
 
 /** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
@@ -109,10 +115,11 @@ export async function runChaosCommand(
 
   // --base: só as rotas sensíveis que o PR tocou (o resto não vai para a IA nem para os testes)
   let scope: ChaosScope | undefined;
+  let baseDiff: { base: string; commit: string; diff: MapDiff } | undefined;
   let surface = fullSurface;
   if (args.base) {
     try {
-      scope = await scopeAgainstBase(root, args.base, system, topology, fullSurface, config.setupFiles, registry);
+      ({ scope, diff: baseDiff } = await scopeAgainstBase(root, args.base, system, topology, fullSurface, config.setupFiles, registry));
     } catch (err) {
       if (!(err instanceof GitBaseError)) throw err;
       io.err(`erro: ${err.message}`);
@@ -190,6 +197,27 @@ export async function runChaosCommand(
     io.err(`✓ relatório salvo em ${args.report}`);
   }
 
+  // o resultado fica em disco para o visualizador (CLI --html e o painel da extensão)
+  const results = buildChaosResults({
+    project: path.basename(root),
+    topologyHash: fullSurface.topologyHash,
+    engine: state.engine,
+    hypotheses: state.hypotheses,
+    outcomes,
+    runError,
+    failOn,
+    hits: hits.length,
+    scope,
+    cost,
+  });
+  await mkdir(path.join(root, path.dirname(CHAOS_RESULTS_FILE)), { recursive: true });
+  await writeFile(path.join(root, CHAOS_RESULTS_FILE), canonicalJson(results, 2) + '\n', 'utf8');
+  if (args.html) {
+    await mkdir(path.dirname(path.resolve(args.html)), { recursive: true });
+    await writeFile(args.html, renderGraphHtml(system, path.basename(root), { kind: 'inline' }, topology, { chaos: results, ...(baseDiff && { diff: baseDiff }) }), 'utf8');
+    io.err(`✓ visualizador (mapa + caos${baseDiff ? ' + diff do PR' : ''}) salvo em ${args.html}`);
+  }
+
   if (args.json) {
     io.out(
       canonicalJson(
@@ -241,14 +269,15 @@ async function scopeAgainstBase(
   surface: AttackSurface,
   setupFiles: string[],
   registry: () => Promise<Registry>
-): Promise<ChaosScope> {
+): Promise<{ scope: ChaosScope; diff: { base: string; commit: string; diff: MapDiff } }> {
   return withBaseCheckout(root, ref, async (baseDir, info) => {
     const before = await buildMapOf(baseDir, registry);
     const baseTopology = buildTopology(before.graph, before.system, baseDir);
-    const result = affectedRoutes(baseTopology, topology, diffSystemGraphs(before.system, system), info.changedFiles, setupFiles);
+    const diff = diffSystemGraphs(before.system, system);
+    const result = affectedRoutes(baseTopology, topology, diff, info.changedFiles, setupFiles);
     const sensitive = new Set(surface.routes.map((r) => r.id));
     const affected = result.affected.filter((a) => sensitive.has(a.id));
-    return {
+    const scope: ChaosScope = {
       base: ref,
       commit: info.commit,
       ...(result.all && { all: result.all }),
@@ -256,6 +285,7 @@ async function scopeAgainstBase(
       affected,
       untouched: result.untouched.filter((id) => sensitive.has(id)),
     };
+    return { scope, diff: { base: ref, commit: info.commit, diff } };
   });
 }
 
