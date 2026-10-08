@@ -516,6 +516,16 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **CI:** o portão grava o mapa (`--html`) e o anexa como artefato do job (`shieldepy-mapa`), no workflow e no template. O guia diz como abrir, inclusive com `#mudancas`.
   - README: seção do visualizador com o resultado e os arquivos novos no mapa do código.
   - **Estado final do V2:** 308 testes unitários, E2E 27/27, extensão com 636 KB. Pronto para o merge, depois da E4 e da E5.
+- 2026-10-08: **5g concluído (lotes no Threat Modeler)**, feito na `feat/visualizador-v2`, que é a ponta da pilha (E4 → E5 → V2): mexer na `feat/mapa-incremental` exigiria rebasear o V2 inteiro. Entra junto com o merge do V2.
+  - **`surfaceBatches`:** lotes de **5 rotas** (`ROUTES_PER_BATCH`), cada um só com as colisões que tocam as suas rotas.
+  - **Execução:** um Threat Modeler por lote, em paralelo, no máximo 4 ao mesmo tempo (um `pool` simples, por causa do limite de requisições da API).
+  - **`max_tokens`** = 2.000 + 1.000 por rota (7.000 num lote de 5), com folga para o raciocínio do Sonnet/Opus 5.5.
+  - **Junção:** os lotes não se sobrepõem, então as hipóteses da IA são concatenadas e passam pelo `mergeHypotheses` com a lista-base, que nunca encolhe. Os descartes e os erros dizem o lote ("lote 2/3: …"). Um lote que falha não derruba os outros, e `engine` é o provider se pelo menos um lote respondeu.
+  - **Interface:** o `ThreatModel` passou de `completion`/`error` para `completions`/`errors` (uma chamada por lote). O grafo LangGraph foi ajustado.
+  - **Cache:** não serializei o primeiro lote para aquecer o cache. O ganho seria de ~US$ 0,001 por lote no Sonnet, e não paga a latência.
+  - **Testes:** 12 rotas → 3 chamadas (5, 5, 2), `max_tokens` 7.000/7.000/4.000, a colisão só no lote da rota dela e as 12 hipóteses da IA entram. O lote 2 falhando → o erro diz "lote 2/3", os lotes 1 e 3 mantêm a contribuição da IA e a base fica inteira.
+  - **`RELATORIO-CUSTO-IA.md` atualizado:** o achado aparece como corrigido, e a escala e o custo mensal incluem o prompt de sistema e o raciocínio repetidos por lote. 100 rotas: ~US$ 0,49 só com Haiku e ~US$ 0,87 com o Threat Modeler no Sonnet.
+  - Suíte: **310 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -942,7 +952,7 @@ Medido no vulnerável:
   - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
   - Decidir o padrão do `deep` com esse dado. Separar o tier do caos do tier do chat, se for preciso.
   - Tirar ou documentar o `cacheSystem` onde o prompt fica abaixo do mínimo.
-- **5g. Lotes no Threat Modeler.** Pendente (achado na estimativa de custo). Dividir a superfície em lotes de ~5 rotas, um Threat Modeler por lote em paralelo, com `max_tokens` proporcional ao lote. Hoje a saída estoura os 4000 tokens a partir de ~7 rotas de escrita (~5 com o raciocínio do Sonnet), e a IA perde a contribuição. O motor segue, sem perder teste.
+- **5g. Lotes no Threat Modeler.** ✅ Concluída em 2026-10-08, na branch `feat/visualizador-v2` (a ponta da pilha; ver o registro). Achado na estimativa de custo. Dividir a superfície em lotes de ~5 rotas, um Threat Modeler por lote em paralelo, com `max_tokens` proporcional ao lote. Hoje a saída estoura os 4000 tokens a partir de ~7 rotas de escrita (~5 com o raciocínio do Sonnet), e a IA perde a contribuição. O motor segue, sem perder teste.
 - **5f. CI.** ✅ Concluída em 2026-10-08 (no repositório do ShielDepy, `--base` só quando o PR não mexe no motor; ver o registro). O workflow passa `--base` no PR (`fetch-depth: 0`, base = `origin/${{ github.base_ref }}`). O `self-test` continua com o mapa inteiro. Docs e template atualizados.
 
 ### Aceitação da E5
