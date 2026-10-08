@@ -24,4 +24,20 @@ export class StripeGateway implements PaymentGateway {
     if (!body?.id) throw new PaymentError('resposta do Stripe inválida');
     return { id: body.id, status: body.status };
   }
+
+  /** Estorno, também com timeout: é a compensação quando o pedido não pôde ser gravado. */
+  async refund(chargeId: string): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch('https://api.stripe.com/v1/refunds', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        body: new URLSearchParams({ charge: chargeId }),
+        signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw new PaymentError(`Stripe indisponível no estorno: ${err}`);
+    }
+    if (!response.ok) throw new PaymentError(`Stripe respondeu ${response.status} no estorno`);
+  }
 }

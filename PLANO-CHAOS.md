@@ -76,7 +76,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 5. E5: mapa incremental e custo, tarefas 5a–5g | `feat/mapa-incremental` | concluído, mergeado; falta a medição paga (5e) |
 | V2. Caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado |
 | V3. Portal: o caos enviado pelo CI, com histórico, tarefas V3a–V3e | `feat/portal-v3` | concluído, mergeado; falta pôr o portal no ar |
-| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1–D3 feitas) |
+| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1–D4 feitas) |
 | 7. E7: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (ver avaliação) |
 
 ### Registro
@@ -633,6 +633,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - continuam aguentando: corrida, 5xx e corpo inválido.
   - **Vulnerável:** 6 achados, os 4 de antes **mais** a falha parcial em `orders` e em `stock` (Crítico, `noChargeWithoutOrder`).
   - Testes: `specialists.test.ts` (spec padrão, validação do `op` e do `error`, `testableOn` com Prisma, o ramo `db` com IA), `templates.test.ts` (o arquivo gerado, e ele compila nos dois exemplos), `chaos-run.test.ts` (o "não disparou" vira inválido) e a aceitação da CLI com os números novos (o corrigido sai exit 1 até a D4). Suíte **326**.
+- 2026-10-08: **D4 concluído (a compensação no corrigido).**
+  - `PaymentGateway.refund(chargeId)`; o `StripeGateway` estorna com `POST /v1/refunds`, **com o mesmo timeout** (sem ele, o host voltaria a ter `no-timeout` e a hipótese de timeout reapareceria).
+  - `CheckoutService.checkout`: se o `orders.insert` falha depois de cobrar, estorna, devolve a reserva e lança `OrderNotSavedError` (com `refunded`); o controller responde **502** `{ error: 'pedido não gravado', refunded }`. Estorno que falha não esconde o erro: sai `refunded: false`, para alguém reconciliar.
+  - **Depois da compensação:** `chaos examples/checkout-express-fixed --offline` → **exit 0**: a falha parcial em `orders` aguenta (charges − refunds = 0 ≤ 0 pedidos, 502, estoque de volta), e a corrida, o 5xx e o corpo inválido continuam aguentando. O `stock` segue inválido ("a falha não disparou"), o que não conta no portão.
+  - Topologia (teste da E2): o corrigido ganhou `api_call api.stripe.com refund` (com timeout) e um segundo `db_write stock release`; as tags não mudaram.
+  - Fumaça: o corrigido ganhou "o banco cai no INSERT do pedido, depois da cobrança: 502, cobrança estornada e estoque de volta" (espiã no `Pool` do PGlite). No vulnerável **não** entrou o equivalente: lá o erro vira promise rejeitada sem tratamento (Express 4), e o Vitest derruba o `npm test` com "Unhandled Rejection". O teste de caos gerado já prova esse defeito.
+  - Suíte **326**; `npm test` (5) e `tsc` no corrigido.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -1136,7 +1143,7 @@ O DB_Chaos tem que **pegar isso no corrigido** (e no vulnerável). Depois o corr
 - ✅ **D1. Contrato com contexto.** Invariantes `(ctx?)`, o tipo `ChaosInvariantContext`, os templates passando `ctx.apiCalls` (o MSW já está em todos), a doc do contrato (`docs/chaos-ci.md`, README, `CONFIG_TEMPLATE` da CLI) e `noChargeWithoutOrder` nos dois exemplos. Teste: os testes de rede e de corrida que já existem continuam passando nos dois exemplos.
 - ✅ **D2. Catálogo, spec e especialista.** `testable: true`, `DbSpec` + `parseSpec` + o padrão do motor, o `specialistSystem('db')`, o ramo `db` no grafo. Testes no estilo do `specialists.test.ts`.
 - ✅ **D3. Template `db`.** Espiã no `pg` (Pool e Client), ligada pelo `request:end` do MSW, a primeira gravação na tabela alvo falhando, invariantes com contexto, e o teste compilando contra os exemplos (teste de compilação da 3e).
-- **D4. Exemplos:**
+- ✅ **D4. Exemplos:**
   - **vulnerável:** continua sem compensação → achados Crítico (`orders`, `stock`);
   - **corrigido:** **antes de corrigir**, rodar e registrar que o DB_Chaos pega a falha (o "achado no corrigido"). Depois implementar a compensação (`StripeGateway.refund`, `release` da reserva, 502) e conferir que passa;
   - atualizar os testes de topologia da E2 (o corrigido ganha o `api_call` do estorno) e os de fumaça (`npm test` no exemplo).

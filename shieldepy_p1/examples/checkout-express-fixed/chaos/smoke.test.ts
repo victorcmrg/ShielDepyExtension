@@ -1,11 +1,12 @@
 // Prova que a versão corrigida aguenta o que derruba a vulnerável: a corrida pelo último item e o
-// Stripe falhando. Os testes de caos gerados (E3/E4) têm que passar aqui e falhar no vulnerável.
+// Stripe falhando, e o banco caindo depois da cobrança (estorna). Os testes de caos gerados (E3/E4/E6)
+// têm que passar aqui e falhar no vulnerável.
 import { delay, http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import request from 'supertest';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import config from '../shieldepy.chaos.config';
-import { minStock } from './db';
+import { minStock, orderCount, Pool } from './db';
 
 const stripe = setupServer(
   http.post('https://api.stripe.com/v1/charges', async () => {
@@ -58,6 +59,31 @@ describe('checkout-express-fixed em memória', () => {
     const res = await request(app).post(checkout.path).send(checkout.body);
     expect(res.status).toBe(502);
     expect(await config.invariants.atMostOneOrder()).toBe(true);
+    expect(await minStock()).toBe(1);
+  });
+
+  it('o banco cai no INSERT do pedido, depois da cobrança: 502, cobrança estornada e estoque de volta', async () => {
+    const refunds: string[] = [];
+    stripe.use(
+      http.post('https://api.stripe.com/v1/refunds', async ({ request: req }) => {
+        refunds.push(new URLSearchParams(await req.text()).get('charge') ?? '');
+        return HttpResponse.json({ id: 're_1', status: 'succeeded' });
+      })
+    );
+    const query = Pool.prototype.query;
+    const spy = vi.spyOn(Pool.prototype, 'query').mockImplementation(function (this: Pool, text, values) {
+      if (text.startsWith('INSERT INTO orders')) return Promise.reject(new Error('Connection terminated unexpectedly'));
+      return query.call(this, text, values);
+    });
+    try {
+      const res = await request(app).post(checkout.path).send(checkout.body);
+      expect(res.status).toBe(502);
+      expect(res.body).toEqual({ error: 'pedido não gravado', refunded: true });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(refunds).toEqual(['ch_1']);
+    expect(await orderCount()).toBe(0);
     expect(await minStock()).toBe(1);
   });
 });

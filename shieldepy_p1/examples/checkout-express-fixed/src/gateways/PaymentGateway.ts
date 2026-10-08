@@ -5,6 +5,8 @@ export interface Charge {
 
 export interface PaymentGateway {
   charge(amountCents: number, token: string): Promise<Charge>;
+  /** Devolve uma cobrança inteira (a compra não pôde ser concluída depois de cobrar). */
+  refund(chargeId: string): Promise<void>;
 }
 
 /** O provedor de pagamento falhou (fora do ar, lento demais, resposta inválida): a compra não aconteceu. */

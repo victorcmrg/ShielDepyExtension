@@ -335,9 +335,10 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
 describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', () => {
   for (const [name, expected] of [
     ['checkout-express', { code: 1, failed: [RACE, TIMEOUT, H5XX, MALFORMED, PARTIAL_ORDERS, PARTIAL_STOCK], passed: [] as string[], invalid: [] as string[] }],
-    // o corrigido não compensa a cobrança quando o INSERT do pedido falha (o achado da E6); o `stock`
-    // só é gravado depois da API no caminho de erro (release), então a falha não dispara: inválido
-    ['checkout-express-fixed', { code: 1, failed: [PARTIAL_ORDERS], passed: [RACE, H5XX, MALFORMED], invalid: [PARTIAL_STOCK] }],
+    // o corrigido estorna e devolve a reserva quando o INSERT do pedido falha (antes da D4, esse era o
+    // achado da E6); o `stock` só é gravado depois da API no caminho de erro (release), então a falha
+    // não dispara: inválido, que não conta no portão
+    ['checkout-express-fixed', { code: 0, failed: [] as string[], passed: [RACE, H5XX, MALFORMED, PARTIAL_ORDERS], invalid: [PARTIAL_STOCK] }],
   ] as const) {
     it.skipIf(!vitestEntry(example(name)))(
       `${name}: exit ${expected.code}, ${expected.failed.length} achado(s), ${expected.passed.length} aprovado(s), ${expected.invalid.length} inválido(s)`,
