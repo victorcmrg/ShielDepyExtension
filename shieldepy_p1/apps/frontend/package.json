@@ -1,0 +1,31 @@
+{
+  "name": "@shieldepy/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Site + portal em React (Vite) e o servidor Node que serve o build, /analyze, /chat e a API de contas.",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build && vite build --ssr src/landing/prerender.tsx --outDir dist-ssr && node scripts/prerender.mjs",
+    "preview": "npm run build && npm start",
+    "start": "tsx --env-file-if-exists=../../.env server/server.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "bootstrap": "tsx --env-file-if-exists=../../.env server/auth/bootstrap.ts",
+    "seed:demo": "tsx --env-file-if-exists=../../.env server/auth/seedDemo.ts"
+  },
+  "dependencies": {
+    "@shieldepy/agent": "*",
+    "@shieldepy/core": "*",
+    "@shieldepy/extractors": "*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.3"
+  }
+}

@@ -144,7 +144,7 @@ Esse artefato é a entrada das próximas etapas (veja `PLANO-CHAOS.md` na raiz).
 As dependências andam numa direção só:
 
 ```
-apps/vscode   apps/cli   apps/web        ← interfaces (só aqui existe `vscode`, http, argv)
+apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode`, http, argv)
       └───────────┼───────────┘
                   ▼
       packages/agent   packages/extractors   ← IA plugável · tradutores código → regras
@@ -231,7 +231,16 @@ npm run cli -- graph   <pasta> --html mapa.html              # visualizador inte
 npm run cli -- report  --pg postgres://user:pass@host/db       # triggers de um Postgres real
 ```
 
-**Web**: `npm run web` → http://localhost:3000.
+**Web** (`apps/frontend`: React + Vite em `src/`, servidor Node em `server/`):
+
+```bash
+npm run web:dev   # desenvolvimento: Vite com hot reload em http://localhost:5173 (API em :3001, via proxy)
+npm run web       # produção: build (landing pré-renderizada + portal) e servidor em http://localhost:3001
+```
+
+A landing (`src/landing`) sai do build já renderizada em HTML e o React só hidrata; o portal
+(`src/portal`: login, projetos, equipe, conta, plataforma, ferramenta) é um SPA com React Router.
+Os endereços antigos (`/login.html`, `/project.html?id=…`) redirecionam para as rotas novas.
 
 Chaves para a CLI e a web: copie `.env.example` para `.env`.
 

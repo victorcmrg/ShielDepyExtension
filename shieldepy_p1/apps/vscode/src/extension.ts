@@ -58,7 +58,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   push(auth.onDidChangeAuth(() => void syncUnlocked()));
 
   // vscode://<publisher>.<name>/callback — recebe o retorno do navegador depois de
-  // "Confiar" no device-confirm.html (ver AuthService.completeLogin). A authority vem
+  // "Confiar" no /device-confirm (ver AuthService.completeLogin). A authority vem
   // de context.extension.id, não hardcoded.
   push(
     vscode.window.registerUriHandler({

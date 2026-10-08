@@ -43,7 +43,7 @@ interface PendingLogin {
 }
 
 /**
- * Login via navegador (device flow, estilo `gh auth login`): login() abre o device-confirm.html
+ * Login via navegador (device flow, estilo `gh auth login`): login() abre o /device-confirm
  * do site; o navegador confirma e redireciona pra vscode://<publisher>.<name>/callback, que o
  * registerUriHandler em extension.ts encaminha pra completeLogin(). O token fica no Secret Storage.
  *
@@ -168,7 +168,7 @@ export class AuthService implements vscode.Disposable {
     }
   }
 
-  /** Abre o navegador no device-confirm.html; a promise resolve quando completeLogin() confirmar. */
+  /** Abre o navegador no /device-confirm; a promise resolve quando completeLogin() confirmar. */
   async login(): Promise<void> {
     if (this.pendingLogin) {
       clearTimeout(this.pendingLogin.timer);
@@ -176,7 +176,7 @@ export class AuthService implements vscode.Disposable {
     }
 
     const state = randomBytes(16).toString('base64url');
-    const url = `${this.webBaseUrl()}/device-confirm.html?state=${encodeURIComponent(state)}`;
+    const url = `${this.webBaseUrl()}/device-confirm?state=${encodeURIComponent(state)}`;
 
     const promise = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -192,7 +192,7 @@ export class AuthService implements vscode.Disposable {
 
   /** Painel web: os projetos da pessoa (é lá que o dono conecta repositórios e equipe). */
   async openDashboard(): Promise<void> {
-    await vscode.env.openExternal(vscode.Uri.parse(`${this.webBaseUrl()}/projects.html`));
+    await vscode.env.openExternal(vscode.Uri.parse(`${this.webBaseUrl()}/projects`));
   }
 
   /** Chamado pelo registerUriHandler em extension.ts quando o navegador volta pro vscode://.../callback. */

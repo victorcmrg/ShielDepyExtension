@@ -13,10 +13,11 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p apps/frontend/tsconfig.json",
     "check": "npm run typecheck && npm test",
     "cli": "npm start -w @shieldepy/cli --",
-    "web": "npm start -w @shieldepy/web",
+    "web": "npm run build -w @shieldepy/frontend && npm start -w @shieldepy/frontend",
+    "web:dev": "npm run dev -w @shieldepy/frontend",
     "build:vscode": "npm run build -w shieldepy",
     "package:vscode": "npm run package -w shieldepy"
   },

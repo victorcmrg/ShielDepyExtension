@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "shieldepy-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "start",
+        "-w",
+        "@shieldepy/frontend"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "shieldepy-web-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "@shieldepy/frontend"
+      ],
+      "port": 5173
+    }
+  ]
+}
