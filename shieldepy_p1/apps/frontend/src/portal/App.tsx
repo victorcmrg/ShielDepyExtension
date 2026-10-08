@@ -8,6 +8,7 @@ const Login = lazy(() => import('./pages/Login'));
 const DeviceConfirm = lazy(() => import('./pages/DeviceConfirm'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Project = lazy(() => import('./pages/Project'));
+const Run = lazy(() => import('./pages/Run'));
 const Team = lazy(() => import('./pages/Team'));
 const Account = lazy(() => import('./pages/Account'));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -32,6 +33,14 @@ export function App() {
           element={
             <Shell page="project" title="Projeto">
               <Project />
+            </Shell>
+          }
+        />
+        <Route
+          path="/projects/:id/runs/:runId"
+          element={
+            <Shell page="project" title="Execução do caos">
+              <Run />
             </Shell>
           }
         />

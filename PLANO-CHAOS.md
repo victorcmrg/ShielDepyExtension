@@ -557,6 +557,27 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - o `node:sqlite` passou a ser carregado com `createRequire`. O Vite (Vitest) não conhecia esse módulo nativo e tentava resolver um pacote `sqlite`; por isso nenhum teste tocava no banco até agora.
   - **Testes** (`apps/frontend/test/chaos-runs.test.ts`, com sessões e HTTP de verdade): tokens só pelo dono, valor único e fora da lista; publicação com remote escrito de outro jeito; 401, 403 (repositório fora do projeto, token de outro projeto) e 400; link `javascript:` descartado; token revogado; visão do projeto `blocked`; execução completa; 404 para outra empresa; retenção de 100.
   - Suíte: **321 testes**.
+- 2026-10-08: **V3c e V3d concluídos (portal: projeto e execução).** As duas páginas saíram juntas, num commit só, porque foram desenhadas e conferidas juntas.
+  - **Decisão de design:** o mapa de grafos (Cytoscape) é ferramenta de conferência e ficou "cru" para o usuário. No portal, a peça central é **a rota e o que acontece nela**, numa visualização própria em React e CSS, sem biblioteca de grafo, no design system do portal (tokens, temas claro e escuro, entrada escalonada).
+  - **Página do projeto:**
+    - painel **"Caos no CI"** no topo da coluna principal: um cartão por repositório com o status da última execução (borda colorida), quando, PR ou branch, commit, contagens e a **faixa de histórico** (uma barra por execução, a altura é o número de achados, a cor é o status). Cada barra abre a sua execução; o cartão inteiro abre a última, por um link esticado sem `<a>` dentro de `<a>`;
+    - painel **"Integração com o CI"** (só o dono): criar token num modal, o valor aparece **uma vez** numa caixa em destaque com botão de copiar, lista com o último uso, e revogar. O passo a passo cita `SHIELDEPY_PORTAL_TOKEN` e `SHIELDEPY_PORTAL_URL`.
+  - **Página da execução** (`/projects/:id/runs/:runId`):
+    - topo com o brilho no tom do status (anel pulsando quando bloqueou), a frase ("4 achados barraram este PR"), commit, branch, links para o PR e o job do CI, horário, motor e custo da IA;
+    - quatro métricas: achados, aguentaram, inválidos e sem teste;
+    - o escopo do PR, quando houver;
+    - **cada rota como uma linha do tempo**: a entrada (handlers e arquivo:linha) e cada operação de I/O como uma estação com ícone, verbo ("lê", "grava", "chama"), alvo, função, arquivo:linha e marcas ("sem timeout", "FOR UPDATE", "por nome"), ligadas por um traço animado. **A estação atingida por um achado** fica no tom da severidade, com um anel pulsando e um selo ("Corrida", "3 falhas");
+    - abaixo, os **cartões dos achados** (severidade, falha em português, a falha injetada, o tempo, a invariante violada em destaque e o arquivo do teste) e os chips do que aguentou, do inválido e do que ficou sem teste;
+    - rotas com achado vêm primeiro; uma rota fora do escopo do PR fica tracejada;
+    - o histórico do repositório no fim.
+  - Os textos de status, falhas, operações e tags ficam num lugar só (`src/portal/chaos/labels.ts`). Ícones novos: banco, nuvem, alerta, relógio, raio, copiar, commit.
+  - **Conferência visual com dados reais:** portal local num banco temporário, `chaos` + `publish` de verdade nos dois exemplos (6 publicações com PRs diferentes) e screenshots pelo protocolo do Chrome com sessão real, nos temas claro e escuro e no celular. Ajustes que os screenshots pediram:
+    - o `<header>` da rota herdava o estilo global da barra do topo (virou `div`);
+    - "4 no portão (Baixo ou pior)" virou "todos contam no portão";
+    - nomes e caminhos longos só quebram linha no `.` e na `/`;
+    - o tempo do achado foi para a linha da falha injetada;
+    - o teste mostra o nome do arquivo, com o caminho inteiro na dica.
+  - No celular, a linha do tempo vira vertical, com as setas para baixo.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -629,7 +650,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Página da execução** (`/projects/:id/runs/:runId`): status em destaque, métricas, o escopo do PR e **cada rota como uma linha do tempo das operações** (`lê stock → chama api.stripe.com → grava stock → grava orders`). O alvo de cada falha fica marcado na operação, com a severidade, a invariante violada e o arquivo do teste. Também traz as tags, as hipóteses sem teste e o histórico do repositório.
 - **Workflow e template:** um passo "Publicar no portal" quando há `SHIELDEPY_PORTAL_TOKEN` (secret) e `SHIELDEPY_PORTAL_URL` (variável).
 
-**Tarefas:** **V3a** contrato + CLI `publish` ✅ · **V3b** servidor (banco, tokens, rotas, testes) ✅ · **V3c** portal: página do projeto e tokens · **V3d** portal: página da execução (a linha do tempo) · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs.
+**Tarefas:** **V3a** contrato + CLI `publish` ✅ · **V3b** servidor (banco, tokens, rotas, testes) ✅ · **V3c** portal: página do projeto e tokens ✅ · **V3d** portal: página da execução (a linha do tempo) ✅ · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs.
 
 **Aceitação:** o `chaos` no vulnerável seguido do `publish` para um portal local → o projeto mostra o repositório **bloqueado**, e a página da execução mostra o `POST /checkout` com os 4 achados nas operações certas. Um token de outro projeto, ou um remote fora do projeto → 403.
 

@@ -125,6 +125,39 @@ const PATHS = {
       <path d="M3.5 12h17M12 3.5c2.3 2.4 3.4 5.3 3.4 8.5s-1.1 6.1-3.4 8.5c-2.3-2.4-3.4-5.3-3.4-8.5s1.1-6.1 3.4-8.5Z" />
     </>
   ),
+  // caos no CI (V3)
+  database: (
+    <>
+      <ellipse cx="12" cy="6.5" rx="7" ry="2.8" />
+      <path d="M5 6.5v11c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-11M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8" />
+    </>
+  ),
+  cloud: <path d="M7.5 18.5h9.8a3.7 3.7 0 0 0 .5-7.4 5.6 5.6 0 0 0-10.8-1.3A4.4 4.4 0 0 0 7.5 18.5Z" />,
+  alert: (
+    <>
+      <path d="M12 4.2 20.4 19H3.6L12 4.2Z" />
+      <path d="M12 10v4.2M12 16.6v.2" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </>
+  ),
+  bolt: <path d="M13.2 3.5 5.5 13.4h5.8l-.9 7.1 7.7-9.9h-5.8l.9-7.1Z" />,
+  copy: (
+    <>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
+      <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
+    </>
+  ),
+  commit: (
+    <>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M3.5 12h5.3M15.2 12h5.3" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;
