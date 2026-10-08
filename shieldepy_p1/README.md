@@ -264,7 +264,7 @@ Chaves para a CLI e a web: copie `.env.example` para `.env`.
 
 ## Histórico: o que mudou em relação aos projetos originais
 
-Itens do `PLANO_DE_CORRECOES.md` da extensão original (`legado_grafo_arvore/` no repositório do TCC) resolvidos durante a fusão:
+Itens do `PLANO_DE_CORRECOES.md` da extensão original (pasta `legado_grafo_arvore/`, hoje só no histórico do git) resolvidos durante a fusão:
 
 | Item | Como ficou |
 |---|---|

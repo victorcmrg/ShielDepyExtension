@@ -13,18 +13,18 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança. Cada etapa tem sua branch. **O merge na `main` é feito pelo usuário** quando a etapa inteira estiver completa.
 
-- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, aguardando merge do usuário.**
+- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, mergeada na `main` (PR #1).**
 - **E2 — Topologia** (tarefas 2a–2f, ver a seção "Fase 1 / E2"), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
-- **Ordem de merge pendente:** `feat/chaos-grafo` (E1) → `feat/grafo-visualizador` (V1). A E2 começa numa branch nova a partir da `main` depois disso.
+- **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2). A E2 está em andamento na branch `feat/topologia`, criada a partir da `main` (`6756ded`).
 
 | Tarefa | Branch | Status |
 |---|---|---|
-| 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído |
-| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído |
-| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído |
-| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído |
-| V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído |
-| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` (criar a partir da `main` após os merges) | próximo |
+| 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído, mergeado |
+| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído, mergeado |
+| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído, mergeado |
+| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
+| V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
+| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | em andamento |
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
 | 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
@@ -121,6 +121,11 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - 2026-10-07: o plano passou a registrar o que a extensão mapeia hoje (com 5 ressalvas) e a estimativa de custo da IA por execução (seções próprias).
 - 2026-10-07: **ressalvas 2–5 da extensão resolvidas.** Detalhes na seção "Extensão do VS Code". O E2E passa 23/23 num VS Code real, e a suíte unitária tem 201 testes.
 - 2026-10-07: avaliado o esforço de mapear Java/C#/Python por completo (seção própria). Ficou registrado como E5, depois da E2.
+- 2026-10-08: **E1 e V1 mergeadas na `main`** (PRs #1 e #2), seguidas do commit `6756ded` (`apps/web` → `apps/frontend`, em React).
+  - Conferido na `main`: typecheck limpo, **204 testes** passando e o gate da E1 no `checkout-express` (`callsUnresolved = 0`, `callsHeuristic = 0`, `importsUnresolved = 0`).
+  - Pasta local `legado_grafo_arvore/` apagada (já não era versionada). O README da raiz descreve só o `shieldepy_p1`; os legados ficam no histórico do git.
+  - Achado: `npm run cli -- …` não imprimia nada, porque o script `start` rodava `src/main.ts`, que só exporta `main()`. Corrigido: o `start` usa o `bin/shieldepy.js`.
+  - Branch `feat/topologia` criada a partir da `main`. **E2 iniciada.**
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
