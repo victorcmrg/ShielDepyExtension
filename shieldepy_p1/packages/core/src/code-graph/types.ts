@@ -105,6 +105,55 @@ export interface SymbolCycle {
   labels: string[];
 }
 
+/**
+ * Como uma chamada foi resolvida: `resolved` (provada), `heuristic` (só por nome), `unresolved`
+ * (devia ser do projeto, alvo não achado), `external` (pacote), `unbound` (nativo/global/variável).
+ */
+export type CallOutcome = 'resolved' | 'heuristic' | 'unresolved' | 'external' | 'unbound';
+
+/** Onde um nome é declarado: no topo de um arquivo (seguindo imports e barrels) ou dentro do chamador (`local`). */
+export interface ValueOrigin {
+  file: string;
+  name: string;
+  local?: boolean;
+}
+
+/** Argumento de uma chamada, só no que é estático (lido da AST, nunca avaliado). */
+export type CallArg =
+  | { kind: 'string'; value: string }
+  /** `\`https://api.x.com/${id}\`` → o texto literal antes da 1ª substituição. */
+  | { kind: 'template'; prefix: string }
+  /** `{ method: 'POST', signal }` → as chaves; `...spread` vira `'...'`. */
+  | { kind: 'object'; keys: string[] }
+  /** Callback inline; `symbolId` quando ele virou símbolo. */
+  | { kind: 'function'; symbolId?: string }
+  /** Identificador ou cadeia (`router`, `ctrl.create`), resolvido como referência. */
+  | { kind: 'name'; chain: string[]; outcome: CallOutcome; targets: string[]; package?: string; origin?: ValueOrigin }
+  /** Resultado de outra chamada (`express.json()`, `auth('admin')`) — ela própria aparece como chamada separada. */
+  | { kind: 'call'; callee: string[] }
+  | { kind: 'other' };
+
+/** Uma chamada do código, já resolvida, com a posição e os argumentos. */
+export interface CallSite {
+  /** Símbolo que contém a chamada, ou o próprio arquivo quando ela está no topo dele. */
+  caller: string;
+  /** Início da chamada, 0-based (como `startLine`). */
+  line: number;
+  column: number;
+  name: string;
+  object?: string[];
+  outcome: CallOutcome;
+  /** Símbolos do projeto (em `resolved`/`heuristic`). */
+  targets: string[];
+  /** Pacote, em `external` (`pg`, `express`). */
+  package?: string;
+  /** O nome chamado (ou a raiz do receptor) é variável local — `fetch` local não é o global. */
+  shadowed?: boolean;
+  /** Onde a raiz do receptor é declarada (`checkoutRouter` em `checkoutRouter.post`). */
+  receiverOrigin?: ValueOrigin;
+  args: CallArg[];
+}
+
 export function isSymbolNode(attrs: NodeAttrs): attrs is SymbolNodeAttrs {
   return attrs.kind !== 'file' && attrs.kind !== 'package';
 }

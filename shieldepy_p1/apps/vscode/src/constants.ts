@@ -20,6 +20,7 @@ export const CMD = {
   focusSettings: 'shieldepy.settings.focus',
   openLocation: 'shieldepy.openLocation',
   showMap: 'shieldepy.showMap',
+  exportTopology: 'shieldepy.exportTopology',
 } as const;
 
 export const SECRET_ANTHROPIC = 'shieldepy.anthropicApiKey';

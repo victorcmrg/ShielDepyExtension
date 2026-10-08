@@ -104,8 +104,8 @@ describe('CLI', () => {
       // cytoscape, layout-base, cose-base, fcose, dados, app — nada vem de CDN
       expect(scripts).toHaveLength(6);
       expect(html).not.toMatch(/<script src=/);
-      const data = scripts[4]!;
-      const system = JSON.parse(data.slice(data.indexOf('=') + 1).trim().replace(/;$/, ''));
+      const { system, topology } = embedded(scripts[4]!);
+      expect(topology).toBeNull();
       expect(system.stats.callsResolved).toBeGreaterThan(0);
       expect(system.nodes.some((n: { id: string }) => n.id.startsWith('src/services/CheckoutService.ts#checkout'))).toBe(true);
       expect(() => new Function(scripts[5]!)).not.toThrow();
@@ -118,6 +118,58 @@ describe('CLI', () => {
     expect((await run('report', 'x', '--fail-on', 'grave')).code).toBe(2);
     expect((await run('voar')).code).toBe(2);
     expect((await run('report', '/nao/existe')).err).toMatch(/erro:/);
-    expect(parseArgs(['explain', 'p', '--json'])).toEqual({ command: 'explain', target: 'p', json: true, pg: false });
+    expect(parseArgs(['explain', 'p', '--json'])).toEqual({ command: 'explain', target: 'p', json: true, pg: false, surface: false });
+  });
+
+  it('topology: rotas, operações em ordem e tags do checkout-express', async () => {
+    const { code, out } = await run('topology', example('checkout-express'));
+    expect(code).toBe(0);
+    expect(out).toMatch(/2 rota\(s\), 2 sensível\(is\), 5 operação\(ões\)/);
+    expect(out).toMatch(/POST \/checkout {3}handlers: express\.json\(\) → validateCheckout → checkoutController\.create/);
+    const ops = out.split('\n').filter((l) => /^ +\d+ (db_|api_)/.test(l)).map((l) => l.trim().split(/ +/).slice(0, 3).join(' '));
+    expect(ops).toEqual(['1 db_read stock', '2 api_call api.stripe.com', '3 db_write stock', '4 db_write orders', '1 db_read orders']);
+    expect(out).toMatch(/tags: .*read-then-write\(stock\).*write-after-api-call\(orders,stock\)/);
+  });
+
+  it('topology --json / --surface / --out: JSON canônico, estável, e a superfície só com fatos', async () => {
+    const a = JSON.parse((await run('topology', example('checkout-express'), '--json')).out);
+    const b = JSON.parse((await run('topology', example('checkout-express'), '--json')).out);
+    expect(a.contentHash).toBe(b.contentHash);
+    expect(a.routes.find((r: { id: string }) => r.id === 'POST /checkout').operations).toHaveLength(4);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-topo-'));
+    try {
+      const file = path.join(dir, '.shieldepy', 'surface.json');
+      const { code, err } = await run('topology', example('checkout-express'), '--surface', '--out', file);
+      expect(code).toBe(0);
+      expect(err).toMatch(/superfície de ataque salva/);
+      const surface = JSON.parse(fs.readFileSync(file, 'utf8'));
+      expect(surface.topologyHash).toBe(a.contentHash);
+      const checkout = surface.routes.find((r: { id: string }) => r.id === 'POST /checkout');
+      expect(checkout.operations[1]).toMatchObject({ kind: 'api_call', target: 'api.stripe.com', at: 'src/gateways/StripeGateway.ts:8', in: 'charge', timeout: 'no' });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('topology --html: o visualizador recebe a topologia (rotas viram nós) e o script compila', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-html-'));
+    try {
+      const file = path.join(dir, 'rotas.html');
+      expect((await run('topology', example('checkout-express'), '--html', file)).code).toBe(0);
+      const html = fs.readFileSync(file, 'utf8');
+      const scripts = html.split('<script>').slice(1).map((s) => s.slice(0, s.indexOf('</script>')));
+      const { topology } = embedded(scripts[4]!);
+      expect(topology.routes.map((r: { id: string }) => r.id)).toEqual(['POST /checkout', 'GET /orders/:id']);
+      expect(html).toMatch(/data-filter="routes"/);
+      expect(() => new Function(scripts[5]!)).not.toThrow();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
+
+/** Os dados embutidos no HTML do visualizador (`const SYSTEM = ...; const TOPOLOGY = ...;`). */
+function embedded(script: string) {
+  return new Function(`${script}; return { system: SYSTEM, topology: TOPOLOGY };`)() as { system: any; topology: any };
+}

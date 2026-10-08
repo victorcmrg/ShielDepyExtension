@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { packageNodeId, type CodeGraph } from '../src/index';
+import { packageNodeId, type CallSite, type CodeGraph } from '../src/index';
 import { createGraph, Fixture, indexFile, symbolId } from './helpers';
 
 /** Id do método `name` da classe/objeto `container` no arquivo. */
@@ -280,5 +280,129 @@ describe('Fase 0 — resolução de chamadas por tipo do receptor', () => {
     const f = indexFile(graph, fx, 'f.ts', 'function run(cb: () => void) {}\nfunction a() { run(b); }\nfunction b() { a(); }\n');
     expect(graph.hasEdge(symbolId(graph, 'a', f), symbolId(graph, 'b', f), 'references')).toBe(true);
     expect(graph.cyclesInFile(f)).toEqual([]);
+  });
+});
+
+describe('E2 — cada chamada em ordem, com posição e argumentos (callSitesIn / callsOf)', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const label = (c: CallSite) => [...(c.object ?? []), c.name].join('.');
+
+  it('ordem de execução aproximada: a chamada de dentro (que termina antes) vem primeiro', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'f.ts',
+      [
+        'function a(x: number) { return x; }',
+        'function b() { return 1; }',
+        'class R { s(n: number) { return this; } j(v: unknown) {} }',
+        'async function run(r: R) {',
+        '  a(b());',
+        '  r.s(201).j(a(2));',
+        '}',
+      ].join('\n')
+    );
+    const run = symbolId(graph, 'run', f);
+    const calls = graph.callsOf(run);
+    expect(calls.map(label)).toEqual(['b', 'a', 'r.s', 'a', 'j']);
+    expect(calls[0]).toMatchObject({ caller: run, line: 4, column: 4, outcome: 'resolved' });
+  });
+
+  it('argumentos estáticos: string, template (prefixo), objeto (chaves), callback e nome', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'f.ts',
+      [
+        'function handler() {}',
+        'function go(id: string, opts: object) {',
+        "  call('it\\'s', `https://api.ação.com/v1/${id}/x`, `sem-subst`, { method: 'POST', signal, 'x-y': 1, ...opts }, () => 1, handler, 42);",
+        '}',
+      ].join('\n')
+    );
+    const [site] = graph.callsOf(symbolId(graph, 'go', f));
+    expect(site!.args.slice(0, 4)).toEqual([
+      { kind: 'string', value: "it's" },
+      { kind: 'template', prefix: 'https://api.ação.com/v1/' },
+      { kind: 'string', value: 'sem-subst' },
+      { kind: 'object', keys: ['method', 'signal', 'x-y', '...'] },
+    ]);
+    expect(site!.args[4]).toEqual({ kind: 'function' }); // callback dentro de função não vira símbolo
+    expect(site!.args[5]).toMatchObject({ kind: 'name', chain: ['handler'], outcome: 'resolved', targets: [symbolId(graph, 'handler', f)] });
+    expect(site!.args[6]).toEqual({ kind: 'other' });
+  });
+
+  it('chamadas no topo do arquivo entram em callSitesIn (chamador = arquivo), mas não viram aresta nem cobertura', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'routes.ts',
+      [
+        "import { Router } from 'express';",
+        'function create() {}',
+        'export const router = Router();',
+        "router.post('/x', create, async (req, res) => { create(); });",
+      ].join('\n')
+    );
+    const sites = graph.callSitesIn(f);
+    const post = sites.find((c) => c.name === 'post')!;
+    expect(post).toMatchObject({ caller: f, line: 3, outcome: 'external', package: 'express', receiverOrigin: { file: f, name: 'router' } });
+    expect(post.args[0]).toEqual({ kind: 'string', value: '/x' });
+    expect(post.args[2]).toMatchObject({ kind: 'function', symbolId: expect.stringContaining("router.post('/x')") });
+    // callback inline: a chamada de dentro é do callback, não do arquivo
+    expect(sites.find((c) => c.name === 'create')!.caller).toBe((post.args[2] as { symbolId: string }).symbolId);
+    // as do topo não contam (Router() e router.post): só o create() do callback
+    expect(graph.fileCoverage(f)).toMatchObject({ callsResolved: 1, callsExternal: 0 });
+    expect(graph.hasEdge(f, packageNodeId('express'), 'calls')).toBe(false);
+  });
+
+  it('pacote da chamada externa e `fetch` global × local', () => {
+    indexFile(graph, fx, 'repo.ts', "import type { Pool } from 'pg';\nexport class Repo {\n  constructor(private db: Pool) {}\n  get() { return this.db.query('SELECT 1'); }\n}\n");
+    const f = indexFile(
+      graph,
+      fx,
+      'api.ts',
+      "async function a() { await fetch('https://x.com'); }\nasync function b(fetch: (u: string) => void) { fetch('https://y.com'); }\n"
+    );
+    const [global] = graph.callsOf(symbolId(graph, 'a', f));
+    const [local] = graph.callsOf(symbolId(graph, 'b', f));
+    expect(global).toMatchObject({ name: 'fetch', outcome: 'unbound' });
+    expect(global!.shadowed).toBeUndefined();
+    expect(local).toMatchObject({ name: 'fetch', outcome: 'unbound', shadowed: true });
+
+    const repo = graph.files().find((id) => id.endsWith('repo.ts'))!;
+    const [query] = graph.callSitesIn(repo);
+    expect(query).toMatchObject({ object: ['this', 'db'], name: 'query', outcome: 'external', package: 'pg', targets: [] });
+  });
+
+  it('origem de um valor atravessa import e barrel: `app.use("/api", router)` acha onde `router` é declarado', () => {
+    const routes = indexFile(graph, fx, 'routes/orders.ts', "import { Router } from 'express';\nexport const ordersRouter = Router();\n");
+    indexFile(graph, fx, 'routes/index.ts', "export * from './orders';\n");
+    const app = indexFile(
+      graph,
+      fx,
+      'app.ts',
+      "import express from 'express';\nimport { ordersRouter as r } from './routes';\nexport function createApp() {\n  const app = express();\n  app.use('/api', r);\n  return app;\n}\n"
+    );
+    const use = graph.callsOf(symbolId(graph, 'createApp', app)).find((c) => c.name === 'use')!;
+    expect(use).toMatchObject({ package: 'express', receiverOrigin: { file: app, name: 'app', local: true } });
+    expect(use.args[1]).toMatchObject({ kind: 'name', chain: ['r'], origin: { file: routes, name: 'ordersRouter' } });
+  });
+
+  it('a posição acompanha a edição do arquivo', () => {
+    const fsPath = fx.write('f.ts', 'function f() { g(); }\nfunction g() {}\n');
+    graph.updateFile(fsPath, 'function f() { g(); }\nfunction g() {}\n');
+    graph.updateFile(fsPath, 'function f() {\n\n  g();\n}\nfunction g() {}\n');
+    const f = graph.files()[0]!;
+    expect(graph.callsOf(symbolId(graph, 'f', f))).toMatchObject([{ name: 'g', line: 2, column: 2, outcome: 'resolved' }]);
   });
 });

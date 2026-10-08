@@ -51,7 +51,7 @@ exports.run = async function run() {
 
   await check('comandos registrados', async () => {
     const all = await vscode.commands.getCommands(true);
-    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard', 'shieldepy.showMap']) {
+    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard', 'shieldepy.showMap', 'shieldepy.exportTopology']) {
       assert(all.includes(c), `faltando ${c}`);
     }
   });
@@ -223,6 +223,23 @@ exports.run = async function run() {
     assert(edgeIn(map, `${c}controllers/CheckoutController.ts#create`, `${c}services/CheckoutService.ts#checkout`, 'calls'), 'controller → service');
     assert(edgeIn(map, `${c}services/CheckoutService.ts#checkout`, `${c}gateways/StripeGateway.ts#charge`, 'calls'), 'service → Stripe (pela interface)');
     assert(edgeIn(map, `${c}repositories/StockRepository.ts#decrement`, 'pkg:pg', 'calls'), 'repositório → pg');
+  });
+
+  await check('"Exportar Topologia" grava .shieldepy/topology-graph.json com POST /checkout em ordem e as tags', async () => {
+    await vscode.commands.executeCommand('shieldepy.exportTopology');
+    const disk = JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(file('.shieldepy/topology-graph.json'))).toString('utf8'));
+    const topology = api.lastTopology();
+    assert(topology && topology.contentHash === disk.contentHash, 'arquivo diferente da topologia em memória');
+    const checkout = disk.routes.find((r) => r.id === 'POST /checkout');
+    assert(checkout, `rotas: ${disk.routes.map((r) => r.id).join(', ')}`);
+    const ops = checkout.operations.map((o) => `${o.kind} ${o.target}`).join(' → ');
+    assert(ops === 'db_read stock → api_call api.stripe.com → db_write stock → db_write orders', `operações: ${ops}`);
+    const tags = checkout.tags.map((t) => t.tag);
+    for (const t of ['read-then-write', 'write-after-api-call', 'no-timeout', 'no-transaction']) assert(tags.includes(t), `faltando a tag ${t}: ${tags}`);
+    assert(checkout.file === 'checkout/src/routes/checkout.ts' && checkout.confidence === 'proven', `rota: ${checkout.file} ${checkout.confidence}`);
+    // o painel do mapa recebe a mesma topologia (rotas viram nós no editor)
+    await vscode.commands.executeCommand('shieldepy.showMap');
+    assert(api.lastTopology().routes.some((r) => r.id === 'POST /checkout'), 'painel do mapa sem a topologia');
   });
 
   const tsconfig = file('checkout/tsconfig.json');

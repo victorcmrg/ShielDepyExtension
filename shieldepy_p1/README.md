@@ -139,6 +139,40 @@ Esse artefato é a entrada das próximas etapas (veja `PLANO-CHAOS.md` na raiz).
 - clique num nó para ver **"Cadeia abaixo"** (tudo que ele alcança, como rota → banco) e **"Quem chega aqui"**, em camadas;
 - link direto pela URL: `mapa.html#fluxo=src/routes/checkout.ts`.
 
+### Topologia: rotas e operações de I/O
+
+`shieldepy topology <pasta>` (e, na extensão, **ShielDepy: Exportar Topologia**, que grava
+`.shieldepy/topology-graph.json`) lê o mapa acima e responde: *o que cada rota HTTP faz no banco
+e em APIs externas, e em que ordem?*
+
+```text
+● POST /checkout   handlers: express.json() → validateCheckout → checkoutController.create
+   1 db_read    stock              src/repositories/StockRepository.ts:7   (pg)
+   2 api_call   api.stripe.com     src/gateways/StripeGateway.ts:8         (fetch, sem timeout)
+   3 db_write   stock              src/repositories/StockRepository.ts:12  (pg)
+   4 db_write   orders             src/repositories/OrderRepository.ts:14  (pg)
+    tags: external-io, no-timeout, no-transaction(stock), read-then-write(stock), write-after-api-call(orders,stock)
+```
+
+Tudo é decidido pelo **pacote para o qual a chamada resolveu** no grafo, nunca pelo nome:
+- **Rota:** `.get/.post/...` num valor que vem de `express`, com path literal. Os prefixos de
+  `app.use('/api', router)` são compostos seguindo `router` até onde ele é declarado (import,
+  barrel). Middlewares de `use` entram na cadeia só se foram registrados antes da rota.
+- **Banco:** `query` de `pg`, com o SQL classificado pelos tokens (verbo, tabela, `FOR UPDATE`,
+  `BEGIN`); operações do Prisma (`prisma.order.create`).
+- **API externa:** `fetch` global (ou de `node-fetch`/`undici`) e `axios`, com o host da URL e o
+  timeout em três estados (`yes`/`no`/`unknown`).
+- **Ordem:** handlers em ordem e, dentro de cada função, as chamadas na ordem em que terminam
+  (`a(b())`: `b` primeiro), em profundidade até a operação.
+- **Tags:** `external-io`, `read-then-write`, `multi-write-same-target`, `write-after-api-call`,
+  `no-timeout`, `no-transaction`. Cada operação sai `proven` ou `heuristic` (se o caminho passou
+  por uma aresta por nome).
+
+`--surface` mostra só o recorte que vai para a IA (rotas sensíveis e colisões, com
+`arquivo:linha`, sem código). `--html` abre o visualizador com as rotas e as operações como nós
+(`rotas.html#rota=POST /checkout` abre o fluxo da rota). O JSON é canônico, com hash, e aponta
+para o hash do mapa de onde saiu.
+
 ## Mapa do código
 
 As dependências andam numa direção só:
@@ -162,6 +196,8 @@ apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode
 | Imports/exports/re-exports de um arquivo (tabela de módulo) | `packages/core/src/code-graph/extract-module.ts` |
 | Resolução de especificadores (relativo, tsconfig `paths`, pacote) | `packages/core/src/code-graph/resolve-import.ts` |
 | Artefato do mapa do sistema (`shieldepy graph`) | `packages/core/src/system-graph.ts` |
+| Rotas, operações de I/O, tags e superfície de ataque (`shieldepy topology`) | `packages/core/src/topology/*` |
+| SQL por tokens (triggers e `pool.query`) | `packages/core/src/sql/*` |
 | Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
@@ -228,6 +264,8 @@ npm run cli -- report  <pasta> --fail-on critico               # portão de CI: 
 npm run cli -- cycles  <pasta>                                 # ciclos de chamada
 npm run cli -- graph   <pasta> [--json] [--out mapa.json]      # mapa do sistema + cobertura
 npm run cli -- graph   <pasta> --html mapa.html              # visualizador interativo (offline)
+npm run cli -- topology <pasta> [--json] [--surface] [--out .shieldepy/topology-graph.json] [--html rotas.html]
+                                                               # rotas, I/O em ordem e tags de risco
 npm run cli -- report  --pg postgres://user:pass@host/db       # triggers de um Postgres real
 ```
 
@@ -264,7 +302,7 @@ Chaves para a CLI e a web: copie `.env.example` para `.env`.
 
 ## Histórico: o que mudou em relação aos projetos originais
 
-Itens do `PLANO_DE_CORRECOES.md` da extensão original (`legado_grafo_arvore/` no repositório do TCC) resolvidos durante a fusão:
+Itens do `PLANO_DE_CORRECOES.md` da extensão original (pasta `legado_grafo_arvore/`, hoje só no histórico do git) resolvidos durante a fusão:
 
 | Item | Como ficou |
 |---|---|
@@ -303,5 +341,10 @@ Do Projeto18:
 - O grafo não infere tipo sem anotação além de `new X()` e retornos anotados. `const x = f()`
   com `f` sem tipo de retorno, ou um campo atribuído a partir de uma chamada, caem no fallback
   por nome (aresta `heuristic`). `require` com caminho dinâmico não é seguido.
+- Topologia: só Express (NestJS, Fastify e rotas por arquivo do Next.js ainda não), e só
+  `pg`/Prisma/`fetch`/`axios` como I/O. Ficam de fora `router.route('/x').get(...)`, roteador
+  recebido como parâmetro (sai sem o prefixo de quem chama), SQL que não é literal
+  (`db_unknown`) e chamadas dentro de callbacks passados a funções (`prisma.$transaction(async (tx) => ...)`:
+  o `tx` não tem tipo, então as operações de dentro não aparecem).
 - O painel, o chat e as configurações são testados no E2E só indiretamente (via comandos e
   Diagnostics), não clicando na interface.

@@ -15,7 +15,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json && tsc -p apps/frontend/tsconfig.json",
     "check": "npm run typecheck && npm test",
-    "cli": "npm start -w @shieldepy/cli --",
+    "cli": "node apps/cli/bin/shieldepy.js",
     "web": "npm run build -w @shieldepy/frontend && npm start -w @shieldepy/frontend",
     "web:dev": "npm run dev -w @shieldepy/frontend",
     "build:vscode": "npm run build -w shieldepy",

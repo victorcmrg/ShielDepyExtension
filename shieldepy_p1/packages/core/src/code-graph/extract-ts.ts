@@ -5,7 +5,7 @@
 import { constructedType, FUNCTION_VALUE_TYPES, memberChain, typeRef, walk, type TypeRef } from './ast';
 import { DEFAULT_EXPORT_NAME } from './extract-module';
 import type { SyntaxNode } from './parser';
-import type { SymbolKind } from './types';
+import type { CallArg, SymbolKind } from './types';
 
 export type { TypeRef } from './ast';
 
@@ -67,7 +67,20 @@ export interface RawCall {
   kind?: 'call' | 'ref';
   /** Referência a um símbolo já conhecido (callback anônimo que virou símbolo). */
   symbolId?: string;
+  /** Início da chamada (0-based) e o offset do FIM: em `a(b())` e `x.f().g()` o de dentro termina (e roda) antes. */
+  line?: number;
+  column?: number;
+  end?: number;
+  args?: RawArg[];
+  /** Onde a raiz do receptor (ou o nome chamado) é declarada: topo do arquivo ou dentro do chamador. */
+  scope?: Scope;
 }
+
+/** `module`: declarado no topo do arquivo; `local`: parâmetro ou variável de uma função. */
+export type Scope = 'module' | 'local';
+
+/** Argumento como sai do parse; o `name` o CodeGraph resolve depois (vira `CallArg`). */
+export type RawArg = Exclude<CallArg, { kind: 'name' }> | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope };
 
 const FUNCTION_SCOPE_TYPES = new Set([
   'function_declaration',
@@ -269,6 +282,81 @@ function describeCall(node: SyntaxNode): CallDesc | undefined {
   return innerCall ? { name, receiver: { call: innerCall, rest: [] } } : { name, dynamic: true };
 }
 
+/** O nome é declarado neste bloco (`const`/`let`/`var`, inclusive exportado)? `require()` é import, não valor local. */
+function declaresIn(block: SyntaxNode, name: string): boolean {
+  for (const stmt of block.namedChildren) {
+    const decl = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') : stmt;
+    if (decl?.type !== 'lexical_declaration' && decl?.type !== 'variable_declaration') continue;
+    for (const d of decl.namedChildren) {
+      if (d.type !== 'variable_declarator' || d.childForFieldName('name')?.text !== name) continue;
+      const value = d.childForFieldName('value');
+      return !(value && isRequire(value));
+    }
+  }
+  return false;
+}
+
+/** Onde `name`, visto de `from`, é declarado: topo do arquivo, dentro de uma função, ou fora daqui (import/global). */
+function declarationScope(from: SyntaxNode, name: string): Scope | undefined {
+  for (let n = from.parent; n; n = n.parent) {
+    if (FUNCTION_SCOPE_TYPES.has(n.type)) {
+      const single = n.childForFieldName('parameter');
+      if (single?.type === 'identifier' && single.text === name) return 'local';
+      if ((n.childForFieldName('parameters')?.namedChildren ?? []).some((p) => paramName(p) === name)) return 'local';
+    }
+    if (BLOCK_TYPES.has(n.type) && declaresIn(n, name)) return n.type === 'program' ? 'module' : 'local';
+  }
+  return undefined;
+}
+
+const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r', '0': '\0' };
+
+/** Conteúdo de um literal de string sem as aspas, com os escapes simples desfeitos. */
+function unquote(raw: string): string {
+  let out = '';
+  for (let i = 1; i < raw.length - 1; i++) {
+    const c = raw[i]!;
+    if (c !== '\\' || i + 1 >= raw.length - 1) out += c;
+    else out += ESCAPES[raw[++i]!] ?? raw[i];
+  }
+  return out;
+}
+
+/** O que dá pra saber de um argumento sem executar nada. */
+function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg {
+  if (arg.type === 'string') return { kind: 'string', value: unquote(arg.text) };
+  if (arg.type === 'template_string') {
+    const sub = arg.namedChildren.find((c) => c.type === 'template_substitution');
+    if (!sub) return { kind: 'string', value: unquote(arg.text) };
+    return { kind: 'template', prefix: unquote(arg.text.slice(0, sub.startIndex - arg.startIndex) + '`') };
+  }
+  if (arg.type === 'object') {
+    const keys = arg.namedChildren.map((p) => {
+      if (p.type === 'shorthand_property_identifier') return p.text;
+      if (p.type === 'spread_element') return '...';
+      const key = p.childForFieldName('key') ?? p.childForFieldName('name');
+      return key?.type === 'string' ? unquote(key.text) : key?.text ?? '';
+    });
+    return { kind: 'object', keys: keys.filter((k) => k !== '') };
+  }
+  if (FUNCTION_VALUE_TYPES.has(arg.type)) {
+    const symbolId = symbolAt.get(arg.startIndex)?.id;
+    return symbolId ? { kind: 'function', symbolId } : { kind: 'function' };
+  }
+  if (arg.type === 'call_expression') {
+    const callee = memberChain(arg.childForFieldName('function'));
+    if (callee) return { kind: 'call', callee };
+  }
+  const chain = memberChain(arg);
+  if (!chain || chain[0] === 'super' || (chain.length === 1 && chain[0] === 'this')) return { kind: 'other' };
+  const scope = chain[0] === 'this' ? undefined : declarationScope(arg, chain[0]!);
+  const ref: CallDesc =
+    chain.length === 1
+      ? { name: chain[0]!, ...(localType(arg, chain[0]!) !== undefined ? { shadowed: true } : {}) }
+      : { name: chain.at(-1)!, object: chain.slice(0, -1), ...receiverOf(arg, chain.slice(0, -1)) };
+  return { kind: 'name', chain, ref, ...(scope && { scope }) };
+}
+
 /** Nome do contêiner de um método: classe, ou variável que guarda o objeto literal. */
 function containerOf(node: SyntaxNode): string | undefined {
   const parent = node.parent;
@@ -369,9 +457,10 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
 
 /**
  * Chamadas, cada uma atribuída ao símbolo MAIS INTERNO que a contém (método, não a classe), com o
- * tipo do receptor quando o arquivo deixa saber. Também as referências: função passada como
- * argumento (`router.use(auth)`, `app.post('/x', ctrl.create)`), atribuídas ao símbolo envolvente
- * ou, no topo do arquivo, ao próprio arquivo (`fileId`).
+ * tipo do receptor quando o arquivo deixa saber, a posição e os argumentos estáticos. Chamada no
+ * topo do arquivo (`router.post('/x', ...)`) fica com o próprio arquivo (`fileId`) como chamador.
+ * Também as referências: função passada como argumento (`router.use(auth)`, `app.post('/x', ctrl.create)`),
+ * atribuídas ao símbolo envolvente ou, no topo do arquivo, ao próprio arquivo.
  */
 export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: string): RawCall[] {
   const enclosing = (index: number): string | undefined => {
@@ -387,9 +476,21 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
   const results: RawCall[] = [];
   walk(root, (node) => {
     if (node.type === 'call_expression' || node.type === 'new_expression') {
-      const caller = enclosing(node.startIndex);
+      const caller = enclosing(node.startIndex) ?? fileId;
       const desc = caller ? describeCall(node) : undefined;
-      if (caller && desc) results.push({ caller, ...desc });
+      if (!caller || !desc) return;
+      const root = desc.object?.[0] ?? desc.name;
+      const scope = root === 'this' || root === 'super' ? undefined : declarationScope(node, root);
+      const args = node.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment') ?? [];
+      results.push({
+        caller,
+        ...desc,
+        line: node.startPosition.row,
+        column: node.startPosition.column,
+        end: node.endIndex,
+        args: args.map((a) => describeArg(a, symbolAt)),
+        ...(scope && { scope }),
+      });
       return;
     }
 

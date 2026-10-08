@@ -13,20 +13,21 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança. Cada etapa tem sua branch. **O merge na `main` é feito pelo usuário** quando a etapa inteira estiver completa.
 
-- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, aguardando merge do usuário.**
+- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, mergeada na `main` (PR #1).**
 - **E2 — Topologia** (tarefas 2a–2f, ver a seção "Fase 1 / E2"), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
-- **Ordem de merge pendente:** `feat/chaos-grafo` (E1) → `feat/grafo-visualizador` (V1). A E2 começa numa branch nova a partir da `main` depois disso.
+- **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
+- **E2 completa em 2026-10-08** na branch `feat/topologia` (criada a partir da `main` `6756ded`), commitada fatia a fatia e ainda não enviada: o usuário sobe a branch e faz o merge. A E3 começa depois, numa branch nova a partir da `main`.
 
 | Tarefa | Branch | Status |
 |---|---|---|
-| 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído |
-| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído |
-| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído |
-| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído |
-| V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído |
-| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` (criar a partir da `main` após os merges) | próximo |
+| 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído, mergeado |
+| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído, mergeado |
+| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído, mergeado |
+| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
+| V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
+| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, aguardando push e merge do usuário |
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
-| 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
+| 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` (criar a partir da `main` após o merge da E2) | próximo |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
 | 5. E5: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente, depois da E2 (ver avaliação) |
 
@@ -121,6 +122,68 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - 2026-10-07: o plano passou a registrar o que a extensão mapeia hoje (com 5 ressalvas) e a estimativa de custo da IA por execução (seções próprias).
 - 2026-10-07: **ressalvas 2–5 da extensão resolvidas.** Detalhes na seção "Extensão do VS Code". O E2E passa 23/23 num VS Code real, e a suíte unitária tem 201 testes.
 - 2026-10-07: avaliado o esforço de mapear Java/C#/Python por completo (seção própria). Ficou registrado como E5, depois da E2.
+- 2026-10-08: **E1 e V1 mergeadas na `main`** (PRs #1 e #2), seguidas do commit `6756ded` (`apps/web` → `apps/frontend`, em React).
+  - Conferido na `main`: typecheck limpo, **204 testes** passando e o gate da E1 no `checkout-express` (`callsUnresolved = 0`, `callsHeuristic = 0`, `importsUnresolved = 0`).
+  - Pasta local `legado_grafo_arvore/` apagada (já não era versionada). O README da raiz descreve só o `shieldepy_p1`; os legados ficam no histórico do git.
+  - Achado: `npm run cli -- …` não imprimia nada, porque o script `start` rodava `src/main.ts`, que só exporta `main()`. Corrigido: o `start` usa o `bin/shieldepy.js`.
+  - Branch `feat/topologia` criada a partir da `main`. **E2 iniciada.**
+- 2026-10-08: **2a concluído (API do core).** Três ajustes ao que o plano previa, vindos da leitura do código:
+  - **Chamadas no topo do arquivo** não eram registradas, e `checkoutRouter.post('/checkout', ...)` fica no topo. Agora ficam guardadas com o arquivo como chamador, mas **fora das arestas e da cobertura**: os números da E1 e o hash do mapa do `checkout-express` não mudaram.
+  - **`args` no lugar de só `firstArg`:** a 2c precisa do 2º argumento (`fetch(url, { signal })`, `axios(url, { timeout })`). Cada argumento vira um resumo estático: string, prefixo de template, chaves de objeto, callback (com o símbolo) ou nome resolvido.
+  - **`callSitesIn(fileId)` no lugar de `referencesAt`:** a mesma API serve para o topo do arquivo e para dentro de funções (o `app.use(router)` fica dentro de `createApp`). Cada nome traz a **`origin`**, ou seja, onde ele é declarado, atravessando import e barrel. É isso que liga o `app.use('/api', r)` de um arquivo ao `ordersRouter.post` de outro.
+  - **Ordem:** pela posição em que a chamada **termina**. Em `res.status(201).json()` e `fetch(url, { body: new URLSearchParams() })`, a de dentro roda antes.
+  - Saída de `callsOf`/`callSitesIn`: `{ caller, line, column, name, object, outcome, targets, package, shadowed, receiverOrigin, args }`. O `outcome` vale `resolved | heuristic | unresolved | external | unbound`. `fetch` global sai `unbound` sem `shadowed`.
+  - O lexer SQL foi movido para `packages/core/src/sql/lexer.ts` e é exportado como `tokenizeSql`; `extractors` importa de lá.
+  - Suíte: 204 → **210 testes**. Typecheck limpo e a extensão compila.
+- 2026-10-08: **2b concluído (rotas Express)**, em `packages/core/src/topology/routes.ts` (`findExpressRoutes`).
+  - **Roteador:** qualquer valor cujas chamadas resolvem para `pkg:express` (`express()`, `Router()`, `express.Router()`, `require('express')`). A identidade dele é a `origin` (onde é declarado), ou `this.router` dentro do arquivo.
+  - **Rota:** `get|post|put|patch|delete|head|options|all` com path literal e pelo menos um handler. `app.get('env')` é leitura de configuração e não entra. Path dinâmico vai para `skipped`, com motivo.
+  - **Montagem:** `use([prefixo], x)` em que `x` é um roteador conhecido. A rota sobe pelas montagens somando prefixos; um roteador montado duas vezes gera duas rotas, e ciclo de montagem não trava.
+  - **Middlewares:** os outros argumentos de `use` entram na cadeia, mas só os registrados **antes** (no mesmo arquivo) e dentro do prefixo, que é a semântica do Express. Middleware de pacote sai com `package`. Chamada (`express.json()`, `auth()`) sai `opaque`: aparece na cadeia, mas o percurso não entra. Para isso, `CallArg` ganhou o tipo `call` (`callee`).
+  - **`checkout-express`:** `POST /checkout: express.json() → validateCheckout → checkoutController.create` e `GET /orders/:id: express.json() → <inline>`. O `express.json()` vem do `app.use` de `app.ts`, que fica antes da montagem, e por isso está certo.
+  - **Limite (da E1, não da 2b):** campo sem anotação iniciado por chamada (`router = Router()`) não tem tipo, então `this.router.post` não é reconhecido. Com anotação (`router: Router = Router()`), é. Também ficam de fora `router.route('/x').get(...)` e roteador recebido como parâmetro (`register(r: Router)`), que sai sem o prefixo de quem chama.
+  - Suíte: **216 testes**.
+- 2026-10-08: **2c concluído (operações de I/O)**, em `topology/io.ts` (`ioOperationOf`) e `sql/classify.ts` (`classifySql`).
+  - **SQL pelos tokens:**
+    - verbo principal no nível de fora (o de uma CTE ou subconsulta não conta);
+    - tabela escrita (INTO/UPDATE/DELETE FROM) ou a 1ª lida, e todas as citadas, sem as CTEs;
+    - `FOR UPDATE/SHARE/NO KEY UPDATE` vira `lock`;
+    - BEGIN/COMMIT/ROLLBACK vira `db_tx`;
+    - nome sem aspas em minúsculas e `schema.tabela` junto;
+    - comentário e string nunca viram verbo.
+  - **pg:** `query` resolvida para `pkg:pg`, inclusive o `client` de `pool.connect()`. Um `query` de classe do projeto não é banco.
+  - **Prisma:** o model é o último segmento do receptor (`prisma.order.create`). `find*/count/aggregate/groupBy` é leitura e `create*/update*/upsert/delete*` é escrita. `$transaction` vira `db_tx`, e `$queryRawUnsafe/$executeRawUnsafe` passam pelo classificador de SQL.
+  - **fetch:** o global (não sombreado) e o de `node-fetch/undici/cross-fetch`. O alvo é o host da URL literal ou do começo do template; se não der para ler, `dynamic`.
+  - **axios:** a posição da config depende do método (`get(url, config)`, `post(url, data, config)`, `axios(config)`).
+  - **Timeout em 3 estados**, porque a tag `no-timeout` só sai com `no`:
+    - `yes`: há `signal` ou `timeout`;
+    - `no`: config ausente ou sem essas chaves;
+    - `unknown`: a config é uma variável ou spread, ou a chamada é de uma instância `axios.create(...)`, que pode ter timeout próprio.
+  - SQL que não é literal (`db.query(sql)`) vira `db_unknown dynamic`: fala com o banco, mas não se sabe o quê.
+  - **`checkout-express`:** `api_call api.stripe.com (fetch, sem timeout)`, `db_read stock`, `db_write stock`, `db_write orders` e `db_read orders`, cada uma no método certo do repositório.
+  - Suíte: **223 testes**.
+- 2026-10-08: **2d concluído (topologia)**, em `topology/build.ts` (`buildTopology`, `sensitivityTags`, `isSensitive`).
+  - **Percurso:** handlers em ordem (pulando os `opaque` e os de pacote). Dentro de cada um, as chamadas em ordem, em profundidade.
+    - Não há "visitado global": uma função chamada duas vezes conta duas vezes (é o que faz `multi-write` aparecer). Recursão é cortada pela pilha.
+    - Limites: profundidade 16 e 5000 passos por rota. Se algum estourar, a rota sai `truncated`.
+  - **Confiança:** a operação alcançada por uma ligação `heuristic` sai `heuristic`, e a rota também. Cada operação traz `through`, a cadeia de símbolos do handler até ela.
+  - **Tags:** como no plano, com uma decisão anotada. Transação **sem** `FOR UPDATE` tira o `no-transaction`, mas o `read-then-write` continua, porque no READ COMMITTED do Postgres a corrida ainda existe; quem decide é o teste de concorrência. Leitura feita **antes** do `BEGIN` continua desprotegida. Alvo `dynamic` não gera `read-then-write`/`multi-write`.
+  - **Colisões:** a rota recebe a colisão quando o percurso passa pelo símbolo que implementa uma das regras (ligação já feita pelo `SystemGraph`). A lista global de colisões traz as rotas de cada uma.
+  - **Formato:** `TopologyGraph { version, contentHash, systemGraphHash, stats, routes, skipped, collisions }`, com ids relativos (`relativeIds`, extraído do `system-graph.ts`) e JSON canônico. O hash é o mesmo independente da ordem de indexação.
+  - **Aceitação no `checkout-express`: atingida.** `POST /checkout` sai com `db_read stock → api_call api.stripe.com → db_write stock → db_write orders` e as tags `external-io, no-timeout, no-transaction(stock), read-then-write(stock), write-after-api-call(orders,stock)`, tudo `proven`. `GET /orders/:id` sai com `db_read orders`.
+  - Suíte: **230 testes**.
+- 2026-10-08: **2e concluído (superfície de ataque + CLI + visualizador).**
+  - **`attackSurface(topology)`** (`topology/surface.ts`): só as rotas sensíveis (com I/O ou colisão no caminho) e as colisões. Cada operação traz `at: arquivo:linha` (1-based) e `in: função`, sem nenhuma linha de código. Leva o `topologyHash`, para amarrar a resposta da IA a este mapa.
+  - **CLI:** `shieldepy topology <pasta> [--json] [--surface] [--out arquivo] [--html arquivo]`. Na saída de texto, cada rota vem com a cadeia de handlers, as operações em ordem com `arquivo:linha` e detalhe (`sem timeout`, `FOR UPDATE`, `por nome`), as tags e os registros que não deu para ler.
+  - **Visualizador:** `renderGraphHtml(system, label, mode, topology?)`. Com a topologia, rotas viram nós (ligados aos handlers) e cada operação de I/O vira um nó (`db_write stock`, `api_call api.stripe.com`, ligado ao símbolo que a faz). Também ganha a lista lateral de rotas com as tags, o filtro "rotas e operações de I/O" e o link `#rota=POST /checkout`, que abre o fluxo da rota. Conferido em screenshot no Chrome headless (mapa geral e fluxo do `POST /checkout`). Sem a topologia, o visualizador da E1 continua igual.
+  - Suíte: **233 testes**. A extensão compila.
+- 2026-10-08: **2f concluído, e com ele a E2.**
+  - **Extensão:** comando **"ShielDepy: Exportar Topologia (rotas e I/O)"**. Usa o grafo e as regras que já estão em memória (sem reindexar), grava `.shieldepy/topology-graph.json` na raiz e avisa quantas rotas, rotas sensíveis e operações saíram, com atalhos "Abrir arquivo" e "Ver rotas no mapa". O aviso diz quando o mapa tem chamadas não provadas.
+  - O painel **"Ver Mapa do Sistema"** passa a receber a topologia: rotas e operações viram nós também no editor, e o "Abrir código" de uma rota leva ao registro dela.
+  - **E2E: 24/24 num VS Code 1.141 real.** O cenário novo exporta a topologia do workspace e confere `POST /checkout` com `db_read stock → api_call api.stripe.com → db_write stock → db_write orders`, as tags, a confiança `proven`, o arquivo igual ao que está em memória e o painel do mapa com a mesma topologia.
+  - README do `shieldepy_p1`: seção "Topologia: rotas e operações de I/O", comando na lista da CLI, arquivos no mapa do código e limites conhecidos.
+  - Escrita a seção **"E3 — contexto sobre o que a E2 entregou"**: o que a E3 reaproveita, o catálogo × tags, as pendências achadas no código (o exemplo não executa, falta a variante corrigida, o provider não devolve tokens, os modelos padrão, a tabela de custo) e as tarefas 3a–3f com a aceitação.
+  - **Estado final da E2:** 233 testes unitários, E2E 24/24, typecheck limpo, extensão compila, e o mapa do `checkout-express` continua com o mesmo hash da E1 (`6801cb46…`). Pronta para o usuário subir a branch `feat/topologia` e fazer o merge.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -194,19 +257,19 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
 
 ### Tarefas
 
-- **2a. API do core.**
+- **2a. API do core.** ✅ Concluída em 2026-10-08. Saiu como `args` + `callSitesIn` + `origin`; ver o registro.
   - `line`/`firstArg` no `RawCall`, mais `callsOf` e `referencesAt`.
   - Mover o lexer SQL para o core; `extractors` passa a importar de lá.
   - Testes no `call-resolution.test.ts`.
-- **2b. Rotas Express** (`topology/routes.ts`):
+- **2b. Rotas Express** (`topology/routes.ts`): ✅ Concluída em 2026-10-08.
   - Registrar com receptor resolvido para `pkg:express`, verbos `get|post|put|patch|delete|all` e path literal.
   - Montagem com prefixo `app.use('/api', router)`, seguindo `router` importado até a sua declaração. Compor os prefixos.
   - Cada rota guarda os handlers **em ordem** (middlewares + handler final).
-- **2c. Operações de I/O** (`topology/io.ts`), por chamada:
+- **2c. Operações de I/O** (`topology/io.ts`), por chamada: ✅ Concluída em 2026-10-08.
   - `pg` (`query` com SQL literal): o tokenizador dá o verbo (`SELECT` → `db_read`; `INSERT/UPDATE/DELETE` → `db_write`), a tabela e `FOR UPDATE`/transação (`BEGIN`) anotados.
   - `@prisma/client` (`prisma.<model>.<op>`): `create|update|upsert|delete*` = write; `find*|count|aggregate` = read; `$transaction` anotado.
   - `fetch` global (não sombreado) e `axios` (`pkg:axios`): `api_call`, alvo = host da URL literal, ou `dynamic`. Anotar timeout presente ou ausente (`AbortSignal.timeout`, `signal`, `timeout:` do axios).
-- **2d. Topologia** (`topology/build.ts` + `types.ts`):
+- **2d. Topologia** (`topology/build.ts` + `types.ts`): ✅ Concluída em 2026-10-08.
   - Para cada rota, percorrer handlers em ordem → `callsOf` em ordem de linha, em profundidade (limite de profundidade, sem repetir nó).
   - Gerar a lista ordenada de operações e as `SensitivityTag`s:
     - `external-io`;
@@ -217,11 +280,11 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
     - `no-transaction` (read-then-write fora de transação/lock).
   - Anexar os baldes com colisão do `SystemGraph`.
   - `confidence` por operação: `proven` ou `heuristic`, conforme as arestas usadas.
-- **2e. Superfície de ataque + CLI.**
+- **2e. Superfície de ataque + CLI.** ✅ Concluída em 2026-10-08.
   - `attackSurface(topology)`: só rotas com I/O e baldes com colisão. É isto, e não o código, que vai para a IA.
   - `shieldepy topology <pasta> [--json] [--out .shieldepy/topology-graph.json]`.
   - O `--html` do V1 mostra rotas e operações como nós.
-- **2f. Extensão (pequeno).** Comando "ShielDepy: Exportar topologia" usando o `WorkspaceModel` (grafo + regras já em memória).
+- **2f. Extensão (pequeno).** ✅ Concluída em 2026-10-08. Comando "ShielDepy: Exportar topologia" usando o `WorkspaceModel` (grafo + regras já em memória).
 
 ### Resultado esperado no `checkout-express` (é o teste de aceitação da E2)
 
@@ -308,7 +371,9 @@ Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 |---|---|---|
 | Claude Opus 5.5 | US$ 4,00 | US$ 20,00 |
 | Claude Sonnet 5.5 | US$ 2,00 | US$ 10,00 |
-| Claude Haiku 5.5 | US$ 0,10 | US$ 0,50 |
+| Claude Haiku 5.5 ⚠️ | US$ 0,10 | US$ 0,50 |
+
+> ⚠️ Revisão de 2026-10-08: não existe "Haiku 5.5"; o Haiku atual é o Haiku 4.5. Os preços desta tabela e da tabela abaixo precisam ser conferidos na tarefa 3b, antes de virar número de relatório.
 
 **Estimativa por execução.** O raciocínio (thinking) é cobrado como saída. Os números são de ordem de grandeza e devem ser medidos com `response.usage` na E3. Câmbio assumido: R$ 5,50 por dólar.
 
@@ -323,6 +388,79 @@ Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 2. **Cache de prompt** no prompt de sistema e no catálogo, que são estáveis.
 3. **Especialistas no tier `fast`**, porque só preenchem specs validadas.
 4. **Registrar o custo de cada execução no relatório do PR.**
+
+## E3 — contexto sobre o que a E2 entregou (escrito em 2026-10-08, antes de começar)
+
+> As seções "Fase 2" e "Fase 3", abaixo, continuam valendo como desenho. Esta seção diz **de onde a E3 parte**, o que precisa ser preparado antes e em que ordem fazer. Branch: `feat/chaos-agentes`, criada a partir da `main` depois do merge da E2.
+
+### Decisões da E2 que a E3 herda (já tomadas; não precisam de resposta)
+1. **Transação sem `FOR UPDATE`:** a rota perde a tag `no-transaction`, mas mantém `read-then-write`. No READ COMMITTED do Postgres a corrida ainda existe; o teste de concorrência da E3 é quem confirma ou descarta.
+2. **Middleware de pacote ou de chamada** (`express.json()`) aparece na cadeia de handlers como `opaque`: está lá, mas o percurso não entra nele.
+3. **API do core** saiu como `args` + `callSitesIn` + `origin`, no lugar de `firstArg`/`referencesAt` (ver o registro da 2a).
+
+### O que a E2 entrega e a E3 reaproveita
+
+| Peça da E2 | Uso na E3 |
+|---|---|
+| **`attackSurface(topology)`** (`core/src/topology/surface.ts`): rotas sensíveis com operações em ordem, `at: arquivo:linha`, `in: função`, tags e colisões, **sem código** | É a **única entrada** do Threat Modeler. O `topologyHash` vai junto e volta no relatório: a resposta da IA fica amarrada a um mapa. |
+| **`SurfaceRoute.id`** (`POST /checkout`) | É o `routeId` de cada hipótese. A validação descarta qualquer `routeId` que não esteja na superfície. |
+| **Tags de sensibilidade** | Habilitam as falhas do catálogo (tabela abaixo). A validação descarta a falha que a rota não habilita. |
+| **`IoOperation.target` e `timeout`** (`api.stripe.com`, `no`) | O especialista de rede sabe qual host interceptar com o MSW (`http.all('https://api.stripe.com/*')`) sem ler código. |
+| **`confidence` e `truncated`** | Hipótese sobre operação `heuristic`, ou rota truncada, sai marcada assim no relatório. |
+| **Modo offline** | Sem chave de API, as hipóteses saem direto das tags (é o `offline.ts` da Fase 2). |
+| **`parseRules`** (`core/src/interactions/validate.ts`) | Padrão para validar a saída da IA: lança com a posição e o campo inválido. |
+| **`LLMProvider`** (`agent/src/provider.ts`) | Os nós do LangGraph chamam `complete({ tier, json: true })`. Sem chat models do LangChain. |
+
+### Catálogo × tags (o que cada falha precisa para ser proposta)
+
+| Falha | Habilitada por | Especialista | Invariante típico no `checkout-express` |
+|---|---|---|---|
+| `timeout` | `api_call` com `timeout: no` ou `unknown` | Network | `respondsWithin(ms)`: o cliente não pode ficar pendurado |
+| `http_5xx_intermittent` | `external-io` | Network | `statusIn([502, 503])` e nenhum pedido gravado |
+| `malformed_response` | `external-io` | Network | `statusIn([502])` e `noUnhandledRejection` |
+| `race_condition` | `read-then-write` ou `multi-write-same-target` | Concurrency | `stateCheck('stockNeverNegative')` e `maxSuccesses(1)` com estoque 1 |
+| `retry_storm` | `external-io` | Network | Fica fora do MVP: o exemplo não tem retry. |
+| `partial_failure_after_external_call` | `write-after-api-call` | **DB_Chaos** (depois) | Exige falhar o **banco** depois da cobrança. No MVP, o Threat Modeler pode apontar a falha, mas ela vai para o relatório como hipótese sem teste. |
+
+### Pendências encontradas no código (têm que entrar na E3)
+1. **O exemplo não executa.** O `checkout-express` só tem código-fonte: sem `node_modules`, sem banco e sem testes. O `db.ts` cria um `Pool` real no import. Para um teste de caos rodar, ele precisa de:
+   - `createApp` aceitando as dependências (o `pool` injetável), para os testes usarem **`pg-mem`**;
+   - um schema com seed (`stock`, `orders`);
+   - o `shieldepy.chaos.config.ts` (`createApp`, `reset`, `invariants.stockNeverNegative`);
+   - as dependências de teste: `vitest`, `supertest` e `msw`.
+
+   A mudança tem que **manter a topologia igual**: os testes da E2 conferem a sequência exata de operações.
+2. **Falta a variante `checkout-express-fixed`** (com `SELECT ... FOR UPDATE` dentro de transação e `AbortSignal.timeout`). Ela também serve de teste da E2: a topologia dela **não pode** ter `no-transaction` nem `no-timeout`.
+3. **O `LLMProvider` devolve só texto.** A alavanca de custo nº 4 ("registrar o custo de cada execução") precisa dos tokens de entrada e saída. O provider tem que devolver o `usage` (Anthropic e Gemini) sem quebrar quem já usa `complete`.
+4. **Modelos padrão:** hoje `fast` e `deep` usam `claude-haiku-4-5` (`DEFAULT_ANTHROPIC_MODELS`). O Threat Modeler é tier `deep`; definir o padrão (configurável por `SHIELDEPY_DEEP_MODEL`) quando o custo for medido.
+5. **Tabela de custo:** a linha "Claude Haiku 5.5" não corresponde a um modelo existente; o Haiku atual é o **Haiku 4.5**. Os preços da tabela precisam ser conferidos na hora de medir (tarefa 3b).
+6. **Dependências novas:** `@langchain/langgraph` e `@langchain/core` no `packages/agent`; `supertest`, `msw` e `pg-mem` só no exemplo (o ShielDepy gera o teste; quem roda é o projeto-alvo).
+
+### Tarefas da E3
+
+- **3a. Exemplo executável e variante corrigida.**
+  - `checkout-express` com o `pool` injetável, `pg-mem`, seed e `shieldepy.chaos.config.ts`.
+  - `checkout-express-fixed` com lock + transação + timeout.
+  - Teste da E2: a topologia do vulnerável continua igual, e a do corrigido perde `no-transaction` e `no-timeout`.
+  - Um teste manual de cada (supertest), para provar que o app sobe em memória.
+- **3b. Provider com `usage`** e custo por execução (tokens → R$ pela tabela, conferida).
+- **3c. Estado, catálogo e Threat Modeler** (`agent/src/chaos/`):
+  - `state.ts` (LangGraph `Annotation.Root`), `catalog.ts` (a tabela acima, como dados);
+  - `nodes/threat-modeler.ts` com entrada = `attackSurface` serializada;
+  - `validate-hypotheses.ts`: rota existe, falha no catálogo e habilitada pelas tags; o resto é descartado e contado;
+  - `offline.ts`: hipóteses direto das tags.
+- **3d. Especialistas Network e Concurrency** preenchendo `NetworkSpec`/`ConcurrencySpec` (só parâmetros e invariantes, validados), com fan-out por `Send`.
+- **3e. Templates e escrita.**
+  - `templates/network.ts` e `templates/concurrency.ts` → `.shieldepy/chaos-tests/<rota>__<falha>.spec.ts` e o `vitest.config.ts` gerado.
+  - Cada spec já sai com o bloco **`control`** (a mesma requisição, sem caos), que a E4 usa contra falso positivo.
+  - `ChaosIo { write(files) }` injetado; o teste confere que o gerado compila (`tsc --noEmit`) contra o exemplo.
+- **3f. CLI:** `shieldepy chaos <pasta> --no-run [--offline]` gera os testes e um relatório de hipóteses (com custo e `topologyHash`). **Rodar e bloquear o PR é a E4.**
+
+### Aceitação da E3 (no `checkout-express`)
+- **Offline:** gera ao menos `POST /checkout__race_condition.spec.ts` e `POST /checkout__timeout.spec.ts`. Os dois compilam contra o exemplo e têm o bloco de controle.
+- **Com chave:** as hipóteses da IA passam pela mesma validação. Uma resposta com rota inexistente ou falha fora do catálogo é descartada, e o descarte aparece no relatório.
+- **`GET /orders/:id`** (só leitura, sem tags) **não** gera teste de corrida nem de rede.
+- O relatório traz o custo da execução e o `topologyHash`.
 
 ## Fase 2 — LangGraph + Threat Modeler (`packages/agent/src/chaos/`)
 
@@ -368,9 +506,9 @@ I/O (escrever arquivos, rodar processo) é injetado nos nós via interface `Chao
    - Os testes das fixtures da Fase 0 passam.
    - Só depois disso começa a Fase 2.
 1. `npm test` — testes Vitest novos:
-   - `core/test/topology/*`: extratores de rota/I/O sobre fixtures inline (fetch, axios, pg SQL, prisma), BFS por chamadas, tags, filtro, hash estável (duas execuções = mesmo JSON).
+   - `core/test/topology/*`: extratores de rota/I/O sobre fixtures inline (fetch, axios, pg SQL, prisma), BFS por chamadas, tags, filtro, hash estável (duas execuções = mesmo JSON). ✅ E2: `routes.test.ts`, `io.test.ts` e `build.test.ts`.
    - `agent/test/chaos/*`: validação de hipóteses (descarta rota inexistente/falha fora do catálogo), templates geram código que compila (`tsc --noEmit` em snapshot), grafo LangGraph com `LLMProvider` fake e `ChaosIo` fake percorre todos os estados.
-   - `cli/test`: `topology` em `examples/checkout-express` gera `POST /checkout` com `db_read→api_call→db_write` e tags `read-then-write`, `write-after-api-call`.
+   - `cli/test`: `topology` em `examples/checkout-express` gera `POST /checkout` com `db_read→api_call→db_write` e tags `read-then-write`, `write-after-api-call`. ✅ E2.
 2. `npm run typecheck`.
 3. E2E manual: `npm run cli -- chaos examples/checkout-express --offline` → exit 1, relatório aponta race (estoque negativo) e timeout no Stripe; mesmo comando em `checkout-express-fixed` → exit 0. Repetir com `ANTHROPIC_API_KEY`.
 4. Abrir PR de teste no GitHub com o exemplo vulnerável e confirmar check vermelho + comentário no PR.

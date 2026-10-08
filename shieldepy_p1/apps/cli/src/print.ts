@@ -1,4 +1,4 @@
-import { buildGraph, type Collision, type Rule, type SystemGraph } from '@shieldepy/core';
+import { buildGraph, isSensitive, type Collision, type Rule, type SystemGraph, type TopologyGraph } from '@shieldepy/core';
 import { AGENT_NAME, AGENT_TAGLINE, type DiagnosisReport, type Severity } from '@shieldepy/agent';
 
 type Out = (line: string) => void;
@@ -92,4 +92,32 @@ export function printSystemGraph(system: SystemGraph, label: string, out: Out): 
   }
   out(`\n📋 ${s.rules} regra(s) em ${system.buckets.length} balde(s), ${s.collisions} colisão(ões)`);
   out(`🔒 hash do mapa: ${system.contentHash.slice(0, 16)}\n`);
+}
+
+/** `topology`: cada rota com a cadeia de handlers, as operações em ordem e as tags. */
+export function printTopology(topology: TopologyGraph, label: string, out: Out): void {
+  const s = topology.stats;
+  out(`\n🛣️  topologia de ${label}`);
+  out(`   ${s.routes} rota(s), ${s.sensitiveRoutes} sensível(is), ${s.operations} operação(ões) de I/O, ${s.collisions} colisão(ões)`);
+  if (s.callsHeuristic + s.callsUnresolved > 0) {
+    out(`   ⚠️  o mapa tem ${s.callsHeuristic} chamada(s) por nome e ${s.callsUnresolved} sem alvo: veja \`shieldepy graph\``);
+  }
+  for (const r of topology.routes) {
+    const flags = [r.confidence === 'heuristic' ? 'heurística' : '', r.truncated ? 'percurso truncado' : ''].filter(Boolean);
+    out(`\n${isSensitive(r) ? '●' : '○'} ${r.id}   handlers: ${r.handlers.map((h) => h.label).join(' → ')}${flags.length ? `   [${flags.join(', ')}]` : ''}`);
+    out(`    registrada em ${r.file}:${r.line + 1}`);
+    for (const o of r.operations) {
+      const detail = [o.via, o.lock ? 'FOR UPDATE' : '', o.timeout === 'no' ? 'sem timeout' : o.timeout === 'unknown' ? 'timeout ?' : '', o.confidence === 'heuristic' ? 'por nome' : '']
+        .filter(Boolean)
+        .join(', ');
+      out(`  ${String(o.order).padStart(2)} ${o.kind.padEnd(10)} ${o.target.padEnd(18)} ${o.file}:${o.line + 1}  (${detail})`);
+    }
+    if (r.tags.length > 0) out(`    tags: ${r.tags.map((t) => (t.targets ? `${t.tag}(${t.targets.join(',')})` : t.tag)).join(', ')}`);
+    if (r.collisions.length > 0) out(`    colisões no caminho: ${r.collisions.length}`);
+  }
+  if (topology.skipped.length > 0) {
+    out('\n🔎 registros de rota que não deu para ler:');
+    for (const k of topology.skipped) out(`   ${k.file}:${k.line + 1} — ${k.reason}`);
+  }
+  out(`\n🔒 hash da topologia: ${topology.contentHash.slice(0, 16)} (mapa ${topology.systemGraphHash.slice(0, 16)})\n`);
 }

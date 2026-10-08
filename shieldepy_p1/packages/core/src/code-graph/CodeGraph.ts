@@ -4,14 +4,17 @@ import type { Host } from '../host';
 import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
-import { extractCalls, extractSymbols, type CallDesc, type RawCall, type TypeRef } from './extract-ts';
+import { extractCalls, extractSymbols, type CallDesc, type RawArg, type RawCall, type Scope, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
 import {
   isSymbolNode,
   packageNodeId,
+  type CallArg,
   type CallCoverage,
+  type CallOutcome as PublicCallOutcome,
+  type CallSite,
   type EdgeAttrs,
   type EnclosingSymbol,
   type FileNodeAttrs,
@@ -22,6 +25,7 @@ import {
   type SymbolContextEntry,
   type SymbolCycle,
   type SymbolNodeAttrs,
+  type ValueOrigin,
 } from './types';
 
 /** Chamado com a árvore de cada arquivo de código recém-parseado, antes de ela ser liberada. */
@@ -45,7 +49,17 @@ type CallOutcome = keyof FileCoverage | 'unbound';
 interface CallResolution {
   outcome: CallOutcome;
   targets: string[];
+  /** Em `callsExternal`: o pacote (o nó dele pode nem existir, ex: import só de tipo removido). */
+  package?: string;
 }
+
+const PUBLIC_OUTCOME: Record<CallOutcome, PublicCallOutcome> = {
+  callsResolved: 'resolved',
+  callsHeuristic: 'heuristic',
+  callsUnresolved: 'unresolved',
+  callsExternal: 'external',
+  unbound: 'unbound',
+};
 
 const UNRESOLVED: CallResolution = { outcome: 'callsUnresolved', targets: [] };
 /** Receptor de tipo conhecido mas fora do projeto e sem pacote (`Map`, `URL`, `X[]`, interface sem classe): não se adivinha. */
@@ -365,6 +379,28 @@ export class CodeGraph {
     };
   }
 
+  /**
+   * Cada chamada do arquivo, resolvida, em ordem de execução aproximada (pela posição em que a
+   * chamada termina: em `a(b())` o `b` vem antes). Inclui as do topo do arquivo, com o arquivo
+   * como chamador. É o que a topologia percorre: as arestas juntam várias chamadas num `caller→target` só.
+   */
+  callSitesIn(fileId: string): CallSite[] {
+    const calls = this.rawCalls.get(fileId);
+    if (!calls) return [];
+    const ctx = this.resolutionContext(fileId);
+    return calls
+      .filter((c) => c.kind !== 'ref' && c.line !== undefined)
+      .sort((a, b) => a.end! - b.end!)
+      .map((c) => this.toCallSite(fileId, c, ctx));
+  }
+
+  /** As chamadas feitas dentro de um símbolo (não as dos callbacks que ele contém), em ordem de execução aproximada. */
+  callsOf(symbolId: string): CallSite[] {
+    const attrs = this.nodeAttributes(symbolId);
+    if (!attrs || !isSymbolNode(attrs)) return [];
+    return this.callSitesIn(attrs.file).filter((c) => c.caller === symbolId);
+  }
+
   findCycleThrough(nodeId: string): string[] | null {
     // Só `calls`: passar uma função como valor (`references`) não é um laço de execução.
     return findCycleThrough(
@@ -669,6 +705,8 @@ export class CodeGraph {
     for (const call of calls) {
       if (!this.graph.hasNode(call.caller)) continue;
       const isRef = call.kind === 'ref';
+      // chamada no topo do arquivo (`router.post(...)`, `new Svc()`) só serve a `callSitesIn`: não é aresta de símbolo nem conta na cobertura
+      if (!isRef && call.caller === fileId) continue;
       const { outcome, targets } = call.symbolId
         ? { outcome: 'callsResolved' as const, targets: this.graph.hasNode(call.symbolId) ? [call.symbolId] : [] }
         : this.resolveCall(fileId, call, ctx);
@@ -781,6 +819,61 @@ export class CodeGraph {
     return this.guess(call, ctx);
   }
 
+  private toCallSite(fileId: string, call: RawCall, ctx: ResolutionContext): CallSite {
+    const r = this.resolveCall(fileId, call, ctx);
+    const origin = call.object ? this.valueOrigin(fileId, call.object, call.scope, ctx) : undefined;
+    return {
+      caller: call.caller,
+      line: call.line!,
+      column: call.column!,
+      name: call.name,
+      ...(call.object && { object: call.object }),
+      ...this.publicResolution(r),
+      ...(call.shadowed && { shadowed: true }),
+      ...(origin && { receiverOrigin: origin }),
+      args: (call.args ?? []).map((a) => this.resolveArg(fileId, a, ctx)),
+    };
+  }
+
+  private publicResolution(r: CallResolution): { outcome: PublicCallOutcome; targets: string[]; package?: string } {
+    return {
+      outcome: PUBLIC_OUTCOME[r.outcome],
+      targets: r.outcome === 'callsExternal' ? [] : r.targets,
+      ...(r.package !== undefined && { package: r.package }),
+    };
+  }
+
+  private resolveArg(fileId: string, arg: RawArg, ctx: ResolutionContext): CallArg {
+    if (arg.kind !== 'name') return arg;
+    const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx);
+    return {
+      kind: 'name',
+      chain: arg.chain,
+      ...this.publicResolution(this.resolveCall(fileId, arg.ref, ctx)),
+      ...(origin && { origin }),
+    };
+  }
+
+  /**
+   * Onde a raiz de `chain` é declarada: no próprio chamador (`local`), no topo deste arquivo, ou
+   * — se veio de um import — no arquivo que a declara, atravessando barrels. `this`, globais e
+   * pacotes ficam sem origem.
+   */
+  private valueOrigin(fileId: string, chain: string[], scope: Scope | undefined, ctx: ResolutionContext): ValueOrigin | undefined {
+    const [root, next] = chain;
+    if (!root || root === 'this' || root === 'super') return undefined;
+    if (scope === 'local') return { file: fileId, name: root, local: true };
+    if (scope === 'module') return { file: fileId, name: root };
+    const binding = ctx.bindings(fileId).get(root);
+    if (!binding) return this.declaresTopLevel(fileId, root) ? { file: fileId, name: root } : undefined;
+    const target = this.specTargets.get(fileId)?.get(binding.spec);
+    if (target?.kind !== 'file') return undefined;
+    // `import * as routes` + `routes.orders` → o export `orders`; sem membro, o namespace não é um valor declarado
+    const exported = binding.imported === '*' ? next : binding.imported;
+    const loc = exported ? this.resolveExportLocal(target.id, exported, new Set()) : undefined;
+    return loc && { file: loc.file, name: loc.local };
+  }
+
   /**
    * `m` no valor devolvido por outra chamada: `new X().m()`, `repo().save()` com `repo(): Repo`,
    * `Router().post()` (pacote → externa), `JSON.parse(x).m()` (nativo).
@@ -834,7 +927,7 @@ export class CodeGraph {
 
   private external(pkgName: string): CallResolution {
     const pkg = packageNodeId(pkgName);
-    return { outcome: 'callsExternal', targets: this.graph.hasNode(pkg) ? [pkg] : [] };
+    return { outcome: 'callsExternal', targets: this.graph.hasNode(pkg) ? [pkg] : [], package: pkgName };
   }
 
   /**

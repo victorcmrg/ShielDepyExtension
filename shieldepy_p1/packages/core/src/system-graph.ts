@@ -92,19 +92,24 @@ export function canonicalJson(value: unknown, indent?: number): string {
   return JSON.stringify(sort(value), null, indent);
 }
 
-/**
- * Monta o mapa do sistema a partir do grafo de código já indexado e das regras extraídas.
- * `root` é a pasta analisada: todos os ids viram relativos a ela (o artefato não carrega a máquina).
- */
-export function buildSystemGraph(graph: CodeGraph, rules: Rule[], root: string): SystemGraph {
+/** Id do grafo (absoluto) → id portátil, relativo a `root` (`src/app.ts#nome:3`); pacote fica como está. */
+export function relativeIds(root: string): (id: string) => string {
   const rootId = toFileId(root).replace(/\/$/, '');
-  const rel = (id: string): string => {
+  return (id) => {
     if (id.startsWith('pkg:')) return id;
     const [file, symbol] = id.split('#', 2) as [string, string | undefined];
     const r = path.posix.relative(rootId, file);
     const relFile = r === '' ? '.' : r;
     return symbol === undefined ? relFile : `${relFile}#${symbol}`;
   };
+}
+
+/**
+ * Monta o mapa do sistema a partir do grafo de código já indexado e das regras extraídas.
+ * `root` é a pasta analisada: todos os ids viram relativos a ela (o artefato não carrega a máquina).
+ */
+export function buildSystemGraph(graph: CodeGraph, rules: Rule[], root: string): SystemGraph {
+  const rel = relativeIds(root);
 
   const snapshot = graph.toSnapshot();
   const nodes: SystemNode[] = snapshot.nodes.map(({ id, attributes: a }) => {
