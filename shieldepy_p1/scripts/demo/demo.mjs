@@ -4,30 +4,23 @@
 // logado num portal local, com o ROTEIRO.md aberto ao lado.
 //
 //   npm run demo                 prepara (na 1ª vez instala e compila), sobe o portal e abre o VS Code
-//   npm run demo -- --do-zero    apaga a pasta .demo e recria tudo
+//   npm run demo -- --do-zero    apaga a pasta da demo e recria tudo
 //   npm run demo -- --compilar   recompila a extensão e o portal antes
 //   npm run demo -- --sem-vscode só prepara e sobe o portal (abra o VS Code pelo comando impresso)
 //   npm run demo:caos            roda o caos de novo no checkout da demo e publica no portal
 //
-// Tudo fica em shieldepy_p1/.demo (fora do git): o sistema, o banco do portal e o perfil do VS Code.
+// Nada é criado dentro do repositório: a demo mora em ~/ShielDepy-demo (ou em DEMO_DIR), com o
+// sistema, o banco do portal e o perfil do VS Code (ver paths.mjs). O sistema abre numa janela NOVA
+// do VS Code, com a extensão do repositório carregada (--extensionDevelopmentPath).
 // Funciona no Windows (caminhos com acento e espaço), no Linux e no macOS. Precisa de Node >= 22.6,
 // git e o VS Code instalado. Ctrl+C no terminal encerra o portal (o VS Code da demo fica aberto).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { APP, DEMO, PORTAL_DATA, ROOT, SEED_FILE, VSCODE_EXTENSIONS, VSCODE_PROFILE, WORKSPACE } from './paths.mjs';
 
-const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const DEMO = join(ROOT, '.demo');
-/** O sistema aberto no VS Code (um repositório git). */
-const WORKSPACE = join(DEMO, 'sistema-loja');
-/** A API Express com o contrato de caos: é nela que os testes de caos rodam. */
-const APP = join(WORKSPACE, 'checkout');
-const PORTAL_DATA = join(DEMO, 'portal-data');
-const SEED_FILE = join(DEMO, 'seed.json');
-const VSCODE_PROFILE = join(DEMO, 'vscode-perfil');
-const VSCODE_EXTENSIONS = join(DEMO, 'vscode-extensoes');
 const EXAMPLES = join(ROOT, 'examples');
 const PORT = Number(process.env.DEMO_PORT) || 3001;
 const PORTAL = `http://localhost:${PORT}`;
@@ -79,11 +72,26 @@ const git = (gitArgs, cwd = WORKSPACE) =>
   run('git', ['-c', 'user.name=Demo ShielDepy', '-c', 'user.email=demo@shieldepy.local', '-c', 'core.autocrlf=false', ...gitArgs], { cwd });
 const currentBranch = () => run('git', ['branch', '--show-current'], { cwd: WORKSPACE }).stdout.trim();
 
+/** Arquivo que marca a pasta como da demo: sem ele, nada é apagado. */
+const MARKER = '.shieldepy-demo';
+
+/** Cria a pasta da demo (fora do repositório) com a marca. */
+function ensureDemoDir() {
+  if (existsSync(DEMO) && !existsSync(join(DEMO, MARKER)) && readdirSync(DEMO).length > 0) {
+    fail(`${DEMO} já existe e não é da demo. Escolha outra pasta: DEMO_DIR=<pasta> npm run demo`);
+  }
+  mkdirSync(DEMO, { recursive: true });
+  writeFileSync(join(DEMO, MARKER), 'Pasta da demo do ShielDepy (npm run demo). Pode apagar inteira.\n');
+}
+
 /**
  * Apaga uma pasta da demo. O `node_modules` do checkout é um link para o do exemplo: ele sai antes,
  * como link, para nunca apagar as dependências do exemplo por engano.
  */
 function removeDemoDir(dir) {
+  if (!existsSync(dir)) return;
+  // só apaga pasta que a própria demo criou (DEMO_DIR pode apontar para qualquer lugar)
+  if (!existsSync(join(DEMO, MARKER))) fail(`não apago ${DEMO}: não foi a demo que criou esta pasta (falta o arquivo ${MARKER}).`);
   for (const link of [join(dir, 'checkout', 'node_modules'), join(dir, 'sistema-loja', 'checkout', 'node_modules')]) {
     try {
       if (lstatSync(link).isSymbolicLink()) unlinkSync(link);
@@ -490,8 +498,10 @@ async function main() {
   console.log(bold('\n🛡️  ShielDepy — preparando a demo'));
   if (args.has('--do-zero')) {
     removeDemoDir(DEMO);
-    ok('pasta .demo apagada');
+    ok(`pasta da demo apagada (${DEMO})`);
   }
+  ensureDemoDir();
+  console.log(dim(`  pasta da demo (fora do repositório): ${DEMO}`));
   const TOTAL = 6;
   step(1, TOTAL, 'Pré-requisitos');
   checkPrereqs();

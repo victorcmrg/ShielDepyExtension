@@ -687,7 +687,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - 2026-10-08: **Demo do TCC (`feat/demo-tcc`, a partir da `feat/db-chaos`).** O usuário parou a E7. Primeiro pensou em publicar no Vercel, mas desistiu: o que ele quer é clonar, rodar um comando e já apresentar o plugin.
   - **`npm run demo`** (`scripts/demo/demo.mjs`, Node puro, sem shell; funciona com acento e espaço no caminho):
     1. confere os pré-requisitos e instala e compila na primeira vez;
-    2. cria `.demo/sistema-loja` (fora do git), com três partes: `checkout/` (o `checkout-express`), `pedidos/` (o `pedidos-microservices`, com colisões) e `relatorios/` (um ciclo), um repositório com as branches `main` (com defeitos) e `correcao` (o `src` do corrigido);
+    2. cria `~/ShielDepy-demo/sistema-loja`, **fora do repositório** (pedido do usuário: o projeto não pode ganhar nada; `DEMO_DIR` muda o lugar, e uma marca `.shieldepy-demo` impede o `--do-zero` de apagar uma pasta que não seja da demo), com três partes: `checkout/` (o `checkout-express`), `pedidos/` (o `pedidos-microservices`, com colisões) e `relatorios/` (um ciclo), um repositório com as branches `main` (com defeitos) e `correcao` (o `src` do corrigido);
     3. sobe o portal num banco próprio (`scripts/demo/seed.ts` reaproveita o `seedDemo` e acrescenta o projeto, o token da extensão e o de CI);
     4. roda o caos nas duas branches e publica;
     5. abre o VS Code com `--extensionDevelopmentPath`, num perfil separado, com o `ROTEIRO.md` aberto em modo de leitura.

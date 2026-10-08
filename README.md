@@ -26,7 +26,7 @@ npm run demo
 
 Na primeira vez, ele instala e compila tudo (alguns minutos). Depois:
 
-1. cria um **sistema de exemplo** (uma loja) com defeitos plantados:
+1. cria, **fora do repositório** (em `ShielDepy-demo`, na sua pasta de usuário), um **sistema de exemplo** (uma loja) com defeitos plantados:
    - `checkout/`: API Express com Postgres e Stripe;
    - `pedidos/`: microserviços que disputam o mesmo campo;
    - `relatorios/`: dois módulos em ciclo;
@@ -34,7 +34,7 @@ Na primeira vez, ele instala e compila tudo (alguns minutos). Depois:
    e as branches `main` (com os defeitos) e `correcao`;
 2. sobe o **portal** em <http://localhost:3001> (login `dono@acme.test` / `Acme-Dono-2026`);
 3. roda os **testes de caos** nas duas branches e publica o resultado no portal;
-4. abre o **VS Code com o plugin**, já logado, num perfil separado (não mexe no seu VS Code), com o
+4. abre esse sistema numa **janela nova do VS Code com o plugin ativado**, já logado, num perfil separado (não mexe no seu VS Code), com o
    **`ROTEIRO.md`** aberto: o passo a passo do que clicar em cada aba do plugin para ver o grafo, as
    colisões, o ciclo, o caos, a correção e o portal.
 
@@ -50,7 +50,10 @@ Deixe o terminal aberto enquanto apresenta (ele mantém o portal no ar). **Ctrl+
 Variáveis opcionais (no PowerShell: `$env:DEMO_PORT=3002; npm run demo`; no bash: `DEMO_PORT=3002 npm run demo`):
 - `DEMO_PORT`: outra porta, se a 3001 estiver ocupada;
 - `VSCODE_BIN`: o executável do VS Code, se ele não for encontrado;
-- `DEMO_ZOOM=1`: letras maiores, para o projetor.
+- `DEMO_ZOOM=1`: letras maiores, para o projetor;
+- `DEMO_DIR`: outra pasta para a demo (o padrão é `ShielDepy-demo` na sua pasta de usuário).
+
+Para apagar a demo, apague a pasta `ShielDepy-demo`. O `npm run demo -- --do-zero` faz isso e recria tudo.
 
 ## Para desenvolver
 

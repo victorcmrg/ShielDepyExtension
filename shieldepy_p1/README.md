@@ -336,7 +336,7 @@ npm run demo:verificar        # confere o roteiro da demo sem abrir janela (e en
 ```
 
 A demo (`scripts/demo/`) está explicada no [README da raiz](../README.md#ver-funcionando-demo-para-a-apresentação).
-O passo a passo da apresentação é o `ROTEIRO.md`, gerado dentro do sistema da demo (`.demo/sistema-loja/`).
+Nada é criado dentro do repositório: a demo mora em `~/ShielDepy-demo` (ou em `DEMO_DIR`). O passo a passo da apresentação é o `ROTEIRO.md`, gerado dentro do sistema da demo (`~/ShielDepy-demo/sistema-loja/`).
 
 **Extensão**: abra esta pasta no VS Code e aperte **F5**. Abre uma janela nova com `examples/`.
 Em `pedidos-microservices/services`, `pricing` e `tax` devem ficar marcados em vermelho
