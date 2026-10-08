@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, parseArgs } from '../src/main';
+import { runChaosTests, vitestEntry } from '../src/chaos-run';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const example = (rel: string) => path.join(ROOT, 'examples', rel);
@@ -187,7 +188,7 @@ describe('CLI chaos (E3)', () => {
       expect(r.specs.every((s: { routeId: string }) => s.routeId === 'POST /checkout')).toBe(true);
       expect(fs.readdirSync(chaosDir('checkout-express')).filter((f) => f.endsWith('.spec.ts'))).toHaveLength(4);
     } finally {
-      fs.rmSync(path.join(example('checkout-express'), '.shieldepy'), { recursive: true, force: true });
+      fs.rmSync(chaosDir('checkout-express'), { recursive: true, force: true });
     }
   });
 
@@ -201,7 +202,7 @@ describe('CLI chaos (E3)', () => {
       expect(out).toMatch(/3 teste\(s\) de caos/);
       expect(fs.existsSync(stale)).toBe(false); // o corrigido tem timeout: não há mais hipótese de timeout
     } finally {
-      fs.rmSync(path.join(example('checkout-express-fixed'), '.shieldepy'), { recursive: true, force: true });
+      fs.rmSync(chaosDir('checkout-express-fixed'), { recursive: true, force: true });
     }
   });
 
@@ -215,6 +216,38 @@ describe('CLI chaos (E3)', () => {
     expect(noRun.code).toBe(2);
     expect(noRun.err).toMatch(/chega na E4/);
   });
+});
+
+const RACE = 'POST /checkout__race_condition__stock';
+const TIMEOUT = 'POST /checkout__timeout__api.stripe.com';
+const H5XX = 'POST /checkout__http_5xx_intermittent__api.stripe.com';
+const MALFORMED = 'POST /checkout__malformed_response__api.stripe.com';
+
+// De verdade: gera os testes (offline) e roda o Vitest de cada exemplo. Precisa do npm install neles.
+// Fica neste arquivo (e não no do runner) porque escreve em examples/*/.shieldepy, como os testes
+// acima: no mesmo arquivo eles rodam em sequência, e um não apaga a pasta do outro.
+describe('CLI chaos: runner contra os exemplos (E4/4a, Vitest de verdade)', () => {
+  for (const [name, expected] of [
+    ['checkout-express', { failed: [RACE, TIMEOUT, H5XX, MALFORMED], passed: [] as string[] }],
+    ['checkout-express-fixed', { failed: [] as string[], passed: [RACE, H5XX, MALFORMED] }],
+  ] as const) {
+    it.skipIf(!vitestEntry(example(name)))(
+      `${name}: ${expected.failed.length} achado(s), ${expected.passed.length} aprovado(s), nenhum inválido`,
+      async () => {
+        const dir = example(name);
+        try {
+          expect((await run('chaos', dir, '--no-run', '--offline')).code).toBe(0);
+          const results = await runChaosTests(dir, [...expected.failed, ...expected.passed]);
+          expect(results.filter((r) => r.status === 'failed').map((r) => r.hypothesisId).sort()).toEqual([...expected.failed].sort());
+          expect(results.filter((r) => r.status === 'passed').map((r) => r.hypothesisId).sort()).toEqual([...expected.passed].sort());
+          expect(results.filter((r) => r.status === 'invalid')).toEqual([]);
+        } finally {
+          fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
+        }
+      },
+      90_000
+    );
+  }
 });
 
 /** Os dados embutidos no HTML do visualizador (`const SYSTEM = ...; const TOPOLOGY = ...;`). */

@@ -104,6 +104,9 @@ describe('E3/3e — os testes gerados compilam contra o projeto de verdade', () 
     // precisa do `npm install` dentro do exemplo; sem ele o teste é pulado (o CI da E4 instala)
     it.skipIf(!fs.existsSync(tsc))(`${example}: tsc -p ${CHAOS_TESTS_DIR}`, async () => {
       const { dir, surface, config } = await prepare(example);
+      // pasta própria, na mesma profundidade (os `../../` dos arquivos gerados continuam valendo):
+      // os testes da CLI geram e RODAM os de caos em chaos-tests ao mesmo tempo, em outro processo
+      const checkDir = '.shieldepy/tsc-check';
       const written: GeneratedFile[] = [];
       await runChaosPipeline(surface, {
         invariantNames: config.invariants,
@@ -111,7 +114,7 @@ describe('E3/3e — os testes gerados compilam contra o projeto de verdade', () 
         io: {
           write: async (files) => {
             for (const f of files) {
-              const full = path.join(dir, f.path);
+              const full = path.join(dir, checkDir, f.path.slice(CHAOS_TESTS_DIR.length + 1));
               fs.mkdirSync(path.dirname(full), { recursive: true });
               fs.writeFileSync(full, f.content);
               written.push(f);
@@ -122,9 +125,9 @@ describe('E3/3e — os testes gerados compilam contra o projeto de verdade', () 
       try {
         expect(written.length).toBeGreaterThan(2);
         // lança com a saída do tsc se algum arquivo gerado não compilar
-        execFileSync(process.execPath, [tsc, '-p', CHAOS_TESTS_DIR], { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
+        execFileSync(process.execPath, [tsc, '-p', checkDir], { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
       } finally {
-        fs.rmSync(path.join(dir, CHAOS_TESTS_DIR), { recursive: true, force: true });
+        fs.rmSync(path.join(dir, checkDir), { recursive: true, force: true });
       }
     }, 120_000);
   }
