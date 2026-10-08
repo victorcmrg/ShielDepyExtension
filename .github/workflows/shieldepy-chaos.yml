@@ -7,6 +7,8 @@
 # Neste repositório:
 #   - chaos-gate: o portão de verdade, no exemplo CORRIGIDO (checkout-express-fixed). Tem que ficar
 #     verde; um PR que reintroduza a corrida ou tire o timeout do Stripe é barrado e comentado.
+#     Em PR que só mexe nos exemplos, roda com --base (só as rotas que o PR tocou); em PR que mexe
+#     no motor (packages/ ou apps/), roda completo, porque o que está em teste é o próprio motor.
 #   - self-test: o exemplo VULNERÁVEL (checkout-express) tem que ser barrado (exit 1, com a corrida
 #     e o timeout no relatório). Garante que o detector não ficou cego.
 #   - check: typecheck + testes unitários, com os exemplos instalados (os testes que compilam e
@@ -61,6 +63,9 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # --base precisa do histórico para achar o merge-base com a branch de destino
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -78,11 +83,23 @@ jobs:
 
       - name: Rodar o caos
         id: chaos
+        env:
+          ROLE: ${{ matrix.role }}
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           offline=""
           if [ -z "$ANTHROPIC_API_KEY" ]; then offline="--offline"; echo "sem ANTHROPIC_API_KEY: rodando só o motor (--offline)"; fi
+          scope=""
+          if [ "$ROLE" = "chaos-gate" ] && [ "$EVENT" = "pull_request" ]; then
+            if git diff --quiet "origin/$BASE_REF"...HEAD -- packages apps; then
+              scope="--base origin/$BASE_REF"; echo "o PR não mexe no motor: só as rotas que ele tocou ($scope)"
+            else
+              echo "o PR mexe no motor (packages/ ou apps/): portão completo"
+            fi
+          fi
           set +e
-          node apps/cli/bin/shieldepy.js chaos "$TARGET" --fail-on Alto --report "$REPORT" $offline
+          node apps/cli/bin/shieldepy.js chaos "$TARGET" --fail-on Alto --report "$REPORT" $offline $scope
           code=$?
           set -e
           echo "code=$code" >> "$GITHUB_OUTPUT"

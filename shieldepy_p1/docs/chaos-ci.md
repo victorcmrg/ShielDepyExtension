@@ -57,6 +57,20 @@ Copie [`shieldepy-chaos.template.yml`](shieldepy-chaos.template.yml) para `.gith
 
 O job baixa o ShielDepy, instala o ShielDepy e o app (`npm ci`), roda `shieldepy chaos`, publica o relatório no resumo do job e comenta no PR. Nas execuções seguintes, ele edita o mesmo comentário.
 
+## Só o que o PR tocou (`--base`)
+
+Em PR, o template roda `shieldepy chaos --base origin/<branch de destino>`. O ShielDepy monta o mapa do código no merge-base e compara com o do PR. Só as rotas sensíveis que o PR tocou vão para a IA e para os testes. A maioria dos PRs não toca rota sensível nenhuma: o job fica verde em segundos e sem custo.
+
+Uma rota entra quando:
+- é nova;
+- mudou a cadeia de handlers, as operações de I/O ou as tags;
+- mudou o corpo de qualquer função no caminho dela (não só as que fazem I/O);
+- mudou o código de topo de um arquivo do caminho (ex.: a montagem das dependências).
+
+Comentário, espaço e linhas deslocadas não contam. Mudança em `shieldepy.chaos.config.ts`, nos `setupFiles`, em `package.json`, num lockfile, num `tsconfig` ou na config do Vite/Vitest faz **todas** as rotas entrarem. O relatório diz o escopo e o motivo de cada rota.
+
+O checkout precisa do histórico (`fetch-depth: 0`, como no template). Para ver só o diff, sem rodar nada: `shieldepy diff . --base origin/main`.
+
 ## Códigos de saída
 
 | Código | Significa | No PR |

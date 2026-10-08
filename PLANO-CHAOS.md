@@ -426,6 +426,12 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - corpo do `OrderRepository.findById` → só `GET /orders/:id`, que não tem falha testável, então nenhum teste;
     - `package.json` → todas, com o motivo.
   - Suíte: **306 testes**.
+- 2026-10-08: **5f concluído (CI com `--base`)**, feita antes da 5e (que depende de autorização para a chamada paga).
+  - **Template para repositórios-alvo:** `fetch-depth: 0` e, em PR, `--base origin/$GITHUB_BASE_REF`. Em push e execução manual, o mapa inteiro.
+  - **Neste repositório (decisão):** o que muda nos PRs costuma ser o próprio **motor**. Com `--base` sempre ligado, um PR só no motor não testaria nada no portão. Por isso o `chaos-gate` usa `--base origin/<destino>` só quando `git diff --quiet origin/<destino>...HEAD -- packages apps` (o PR não toca o motor); senão, roda completo. O `self-test` continua sempre completo.
+  - O roteiro do PR de teste da 4e continua valendo: tirar o timeout do `-fixed` só mexe no exemplo, então o portão usa `--base`, o `POST /checkout` entra (o corpo de `StripeGateway.charge` mudou) e o teste de timeout quebra.
+  - Simulado localmente: esta branch mexe no motor (portão completo). `chaos -fixed --base HEAD` sai 0, com "Nenhuma rota sensível tocada por este PR" no relatório. YAML validado.
+  - Docs: seção "Só o que o PR tocou (`--base`)" no `docs/chaos-ci.md`; o README ganhou o `diff`, o `--base` e os arquivos novos no mapa do código.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -820,7 +826,7 @@ Medido no vulnerável:
   - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
   - Decidir o padrão do `deep` com esse dado. Separar o tier do caos do tier do chat, se for preciso.
   - Tirar ou documentar o `cacheSystem` onde o prompt fica abaixo do mínimo.
-- **5f. CI.** O workflow passa `--base` no PR (`fetch-depth: 0`, base = `origin/${{ github.base_ref }}`). O `self-test` continua com o mapa inteiro. Docs e template atualizados.
+- **5f. CI.** ✅ Concluída em 2026-10-08 (no repositório do ShielDepy, `--base` só quando o PR não mexe no motor; ver o registro). O workflow passa `--base` no PR (`fetch-depth: 0`, base = `origin/${{ github.base_ref }}`). O `self-test` continua com o mapa inteiro. Docs e template atualizados.
 
 ### Aceitação da E5
 - Inserir linhas ou comentários num arquivo do `checkout-express` → diff vazio e nenhuma rota afetada → `chaos --base` sai 0 sem rodar teste.

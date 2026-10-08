@@ -38,6 +38,9 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # --base precisa do histórico para achar o merge-base com a branch de destino
+          fetch-depth: 0
 
       - name: Baixar o ShielDepy
         uses: actions/checkout@v4
@@ -67,8 +70,11 @@ jobs:
         run: |
           offline=""
           if [ -z "$ANTHROPIC_API_KEY" ]; then offline="--offline"; fi
+          # em PR: só as rotas sensíveis que o PR tocou (sem rota tocada = verde, sem custo)
+          scope=""
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then scope="--base origin/$GITHUB_BASE_REF"; fi
           set +e
-          node "$RUNNER_TEMP/shieldepy/shieldepy_p1/apps/cli/bin/shieldepy.js" chaos "$APP_DIR" --fail-on "$FAIL_ON" --report "$REPORT" $offline
+          node "$RUNNER_TEMP/shieldepy/shieldepy_p1/apps/cli/bin/shieldepy.js" chaos "$APP_DIR" --fail-on "$FAIL_ON" --report "$REPORT" $offline $scope
           echo "code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Resumo do job
