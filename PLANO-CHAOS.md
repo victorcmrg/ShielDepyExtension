@@ -117,6 +117,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **API nova necessária no core:** `RawCall` com linha e 1º argumento literal, `callsOf()` em ordem de código e `referencesAt()`.
   - **Mudança estrutural:** o lexer SQL vai de `extractors` para o core.
   - **Aceitação:** a topologia esperada do `checkout-express` está escrita na seção.
+- 2026-10-07: o plano passou a registrar o que a extensão mapeia hoje (com 5 ressalvas) e a estimativa de custo da IA por execução (seções próprias).
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -237,6 +238,50 @@ Faltam também exemplos pequenos de Prisma e axios (fixtures nos testes) para co
 ### Fora do escopo da E2 (anotado)
 - **Outros frameworks:** NestJS (decorators), Next.js (rotas por arquivo), Fastify. A detecção é pelo receptor/pacote, então entram como novas "fontes de rota" sem mudar o formato.
 - **Outros bancos:** ORMs (TypeORM, Sequelize, Knex) e Redis/filas como I/O. Seguem o mesmo padrão: pacote + método → operação.
+
+## Extensão do VS Code: o que ela mapeia hoje (conferido no código em 2026-10-07)
+
+Ao ativar, a extensão:
+- carrega as gramáticas Tree-sitter (TS/TSX/HTML/CSS no `CodeGraph`; Java/Python/C# no `loadRegistry`);
+- indexa até **3000 arquivos** (`indexWorkspace`), ignorando `node_modules`, `dist` etc. e arquivos maiores que 2 MB;
+- mantém o grafo atualizado ao digitar, salvar, mudar no disco (git checkout) e apagar.
+
+É o **mesmo código do core** que a CLI usa, então a qualidade medida (99–100% das chamadas provadas) vale para ela.
+
+**Ressalvas (pendências pequenas, fora da E1):**
+1. **Só TS/JS tem grafo de chamadas.** Java/Python/C# geram apenas regras de evento (colisões).
+2. **Teto de 3000 arquivos.** Acima disso o mapa fica parcial, e só aparece no log. Falta avisar o usuário.
+3. **Editar `tsconfig.json` (`paths`) não invalida o cache do resolvedor.** O `invalidateConfig()` nunca é chamado, e o watcher não observa `.json`. Hoje é preciso recarregar a janela.
+4. **A extensão não mostra o mapa nem a cobertura ao usuário.** Isso só existe na CLI (`graph`/`--html`). Entra na tarefa 2f e no V2.
+5. **O E2E da extensão (`apps/vscode/test-e2e`) não foi rodado nesta etapa.** Os testes unitários do `WorkspaceModel` usam o Tree-sitter real.
+
+## Custo estimado da IA (E3), preços de 2026-10-06
+
+**Agentes LLM no pipeline:**
+- **MVP:** 3 nós com IA. O **Threat Modeler** (tier `deep`) e os especialistas **Network** e **Concurrency** (tier `fast`; só preenchem specs estruturadas).
+- **Depois:** **DB_Chaos** (4º) e o parágrafo opcional do relatório (5º).
+- **Sem IA:** escrever, rodar e gerar o relatório determinístico.
+- **Modo `--offline`:** custo zero.
+
+| Modelo | Entrada / 1M tokens | Saída / 1M tokens |
+|---|---|---|
+| Claude Opus 5.5 | US$ 4,00 | US$ 20,00 |
+| Claude Sonnet 5.5 | US$ 2,00 | US$ 10,00 |
+| Claude Haiku 5.5 | US$ 0,10 | US$ 0,50 |
+
+**Estimativa por execução.** O raciocínio (thinking) é cobrado como saída. Os números são de ordem de grandeza e devem ser medidos com `response.usage` na E3. Câmbio assumido: R$ 5,50 por dólar.
+
+| Superfície de ataque | Tokens (entrada / saída) | Opus 5.5 | Sonnet 5.5 | Haiku 5.5 | Misto (Threat Modeler Opus + especialistas Haiku) |
+|---|---|---|---|---|---|
+| Pequena (~2 rotas, ex.: `checkout-express`) | ~8k / ~6k | ~R$ 0,83 | ~R$ 0,42 | ~R$ 0,02 | ~R$ 0,60 |
+| Média (~20 rotas sensíveis) | ~30k / ~25k | ~R$ 3,40 | ~R$ 1,70 | ~R$ 0,09 | ~R$ 1,50 |
+| Grande (~100 rotas sensíveis) | ~120k / ~80k | ~R$ 11,40 | ~R$ 5,70 | ~R$ 0,30 | ~R$ 5,00 |
+
+**Alavancas de custo, previstas para a E3:**
+1. **Rodar só para as rotas cuja cadeia o PR tocou** (diff de hash do mapa). A maioria dos PRs fica com custo zero.
+2. **Cache de prompt** no prompt de sistema e no catálogo, que são estáveis.
+3. **Especialistas no tier `fast`**, porque só preenchem specs validadas.
+4. **Registrar o custo de cada execução no relatório do PR.**
 
 ## Fase 2 — LangGraph + Threat Modeler (`packages/agent/src/chaos/`)
 
