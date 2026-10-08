@@ -26,7 +26,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **295** depois da 5b).
+- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **300** depois da 5c).
 - `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
@@ -387,6 +387,24 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Custo medido:** no pior caso (duas varreduras completas por arquivo), 169 ms de 1,9 s para indexar 99 arquivos do `packages/`, cerca de 9%. Numa edição na extensão, 1 a 2 ms.
   - Testes: comentário, espaço e linhas acima não mudam nada; `x + 1` → `x - 1` muda só aquele método (e a classe); renomear mantém o hash; o topo muda com import e com constante exportada, e não com o corpo.
   - Suíte: **295 testes**.
+- 2026-10-08: **5c concluído (diff entre mapas)**.
+  - **`diffSystemGraphs(base, head)`** (`core/src/map-diff.ts`): operação de conjunto sobre os ids estáveis. Devolve símbolos `added/removed/changed` (mesmo id, `bodyHash` diferente) e `renamed`, arquivos `added/removed/topChanged`, arestas `added/removed` e `empty`.
+  - **Renomeação:** sumiu um símbolo e apareceu outro no **mesmo arquivo**, do mesmo tipo e com o mesmo corpo, pareados na ordem dos ids. Mover para outro arquivo continua sendo remoção mais adição (decisão: mover muda imports e quem chama, e tratar como mudança é o lado seguro). As arestas do lado base são remapeadas pela renomeação antes de comparar, então renomear não gera ruído; só aparece a chamada que ficou órfã.
+  - **Base pelo git** (`apps/cli/src/git-base.ts`):
+    - o commit base é o **merge-base** entre o ref e o HEAD, como num PR;
+    - a pasta é montada naquele commit num `git worktree --detach` temporário, apagado no fim;
+    - os dois mapas são construídos **pelo mesmo motor** (o código atual), então mudar o motor entre os commits não vira diff;
+    - pasta que não existia na base dá mapa vazio;
+    - `changedFiles` junta o `git diff --name-only` (inclusive o não commitado) e os arquivos novos não rastreados. É o que a 5d usa para a regra conservadora (config/deps);
+    - ref inexistente ou pasta fora de um repositório git → `GitBaseError` → exit 2.
+  - **CLI:** `shieldepy diff <pasta> --base <ref> [--json]`.
+  - **Testes** (cópia do `checkout-express` num repositório git temporário):
+    - comentário e linhas em branco: o git vê mudança, o mapa não (`empty`);
+    - `currency: 'brl'` → `'usd'`: só `StripeGateway.charge` (e a classe) em `changed`, sem aresta nova;
+    - `findById` → `getById`: `renamed`, com a chamada órfã de `CheckoutService.find` nas arestas removidas;
+    - montagem no `container.ts`: `topChanged`; arquivo novo: `files.added` e o símbolo novo;
+    - ref inexistente e pasta sem git: exit 2.
+  - Suíte: **300 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -775,7 +793,7 @@ Medido no vulnerável:
 ### Tarefas
 - **5a. Ids estáveis.** ✅ Concluída em 2026-10-08. Id sem linha, com sufixo de ordem nos repetidos, e a linha como atributo. Migrar quem lê a linha do id (`surface.ts`, visualizador, extensão). Teste: inserir linhas no topo de um arquivo não muda nenhum id nem aresta (o `contentHash` muda, e deve mudar: o mapa guarda `startLine`).
 - **5b. Hash do corpo e do topo do arquivo** ✅ Concluída em 2026-10-08, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
-- **5c. Diff.** `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
+- **5c. Diff.** ✅ Concluída em 2026-10-08. `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
 - **5d. Caos só no que o PR tocou.** `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.
 - **5e. Custo real.**
   - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
