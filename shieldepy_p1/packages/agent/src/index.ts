@@ -18,3 +18,6 @@ export * from './code/scan';
 export * from './code/review';
 export * from './code/inline';
 export * from './code/chat';
+
+// O caos (LangGraph) fica em `@shieldepy/agent/chaos`: exportar daqui puxaria o LangGraph para o
+// bundle da extensão (611 KB → 1,9 MB) sem que ela use nada disso.

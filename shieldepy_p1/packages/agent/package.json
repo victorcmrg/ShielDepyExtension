@@ -5,10 +5,13 @@
   "type": "module",
   "description": "Camada de IA plugável (Anthropic / Gemini / offline). O motor prova, a IA explica.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./chaos": "./src/chaos/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "@langchain/core": "^1.2.17",
+    "@langchain/langgraph": "^1.4.21",
     "@shieldepy/core": "*"
   },
   "devDependencies": {

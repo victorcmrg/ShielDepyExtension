@@ -216,6 +216,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Tabela de custo do plano corrigida:** o "Haiku 5.5" a US$ 0,10/0,50 não existe; o Haiku 4.5 custa US$ 1/5, e as estimativas foram recalculadas.
   - **Não feito de propósito:** os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram. Trocar o `deep` afeta o custo do chat e da revisão que já existem, e a decisão depende de medir o Threat Modeler de verdade, o que exige chamada paga à API. O Threat Modeler aceita `SHIELDEPY_DEEP_MODEL`.
   - Suíte: **242 testes**.
+- 2026-10-08: **3c concluído (catálogo, hipóteses, Threat Modeler e grafo).** Código em `packages/agent/src/chaos/`, exposto como `@shieldepy/agent/chaos`.
+  - **Decisão de desenho ("o motor prova, a IA propõe"):** o motor gera a **lista-base** de hipóteses direto das tags, com toda falha do catálogo que cada rota habilita. **A IA não pode tirar nada dessa lista.** Ela explica (o texto vai para o relatório), muda a prioridade e pode acrescentar falhas do catálogo que a base não inclui por padrão (`retry_storm`). Assim, uma resposta ruim da IA nunca some com um teste importante.
+  - **`catalog.ts`:** as 6 falhas, cada uma com o agente, o que a habilita e em qual alvo (host ou tabela), se entra na lista-base e se tem teste no MVP. `retry_storm` (fora da base) e `partial_failure_after_external_call` (que precisa do DB_Chaos) ficam sem teste. Host `dynamic` não gera hipótese de rede, porque não se sabe o que mockar.
+  - **`hypotheses.ts`:** `baselineHypotheses`, `parseThreatModel` (descarta, com o motivo: rota fora da superfície, falha fora do catálogo, falha que as tags não habilitam, alvo inventado, repetida) e `mergeHypotheses`. O id é estável (`POST /checkout__race_condition__stock`) e vira o nome do arquivo de teste.
+  - **`threat-modeler.ts`:** tier `deep`, `json`, `cacheSystem` (o system com o catálogo é estável). Entra só a superfície em JSON canônico, sem código; um teste confere isso. Sem provider, com resposta inválida ou com a IA fora do ar, fica a lista-base e o motivo vai para `errors`. A chamada entra no custo mesmo quando a resposta é descartada.
+  - **`graph.ts`:** `ChaosState` (`Annotation.Root`) e `START → threat_modeler → END`. A API do LangGraph 1.4 (`Annotation`, `StateGraph`, fan-out por `Send`) foi conferida num grafo mínimo antes de usar.
+  - **Resultado no `checkout-express` (offline):** `race_condition(stock)` e `timeout(api.stripe.com)` com prioridade 1; `partial_failure(orders, stock)` sem teste; `5xx` e `malformed_response` do Stripe. O `GET /orders/:id` não gera nada. No `checkout-express-fixed` some o `timeout` (o Stripe tem timeout), e a corrida continua para provar a correção.
+  - **Bundle da extensão:** exportar o caos do índice do `@shieldepy/agent` levava o LangGraph para dentro da extensão (611 KB → 1,9 MB). Por isso ele ficou num subcaminho, e a extensão continua com 612 KB.
+  - Suíte: **250 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -480,7 +489,7 @@ A escrita de cache custa 1,25× a entrada (TTL de 5 min). O prefixo mínimo cach
   - Teste da E2: a topologia do vulnerável continua igual, e a do corrigido perde `no-transaction` e `no-timeout`.
   - Um teste manual de cada (supertest), para provar que o app sobe em memória.
 - **3b. Provider com `usage`** e custo por execução (tokens → R$ pela tabela, conferida). ✅ Concluída em 2026-10-08.
-- **3c. Estado, catálogo e Threat Modeler** (`agent/src/chaos/`):
+- **3c. Estado, catálogo e Threat Modeler** (`agent/src/chaos/`): ✅ Concluída em 2026-10-08.
   - `state.ts` (LangGraph `Annotation.Root`), `catalog.ts` (a tabela acima, como dados);
   - `nodes/threat-modeler.ts` com entrada = `attackSurface` serializada;
   - `validate-hypotheses.ts`: rota existe, falha no catálogo e habilitada pelas tags; o resto é descartado e contado;
