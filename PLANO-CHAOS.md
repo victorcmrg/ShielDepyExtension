@@ -26,7 +26,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**288** no fim da E4).
+- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **291** depois da 5a).
 - `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
@@ -370,6 +370,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Mensagem do portão:** sem `--fail-on`, diz só "N achado(s) de caos", em vez de "severidade Baixo ou pior". O relatório faz igual.
   - **Conferido no fim:** typecheck limpo, **288 testes**, **E2E 24/24** num VS Code real (o core mudou na 4b: varredura e religação), extensão com **612 KB** (o caos continua fora do bundle).
   - **Estado final da E4:** pronta para o usuário subir a branch `feat/chaos-gate` e fazer o merge.
+- 2026-10-08: **E5 iniciada** (mapa incremental e custo), na branch `feat/mapa-incremental`, empilhada sobre a `feat/chaos-gate` (a E4 foi enviada, mas ainda não mergeada). A antiga E5 (outras linguagens) virou E6. Ver a seção "E5".
+- 2026-10-08: **5a concluído (ids estáveis).**
+  - O id de símbolo passou de `arquivo#nome:linha` para **`arquivo#Contêiner.nome`** (ex.: `src/services/CheckoutService.ts#CheckoutService.checkout`). Nome repetido no mesmo arquivo ganha `~2`, `~3` pela ordem; um repetido novo no fim não renumera os de antes.
+  - **Decisão: o contêiner entra no id.** Dois `save` em classes diferentes do mesmo arquivo não dependem do sufixo de ordem, que é a parte menos estável.
+  - O id nasce num lugar só (`extract-ts.ts`, `stableIds`), atribuído depois da varredura. A linha continua em `startLine`, que é o que o visualizador e a extensão já usavam.
+  - O `in` das operações na superfície passou a sair qualificado (`StripeGateway.charge` em vez de `charge`): informa melhor a IA e o relatório.
+  - **Correção ao plano:** o `contentHash` do mapa **muda** quando as linhas se deslocam, e deve mudar, porque o mapa guarda `startLine` e `arquivo:linha`. O que não muda são os ids e as arestas, e é sobre eles que o diff da 5c trabalha. O teste confere isso: comentário e linhas em branco acima de tudo mantêm os mesmos nós e arestas.
+  - Cobertura do `packages/` igual (1468 resolvidas, 7 heurísticas, 2 sem alvo, 0 imports quebrados), com 1 símbolo a mais: antes, dois símbolos de mesmo nome na mesma linha caíam no mesmo id. Agora há 21 ids com `~n` no `packages/`.
+  - Suíte: **291 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -756,7 +765,7 @@ Medido no vulnerável:
 - **Mapa base:** `--base <ref git>` monta o mapa da mesma pasta naquele ref, num `git worktree` temporário (só leitura de código; não precisa de `npm install`).
 
 ### Tarefas
-- **5a. Ids estáveis.** Id sem linha, com sufixo de ordem nos repetidos, e a linha como atributo. Migrar quem lê a linha do id (`surface.ts`, visualizador, extensão). Teste: inserir linhas no topo de um arquivo não muda nenhum id nem o hash do mapa.
+- **5a. Ids estáveis.** ✅ Concluída em 2026-10-08. Id sem linha, com sufixo de ordem nos repetidos, e a linha como atributo. Migrar quem lê a linha do id (`surface.ts`, visualizador, extensão). Teste: inserir linhas no topo de um arquivo não muda nenhum id nem aresta (o `contentHash` muda, e deve mudar: o mapa guarda `startLine`).
 - **5b. Hash do corpo e do topo do arquivo**, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
 - **5c. Diff.** `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
 - **5d. Caos só no que o PR tocou.** `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.

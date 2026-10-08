@@ -70,15 +70,15 @@ describe('CLI', () => {
     const has = (source: string, target: string, type: string) =>
       system.edges.some((e: { source: string; target: string; type: string }) => e.source.startsWith(source) && e.target.startsWith(target) && e.type === type);
     expect(has('src/routes/checkout.ts', 'src/middleware/validate.ts#validateCheckout', 'references')).toBe(true);
-    expect(has('src/routes/checkout.ts', 'src/controllers/CheckoutController.ts#create', 'references')).toBe(true);
-    expect(has('src/controllers/CheckoutController.ts#create', 'src/services/CheckoutService.ts#checkout', 'calls')).toBe(true);
-    expect(has('src/services/CheckoutService.ts#checkout', 'src/repositories/StockRepository.ts#available', 'calls')).toBe(true);
-    expect(has('src/services/CheckoutService.ts#checkout', 'src/repositories/StockRepository.ts#decrement', 'calls')).toBe(true);
-    expect(has('src/services/CheckoutService.ts#checkout', 'src/repositories/OrderRepository.ts#insert', 'calls')).toBe(true);
-    expect(has('src/services/CheckoutService.ts#checkout', 'src/gateways/StripeGateway.ts#charge', 'calls')).toBe(true);
-    expect(has('src/repositories/OrderRepository.ts#insert', 'pkg:pg', 'calls')).toBe(true);
+    expect(has('src/routes/checkout.ts', 'src/controllers/CheckoutController.ts#CheckoutController.create', 'references')).toBe(true);
+    expect(has('src/controllers/CheckoutController.ts#CheckoutController.create', 'src/services/CheckoutService.ts#CheckoutService.checkout', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#CheckoutService.checkout', 'src/repositories/StockRepository.ts#StockRepository.available', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#CheckoutService.checkout', 'src/repositories/StockRepository.ts#StockRepository.decrement', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#CheckoutService.checkout', 'src/repositories/OrderRepository.ts#OrderRepository.insert', 'calls')).toBe(true);
+    expect(has('src/services/CheckoutService.ts#CheckoutService.checkout', 'src/gateways/StripeGateway.ts#StripeGateway.charge', 'calls')).toBe(true);
+    expect(has('src/repositories/OrderRepository.ts#OrderRepository.insert', 'pkg:pg', 'calls')).toBe(true);
     // handler inline do GET /orders/:id também entra no mapa
-    expect(has("src/routes/checkout.ts#checkoutRouter.get('/orders/:id')", 'src/services/CheckoutService.ts#find', 'calls')).toBe(true);
+    expect(has("src/routes/checkout.ts#checkoutRouter.get('/orders/:id')", 'src/services/CheckoutService.ts#CheckoutService.find', 'calls')).toBe(true);
     // ids relativos: o artefato não carrega o caminho da máquina
     expect(out).not.toContain(ROOT.replace(/\\/g, '/'));
   });
@@ -111,7 +111,7 @@ describe('CLI', () => {
       const { system, topology } = embedded(scripts[4]!);
       expect(topology).toBeNull();
       expect(system.stats.callsResolved).toBeGreaterThan(0);
-      expect(system.nodes.some((n: { id: string }) => n.id.startsWith('src/services/CheckoutService.ts#checkout'))).toBe(true);
+      expect(system.nodes.some((n: { id: string }) => n.id.startsWith('src/services/CheckoutService.ts#CheckoutService.checkout'))).toBe(true);
       expect(() => new Function(scripts[5]!)).not.toThrow();
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -150,7 +150,7 @@ describe('CLI', () => {
       const surface = JSON.parse(fs.readFileSync(file, 'utf8'));
       expect(surface.topologyHash).toBe(a.contentHash);
       const checkout = surface.routes.find((r: { id: string }) => r.id === 'POST /checkout');
-      expect(checkout.operations[1]).toMatchObject({ kind: 'api_call', target: 'api.stripe.com', at: 'src/gateways/StripeGateway.ts:8', in: 'charge', timeout: 'no' });
+      expect(checkout.operations[1]).toMatchObject({ kind: 'api_call', target: 'api.stripe.com', at: 'src/gateways/StripeGateway.ts:8', in: 'StripeGateway.charge', timeout: 'no' });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
