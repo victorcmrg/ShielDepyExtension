@@ -62,6 +62,9 @@ jobs:
       REPORT: ${{ github.workspace }}/chaos-report.md
       MAP: ${{ github.workspace }}/chaos-map.html
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # portal (V3): o token de CI do projeto é secret; o endereço do portal, variável do repositório
+      SHIELDEPY_PORTAL_TOKEN: ${{ secrets.SHIELDEPY_PORTAL_TOKEN }}
+      SHIELDEPY_PORTAL_URL: ${{ vars.SHIELDEPY_PORTAL_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -113,6 +116,14 @@ jobs:
           name: shieldepy-mapa-${{ matrix.example }}
           path: ${{ github.workspace }}/chaos-map.html
           if-no-files-found: ignore
+
+      # V3: manda o resultado para o portal (só com o token e o endereço configurados). Vem antes do
+      # comentário, para o link do portal entrar no relatório. Falhar aqui não muda o portão.
+      - name: Publicar no portal
+        if: always() && matrix.role == 'chaos-gate' && env.SHIELDEPY_PORTAL_TOKEN != '' && env.SHIELDEPY_PORTAL_URL != ''
+        continue-on-error: true
+        shell: bash
+        run: node apps/cli/bin/shieldepy.js publish "$TARGET" --append-link "$REPORT"
 
       - name: Resumo do job
         if: always()

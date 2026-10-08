@@ -50,6 +50,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
 - **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
 - **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
+- **V3 completo** na branch `feat/portal-v3` (V3a–V3e), empilhada sobre a `feat/visualizador-v2`. **Ordem de merge: E4 → E5 → V2 → V3**, todas por merge comum (não squash).
 - **V2 completo** na branch `feat/visualizador-v2` (V2a–V2e), empilhada sobre a `feat/mapa-incremental`. Ordem de merge: E4 → E5 → V2. Ver "V2 — desenho e tarefas" na seção "Visualização do grafo".
 - **E5 — pronta, menos a medição paga** na branch `feat/mapa-incremental`: 5a–5d, 5f e a parte gratuita da 5e. Para medir: `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (estimativa abaixo de US$ 0,50).
 
@@ -62,7 +63,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
 | V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído; falta o merge (depois da E4 e da E5) |
-| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend` | a definir | pendente (separado do V2 em 2026-10-08) |
+| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend`, tarefas V3a–V3e | `feat/portal-v3` | concluído; falta o merge (depois da E4, E5 e V2) |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | pronta, menos a medição paga (5e) |
@@ -526,6 +527,67 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Testes:** 12 rotas → 3 chamadas (5, 5, 2), `max_tokens` 7.000/7.000/4.000, a colisão só no lote da rota dela e as 12 hipóteses da IA entram. O lote 2 falhando → o erro diz "lote 2/3", os lotes 1 e 3 mantêm a contribuição da IA e a base fica inteira.
   - **`RELATORIO-CUSTO-IA.md` atualizado:** o achado aparece como corrigido, e a escala e o custo mensal incluem o prompt de sistema e o raciocínio repetidos por lote. 100 rotas: ~US$ 0,49 só com Haiku e ~US$ 0,87 com o Threat Modeler no Sonnet.
   - Suíte: **310 testes**.
+- 2026-10-08: **V3 iniciado** (branch `feat/portal-v3`, empilhada sobre a `feat/visualizador-v2`). **V3a concluído (contrato e `publish`).**
+  - `ChaosResults` ganhou `surface` (a superfície de ataque inteira, só fatos), que o portal desenha. O `ChaosRunUpload` é o que vai para o portal: remote, commit, branch, PR, link do job e o resultado.
+  - `repoInfo(dir)` no `git-base` do core lê o remote `origin`, o commit e a branch.
+  - **`shieldepy publish <pasta> --portal <url> [--append-link <relatório.md>]`**, com o token em `SHIELDEPY_PORTAL_TOKEN`:
+    - lê o `.shieldepy/chaos-results.json`;
+    - tira o PR, a branch e o link do job das variáveis do GitHub Actions (`GITHUB_REF` `refs/pull/N/merge`, `GITHUB_HEAD_REF`, `GITHUB_RUN_ID`);
+    - faz o POST em `/api/ci/chaos-runs` e devolve o link da execução;
+    - com `--append-link`, acrescenta o link ao relatório do PR.
+  - Erro de configuração, portal fora do ar ou recusa → exit 2 com o motivo. No CI, o passo é separado do portão.
+  - Testes: o payload completo num repositório git temporário com um portal falso, os erros (sem token, sem portal, sem resultado, 403, rede) e o contexto do CI em PR e em push.
+  - Suíte: **313 testes**.
+- 2026-10-08: **V3b concluído (servidor do portal).**
+  - **Banco:** tabelas `project_ci_tokens` (só o hash, `sdci_…`, revogável) e `chaos_runs` (resumo em colunas mais o resultado em JSON), com índice por repositório e data (`server/auth/chaosRuns.ts`).
+  - **Status de uma execução numa palavra** (a cor no portal): `blocked`, `passed`, `below_gate`, `nothing` (nenhuma rota tocada), `not_run`, `error`, `invalid`.
+  - **Rotas:**
+    - o dono lista, cria e revoga tokens (`/api/projects/:id/ci-tokens`);
+    - o CI publica (`POST /api/ci/chaos-runs`, `Authorization: Bearer sdci_…`) só em repositório do projeto do token, com o remote comparado normalizado (https, ssh e `.git` dão o mesmo). A resposta traz o link (`PUBLIC_URL` → `OAUTH_REDIRECT_BASE` → `Host`);
+    - a visão do projeto (`/api/projects/:id/chaos`: a última execução e as 24 mais recentes de cada repositório) e a execução completa (`/api/projects/:id/chaos/runs/:runId`).
+  - **Segurança:**
+    - o payload é validado (versão, remote, commit, forma do resultado);
+    - **links que não são http(s) são descartados**, porque viram `<a href>` no portal (nada de `javascript:`);
+    - empresa suspensa não publica;
+    - outra empresa recebe 404;
+    - o token de um projeto não publica em outro.
+  - **Retenção:** as últimas 100 execuções por repositório, aplicada a cada inserção.
+  - **Dois ajustes no servidor:**
+    - `SHIELDEPY_DATA_DIR` permite pôr o banco em outra pasta (os testes usam uma temporária);
+    - o `node:sqlite` passou a ser carregado com `createRequire`. O Vite (Vitest) não conhecia esse módulo nativo e tentava resolver um pacote `sqlite`; por isso nenhum teste tocava no banco até agora.
+  - **Testes** (`apps/frontend/test/chaos-runs.test.ts`, com sessões e HTTP de verdade): tokens só pelo dono, valor único e fora da lista; publicação com remote escrito de outro jeito; 401, 403 (repositório fora do projeto, token de outro projeto) e 400; link `javascript:` descartado; token revogado; visão do projeto `blocked`; execução completa; 404 para outra empresa; retenção de 100.
+  - Suíte: **321 testes**.
+- 2026-10-08: **V3c e V3d concluídos (portal: projeto e execução).** As duas páginas saíram juntas, num commit só, porque foram desenhadas e conferidas juntas.
+  - **Decisão de design:** o mapa de grafos (Cytoscape) é ferramenta de conferência e ficou "cru" para o usuário. No portal, a peça central é **a rota e o que acontece nela**, numa visualização própria em React e CSS, sem biblioteca de grafo, no design system do portal (tokens, temas claro e escuro, entrada escalonada).
+  - **Página do projeto:**
+    - painel **"Caos no CI"** no topo da coluna principal: um cartão por repositório com o status da última execução (borda colorida), quando, PR ou branch, commit, contagens e a **faixa de histórico** (uma barra por execução, a altura é o número de achados, a cor é o status). Cada barra abre a sua execução; o cartão inteiro abre a última, por um link esticado sem `<a>` dentro de `<a>`;
+    - painel **"Integração com o CI"** (só o dono): criar token num modal, o valor aparece **uma vez** numa caixa em destaque com botão de copiar, lista com o último uso, e revogar. O passo a passo cita `SHIELDEPY_PORTAL_TOKEN` e `SHIELDEPY_PORTAL_URL`.
+  - **Página da execução** (`/projects/:id/runs/:runId`):
+    - topo com o brilho no tom do status (anel pulsando quando bloqueou), a frase ("4 achados barraram este PR"), commit, branch, links para o PR e o job do CI, horário, motor e custo da IA;
+    - quatro métricas: achados, aguentaram, inválidos e sem teste;
+    - o escopo do PR, quando houver;
+    - **cada rota como uma linha do tempo**: a entrada (handlers e arquivo:linha) e cada operação de I/O como uma estação com ícone, verbo ("lê", "grava", "chama"), alvo, função, arquivo:linha e marcas ("sem timeout", "FOR UPDATE", "por nome"), ligadas por um traço animado. **A estação atingida por um achado** fica no tom da severidade, com um anel pulsando e um selo ("Corrida", "3 falhas");
+    - abaixo, os **cartões dos achados** (severidade, falha em português, a falha injetada, o tempo, a invariante violada em destaque e o arquivo do teste) e os chips do que aguentou, do inválido e do que ficou sem teste;
+    - rotas com achado vêm primeiro; uma rota fora do escopo do PR fica tracejada;
+    - o histórico do repositório no fim.
+  - Os textos de status, falhas, operações e tags ficam num lugar só (`src/portal/chaos/labels.ts`). Ícones novos: banco, nuvem, alerta, relógio, raio, copiar, commit.
+  - **Conferência visual com dados reais:** portal local num banco temporário, `chaos` + `publish` de verdade nos dois exemplos (6 publicações com PRs diferentes) e screenshots pelo protocolo do Chrome com sessão real, nos temas claro e escuro e no celular. Ajustes que os screenshots pediram:
+    - o `<header>` da rota herdava o estilo global da barra do topo (virou `div`);
+    - "4 no portão (Baixo ou pior)" virou "todos contam no portão";
+    - nomes e caminhos longos só quebram linha no `.` e na `/`;
+    - o tempo do achado foi para a linha da falha injetada;
+    - o teste mostra o nome do arquivo, com o caminho inteiro na dica.
+  - No celular, a linha do tempo vira vertical, com as setas para baixo.
+- 2026-10-08: **V3e concluído, e com ele o V3.**
+  - **CI:** passo "Publicar no portal" no workflow e no template.
+    - Só roda se existirem o secret `SHIELDEPY_PORTAL_TOKEN` e a variável `SHIELDEPY_PORTAL_URL`.
+    - Vem **antes** do comentário no PR, com `--append-link "$REPORT"`, para o link da execução entrar no relatório.
+    - Usa `continue-on-error`: o portal nunca muda o portão.
+    - Neste repositório, só o `chaos-gate` publica; o `self-test` barra sempre, de propósito, e poluiria o histórico.
+  - **Simulado com o portal local:** o `publish` com as variáveis do GitHub Actions publicou a execução 7 e acrescentou "[Ver esta execução no portal do ShielDepy](…/projects/1/runs/7)" ao relatório. YAML validado.
+  - **Docs:** a seção "Portal: o histórico de cada repositório" no `docs/chaos-ci.md` (criar o token, guardar no GitHub, o que vai para o portal, retenção) e o README (o `publish`, o portal e os arquivos novos no mapa do código).
+  - **Estado final do V3:** 321 testes unitários (28 do portal, 8 deles do V3b), extensão com 636 KB (sem mudança: o V3 não toca nela). As páginas foram conferidas em screenshots nos temas claro e escuro e no celular. O servidor e o banco temporários da conferência foram desligados e apagados.
+  - **Para usar de verdade:** subir o portal com `PUBLIC_URL` (ou `OAUTH_REDIRECT_BASE`) apontando para o endereço público, criar o token na página do projeto e configurar o secret e a variável no GitHub.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -576,6 +638,31 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Comando novo "ShielDepy: Comparar mapa com uma branch" (padrão: `origin/main`), que mostra o diff no painel.
   - Cenários E2E.
 - **V2e. Escala.** ✅ Concluída em 2026-10-08 (medido; sem troca de biblioteca). Medir o visualizador com o grafo grande (`apps/`) e registrar a avaliação do Sigma.js e do ELK. Só trocar de biblioteca se a medição pedir.
+
+### V3 — portal: resultados do caos enviados pelo CI (escrito em 2026-10-08, antes de começar)
+
+> Branch `feat/portal-v3`, empilhada sobre a `feat/visualizador-v2`. Pedido do usuário: "mais UI/UX bonitinho": o mapa de grafos (Cytoscape) é uma ferramenta de **conferência** e ficou "cru, quadradão". No portal, a peça central **não é o grafo do código**, e sim **a rota e o que acontece nela**.
+
+**Decisões (tomadas sem perguntar, registradas aqui):**
+- **Autenticação do CI: token por projeto** (`sdci_...`). O dono cria no portal, o valor aparece **uma vez só** e o banco guarda só o hash, como os tokens da extensão. O token só publica em repositórios do próprio projeto (o remote é conferido). Pode ser revogado.
+- **O que vai para o servidor:** o `ChaosResults` (que agora carrega também a **superfície de ataque**) e os metadados do git (commit, branch, PR, link do job). **Nenhum código-fonte**, só os mesmos fatos que a IA já pode ver: rotas, operações, tabelas, hosts e `arquivo:linha`.
+- **Retenção:** as últimas **100 execuções por repositório**; as mais velhas saem na hora de gravar uma nova.
+- **Publicar nunca muda o portão:** o envio é um passo separado no CI, com `continue-on-error`. Portal fora do ar não deixa o PR vermelho.
+
+**Peças:**
+- **CLI:** `shieldepy publish <pasta> --portal <url>` (token em `SHIELDEPY_PORTAL_TOKEN`). Lê o `.shieldepy/chaos-results.json`, o remote e o commit pelo git, e o PR e o link do job pelas variáveis do GitHub Actions. Devolve o link da execução no portal e, com `--append-link <relatório.md>`, acrescenta esse link ao relatório do PR.
+- **Servidor:** tabelas `project_ci_tokens` e `chaos_runs`.
+  - Rotas para o dono gerenciar os tokens (`/api/projects/:id/ci-tokens`).
+  - O envio do CI (`POST /api/ci/chaos-runs`).
+  - A visão do projeto (`/api/projects/:id/chaos`) e a execução completa (`/api/projects/:id/chaos/runs/:runId`).
+- **Portal (React):**
+  - **Página do projeto:** um painel "Caos no CI" com um cartão por repositório (status da última execução, branch e PR, contagens, e uma faixa com as últimas execuções em verde e vermelho) e um painel "Integração com o CI" (tokens e o passo a passo).
+  - **Página da execução** (`/projects/:id/runs/:runId`): status em destaque, métricas, o escopo do PR e **cada rota como uma linha do tempo das operações** (`lê stock → chama api.stripe.com → grava stock → grava orders`). O alvo de cada falha fica marcado na operação, com a severidade, a invariante violada e o arquivo do teste. Também traz as tags, as hipóteses sem teste e o histórico do repositório.
+- **Workflow e template:** um passo "Publicar no portal" quando há `SHIELDEPY_PORTAL_TOKEN` (secret) e `SHIELDEPY_PORTAL_URL` (variável).
+
+**Tarefas:** **V3a** contrato + CLI `publish` ✅ · **V3b** servidor (banco, tokens, rotas, testes) ✅ · **V3c** portal: página do projeto e tokens ✅ · **V3d** portal: página da execução (a linha do tempo) ✅ · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs ✅.
+
+**Aceitação:** o `chaos` no vulnerável seguido do `publish` para um portal local → o projeto mostra o repositório **bloqueado**, e a página da execução mostra o `POST /checkout` com os 4 achados nas operações certas. Um token de outro projeto, ou um remote fora do projeto → 403.
 
 **Aceitação do V2:**
 - `chaos examples/checkout-express --offline --html` → `POST /checkout` em vermelho, com os 4 achados na lista. No `-fixed`, em verde.

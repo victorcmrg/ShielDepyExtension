@@ -1,6 +1,7 @@
 // Resultado da execução dos testes de caos (E4) e a severidade de cada achado. Determinístico:
 // a severidade sai da falha injetada e da invariante que quebrou, nunca da IA.
 
+import type { AttackSurface } from '@shieldepy/core';
 import { severityRank, type Severity } from '../collisions/types';
 import type { CostReport } from '../cost';
 import type { Engine } from '../provider';
@@ -101,6 +102,26 @@ export interface ChaosResults {
   /** Hipóteses sem teste nesta execução, e por quê. */
   untested: { id: string; routeId: string; failure: FailureId; target: string; reason: string }[];
   cost: CostReport;
+  /**
+   * A superfície de ataque inteira (rotas sensíveis com as operações em ordem, tags e colisões): o
+   * portal (V3) desenha cada rota a partir dela. Só fatos, sem código — o mesmo que a IA pode ver.
+   */
+  surface?: AttackSurface;
+}
+
+/** O que o `shieldepy publish` manda para o portal (V3): o resultado e de onde ele veio. */
+export interface ChaosRunUpload {
+  version: 1;
+  /** Remote do git (o portal confere se o repositório é do projeto do token). */
+  remote: string;
+  commit: string;
+  branch?: string;
+  /** Número do PR, quando a execução foi num PR. */
+  pr?: number;
+  prUrl?: string;
+  /** Link do job do CI. */
+  runUrl?: string;
+  results: ChaosResults;
 }
 
 export function buildChaosResults(input: {
@@ -114,6 +135,7 @@ export function buildChaosResults(input: {
   hits: number;
   scope?: ChaosScope;
   cost: CostReport;
+  surface?: AttackSurface;
 }): ChaosResults {
   const outcomes = input.outcomes ?? [];
   const tested = new Set(outcomes.map((o) => o.hypothesisId));
@@ -146,5 +168,6 @@ export function buildChaosResults(input: {
               : 'não executado (--no-run)',
       })),
     cost: input.cost,
+    ...(input.surface && { surface: input.surface }),
   };
 }

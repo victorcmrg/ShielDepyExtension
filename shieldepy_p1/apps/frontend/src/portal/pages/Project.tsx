@@ -9,6 +9,7 @@ import type { ProjectDetail, ProjectMember, Repo } from '../types';
 import { CountUp, EmptyState } from '../ui/controls';
 import { Icon } from '../ui/Icon';
 import { useUi } from '../ui/UiProvider';
+import { ChaosOverview, CiTokensPane } from '../chaos/ProjectChaos';
 
 const LIVE_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -162,6 +163,8 @@ export default function Project() {
 
       <div className="detail-grid">
         <div>
+          {data && <ChaosOverview projectId={id} />}
+
           <section className="pane" aria-labelledby="reposTitle">
             <div className="pane-head">
               <h2 id="reposTitle">Repositórios</h2>
@@ -240,40 +243,43 @@ export default function Project() {
           </section>
         </div>
 
-        <section className="pane" aria-labelledby="peopleTitle">
-          <div className="pane-head">
-            <h2 id="peopleTitle">Pessoas</h2>
-            <button id="addPerson" className="btn-ghost small" type="button" hidden={!canManage} onClick={addPerson}>
-              Adicionar
-            </button>
-          </div>
-          <p className="pane-note" id="peopleNote">
-            {data &&
-              (canManage
-                ? 'Quem está aqui pode usar a extensão nos repositórios deste projeto. Você, como dono, já tem acesso a todos.'
-                : 'Quem trabalha neste projeto com você.')}
-          </p>
-          <ul className="row-list" id="people">
-            {data &&
-              (data.members.length === 0 ? (
-                <EmptyState as="li" compact icon="users" title="Ninguém além do dono" text={canManage ? 'Adicione as pessoas que vão trabalhar aqui.' : ''} />
-              ) : (
-                data.members.map((m, i) => (
-                  <PersonRow
-                    key={m.email}
-                    member={m}
-                    index={i}
-                    leaving={leaving.has('member:' + m.email)}
-                    onRemove={
-                      canManage
-                        ? () => removeRow('member:' + m.email, () => api('/api/projects/' + id + '/members/' + encodeURIComponent(m.email), { method: 'DELETE' }))
-                        : undefined
-                    }
-                  />
-                ))
-              ))}
-          </ul>
-        </section>
+        <div>
+          <section className="pane" aria-labelledby="peopleTitle">
+            <div className="pane-head">
+              <h2 id="peopleTitle">Pessoas</h2>
+              <button id="addPerson" className="btn-ghost small" type="button" hidden={!canManage} onClick={addPerson}>
+                Adicionar
+              </button>
+            </div>
+            <p className="pane-note" id="peopleNote">
+              {data &&
+                (canManage
+                  ? 'Quem está aqui pode usar a extensão nos repositórios deste projeto. Você, como dono, já tem acesso a todos.'
+                  : 'Quem trabalha neste projeto com você.')}
+            </p>
+            <ul className="row-list" id="people">
+              {data &&
+                (data.members.length === 0 ? (
+                  <EmptyState as="li" compact icon="users" title="Ninguém além do dono" text={canManage ? 'Adicione as pessoas que vão trabalhar aqui.' : ''} />
+                ) : (
+                  data.members.map((m, i) => (
+                    <PersonRow
+                      key={m.email}
+                      member={m}
+                      index={i}
+                      leaving={leaving.has('member:' + m.email)}
+                      onRemove={
+                        canManage
+                          ? () => removeRow('member:' + m.email, () => api('/api/projects/' + id + '/members/' + encodeURIComponent(m.email), { method: 'DELETE' }))
+                          : undefined
+                      }
+                    />
+                  ))
+                ))}
+            </ul>
+          </section>
+          {canManage && <CiTokensPane projectId={id} />}
+        </div>
       </div>
     </>
   );
