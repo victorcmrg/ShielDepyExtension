@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_NAME } from '@shieldepy/agent';
-import { CodeGraph, isFileOnDisk, toFileId, type Host } from '@shieldepy/core';
+import { CodeGraph, isFileOnDisk, readFileOnDisk, toFileId, type Host } from '@shieldepy/core';
 import { createRegistry } from '@shieldepy/extractors';
 import { AnalyzingDecorationProvider } from './analysis/AnalyzingDecorationProvider';
 import { BackgroundAnalyzer } from './analysis/BackgroundAnalyzer';
@@ -36,7 +36,7 @@ interface TestApi {
 export async function activate(context: vscode.ExtensionContext): Promise<TestApi | undefined> {
   const output = vscode.window.createOutputChannel('ShielDepy');
   const log = (m: string) => output.appendLine(m);
-  const host: Host = { log, isFile: isFileOnDisk };
+  const host: Host = { log, isFile: isFileOnDisk, readFile: readFileOnDisk };
   const push = (...d: vscode.Disposable[]) => context.subscriptions.push(...d);
   push(output);
 

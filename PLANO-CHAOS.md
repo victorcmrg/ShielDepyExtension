@@ -15,15 +15,26 @@ Este arquivo é atualizado a cada passo. Cada ponto importante gera um commit na
 
 | Marco | Branch | Status |
 |---|---|---|
-| 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | em andamento |
-| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) + pacotes externos + cobertura | `feat/chaos-grafo` | pendente |
+| 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído |
+| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | em andamento |
 | 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | pendente |
+| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter (gramáticas já no `tree-sitter-wasms`); PL/pgSQL precisa de gramática SQL à parte | a definir | pendente |
 | 2. Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`) | a definir | pendente |
 | 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
+- 2026-10-07: **1a concluído.**
+  - Novo `extract-module.ts`: tabela de imports, exports e re-exports por arquivo, lida da AST. Cobre alias, default (nomeado e anônimo), namespace, barrels, `require` e `module.exports`/`exports.x`.
+  - `ModuleResolver`: `paths`/`baseUrl` do tsconfig (com comentários e `extends`); especificador não relativo vira pacote.
+  - Nós `package` (`pkg:<nome>`), com arestas `imports` e `calls` para eles.
+  - `CodeGraph.stats` agora traz cobertura: `callsResolved`, `callsHeuristic`, `callsUnresolved`, `callsExternal`, `importsUnresolved`. Também há `fileCoverage(fileId)`.
+  - O fallback por nome continua, mas a aresta sai marcada `heuristic: true`.
+  - O receptor de `obj.m()` é lido da AST (sem regex).
+  - Suíte: 166 → 180 testes, todos passando.
+- Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
+- Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
 ---
 

@@ -26,12 +26,42 @@ export interface SymbolNodeAttrs {
   signature?: string;
 }
 
-export type NodeAttrs = FileNodeAttrs | SymbolNodeAttrs;
+/** Dependência externa (`pg`, `@prisma/client`, `node:fs`) — id `pkg:<nome>`. */
+export interface PackageNodeAttrs {
+  kind: 'package';
+  name: string;
+}
+
+export type NodeAttrs = FileNodeAttrs | SymbolNodeAttrs | PackageNodeAttrs;
 
 export type EdgeType = 'defines' | 'imports' | 'calls';
 
 export interface EdgeAttrs {
   type: EdgeType;
+  /**
+   * `calls` ligada só por coincidência de nome (receptor desconhecido, ex: `obj.save()` sem saber
+   * o tipo de `obj`). Ausente = ligação provada pela tabela de imports/exports.
+   */
+  heuristic?: boolean;
+}
+
+/** Qualidade do mapa: quanto das chamadas para código do PROJETO foi resolvido. */
+export interface CallCoverage {
+  /** Ligadas por import/export/escopo — sem adivinhação. */
+  callsResolved: number;
+  /** Ligadas só por nome (fallback). */
+  callsHeuristic: number;
+  /** Apontam pra uma ligação do projeto, mas o alvo não foi achado (export inexistente, import quebrado). */
+  callsUnresolved: number;
+  /** Chamadas para pacotes externos (`pg`, `axios`...). */
+  callsExternal: number;
+  /** Especificadores de import do projeto que não resolvem pra arquivo nenhum. */
+  importsUnresolved: number;
+}
+
+export interface GraphStats extends CallCoverage {
+  nodes: number;
+  edges: number;
 }
 
 export interface GraphSnapshot {
@@ -66,5 +96,9 @@ export interface SymbolCycle {
 }
 
 export function isSymbolNode(attrs: NodeAttrs): attrs is SymbolNodeAttrs {
-  return attrs.kind !== 'file';
+  return attrs.kind !== 'file' && attrs.kind !== 'package';
+}
+
+export function packageNodeId(name: string): string {
+  return `pkg:${name}`;
 }
