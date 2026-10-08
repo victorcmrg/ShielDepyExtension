@@ -41,6 +41,29 @@ export interface SkippedRoute {
   reason: string;
 }
 
+/** `db_tx`: BEGIN/COMMIT/`$transaction`; `db_unknown`: fala com o banco, mas o SQL não é literal. */
+export type IoKind = 'db_read' | 'db_write' | 'db_tx' | 'db_unknown' | 'api_call';
+
+/** `unknown`: a config é uma variável, ou a chamada é de uma instância (`axios.create({ timeout })`). */
+export type TimeoutState = 'yes' | 'no' | 'unknown';
+
+export interface IoOperation {
+  kind: IoKind;
+  /** Tabela, model do Prisma, host da API, `transaction`, ou `dynamic` quando não dá pra ler. */
+  target: string;
+  via: 'pg' | 'prisma' | 'fetch' | 'axios';
+  /** Verbo SQL, operação do Prisma ou método do axios. */
+  operation?: string;
+  /** `SELECT ... FOR UPDATE`. */
+  lock?: true;
+  /** Só `api_call`. */
+  timeout?: TimeoutState;
+  /** Quem faz a chamada (símbolo) e onde. */
+  symbol: string;
+  file: string;
+  line: number;
+}
+
 export interface RouteScan {
   routes: Route[];
   skipped: SkippedRoute[];

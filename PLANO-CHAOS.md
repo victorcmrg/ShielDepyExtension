@@ -142,6 +142,25 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **`checkout-express`:** `POST /checkout: express.json() → validateCheckout → checkoutController.create` e `GET /orders/:id: express.json() → <inline>`. O `express.json()` vem do `app.use` de `app.ts`, que fica antes da montagem, e por isso está certo.
   - **Limite (da E1, não da 2b):** campo sem anotação iniciado por chamada (`router = Router()`) não tem tipo, então `this.router.post` não é reconhecido. Com anotação (`router: Router = Router()`), é. Também ficam de fora `router.route('/x').get(...)` e roteador recebido como parâmetro (`register(r: Router)`), que sai sem o prefixo de quem chama.
   - Suíte: **216 testes**.
+- 2026-10-08: **2c concluído (operações de I/O)**, em `topology/io.ts` (`ioOperationOf`) e `sql/classify.ts` (`classifySql`).
+  - **SQL pelos tokens:**
+    - verbo principal no nível de fora (o de uma CTE ou subconsulta não conta);
+    - tabela escrita (INTO/UPDATE/DELETE FROM) ou a 1ª lida, e todas as citadas, sem as CTEs;
+    - `FOR UPDATE/SHARE/NO KEY UPDATE` vira `lock`;
+    - BEGIN/COMMIT/ROLLBACK vira `db_tx`;
+    - nome sem aspas em minúsculas e `schema.tabela` junto;
+    - comentário e string nunca viram verbo.
+  - **pg:** `query` resolvida para `pkg:pg`, inclusive o `client` de `pool.connect()`. Um `query` de classe do projeto não é banco.
+  - **Prisma:** o model é o último segmento do receptor (`prisma.order.create`). `find*/count/aggregate/groupBy` é leitura e `create*/update*/upsert/delete*` é escrita. `$transaction` vira `db_tx`, e `$queryRawUnsafe/$executeRawUnsafe` passam pelo classificador de SQL.
+  - **fetch:** o global (não sombreado) e o de `node-fetch/undici/cross-fetch`. O alvo é o host da URL literal ou do começo do template; se não der para ler, `dynamic`.
+  - **axios:** a posição da config depende do método (`get(url, config)`, `post(url, data, config)`, `axios(config)`).
+  - **Timeout em 3 estados**, porque a tag `no-timeout` só sai com `no`:
+    - `yes`: há `signal` ou `timeout`;
+    - `no`: config ausente ou sem essas chaves;
+    - `unknown`: a config é uma variável ou spread, ou a chamada é de uma instância `axios.create(...)`, que pode ter timeout próprio.
+  - SQL que não é literal (`db.query(sql)`) vira `db_unknown dynamic`: fala com o banco, mas não se sabe o quê.
+  - **`checkout-express`:** `api_call api.stripe.com (fetch, sem timeout)`, `db_read stock`, `db_write stock`, `db_write orders` e `db_read orders`, cada uma no método certo do repositório.
+  - Suíte: **223 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -223,7 +242,7 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
   - Registrar com receptor resolvido para `pkg:express`, verbos `get|post|put|patch|delete|all` e path literal.
   - Montagem com prefixo `app.use('/api', router)`, seguindo `router` importado até a sua declaração. Compor os prefixos.
   - Cada rota guarda os handlers **em ordem** (middlewares + handler final).
-- **2c. Operações de I/O** (`topology/io.ts`), por chamada:
+- **2c. Operações de I/O** (`topology/io.ts`), por chamada: ✅ Concluída em 2026-10-08.
   - `pg` (`query` com SQL literal): o tokenizador dá o verbo (`SELECT` → `db_read`; `INSERT/UPDATE/DELETE` → `db_write`), a tabela e `FOR UPDATE`/transação (`BEGIN`) anotados.
   - `@prisma/client` (`prisma.<model>.<op>`): `create|update|upsert|delete*` = write; `find*|count|aggregate` = read; `$transaction` anotado.
   - `fetch` global (não sombreado) e `axios` (`pkg:axios`): `api_call`, alvo = host da URL literal, ou `dynamic`. Anotar timeout presente ou ausente (`AbortSignal.timeout`, `signal`, `timeout:` do axios).
