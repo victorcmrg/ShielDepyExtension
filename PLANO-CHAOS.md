@@ -11,7 +11,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 ## Como retomar num chat novo (atualizado em 2026-10-08, início da E5)
 
-**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** e foi enviada pelo usuário (`origin/feat/chaos-gate`), mas ainda não foi mergeada. Depois do merge, falta só o **PR de teste no GitHub** (ver o registro da 4e). A **E5 (mapa incremental e custo)** está em andamento na branch `feat/mapa-incremental`, **criada a partir da `feat/chaos-gate`** (empilhada, porque a E4 ainda não está na `main`). Se a E4 entrar por *squash*, rebasear a E5 sobre a `main` antes de abrir o PR dela. Leia, nesta ordem:
+**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** e foi enviada pelo usuário (`origin/feat/chaos-gate`), mas ainda não foi mergeada. Depois do merge, falta só o **PR de teste no GitHub** (ver o registro da 4e). A **E5 (mapa incremental e custo)** está **pronta, menos a medição paga (5e)**, na branch `feat/mapa-incremental`, **criada a partir da `feat/chaos-gate`** (empilhada, porque a E4 ainda não está na `main`). Se a E4 entrar por *squash*, rebasear a E5 sobre a `main` antes de abrir o PR dela. Leia, nesta ordem:
 1. esta seção;
 2. a seção **"E5 — mapa incremental e custo"** (por que existe, desenho e tarefas 5a–5f);
 3. o fim do **Registro**, para os detalhes de cada fatia já feita.
@@ -50,7 +50,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
 - **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
 - **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
-- **E5 — em andamento** na branch `feat/mapa-incremental`.
+- **E5 — pronta, menos a medição paga** na branch `feat/mapa-incremental`: 5a–5d, 5f e a parte gratuita da 5e. Para medir: `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (estimativa abaixo de US$ 0,50).
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -63,7 +63,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
-| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | em andamento |
+| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | pronta, menos a medição paga (5e) |
 | 6. E6: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (era a E5; ver avaliação) |
 
 ### Registro
@@ -441,6 +441,10 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - Sem `--sim-gastar` ou sem a chave, recusa e sai 2.
     - **Estimativa:** abaixo de US$ 0,50 no total (4 execuções; cada uma faz de 1 a 6 chamadas pequenas).
   - **Decisão adiada até a medição:** o padrão do `deep` e a separação entre o tier do caos e o tier do chat.
+- 2026-10-08: **Conferência final da E5.**
+  - O E2E acusou 1 falha: o cenário "Ver Mapa do Sistema" procurava as arestas pelos ids antigos (`CheckoutController.ts#create`). Atualizado para os ids estáveis (`#CheckoutController.create` etc.). Depois disso, **E2E 24/24** num VS Code real.
+  - **307 testes** unitários, typecheck limpo, extensão com **613 KB** (+1 KB, do hash).
+  - **Estado:** pronta para subir e mergear quando o usuário quiser. A medição paga da 5e pode entrar depois, num commit próprio, sem bloquear o merge. A branch está empilhada sobre a `feat/chaos-gate`: mergear a E4 primeiro.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

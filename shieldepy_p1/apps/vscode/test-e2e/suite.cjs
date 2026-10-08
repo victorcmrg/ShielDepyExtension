@@ -219,10 +219,10 @@ exports.run = async function run() {
     const map = api.lastMap();
     assert(map && map.contentHash, 'mapa não foi gerado');
     const c = 'checkout/src/';
-    assert(edgeIn(map, `${c}routes/checkout.ts`, `${c}controllers/CheckoutController.ts#create`, 'references'), 'rota → controller');
-    assert(edgeIn(map, `${c}controllers/CheckoutController.ts#create`, `${c}services/CheckoutService.ts#checkout`, 'calls'), 'controller → service');
-    assert(edgeIn(map, `${c}services/CheckoutService.ts#checkout`, `${c}gateways/StripeGateway.ts#charge`, 'calls'), 'service → Stripe (pela interface)');
-    assert(edgeIn(map, `${c}repositories/StockRepository.ts#decrement`, 'pkg:pg', 'calls'), 'repositório → pg');
+    assert(edgeIn(map, `${c}routes/checkout.ts`, `${c}controllers/CheckoutController.ts#CheckoutController.create`, 'references'), 'rota → controller');
+    assert(edgeIn(map, `${c}controllers/CheckoutController.ts#CheckoutController.create`, `${c}services/CheckoutService.ts#CheckoutService.checkout`, 'calls'), 'controller → service');
+    assert(edgeIn(map, `${c}services/CheckoutService.ts#CheckoutService.checkout`, `${c}gateways/StripeGateway.ts#StripeGateway.charge`, 'calls'), 'service → Stripe (pela interface)');
+    assert(edgeIn(map, `${c}repositories/StockRepository.ts#StockRepository.decrement`, 'pkg:pg', 'calls'), 'repositório → pg');
   });
 
   await check('"Exportar Topologia" grava .shieldepy/topology-graph.json com POST /checkout em ordem e as tags', async () => {
@@ -253,7 +253,7 @@ exports.run = async function run() {
     await vscode.workspace.fs.writeFile(tsconfig, Buffer.from(tsconfigOriginal));
     await waitFor('imports voltarem', () => api.graphStats().importsUnresolved === 0 && api.graphStats().callsUnresolved === 0, 15000);
     await vscode.commands.executeCommand('shieldepy.showMap');
-    assert(edgeIn(api.lastMap(), 'checkout/src/routes/checkout.ts', 'checkout/src/controllers/CheckoutController.ts#create', 'references'), 'cadeia não voltou');
+    assert(edgeIn(api.lastMap(), 'checkout/src/routes/checkout.ts', 'checkout/src/controllers/CheckoutController.ts#CheckoutController.create', 'references'), 'cadeia não voltou');
   });
 
   await check('workspace acima do teto: a indexação avisa que o mapa ficou parcial', async () => {
