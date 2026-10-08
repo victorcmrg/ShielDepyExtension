@@ -50,6 +50,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
 - **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
 - **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
+- **V2 — em andamento** na branch `feat/visualizador-v2`, empilhada sobre a `feat/mapa-incremental`. Ver "V2 — desenho e tarefas" na seção "Visualização do grafo".
 - **E5 — pronta, menos a medição paga** na branch `feat/mapa-incremental`: 5a–5d, 5f e a parte gratuita da 5e. Para medir: `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (estimativa abaixo de US$ 0,50).
 
 | Tarefa | Branch | Status |
@@ -60,7 +61,8 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
-| V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
+| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | em andamento |
+| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend` | a definir | pendente (separado do V2 em 2026-10-08) |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | pronta, menos a medição paga (5e) |
@@ -475,6 +477,38 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **Diff entre dois mapas** (hash do PR × `main`): o que o PR adicionou ou mudou na cadeia.
 - **Escala:** para repositórios de 10k+ nós, avaliar o **Sigma.js** (WebGL, usa o `graphology` que o core já usa), e para fluxos em camadas o **ELK** (`elkjs`). O contrato `SystemGraph` não muda.
 - **Na extensão:** respeitar a CSP do webview já existente (scripts com nonce, sem inline) e empacotar as bibliotecas no `esbuild`.
+
+### V2 — desenho e tarefas (escrito em 2026-10-08, antes de começar)
+
+> Branch `feat/visualizador-v2`, empilhada sobre a `feat/mapa-incremental` (E5), porque usa o diff de mapas e o escopo do PR. O V1 e a E2 já entregam rotas e operações de I/O como nós (CLI `--html` e painel "Ver Mapa do Sistema"). O V2 põe por cima disso o **resultado do caos** e o **diff do PR**.
+
+**Decisão de escopo: o portal fica para o V3.** O `apps/frontend` hoje é a gestão de projetos, repositórios e equipes, com login e SQLite. Mostrar resultados lá exige o CI **enviar** os resultados (endpoint autenticado com o token de dispositivo, armazenamento por repositório e commit, página nova). O V2 cobre a CLI, cujo HTML autocontido também serve de artefato do CI, e a extensão.
+
+**Contrato:** `ViewerOverlay { chaos?: ChaosResults; diff?: { base, commit, diff: MapDiff } }`, um parâmetro novo e opcional do `renderGraphHtml`. Sem overlay, o visualizador continua igual ao V1.
+
+**Tarefas:**
+- **V2a. Resultado do caos persistido.** O `chaos` grava sempre `.shieldepy/chaos-results.json` (`ChaosResults`): `topologyHash`, escopo, resultados com severidade e mensagem, hipóteses sem teste, portão e custo. Com `--html <arquivo>`, grava também o visualizador com a topologia e o resultado.
+- **V2b. Caos no visualizador.**
+  - Rota com achado em vermelho (com a severidade), aguentou em verde, inválido tracejado, fora do escopo ou sem teste neutra.
+  - Lista lateral "Caos": achados com falha, alvo, invariante violada e arquivo do teste. Clicar abre o fluxo da rota, com a operação-alvo destacada.
+  - Legenda.
+  - Aviso quando o resultado é de outra versão do mapa (`topologyHash` diferente).
+- **V2c. Diff no visualizador.**
+  - Nós `added` / `changed` / `renamed` marcados.
+  - Lista lateral "Mudanças" (inclui os removidos, que não estão no mapa atual) e as rotas tocadas, com o motivo.
+  - Filtro "só o que o PR mudou": nós mudados, vizinhos diretos e rotas tocadas.
+  - CLI: `diff --html` e `chaos --base --html`.
+- **V2d. Extensão.**
+  - O `git-base` vai para o core (só Node).
+  - O painel do mapa lê o `.shieldepy/chaos-results.json` e atualiza quando ele muda.
+  - Comando novo "ShielDepy: Comparar mapa com uma branch" (padrão: `origin/main`), que mostra o diff no painel.
+  - Cenários E2E.
+- **V2e. Escala.** Medir o visualizador com o grafo grande (`apps/`) e registrar a avaliação do Sigma.js e do ELK. Só trocar de biblioteca se a medição pedir.
+
+**Aceitação do V2:**
+- `chaos examples/checkout-express --offline --html` → `POST /checkout` em vermelho, com os 4 achados na lista. No `-fixed`, em verde.
+- `diff --base` com o corpo do `StripeGateway.charge` mudado → o método marcado como `changed` e o `POST /checkout` como rota tocada.
+- Na extensão, rodar o `chaos` pela CLI atualiza o painel aberto sem recarregar.
 
 ---
 
