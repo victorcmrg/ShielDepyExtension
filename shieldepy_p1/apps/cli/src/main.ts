@@ -18,6 +18,7 @@ import { loadRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extra
 import { explainCollisions, explainOffline, providerFromEnv, severityRank, type Severity } from '@shieldepy/agent';
 import { printCollisions, printCycles, printReport, printSystemGraph, printTopology } from './print';
 import { renderGraphHtml } from '@shieldepy/viewer';
+import { runChaosCommand } from './chaos';
 
 export interface Io {
   out: (line: string) => void;
@@ -36,6 +37,10 @@ const USAGE = `uso:
   shieldepy topology <pasta> [--json] [--surface] [--out <arquivo>] [--html <arquivo>]
                                                      rotas Express, operações de I/O em ordem e tags de risco
                                                      (--surface: só o recorte que vai para a IA)
+  shieldepy chaos   <pasta> --no-run [--offline] [--json]
+                                                     gera testes de caos para as rotas sensíveis em
+                                                     .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts);
+                                                     --offline: só o motor, sem IA (custo zero)
 
   report  = só o motor (determinístico, sem rede)
   explain = motor + IA (ANTHROPIC_API_KEY ou GEMINI_API_KEY); sem chave, explicador offline
@@ -50,17 +55,21 @@ interface Args {
   out?: string;
   html?: string;
   surface: boolean;
+  noRun: boolean;
+  offline: boolean;
 }
 
 const SEVERITY_ALIASES: Record<string, Severity> = { critico: 'Crítico', crítico: 'Crítico', alto: 'Alto', medio: 'Médio', médio: 'Médio', baixo: 'Baixo' };
 
 export function parseArgs(argv: string[]): Args {
-  const args: Args = { json: false, pg: false, surface: false };
+  const args: Args = { json: false, pg: false, surface: false, noRun: false, offline: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') args.json = true;
     else if (a === '--pg') args.pg = true;
     else if (a === '--surface') args.surface = true;
+    else if (a === '--no-run') args.noRun = true;
+    else if (a === '--offline') args.offline = true;
     else if (a === '--out' || a.startsWith('--out=') || a === '--html' || a.startsWith('--html=')) {
       const flag = a.startsWith('--out') ? 'out' : 'html';
       const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
@@ -173,6 +182,10 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
         if (args.json) io.out(canonicalJson(result, 2));
         else printTopology(topology, args.target, io.out);
         return 0;
+      }
+      case 'chaos': {
+        if (!args.target) throw new Error('informe a pasta do projeto');
+        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline }, io, registryWithTreeSitter);
       }
       default:
         io.err(USAGE);

@@ -39,9 +39,12 @@ function defaultPriority(failure: FailureId): Priority {
 }
 
 function offlineRationale(route: SurfaceRoute, failure: FailureId, target: string): string {
-  const tags = route.tags.map((t) => t.tag).join(', ');
+  // só as tags que tocam este alvo: a corrida em `stock` não precisa citar o timeout do Stripe
+  const tags = route.tags.filter((t) => t.targets?.includes(target)).map((t) => `${t.tag}(${target})`);
   const entry = catalogEntry(failure)!;
-  return `${entry.description} Habilitada por ${tags || 'operações de I/O'} em ${route.id} (alvo: ${target}).`;
+  const ops = route.operations.filter((o) => o.target === target).map((o) => `${o.kind} em ${o.in}`);
+  const evidence = [...tags, ...ops.slice(0, 3)].join(', ');
+  return `${entry.description} Em ${route.id}: ${evidence || 'operações de I/O'}.`;
 }
 
 /** A lista-base: toda falha do catálogo (marcada `baseline`) que as tags de cada rota habilitam. */
