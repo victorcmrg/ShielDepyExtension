@@ -126,6 +126,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Pasta local `legado_grafo_arvore/` apagada (já não era versionada). O README da raiz descreve só o `shieldepy_p1`; os legados ficam no histórico do git.
   - Achado: `npm run cli -- …` não imprimia nada, porque o script `start` rodava `src/main.ts`, que só exporta `main()`. Corrigido: o `start` usa o `bin/shieldepy.js`.
   - Branch `feat/topologia` criada a partir da `main`. **E2 iniciada.**
+- 2026-10-08: **2a concluído (API do core).** Três ajustes ao que o plano previa, vindos da leitura do código:
+  - **Chamadas no topo do arquivo** não eram registradas, e `checkoutRouter.post('/checkout', ...)` fica no topo. Agora ficam guardadas com o arquivo como chamador, mas **fora das arestas e da cobertura**: os números da E1 e o hash do mapa do `checkout-express` não mudaram.
+  - **`args` no lugar de só `firstArg`:** a 2c precisa do 2º argumento (`fetch(url, { signal })`, `axios(url, { timeout })`). Cada argumento vira um resumo estático: string, prefixo de template, chaves de objeto, callback (com o símbolo) ou nome resolvido.
+  - **`callSitesIn(fileId)` no lugar de `referencesAt`:** a mesma API serve para o topo do arquivo e para dentro de funções (o `app.use(router)` fica dentro de `createApp`). Cada nome traz a **`origin`**, ou seja, onde ele é declarado, atravessando import e barrel. É isso que liga o `app.use('/api', r)` de um arquivo ao `ordersRouter.post` de outro.
+  - **Ordem:** pela posição em que a chamada **termina**. Em `res.status(201).json()` e `fetch(url, { body: new URLSearchParams() })`, a de dentro roda antes.
+  - Saída de `callsOf`/`callSitesIn`: `{ caller, line, column, name, object, outcome, targets, package, shadowed, receiverOrigin, args }`. O `outcome` vale `resolved | heuristic | unresolved | external | unbound`. `fetch` global sai `unbound` sem `shadowed`.
+  - O lexer SQL foi movido para `packages/core/src/sql/lexer.ts` e é exportado como `tokenizeSql`; `extractors` importa de lá.
+  - Suíte: 204 → **210 testes**. Typecheck limpo e a extensão compila.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -199,7 +207,7 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
 
 ### Tarefas
 
-- **2a. API do core.**
+- **2a. API do core.** ✅ Concluída em 2026-10-08. Saiu como `args` + `callSitesIn` + `origin`; ver o registro.
   - `line`/`firstArg` no `RawCall`, mais `callsOf` e `referencesAt`.
   - Mover o lexer SQL para o core; `extractors` passa a importar de lá.
   - Testes no `call-resolution.test.ts`.

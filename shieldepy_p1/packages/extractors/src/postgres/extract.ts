@@ -9,7 +9,7 @@
 // dentro de outras funções chamadas.
 
 import { FieldAccess } from '../naming';
-import { tokenize, type Token } from './lexer';
+import { tokenizeSql as tokenize, type SqlToken as Token } from '@shieldepy/core';
 
 export interface FieldAccessResult {
   reads: string[];

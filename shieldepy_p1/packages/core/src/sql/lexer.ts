@@ -1,4 +1,6 @@
-// Analisador léxico de PL/pgSQL. Não há gramática Tree-sitter de PL/pgSQL no `tree-sitter-wasms`
+// Analisador léxico de SQL e PL/pgSQL. Fica no core porque dois lados usam: o extrator de
+// triggers (`extractors/postgres`) e a topologia (verbo + tabela do SQL de `pool.query('...')`).
+// Não há gramática Tree-sitter de PL/pgSQL no `tree-sitter-wasms`
 // (e as de SQL não entram no corpo `$$ ... $$` de uma função) — mas o que os triggers mexem
 // (`NEW.col := ...`) é LÉXICO: basta separar o código em tokens corretamente. É o que garante
 // que comentário, string e identificador com aspas nunca virem acesso (a regex antiga errava isso).
