@@ -11,7 +11,7 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
 1. **`shieldepy.chaos.config.ts` na raiz do app.** É o contrato: só o projeto sabe subir o app sem abrir porta, zerar o estado, dizer o que nunca pode acontecer e montar uma requisição válida.
 
    ```ts
-   import { minStock, resetDb } from './chaos/db';
+   import { minStock, orderCount, resetDb } from './chaos/db';
    import { createApp } from './src/app';
 
    export default {
@@ -24,6 +24,11 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
        async stockNeverNegative() {
          return (await minStock()) >= 0;
        },
+       // com o contexto: as chamadas às APIs que deram certo no teste (ex.: nenhuma cobrança sem pedido)
+       async noChargeWithoutOrder(ctx?: { apiCalls: { host: string; method: string; path: string }[] }) {
+         const charges = ctx?.apiCalls.filter((c) => c.path === '/v1/charges').length ?? 0;
+         return charges <= (await orderCount());
+       },
      },
      apis: {                           // resposta SAUDÁVEL de cada API externa (o MSW responde isso)
        'api.stripe.com': () => ({ id: 'ch_test', status: 'succeeded' }),
@@ -33,6 +38,8 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
      },
    };
    ```
+
+   Cada invariante recebe um contexto opcional, `ctx.apiCalls`: as chamadas às APIs externas que receberam a resposta saudável de `apis` durante o teste (`{ host, method, path }`, em ordem). Uma chamada com falha injetada não entra. Quem não precisa do contexto ignora o parâmetro.
 
    O ShielDepy lê esse arquivo pela AST (só os nomes) e só o executa dentro dos testes gerados. Exemplo completo: [`examples/checkout-express`](../examples/checkout-express).
 

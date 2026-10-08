@@ -22,6 +22,16 @@ export interface ChaosConfigFacts {
   setupFiles: string[];
 }
 
+/**
+ * O que os testes gerados passam a cada função de `invariants` (o parâmetro é opcional: quem não
+ * precisa, ignora). Serve para invariantes que cruzam o banco com o mundo de fora, como "nenhuma
+ * cobrança sem pedido". Os projetos não importam o ShielDepy: copiam este formato no próprio config.
+ */
+export interface ChaosInvariantContext {
+  /** Chamadas às APIs externas que receberam a resposta saudável do `apis` durante o teste, em ordem. */
+  apiCalls: { host: string; method: string; path: string }[];
+}
+
 /** Nomes dos membros de um objeto literal: `a`, `'b': x`, `c() {}`. */
 function memberNames(object: SyntaxNode): string[] {
   const names: string[] = [];

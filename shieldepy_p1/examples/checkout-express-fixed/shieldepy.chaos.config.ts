@@ -4,6 +4,11 @@
 import { minStock, orderCount, resetDb } from './chaos/db';
 import { createApp } from './src/app';
 
+/** O que os testes gerados passam aos invariantes: as chamadas às APIs externas que deram certo. */
+interface ChaosInvariantContext {
+  apiCalls: { host: string; method: string; path: string }[];
+}
+
 export default {
   createApp,
   /** Carregados antes de cada teste gerado (aqui: troca o `pg` pelo banco em memória). */
@@ -20,6 +25,12 @@ export default {
     /** Com 1 item em estoque, no máximo 1 pedido. */
     async atMostOneOrder(): Promise<boolean> {
       return (await orderCount()) <= 1;
+    },
+    /** Nenhum cliente cobrado sem pedido: cobranças no Stripe, menos estornos, nunca passam dos pedidos. */
+    async noChargeWithoutOrder(ctx?: ChaosInvariantContext): Promise<boolean> {
+      if (!ctx) return true;
+      const stripe = (path: string) => ctx.apiCalls.filter((c) => c.host === 'api.stripe.com' && c.method === 'POST' && c.path === path).length;
+      return stripe('/v1/charges') - stripe('/v1/refunds') <= (await orderCount());
     },
   },
   /** Resposta saudável de cada API externa: o bloco de controle e os testes de concorrência usam. */

@@ -76,7 +76,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 5. E5: mapa incremental e custo, tarefas 5a–5g | `feat/mapa-incremental` | concluído, mergeado; falta a medição paga (5e) |
 | V2. Caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado |
 | V3. Portal: o caos enviado pelo CI, com histórico, tarefas V3a–V3e | `feat/portal-v3` | concluído, mergeado; falta pôr o portal no ar |
-| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **próximo** |
+| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1 feita) |
 | 7. E7: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (ver avaliação) |
 
 ### Registro
@@ -607,6 +607,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Falta (depende do usuário):** o PR de teste vermelho, a medição paga e o portal no ar. Tudo descrito em "Como retomar".
   - **Plano atualizado para a próxima etapa:** E6 — DB_Chaos ("outras linguagens" virou E7). Branch `feat/db-chaos` criada a partir da `main`.
   - **Achado ao desenhar o DB_Chaos:** o `checkout-express-fixed` também tem a falha parcial. Ele cobra e só depois grava o pedido; se o `insert` falhar, o cliente fica cobrado sem pedido e a reserva do estoque não volta. Isso vira a aceitação da E6.
+- 2026-10-08: **D1 concluído (invariantes com contexto).**
+  - Os testes gerados passam `ctx = { apiCalls }` a cada função de `invariants` (no controle e no caos). O tipo `ChaosInvariantContext` está no core, só como documentação: os projetos não importam o ShielDepy e copiam o formato no próprio config.
+  - **Decisão (muda o desenho, que falava do `request:end` do MSW):** a chamada é registrada **dentro do handler saudável** do MSW, logo antes de devolver a resposta. Assim, só entra a chamada que **deu certo**; a que recebeu falha injetada (5xx, corpo inválido, atraso) não conta como cobrança. Com o `request:end`, um 503 do Stripe contaria como cobrança e o `noChargeWithoutOrder` acusaria o corrigido sem motivo. E não depende da ordem de eventos do MSW: quando o app recebe a resposta, a chamada já está na lista (a D3 usa isso para ligar a falha no banco).
+  - `apiCalls` é zerado antes de cada teste (`beforeEach`, antes do `reset`).
+  - Exemplos: `noChargeWithoutOrder(ctx?)` nos dois (cobranças `POST /v1/charges` − estornos `POST /v1/refunds` ≤ pedidos; sem contexto, `true`). Os testes de fumaça chamam os invariantes sem argumento e continuam passando.
+  - Docs: o contrato no `docs/chaos-ci.md` (com o parágrafo do contexto), o README e o `CONFIG_TEMPLATE` da CLI.
+  - Conferido: `chaos` no vulnerável continua com os 4 achados e o corrigido aguenta os 3; `npm test` e `tsc` nos dois exemplos; suíte **321** passando.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -1107,7 +1114,7 @@ O DB_Chaos tem que **pegar isso no corrigido** (e no vulnerável). Depois o corr
 5. **Controle:** igual aos outros templates. A mesma requisição, sem falha, tem que passar; senão o resultado é `invalid`.
 
 ### Tarefas
-- **D1. Contrato com contexto.** Invariantes `(ctx?)`, o tipo `ChaosInvariantContext`, os templates passando `ctx.apiCalls` (o MSW já está em todos), a doc do contrato (`docs/chaos-ci.md`, README, `CONFIG_TEMPLATE` da CLI) e `noChargeWithoutOrder` nos dois exemplos. Teste: os testes de rede e de corrida que já existem continuam passando nos dois exemplos.
+- ✅ **D1. Contrato com contexto.** Invariantes `(ctx?)`, o tipo `ChaosInvariantContext`, os templates passando `ctx.apiCalls` (o MSW já está em todos), a doc do contrato (`docs/chaos-ci.md`, README, `CONFIG_TEMPLATE` da CLI) e `noChargeWithoutOrder` nos dois exemplos. Teste: os testes de rede e de corrida que já existem continuam passando nos dois exemplos.
 - **D2. Catálogo, spec e especialista.** `testable: true`, `DbSpec` + `parseSpec` + o padrão do motor, o `specialistSystem('db')`, o ramo `db` no grafo. Testes no estilo do `specialists.test.ts`.
 - **D3. Template `db`.** Espiã no `pg` (Pool e Client), ligada pelo `request:end` do MSW, a primeira gravação na tabela alvo falhando, invariantes com contexto, e o teste compilando contra os exemplos (teste de compilação da 3e).
 - **D4. Exemplos:**

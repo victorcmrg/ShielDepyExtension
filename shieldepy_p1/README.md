@@ -194,7 +194,7 @@ export default {
   createApp,                                   // o app sem abrir porta
   setupFiles: ['chaos/setup.ts'],              // ex.: o banco vira PGlite em memória
   async reset() { /* estado limpo antes de cada teste */ },
-  invariants: { async stockNeverNegative() { /* ... */ } },
+  invariants: { async stockNeverNegative() { /* ... */ }, async noChargeWithoutOrder(ctx) { /* ctx.apiCalls */ } },
   apis: { 'api.stripe.com': () => ({ id: 'ch_test', status: 'succeeded' }) }, // resposta saudável
   requests: { 'POST /checkout': { path: '/checkout', body: { /* válido */ } } },
 };

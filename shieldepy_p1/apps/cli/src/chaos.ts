@@ -81,7 +81,7 @@ const CONFIG_TEMPLATE = `export default {
   createApp,                       // monta o app sem abrir porta (supertest)
   setupFiles: ['chaos/setup.ts'],  // ex.: troca o banco por um em memória
   async reset() { /* estado limpo antes de cada teste */ },
-  invariants: { async estoqueNuncaNegativo() { return true; } },
+  invariants: { async estoqueNuncaNegativo(ctx) { return true; } }, // ctx.apiCalls: chamadas às APIs que deram certo
   apis: { 'api.exemplo.com': () => ({ ok: true }) },          // resposta saudável de cada API externa
   requests: { 'POST /checkout': { path: '/checkout', body: {} } }, // uma requisição válida por rota
 };`;

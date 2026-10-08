@@ -36,7 +36,7 @@ describe('E3/3e — contrato lido pela AST (sem executar o config)', () => {
     expect(config).toEqual({
       createApp: true,
       reset: true,
-      invariants: ['stockNeverNegative', 'atMostOneOrder'],
+      invariants: ['stockNeverNegative', 'atMostOneOrder', 'noChargeWithoutOrder'],
       requests: ['POST /checkout', 'GET /orders/:id'],
       apis: ['api.stripe.com'],
       setupFiles: ['chaos/setup.ts'],
@@ -71,6 +71,10 @@ describe('E3/3e — templates', () => {
     expect(race.indexOf(CONTROL_TEST_NAME)).toBeGreaterThan(0);
     expect(race.indexOf(CONTROL_TEST_NAME)).toBeLessThan(race.indexOf("it(\"caos: 10 requisições simultâneas\""));
     expect(race).toContain('await stateCheck("stockNeverNegative");');
+    // D1: os invariantes recebem as chamadas às APIs que deram certo (zeradas a cada teste)
+    expect(race).toContain('apiCalls.push({ host, method: req.method, path: new URL(req.url).pathname });');
+    expect(race).toContain('apiCalls.length = 0;');
+    expect(race).toContain('await check!({ apiCalls: [...apiCalls] })');
     expect(race).toContain(`// Topologia: ${surface.topologyHash}`);
 
     const timeout = state.files[1]!.content;
