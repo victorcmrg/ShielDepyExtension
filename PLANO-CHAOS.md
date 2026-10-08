@@ -9,16 +9,17 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-08, com a E4 completa)
+## Como retomar num chat novo (atualizado em 2026-10-08, início da E5)
 
-**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** na branch `feat/chaos-gate` (4a–4e), esperando o usuário subir a branch e fazer o merge. Depois do merge, a única parte da aceitação que falta é o **PR de teste no GitHub** (ver o registro da 4e). As próximas frentes candidatas estão na tabela de progresso: V2 (visualizador de produto, com os resultados do caos), E5 (outras linguagens) e o `DB_Chaos_Agent`. Leia, nesta ordem:
+**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** e foi enviada pelo usuário (`origin/feat/chaos-gate`), mas ainda não foi mergeada. Depois do merge, falta só o **PR de teste no GitHub** (ver o registro da 4e). A **E5 (mapa incremental e custo)** está em andamento na branch `feat/mapa-incremental`, **criada a partir da `feat/chaos-gate`** (empilhada, porque a E4 ainda não está na `main`). Se a E4 entrar por *squash*, rebasear a E5 sobre a `main` antes de abrir o PR dela. Leia, nesta ordem:
 1. esta seção;
-2. o fim do **Registro**, para os detalhes de cada fatia (a E4 começa em "E4 iniciada");
-3. a seção da etapa que for começar.
+2. a seção **"E5 — mapa incremental e custo"** (por que existe, desenho e tarefas 5a–5f);
+3. o fim do **Registro**, para os detalhes de cada fatia já feita.
 
 **Combinados com o usuário (seguir sem perguntar):**
 - Responder **em português**.
 - Trabalhar **fatia por fatia** (4a, 4b, ...): cada uma termina com testes passando, este plano atualizado (registro + ✅ na tarefa) e **um commit** no mesmo commit da mudança. Mensagem de commit em português, terminando com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Gastar com a API da IA (chamada paga) só com autorização explícita do usuário**, na hora de medir (tarefa 5e).
 - **Não fazer push nem abrir PR.** O usuário sobe a branch e faz o merge quando a etapa **inteira** estiver pronta. No fim, avisar e oferecer título e descrição do PR.
 - Escolhas técnicas que surgirem: decidir, registrar no plano o porquê e avisar no resumo. Só perguntar o que for realmente do usuário (ex.: gastar dinheiro com chamada paga à IA, mexer no GitHub).
 - **Nada de regex para ler código** (só Tree-sitter ou analisador léxico). Regex em texto da IA ou em caminho de arquivo pode.
@@ -47,7 +48,9 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
 - **E2 completa e mergeada** (PR #3, `b4eeb7b`).
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
-- **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Falta o usuário subir a branch, fazer o merge e abrir o PR de teste no GitHub.
+- **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
+- **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
+- **E5 — em andamento** na branch `feat/mapa-incremental`.
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -60,7 +63,8 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
-| 5. E5: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente, depois da E2 (ver avaliação) |
+| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | em andamento |
+| 6. E6: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (era a E5; ver avaliação) |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -539,7 +543,7 @@ Hoje o mapa completo (símbolos, imports, chamadas resolvidas por tipo, pacotes)
 
 Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 
-**Recomendação:** fazer **depois da E2 em TS**, quando o pipeline estiver provado de ponta a ponta. Ordem sugerida: Java/Spring (melhor retorno; stack comum em empresas) → C#/ASP.NET → Python. Fica como **E5 — outras linguagens**.
+**Recomendação:** fazer **depois da E2 em TS**, quando o pipeline estiver provado de ponta a ponta. Ordem sugerida: Java/Spring (melhor retorno; stack comum em empresas) → C#/ASP.NET → Python. Fica como **E6 — outras linguagens** (era a E5; renumerada em 2026-10-08).
 
 ## Custo estimado da IA (E3), preços conferidos em 2026-10-08
 
@@ -714,6 +718,59 @@ Medido no vulnerável:
   - `shieldepy chaos examples/checkout-express --offline` → exit 1, com o relatório apontando a corrida e o timeout;
   - o mesmo em `checkout-express-fixed` → exit 0;
   - um PR de teste no GitHub com check vermelho e comentário.
+
+## E5 — mapa incremental e custo (escrito em 2026-10-08, antes de começar)
+
+> Branch `feat/mapa-incremental`, empilhada sobre a `feat/chaos-gate` (E4). Vem de uma revisão de quatro propostas de custo (roteamento de modelos, sanitização de logs, cache de prompt e Batch API) e de uma nota sobre diff de grafos. Esta seção registra o que foi conferido e o que entra.
+
+### O que foi conferido (na referência oficial de preços e no código)
+1. **Roteamento de modelos.** A ideia vale, e o mecanismo já existe (tiers `fast`/`deep` e `SHIELDEPY_DEEP_MODEL`).
+   - Correções: "Haiku 5.5" não existe (o atual é o **Haiku 4.5**, a US$ 1/5), e não há tarifa especial abaixo de 100k tokens.
+   - O Sonnet 5.5 (US$ 2/10) custa o **dobro** do Haiku, não 5×. A economia de "mais de 80%" não fecha: no máximo 50% por token, e menos no total, porque o Threat Modeler ficaria no Sonnet.
+   - São 6 **falhas** no catálogo e 2 especialistas no MVP, não 6 agentes.
+   - Não há "ameaça humana": as falhas injetadas são de infraestrutura, e quem executa é o Vitest com o MSW. A IA só preenche specs.
+   - Pendente desde a E3: o `deep` também serve ao chat e à revisão da extensão. Trocar o padrão para o Sonnet 5.5 só depois de medir (5e).
+2. **Sanitização de logs:** já está feita, e de forma mais rígida (4a/4c). A IA nunca recebe log nem stack trace, só a invariante violada (1ª linha, limpa) e as operações com `arquivo:linha`.
+3. **Cache de prompt.**
+   - Leitura a 0,1× (o "até 90%" está certo); escrita a 1,25× (TTL de 5 min) ou 2× (1 h).
+   - **Achado:** o `cacheSystem` está ligado no Threat Modeler (~600 tokens de sistema) e nos especialistas (~300), mas o mínimo cacheável é de **4096 tokens no Haiku 4.5** (512 no Sonnet 5.5). Hoje **o cache nunca é ativado**, sem erro e sem custo.
+   - No Sonnet 5.5, o Threat Modeler passaria do mínimo, mas ele é chamado uma vez por execução.
+   - Encher o prompt (ex.: ISO 27002) só para cachear aumentaria o custo.
+4. **Batch API:** 50% sobre todos os tokens (acumula com o cache). Costuma terminar em menos de 1 h, com até 24 h. **Não serve para o portão do PR**, porque o PR espera e o pipeline tem 3 rodadas em sequência. Serve para uma rodada noturna do repositório inteiro (fica para depois).
+5. **Diff de grafos.**
+   - **Achado:** o id de símbolo inclui a linha (`src/services/CheckoutService.ts#checkout:23`, de `extract-ts.ts`). Inserir uma linha acima muda o id, e um diff entre versões sairia todo ruidoso.
+   - Precisa de identidade estável, de detecção de renomeação (hash do corpo) e de diff como **operação de conjunto** sobre chaves estáveis (sem isomorfismo de grafo).
+   - Precisão em JS dinâmico: a política já existe (o que não se prova sai `heuristic` e é contado).
+
+### Desenho
+- **Id estável de símbolo:** `arquivo#contêiner.nome`, sem a linha. A linha continua como atributo (para "abrir código" e `arquivo:linha`). Nomes repetidos no mesmo arquivo (callbacks inline iguais, sobrecargas) recebem um sufixo de ordem (`~2`, `~3`) pela ordem no arquivo.
+- **Hash do corpo:** cada símbolo guarda um hash dos tokens da AST do corpo (sem comentários e espaços), e cada arquivo guarda o hash do seu código de topo (fora de símbolos). Mudou só o corpo → `changed`. Sumiu um nome e apareceu outro com o mesmo hash no mesmo arquivo → `renamed`.
+- **Diff** (`diffSystemGraphs(base, head)`): símbolos `added/removed/renamed/changed`, arestas adicionadas e removidas, e arquivos com o código de topo alterado. Tudo por conjunto de chaves.
+- **Rotas afetadas** (`affectedRoutes(baseTopo, headTopo, diff)`): a rota entra se
+  - é nova ou mudou a cadeia de handlers;
+  - suas operações ou tags mudaram;
+  - algum símbolo do seu **alcance** (todo símbolo percorrido a partir dos handlers, não só os que fazem I/O) mudou, sumiu ou foi renomeado;
+  - o código de topo de um arquivo desse alcance mudou (ex.: a montagem no `container.ts`).
+  - **Conservador:** mudou o `shieldepy.chaos.config.ts`, um `setupFiles`, `package.json`, lockfile ou `tsconfig` → todas as rotas.
+  - Para isso, a topologia passa a guardar o `reach` de cada rota (ids estáveis, ordenados).
+- **Mapa base:** `--base <ref git>` monta o mapa da mesma pasta naquele ref, num `git worktree` temporário (só leitura de código; não precisa de `npm install`).
+
+### Tarefas
+- **5a. Ids estáveis.** Id sem linha, com sufixo de ordem nos repetidos, e a linha como atributo. Migrar quem lê a linha do id (`surface.ts`, visualizador, extensão). Teste: inserir linhas no topo de um arquivo não muda nenhum id nem o hash do mapa.
+- **5b. Hash do corpo e do topo do arquivo**, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
+- **5c. Diff.** `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
+- **5d. Caos só no que o PR tocou.** `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.
+- **5e. Custo real.**
+  - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
+  - Decidir o padrão do `deep` com esse dado. Separar o tier do caos do tier do chat, se for preciso.
+  - Tirar ou documentar o `cacheSystem` onde o prompt fica abaixo do mínimo.
+- **5f. CI.** O workflow passa `--base` no PR (`fetch-depth: 0`, base = `origin/${{ github.base_ref }}`). O `self-test` continua com o mapa inteiro. Docs e template atualizados.
+
+### Aceitação da E5
+- Inserir linhas ou comentários num arquivo do `checkout-express` → diff vazio e nenhuma rota afetada → `chaos --base` sai 0 sem rodar teste.
+- Mudar o corpo do `StripeGateway.charge` → só `POST /checkout` afetada; `GET /orders/:id` fica de fora.
+- Renomear um método sem mudar o corpo → aparece como `renamed`, não como remoção mais adição.
+- A medição de custo fica registrada no plano (se o usuário autorizar a chamada paga).
 
 ## Fase 2 — LangGraph + Threat Modeler (`packages/agent/src/chaos/`)
 
