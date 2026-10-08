@@ -1,8 +1,20 @@
-import { buildGraph, CodeGraph, findCollisions, indexFiles, listSourceFiles, silentHost, TsParser, type Rule } from '@shieldepy/core';
+import { mkdir, writeFile } from 'node:fs/promises';
+import * as path from 'node:path';
+import {
+  buildGraph,
+  buildSystemGraph,
+  canonicalJson,
+  CodeGraph,
+  findCollisions,
+  indexFiles,
+  listSourceFiles,
+  silentHost,
+  type Rule,
+} from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { createRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extractors';
+import { loadRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extractors';
 import { explainCollisions, explainOffline, providerFromEnv, severityRank, type Severity } from '@shieldepy/agent';
-import { printCollisions, printCycles, printReport } from './print';
+import { printCollisions, printCycles, printReport, printSystemGraph } from './print';
 
 export interface Io {
   out: (line: string) => void;
@@ -15,6 +27,7 @@ const USAGE = `uso:
   shieldepy explain <pasta|arquivo|fixture.json> [--json] [--fail-on <...>]
   shieldepy report  --pg [postgres://...]            (ou DATABASE_URL)
   shieldepy cycles  <pasta> [--json]                 ciclos de chamada entre funções/arquivos (TS/JS)
+  shieldepy graph   <pasta> [--json] [--out <arquivo>] mapa do sistema: código + regras + cobertura
 
   report  = só o motor (determinístico, sem rede)
   explain = motor + IA (ANTHROPIC_API_KEY ou GEMINI_API_KEY); sem chave, explicador offline
@@ -26,6 +39,7 @@ interface Args {
   json: boolean;
   pg: boolean;
   failOn?: Severity;
+  out?: string;
 }
 
 const SEVERITY_ALIASES: Record<string, Severity> = { critico: 'Crítico', crítico: 'Crítico', alto: 'Alto', medio: 'Médio', médio: 'Médio', baixo: 'Baixo' };
@@ -36,6 +50,11 @@ export function parseArgs(argv: string[]): Args {
     const a = argv[i]!;
     if (a === '--json') args.json = true;
     else if (a === '--pg') args.pg = true;
+    else if (a === '--out' || a.startsWith('--out=')) {
+      const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
+      if (!value) throw new Error('--out precisa de um caminho de arquivo');
+      args.out = value;
+    }
     else if (a === '--fail-on' || a.startsWith('--fail-on=')) {
       const value = a.includes('=') ? a.split('=')[1]! : argv[++i];
       const sev = value ? SEVERITY_ALIASES[value.toLowerCase()] : undefined;
@@ -49,11 +68,8 @@ export function parseArgs(argv: string[]): Args {
 }
 
 async function registryWithTreeSitter(): Promise<Registry> {
-  try {
-    return createRegistry({ tsParser: await TsParser.load(defaultWasmDir()) });
-  } catch {
-    return createRegistry(); // sem .wasm: TS/JS cai no extrator regex
-  }
+  // Gramática que não carregar só tira a sua linguagem (o arquivo sai como ignorado).
+  return loadRegistry(defaultWasmDir());
 }
 
 async function loadRules(args: Args, io: Io): Promise<{ label: string; rules: Rule[] }> {
@@ -103,6 +119,21 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
         if (args.json) io.out(JSON.stringify(cycles, null, 2));
         else printCycles(cycles, graph.stats, io.out);
         return args.failOn && cycles.length > 0 ? 1 : 0;
+      }
+      case 'graph': {
+        if (!args.target) throw new Error('informe a pasta');
+        const graph = await CodeGraph.create(defaultWasmDir(), silentHost);
+        await indexFiles(graph, await listSourceFiles(args.target), silentHost);
+        const { rules } = loadRulesFromPath(args.target, await registryWithTreeSitter());
+        const system = buildSystemGraph(graph, rules, args.target);
+        if (args.out) {
+          await mkdir(path.dirname(path.resolve(args.out)), { recursive: true });
+          await writeFile(args.out, canonicalJson(system, 2) + '\n', 'utf8');
+          io.err(`✓ mapa salvo em ${args.out}`);
+        }
+        if (args.json) io.out(canonicalJson(system, 2));
+        else printSystemGraph(system, args.target, io.out);
+        return 0;
       }
       default:
         io.err(USAGE);

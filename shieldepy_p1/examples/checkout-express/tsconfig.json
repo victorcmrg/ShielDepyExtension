@@ -1,0 +1,12 @@
+{
+  // aliases resolvidos pelo grafo do ShielDepy (paths/baseUrl)
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+  },
+  "include": ["src"],
+}

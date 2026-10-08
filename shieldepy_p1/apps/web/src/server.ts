@@ -1,21 +1,15 @@
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { TsParser } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { createRegistry } from '@shieldepy/extractors';
+import { loadRegistry } from '@shieldepy/extractors';
 import { providerFromEnv } from '@shieldepy/agent';
 import { createHandler } from './app';
 
 const PORT = Number(process.env.PORT) || 3001;
 const log = (m: string) => console.error(m);
 
-let registry;
-try {
-  registry = createRegistry({ tsParser: await TsParser.load(defaultWasmDir()) });
-} catch (err) {
-  log(`[web] Tree-sitter indisponível (${err}); TS/JS via regex.`);
-  registry = createRegistry();
-}
+const registry = await loadRegistry(defaultWasmDir());
+if (registry.failed.length > 0) log(`[web] gramáticas indisponíveis (linguagens ignoradas): ${registry.failed.join(', ')}`);
 const provider = providerFromEnv(process.env, log);
 
 const handler = createHandler({

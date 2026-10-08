@@ -28,6 +28,49 @@ function loadLanguage(file: string): Promise<Parser.Language> {
   return cached;
 }
 
+async function initRuntime(wasmDir: string): Promise<void> {
+  // O loader WASM do web-tree-sitter, quando um .wasm não existe/está corrompido, às vezes
+  // fica pendurado em vez de rejeitar — o timeout garante que ninguém trave esperando.
+  runtimeInit ??= withTimeout(
+    Parser.init({ locateFile: (fileName: string) => path.join(wasmDir, fileName) }),
+    'tree-sitter.wasm (runtime)'
+  );
+  try {
+    await runtimeInit;
+  } catch (err) {
+    runtimeInit = undefined;
+    throw err;
+  }
+}
+
+/** Gramáticas além de TS/TSX: extratores de regras (Java/Python/C#) e HTML/CSS do grafo (sem regex). */
+export type GrammarName = 'java' | 'python' | 'c_sharp' | 'html' | 'css';
+
+/** Parser de UMA gramática (Java, Python, C#). Mesmo contrato de memória do `TsParser`. */
+export class GrammarParser {
+  private constructor(
+    private readonly parser: Parser,
+    readonly name: GrammarName
+  ) {}
+
+  static async load(wasmDir: string, name: GrammarName): Promise<GrammarParser> {
+    await initRuntime(wasmDir);
+    const language = await loadLanguage(path.join(wasmDir, `tree-sitter-${name}.wasm`));
+    const parser = new Parser();
+    parser.setLanguage(language);
+    return new GrammarParser(parser, name);
+  }
+
+  withTree<T>(text: string, fn: (root: SyntaxNode) => T): T {
+    const tree = this.parser.parse(text);
+    try {
+      return fn(tree.rootNode);
+    } finally {
+      tree.delete();
+    }
+  }
+}
+
 /**
  * Parser Tree-sitter de TS/TSX compartilhado pelo grafo estrutural e pelo extrator de regras —
  * um arquivo é parseado UMA vez e a mesma árvore alimenta os dois.
@@ -42,18 +85,7 @@ export class TsParser {
   ) {}
 
   static async load(wasmDir: string): Promise<TsParser> {
-    // O loader WASM do web-tree-sitter, quando um .wasm não existe/está corrompido, às vezes
-    // fica pendurado em vez de rejeitar — o timeout garante que ninguém trave esperando.
-    runtimeInit ??= withTimeout(
-      Parser.init({ locateFile: (fileName: string) => path.join(wasmDir, fileName) }),
-      'tree-sitter.wasm (runtime)'
-    );
-    try {
-      await runtimeInit;
-    } catch (err) {
-      runtimeInit = undefined;
-      throw err;
-    }
+    await initRuntime(wasmDir);
     const [ts, tsx] = await Promise.all([
       loadLanguage(path.join(wasmDir, 'tree-sitter-typescript.wasm')),
       loadLanguage(path.join(wasmDir, 'tree-sitter-tsx.wasm')),

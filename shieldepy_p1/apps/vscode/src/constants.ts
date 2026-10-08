@@ -27,7 +27,7 @@ export const SECRET_AUTH_TOKEN = 'shieldepy.authToken';
 
 /** Linguagens com grafo estrutural (Tree-sitter / HTML / CSS). */
 export const GRAPH_LANGUAGES = ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'html', 'css'];
-/** Linguagens que só alimentam o grafo de interações (extrator regex). */
+/** Linguagens que só alimentam o grafo de interações (extratores Tree-sitter de Java/Python/C#). */
 export const RULE_ONLY_LANGUAGES = ['java', 'python', 'csharp'];
 /** Onde a sugestão inline roda — só código, nunca `.env`, JSON, markdown… (item 3.2). */
 export const INLINE_LANGUAGES = ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'java', 'python', 'csharp'];

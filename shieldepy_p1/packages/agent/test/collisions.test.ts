@@ -2,7 +2,8 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildGraph, findCollisions, type Collision, type Rule } from '@shieldepy/core';
-import { createRegistry, scanDir, toRules } from '@shieldepy/extractors';
+import { defaultWasmDir } from '@shieldepy/core/wasm-path';
+import { loadRegistry, scanDir, toRules } from '@shieldepy/extractors';
 import {
   buildPrompt,
   collisionChatReply,
@@ -16,7 +17,7 @@ import {
 
 const SPRING = fileURLToPath(new URL('../../../examples/pedidos-spring/services', import.meta.url));
 // Backend Spring de exemplo: 1 write-write (total) + 2 read-after-write unknown.
-const springRules = toRules(scanDir(SPRING, createRegistry()));
+const springRules = toRules(scanDir(SPRING, await loadRegistry(defaultWasmDir())));
 const springCollisions = findCollisions(buildGraph(springRules));
 
 /** Provider falso: devolve as respostas na ordem (ou lança, se for Error). */

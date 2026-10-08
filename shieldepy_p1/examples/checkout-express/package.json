@@ -1,0 +1,10 @@
+{
+  "name": "checkout-express",
+  "private": true,
+  "type": "module",
+  "description": "Exemplo do ShielDepy: checkout com race condition proposital (lê estoque, cobra, grava sem lock) e chamada ao Stripe sem timeout.",
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}

@@ -1,4 +1,4 @@
-import { buildGraph, type Collision, type Rule } from '@shieldepy/core';
+import { buildGraph, type Collision, type Rule, type SystemGraph } from '@shieldepy/core';
 import { AGENT_NAME, AGENT_TAGLINE, type DiagnosisReport, type Severity } from '@shieldepy/agent';
 
 type Out = (line: string) => void;
@@ -64,4 +64,32 @@ export function printCycles(cycles: string[][], stats: { nodes: number; edges: n
   out(`⚠️  ${cycles.length} ciclo(s) de chamadas:\n`);
   for (const c of cycles) out(`  ${c.join(' → ')}`);
   out('');
+}
+
+/** `graph`: o tamanho do mapa e, principalmente, o quanto dele é provado. */
+export function printSystemGraph(system: SystemGraph, label: string, out: Out): void {
+  const s = system.stats;
+  const internal = s.callsResolved + s.callsHeuristic + s.callsUnresolved;
+  const pct = internal === 0 ? 100 : (100 * s.callsResolved) / internal;
+  const byType = new Map<string, number>();
+  for (const e of system.edges) byType.set(e.type, (byType.get(e.type) ?? 0) + 1);
+
+  out(`\n🗺️  mapa de ${label}`);
+  out(`   ${s.files} arquivo(s), ${s.symbols} símbolo(s), ${s.packages} pacote(s) externo(s)`);
+  out(`   arestas: ${[...byType].map(([t, n]) => `${n} ${t}`).join(', ')}`);
+  out(`\n📐 cobertura das chamadas internas: ${pct.toFixed(1)}% provadas`);
+  out(`   ${s.callsResolved} resolvidas · ${s.callsHeuristic} por nome (heurística) · ${s.callsUnresolved} sem alvo · ${s.callsExternal} para pacotes`);
+  out(`   ${s.importsUnresolved} import(s) do projeto sem arquivo`);
+  if (system.weakSpots.length > 0) {
+    out('\n🔎 onde o mapa ainda é fraco:');
+    const worst = [...system.weakSpots].sort(
+      (a, b) => b.callsUnresolved + b.importsUnresolved.length - (a.callsUnresolved + a.importsUnresolved.length) || b.callsHeuristic - a.callsHeuristic
+    );
+    for (const w of worst.slice(0, 10)) {
+      const imports = w.importsUnresolved.length > 0 ? ` · imports: ${w.importsUnresolved.join(', ')}` : '';
+      out(`   ${w.file}: ${w.callsUnresolved} sem alvo, ${w.callsHeuristic} heurística(s)${imports}`);
+    }
+  }
+  out(`\n📋 ${s.rules} regra(s) em ${system.buckets.length} balde(s), ${s.collisions} colisão(ões)`);
+  out(`🔒 hash do mapa: ${system.contentHash.slice(0, 16)}\n`);
 }

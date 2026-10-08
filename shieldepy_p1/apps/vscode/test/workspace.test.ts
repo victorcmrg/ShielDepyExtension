@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodeGraph, silentHost, toFileId } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { createRegistry } from '@shieldepy/extractors';
+import { loadRegistry } from '@shieldepy/extractors';
 import { WorkspaceModel } from '../src/workspace/WorkspaceModel';
 import { verifyProposedFix } from '../src/workspace/verify-fix';
 import { resolveInsideWorkspace } from '../src/workspace/path-guard';
@@ -26,7 +26,7 @@ const AUDIT_JAVA = '@EventListener\npublic void on(OrderUpdated e) { e.setPrevTo
 
 beforeEach(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-ws-'));
-  model = new WorkspaceModel(await CodeGraph.create(defaultWasmDir(), silentHost), createRegistry(), (p) => path.relative(dir, p));
+  model = new WorkspaceModel(await CodeGraph.create(defaultWasmDir(), silentHost), await loadRegistry(defaultWasmDir()), (p) => path.relative(dir, p));
 });
 afterEach(() => {
   model.dispose();

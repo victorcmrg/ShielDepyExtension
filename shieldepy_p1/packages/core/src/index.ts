@@ -9,8 +9,11 @@ export * from './code-graph/CodeGraph';
 export * from './code-graph/parser';
 export * from './code-graph/cycles';
 export * from './code-graph/resolve-import';
+export * from './code-graph/extract-module';
+export { parseCss, parseHtml, resolveWebRef } from './code-graph/extract-web';
 export * from './code-graph/indexer';
 
+export * from './system-graph';
 export * from './findings';
 export * from './host';
 export * from './paths';

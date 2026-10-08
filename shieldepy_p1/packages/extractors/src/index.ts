@@ -7,10 +7,10 @@ export * from './scan';
 export * from './sources';
 
 export { extractEventHandlers, parseTsHandlers } from './treesitter/event-handlers';
-export { parseNodeHandlers } from './regex/node-events';
-export { parseJava } from './regex/java-spring';
-export { parsePython } from './regex/python-django';
-export { parseCSharp } from './regex/dotnet-mediatr';
-export { extractFieldAccess as extractPgFieldAccess, type FieldAccess } from './regex/postgres/extract';
-export { translateTriggers, type PgTriggerRow } from './regex/postgres/translate';
-export { dotFieldAccess, getterSetterAccess, deriveResource } from './regex/text';
+export { parseJava, extractJavaListeners } from './treesitter/java-spring';
+export { parsePython, extractDjangoReceivers } from './treesitter/python-django';
+export { parseCSharp, extractMediatrHandlers } from './treesitter/dotnet-mediatr';
+export { extractFieldAccess as extractPgFieldAccess, type FieldAccessResult } from './postgres/extract';
+export { tokenize as tokenizePlpgsql, type Token as PlpgsqlToken } from './postgres/lexer';
+export { translateTriggers, type PgTriggerRow } from './postgres/translate';
+export { deriveResource, prefixResource } from './naming';

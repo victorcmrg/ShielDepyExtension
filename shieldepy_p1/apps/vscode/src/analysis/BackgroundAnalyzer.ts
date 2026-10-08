@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { isAbortError, scanForRisks } from '@shieldepy/agent';
-import { toFileId, type Finding } from '@shieldepy/core';
+import { isSymbolNode, toFileId, type Finding } from '@shieldepy/core';
 import { config } from '../config';
 import type { AiService } from '../services/AiService';
 import { findWorkspaceFiles, isAnalyzable } from '../workspace/files';
@@ -138,7 +138,7 @@ export class BackgroundAnalyzer implements vscode.Disposable {
       if (id === self || seen.has(id)) continue;
       seen.add(id);
       const attrs = this.model.graph.nodeAttributes(id);
-      if (!attrs || attrs.kind === 'file') continue;
+      if (!attrs || !isSymbolNode(attrs)) continue;
       out.push({ file: attrs.file, line: attrs.startLine, message: attrs.name });
     }
     return out.slice(0, 3); // balão legível: no máximo três trechos
