@@ -445,6 +445,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - O E2E acusou 1 falha: o cenário "Ver Mapa do Sistema" procurava as arestas pelos ids antigos (`CheckoutController.ts#create`). Atualizado para os ids estáveis (`#CheckoutController.create` etc.). Depois disso, **E2E 24/24** num VS Code real.
   - **307 testes** unitários, typecheck limpo, extensão com **613 KB** (+1 KB, do hash).
   - **Estado:** pronta para subir e mergear quando o usuário quiser. A medição paga da 5e pode entrar depois, num commit próprio, sem bloquear o merge. A branch está empilhada sobre a `feat/chaos-gate`: mergear a E4 primeiro.
+- 2026-10-08: **Estimativa de custo (sem chamada paga) e relatório `RELATORIO-CUSTO-IA.md` na raiz.**
+  - **Método:** `npm run estimate:chaos` (`scripts/estimate-chaos-cost.ts`) roda o pipeline real nos dois exemplos com um provider que grava cada requisição real e devolve respostas válidas de tamanho realista. Tokens a 3,5 caracteres por token (faixa de 2,8 a 4,2); raciocínio do Sonnet/Opus de 0 a 3.000 tokens por chamada.
+  - **Resultado:** o vulnerável faz 6 chamadas (~7,3k tokens de entrada / ~1k de saída) e custa **~US$ 0,012 só com Haiku** e **~US$ 0,026 com o Threat Modeler no Sonnet 5.5**. O corrigido faz 4 chamadas (~US$ 0,008 / 0,022). A saída real é ~6× menor que a estimativa antiga do plano.
+  - **Escala:** 20 rotas sensíveis custam ~US$ 0,10 a 0,14; 100 rotas, ~US$ 0,48 a 0,66 por execução completa. Com `--base`, ~US$ 0,18 a 0,39 por mês para 100 PRs.
+  - **Achado:** o `max_tokens: 4000` do Threat Modeler estoura a partir de ~7 rotas de escrita. Virou a tarefa **5g**.
+  - **Recomendação do relatório:** manter tudo no Haiku até a medição real; corrigir os lotes; decidir o Sonnet no Threat Modeler pela qualidade (a diferença de custo é de ~US$ 0,014 por execução); não usar o Sonnet nos especialistas.
+  - A medição real continua pendente: `npm run measure:chaos -- --sim-gastar`.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -839,6 +846,7 @@ Medido no vulnerável:
   - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
   - Decidir o padrão do `deep` com esse dado. Separar o tier do caos do tier do chat, se for preciso.
   - Tirar ou documentar o `cacheSystem` onde o prompt fica abaixo do mínimo.
+- **5g. Lotes no Threat Modeler.** Pendente (achado na estimativa de custo). Dividir a superfície em lotes de ~5 rotas, um Threat Modeler por lote em paralelo, com `max_tokens` proporcional ao lote. Hoje a saída estoura os 4000 tokens a partir de ~7 rotas de escrita (~5 com o raciocínio do Sonnet), e a IA perde a contribuição. O motor segue, sem perder teste.
 - **5f. CI.** ✅ Concluída em 2026-10-08 (no repositório do ShielDepy, `--base` só quando o PR não mexe no motor; ver o registro). O workflow passa `--base` no PR (`fetch-depth: 0`, base = `origin/${{ github.base_ref }}`). O `self-test` continua com o mapa inteiro. Docs e template atualizados.
 
 ### Aceitação da E5
