@@ -3,7 +3,8 @@ import * as path from 'node:path';
 import type { Host } from '../host';
 import { CodeGraph } from './CodeGraph';
 
-export const IGNORED_DIRS = new Set(['node_modules', 'dist', 'out', '.git']);
+// `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa
+export const IGNORED_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.shieldepy']);
 const MAX_INDEX_FILE_BYTES = 2 * 1024 * 1024; // 2MB — evita travar em bundle/arquivo gerado gigante
 
 /**
@@ -30,7 +31,7 @@ export async function indexFiles(graph: CodeGraph, fsPaths: string[], host: Host
   return { indexed, skipped };
 }
 
-/** Lista recursiva de arquivos suportados pelo grafo, ignorando node_modules/dist/out/.git. */
+/** Lista recursiva de arquivos suportados pelo grafo, ignorando node_modules/dist/out/.git/.shieldepy. */
 export async function listSourceFiles(root: string, limit = 2000): Promise<string[]> {
   const out: string[] = [];
   const entries = await readdir(root, { recursive: true, withFileTypes: true });

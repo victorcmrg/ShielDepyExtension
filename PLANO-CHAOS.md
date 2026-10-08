@@ -241,6 +241,28 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - O padrão foi escolhido para separar os dois exemplos: o vulnerável quebra (fica pendurado, ou 500 no `response.json()`), e o corrigido responde 502.
   - **Grafo:** `threat_modeler → (Send, uma por hipótese testável) → network | concurrency → END`. As specs saem em ordem estável (a das hipóteses), independente de qual ramo paralelo termina primeiro. IA fora do ar num especialista: fica a spec padrão e o erro é registrado.
   - Suíte: **257 testes**.
+- 2026-10-08: **3e concluído (templates, escrita e compilação).**
+  - **Resultado de ponta a ponta (gerado pela pipeline offline e rodado com o Vitest de cada exemplo):**
+
+    | | controle | caos |
+    |---|---|---|
+    | `checkout-express` | 4/4 passam | **4/4 falham**: corrida (`stockNeverNegative`), timeout (6 s sem resposta), 5xx e corpo inválido (a rota **fica pendurada**) |
+    | `checkout-express-fixed` | 3/3 passam | **3/3 passam** (sem hipótese de timeout, porque o Stripe já tem timeout) |
+
+  - **Bug real achado pelo caos, que não foi plantado de propósito:** com o Stripe respondendo 503 ou um corpo inválido, o checkout vulnerável nunca responde. A cobrança volta sem `id`, o `INSERT` falha por `NOT NULL`, o erro escapa de um handler `async`, e o Express 4 não captura rejeição de promise. O corrigido responde 502.
+  - **Contrato (mais um ajuste):** o `shieldepy.chaos.config.ts` ganhou **`apis`** (host → corpo de uma resposta saudável). O controle e os testes de concorrência precisam das APIs externas respondendo normalmente, e só o projeto sabe qual é a resposta normal.
+  - **Contrato lido pela AST:** `readChaosConfig` (`core/src/chaos-config.ts`) extrai os nomes de `invariants`, `requests` e `apis`, os `setupFiles` e a presença de `createApp` e `reset`. Nada é executado: importar o config carregaria o app inteiro, e os aliases do projeto quebram fora do bundler dele. Aceita objeto direto, `defineX({...})`, `satisfies` e `const c = {...}; export default c`.
+  - **`templates.ts`:** um `.spec.ts` por spec em `.shieldepy/chaos-tests/`, com nome seguro derivado do id da hipótese. Cada arquivo tem:
+    - **controle** (`CONTROL_TEST_NAME`) e **caos**, com o MSW respondendo normal (com 50 ms de latência, senão as requisições simultâneas nem se sobrepõem) e a falha injetada só no caos;
+    - uma asserção por invariante, com mensagem legível (inclusive "a rota não respondeu em X ms");
+    - o contrato acessado por um tipo solto, para compilar com qualquer config que siga o formato;
+    - os dados entrando só por `JSON.stringify` (a IA nunca escreve código).
+
+    Também gera um `vitest.config.ts`, que herda a config do projeto (aliases) e roda só os testes de caos, e um `tsconfig.json`, que herda o do projeto. Contrato incompleto vira aviso (`warnings`).
+  - **Grafo:** `especialistas → render → write → END`. A escrita é por `ChaosIo` injetado; sem ele, os arquivos ficam só no estado.
+  - **Testes gerados compilam contra o projeto de verdade:** o teste roda o `tsc -p .shieldepy/chaos-tests` dentro de cada exemplo. Ele precisa do `npm install` nos exemplos e é pulado sem isso; **o CI da E4 tem que instalar.**
+  - A pasta `.shieldepy/` ficou fora do mapa (indexador e extensão) e do git.
+  - Suíte: **264 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -511,7 +533,7 @@ A escrita de cache custa 1,25× a entrada (TTL de 5 min). O prefixo mínimo cach
   - `validate-hypotheses.ts`: rota existe, falha no catálogo e habilitada pelas tags; o resto é descartado e contado;
   - `offline.ts`: hipóteses direto das tags.
 - **3d. Especialistas Network e Concurrency** ✅ Concluída em 2026-10-08. Preenchendo `NetworkSpec`/`ConcurrencySpec` (só parâmetros e invariantes, validados), com fan-out por `Send`.
-- **3e. Templates e escrita.**
+- **3e. Templates e escrita.** ✅ Concluída em 2026-10-08.
   - `templates/network.ts` e `templates/concurrency.ts` → `.shieldepy/chaos-tests/<rota>__<falha>.spec.ts` e o `vitest.config.ts` gerado.
   - Cada spec já sai com o bloco **`control`** (a mesma requisição, sem caos), que a E4 usa contra falso positivo.
   - `ChaosIo { write(files) }` injetado; o teste confere que o gerado compila (`tsc --noEmit`) contra o exemplo.

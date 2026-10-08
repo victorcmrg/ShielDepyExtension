@@ -5,3 +5,4 @@ export * from './threat-modeler';
 export * from './specs';
 export * from './specialists';
 export * from './graph';
+export * from './templates';

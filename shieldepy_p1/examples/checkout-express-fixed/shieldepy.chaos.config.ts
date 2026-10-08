@@ -22,6 +22,10 @@ export default {
       return (await orderCount()) <= 1;
     },
   },
+  /** Resposta saudável de cada API externa: o bloco de controle e os testes de concorrência usam. */
+  apis: {
+    'api.stripe.com': () => ({ id: 'ch_test', status: 'succeeded' }),
+  },
   /** Uma requisição válida por rota (o id é o da topologia). Sem isso, todo teste pararia na validação. */
   requests: {
     'POST /checkout': { path: '/checkout', body: { productId: 'p-1', quantity: 1, priceCents: 1990, cardToken: 'tok_visa' } },
