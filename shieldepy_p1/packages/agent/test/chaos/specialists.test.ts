@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AttackSurface } from '@shieldepy/core';
 import type { CompletionRequest, LLMProvider } from '../../src/index';
-import { defaultSpec, LIMITS, parseSpec, runChaosPipeline, specifyTest, type Hypothesis, type NetworkSpec } from '../../src/chaos';
+import { baselineHypotheses, defaultSpec, LIMITS, parseSpec, runChaosPipeline, specialistSystem, specifyTest, type DbSpec, type Hypothesis, type NetworkSpec } from '../../src/chaos';
 
 /** A superfície do checkout-express, como a E2 produz (só o que importa aqui). */
 const surface: AttackSurface = {
@@ -74,7 +74,7 @@ describe('E3/3d — spec padrão do motor', () => {
     expect(t.expect).toEqual([{ kind: 'respondsWithin', ms: 6_000 }]);
     expect(defaultSpec(hyp('http_5xx_intermittent', 'api.stripe.com', 'network'), [])).toMatchObject({ fault: { mode: 'status', status: 503 } });
     expect(defaultSpec(hyp('malformed_response', 'api.stripe.com', 'network'), [])).toMatchObject({ fault: { mode: 'malformed', body: 'html' } });
-    expect(defaultSpec(hyp('partial_failure_after_external_call', 'orders', 'db_chaos'), [])).toBeUndefined();
+    expect(defaultSpec(hyp('retry_storm', 'api.stripe.com', 'network'), [])).toBeUndefined();
   });
 });
 
@@ -158,5 +158,81 @@ describe('E3/3d — especialistas no grafo', () => {
       invariantNames: INVARIANTS,
     });
     expect(r).toMatchObject({ spec: { source: 'motor', parallel: 10 }, error: '503' });
+  });
+});
+
+/** O checkout com a gravação depois do Stripe: UPDATE em stock e INSERT em orders (pg), e um log via Prisma. */
+const dbSurface: AttackSurface = {
+  ...surface,
+  routes: [
+    {
+      ...surface.routes[0]!,
+      operations: [
+        ...surface.routes[0]!.operations.map((o) => (o.kind === 'db_write' ? { ...o, operation: 'UPDATE' } : o)),
+        { order: 4, kind: 'db_write', target: 'orders', via: 'pg', operation: 'INSERT', at: 'c:1', in: 'insert', confidence: 'proven' },
+        { order: 5, kind: 'db_write', target: 'audit', via: 'prisma', operation: 'create', at: 'd:1', in: 'log', confidence: 'proven' },
+      ],
+      tags: [...surface.routes[0]!.tags, { tag: 'write-after-api-call', targets: ['audit', 'orders', 'stock'] }],
+    },
+  ],
+};
+const partial = hyp('partial_failure_after_external_call', 'orders', 'db_chaos');
+
+describe('E6/D2 — DB_Chaos: spec, validação e especialista', () => {
+  it('padrão do motor: a primeira gravação na tabela falha (conexão); o estado é verificado antes do status', () => {
+    expect(defaultSpec(partial, INVARIANTS)).toEqual({
+      kind: 'db',
+      hypothesisId: partial.id,
+      routeId: 'POST /checkout',
+      target: 'orders',
+      op: 'any',
+      error: 'connection',
+      expect: [
+        { kind: 'stateCheck', name: 'stockNeverNegative' },
+        { kind: 'stateCheck', name: 'atMostOneOrder' },
+        { kind: 'noUnhandledError' },
+        { kind: 'statusIn', statuses: [502, 503, 504] },
+        { kind: 'respondsWithin', ms: 6_000 },
+      ],
+      source: 'motor',
+    });
+  });
+
+  it('a IA só escolhe um verbo que a rota grava na tabela depois da API, e um erro do catálogo', () => {
+    const base = defaultSpec(partial, INVARIANTS)!;
+    const route = dbSurface.routes[0]!;
+    const ok = parseSpec(JSON.stringify({ op: 'insert', error: 'constraint', expect: [{ kind: 'noUnhandledError' }] }), base, INVARIANTS, route);
+    expect(ok.spec).toMatchObject({ kind: 'db', op: 'insert', error: 'constraint', source: 'ia' });
+    // os invariantes do projeto voltam, e na frente
+    expect(ok.spec.expect).toEqual([{ kind: 'stateCheck', name: 'stockNeverNegative' }, { kind: 'stateCheck', name: 'atMostOneOrder' }, { kind: 'noUnhandledError' }]);
+    expect(ok.dropped).toEqual([]);
+
+    const bad = parseSpec(JSON.stringify({ op: 'delete', error: 'disk_full' }), base, INVARIANTS, route);
+    expect(bad.spec).toMatchObject({ op: 'any', error: 'connection' });
+    expect(bad.dropped).toEqual(['op delete fora de any/insert', 'erro disk_full fora de connection/constraint/timeout']);
+  });
+
+  it('catálogo: testável só quando a tabela é gravada via pg (Prisma fica sem teste, com o motivo)', () => {
+    const hs = baselineHypotheses(dbSurface).filter((h) => h.failure === 'partial_failure_after_external_call');
+    expect(hs.map((h) => `${h.target} ${h.testable}`)).toEqual(['audit false', 'orders true', 'stock true']);
+  });
+
+  it('no grafo: ramo db, com o system do DB_Chaos e os verbos possíveis na entrada', async () => {
+    const { p, requests } = provider((req) =>
+      req.system.startsWith('Você é o Threat Modeler') ? '{"hypotheses": []}' : req.system.includes('DB_Chaos') ? '{"op": "insert", "error": "timeout"}' : '{}'
+    );
+    const state = await runChaosPipeline(dbSurface, { provider: p, invariantNames: INVARIANTS });
+    const db = state.specs.filter((sp): sp is DbSpec => sp.kind === 'db');
+    expect(db.map((sp) => `${sp.target} ${sp.op} ${sp.error} ${sp.source}`)).toEqual(['orders insert timeout ia', 'stock any timeout ia']);
+
+    const dbReqs = requests.filter((r) => r.system === specialistSystem('db'));
+    expect(dbReqs).toHaveLength(2);
+    const inputs = dbReqs.map((r) => JSON.parse(r.messages[0]!.content));
+    expect(inputs.map((i) => [i.hypothesis.target, i.writesAfterApi])).toEqual(
+      expect.arrayContaining([
+        ['orders', ['insert']],
+        ['stock', ['update']],
+      ])
+    );
   });
 });

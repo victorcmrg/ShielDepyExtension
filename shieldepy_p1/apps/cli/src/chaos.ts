@@ -325,8 +325,7 @@ function printChaos(state: ChaosStateType, label: string, cost: ReturnType<CostM
     out(`   ${mark} P${h.priority} ${h.failure.padEnd(36)} ${h.routeId.padEnd(18)} ${h.target.padEnd(16)} ${h.source}`);
     out(`        ${h.rationale}`);
     if (!spec) {
-      const entry = CATALOG.find((e) => e.id === h.failure);
-      out(`        sem teste no MVP${entry?.agent === 'db_chaos' ? ' (precisa de falha injetada no banco: DB_Chaos, depois)' : ''}`);
+      out(`        sem teste: ${CATALOG.find((e) => e.id === h.failure)?.untestedReason ?? 'sem template de teste no MVP'}`);
     }
   }
   if (state.rejected.length > 0) {

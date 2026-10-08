@@ -2,6 +2,7 @@
 // formato pequeno e validado, que os templates (3e) transformam em `.spec.ts`. A requisição em si
 // vem do `shieldepy.chaos.config.ts` do projeto; a IA não vê nem escolhe dados.
 
+import type { SurfaceRoute } from '@shieldepy/core';
 import type { Hypothesis } from './hypotheses';
 
 /** O que tem que continuar verdadeiro sob a falha. */
@@ -41,7 +42,42 @@ export interface ConcurrencySpec {
   source: 'ia' | 'motor';
 }
 
-export type ChaosSpec = NetworkSpec | ConcurrencySpec;
+/**
+ * Falha no banco depois da chamada externa: a requisição corre normal até a API responder com
+ * sucesso; aí a primeira gravação na tabela `target` (do tipo `op`) falha com `error`.
+ */
+export interface DbSpec {
+  kind: 'db';
+  hypothesisId: string;
+  routeId: string;
+  /** Tabela cuja gravação falha. */
+  target: string;
+  op: DbOp;
+  error: DbError;
+  expect: Invariant[];
+  source: 'ia' | 'motor';
+}
+
+export type ChaosSpec = NetworkSpec | ConcurrencySpec | DbSpec;
+
+/** `any` = a primeira gravação na tabela, seja qual for o verbo. */
+export const DB_OPS = ['any', 'insert', 'update', 'delete'] as const;
+export type DbOp = (typeof DB_OPS)[number];
+/** `connection`: a conexão caiu; `constraint`: violação de chave; `timeout`: a consulta foi cancelada. */
+export const DB_ERRORS = ['connection', 'constraint', 'timeout'] as const;
+export type DbError = (typeof DB_ERRORS)[number];
+
+/** Verbos de gravação na tabela depois da primeira chamada externa (os que a IA pode escolher). */
+export function dbOpsAfterApi(route: SurfaceRoute | undefined, target: string): DbOp[] {
+  const ops = route?.operations ?? [];
+  const firstApi = ops.find((o) => o.kind === 'api_call')?.order;
+  if (firstApi === undefined) return [];
+  const verbs = ops
+    .filter((o) => o.kind === 'db_write' && o.target === target && o.via === 'pg' && o.order > firstApi)
+    .map((o) => (o.operation ?? '').toLowerCase())
+    .filter((v): v is DbOp => (DB_OPS as readonly string[]).includes(v) && v !== 'any');
+  return [...new Set(verbs)];
+}
 
 export const MALFORMED_BODIES = ['html', 'truncated_json', 'empty', 'wrong_shape'] as const;
 export type MalformedBody = (typeof MALFORMED_BODIES)[number];
@@ -54,6 +90,9 @@ export const LIMITS = {
   parallel: { min: 2, max: 50, default: 10 },
   statuses5xx: [500, 502, 503, 504],
 } as const;
+
+/** Com o banco fora, a rota tem que responder com erro tratado (500 é exceção vazando). */
+export const DB_FAILURE_STATUSES = [502, 503, 504] as const;
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(n)));
 
@@ -90,8 +129,18 @@ export function defaultSpec(h: Hypothesis, invariantNames: string[]): ChaosSpec 
       };
     case 'race_condition':
       return { ...base, kind: 'concurrency', parallel: LIMITS.parallel.default, expect: [{ kind: 'noUnhandledError' }, ...stateChecks(invariantNames)] };
+    case 'partial_failure_after_external_call':
+      // o estado vem primeiro: o achado que importa é "cobrou e não gravou", não o 500 que veio junto
+      return {
+        ...base,
+        kind: 'db',
+        target: h.target,
+        op: 'any',
+        error: 'connection',
+        expect: [...stateChecks(invariantNames), { kind: 'noUnhandledError' }, { kind: 'statusIn', statuses: [...DB_FAILURE_STATUSES] }, { kind: 'respondsWithin', ms: LIMITS.respondsWithinMs.default }],
+      };
     default:
-      return undefined; // sem template no MVP (retry_storm, partial_failure)
+      return undefined; // sem template no MVP (retry_storm)
   }
 }
 
@@ -122,7 +171,7 @@ function parseInvariant(raw: unknown, spec: ChaosSpec, invariantNames: string[])
  * Aplica o que a IA propôs sobre a spec padrão: só os parâmetros que a falha permite, dentro dos
  * limites, e só invariantes válidos. Lança se não for JSON (quem chama fica com o padrão).
  */
-export function parseSpec(text: string, base: ChaosSpec, invariantNames: string[]): { spec: ChaosSpec; dropped: string[] } {
+export function parseSpec(text: string, base: ChaosSpec, invariantNames: string[], route?: SurfaceRoute): { spec: ChaosSpec; dropped: string[] } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -145,8 +194,19 @@ export function parseSpec(text: string, base: ChaosSpec, invariantNames: string[
       if ((MALFORMED_BODIES as readonly string[]).includes(o.body as string)) spec = { ...spec, fault: { mode: 'malformed', body: o.body as MalformedBody } };
       else dropped.push(`corpo ${String(o.body)} fora de ${MALFORMED_BODIES.join('/')}`);
     }
-  } else if (typeof o.parallel === 'number') {
-    spec = { ...spec, parallel: clamp(o.parallel, LIMITS.parallel.min, LIMITS.parallel.max) };
+  } else if (spec.kind === 'concurrency') {
+    if (typeof o.parallel === 'number') spec = { ...spec, parallel: clamp(o.parallel, LIMITS.parallel.min, LIMITS.parallel.max) };
+  } else {
+    // só um verbo que a rota de fato grava na tabela depois da API (senão a falha nunca dispara)
+    const ops: DbOp[] = route ? ['any', ...dbOpsAfterApi(route, spec.target)] : [...DB_OPS];
+    if (o.op !== undefined) {
+      if ((ops as string[]).includes(o.op as string)) spec = { ...spec, op: o.op as DbOp };
+      else dropped.push(`op ${String(o.op)} fora de ${ops.join('/')}`);
+    }
+    if (o.error !== undefined) {
+      if ((DB_ERRORS as readonly string[]).includes(o.error as string)) spec = { ...spec, error: o.error as DbError };
+      else dropped.push(`erro ${String(o.error)} fora de ${DB_ERRORS.join('/')}`);
+    }
   }
 
   if (Array.isArray(o.expect)) {
@@ -162,6 +222,8 @@ export function parseSpec(text: string, base: ChaosSpec, invariantNames: string[
     // os invariantes do projeto sempre entram: a IA pode acrescentar, não esquecer
     for (const check of stateChecks(invariantNames)) if (!expect.some((e) => e.kind === 'stateCheck' && e.name === (check as { name: string }).name)) expect.push(check);
     spec = { ...spec, expect: expect.length > 0 ? dedupe(expect) : base.expect };
+    // falha parcial: o estado vem primeiro (é a primeira asserção que quebra que vai para o relatório)
+    if (spec.kind === 'db') spec = { ...spec, expect: [...spec.expect.filter((e) => e.kind === 'stateCheck'), ...spec.expect.filter((e) => e.kind !== 'stateCheck')] };
   }
   // o atraso injetado tem que passar da paciência do cliente, senão o teste de timeout não mede nada
   if (spec.kind === 'network' && spec.fault.mode === 'delay') {

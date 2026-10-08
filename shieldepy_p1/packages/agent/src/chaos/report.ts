@@ -113,7 +113,7 @@ export function renderChaosReport(input: ChaosReportInput): string {
   if (untested.length > 0) {
     out.push('### Hipóteses sem teste no MVP (não bloqueiam)', '');
     for (const h of untested) {
-      const why = catalogEntry(h.failure)?.agent === 'db_chaos' ? 'precisa de falha injetada no banco (DB_Chaos, depois)' : 'sem template de teste no MVP';
+      const why = catalogEntry(h.failure)?.untestedReason ?? 'sem template de teste no MVP';
       out.push(`- ${code(h.routeId)} · ${h.failure} em ${code(h.target)}: ${why}`);
     }
     out.push('');

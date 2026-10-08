@@ -54,8 +54,8 @@ describe('E3/3c — lista-base do motor (offline)', () => {
     expect(ids).toEqual([
       '1 POST /checkout__race_condition__stock',
       '1 POST /checkout__timeout__api.stripe.com',
-      '2 POST /checkout__partial_failure_after_external_call__orders (sem teste)',
-      '2 POST /checkout__partial_failure_after_external_call__stock (sem teste)',
+      '2 POST /checkout__partial_failure_after_external_call__orders',
+      '2 POST /checkout__partial_failure_after_external_call__stock',
       '3 POST /checkout__http_5xx_intermittent__api.stripe.com',
       '3 POST /checkout__malformed_response__api.stripe.com',
     ]);
@@ -216,13 +216,13 @@ describe('E3/3c — grafo LangGraph', () => {
     const { provider } = fakeProvider(JSON.stringify({ hypotheses: [] }));
     const ai = await runChaosPipeline(vulnerable, { provider });
     expect(ai.engine).toBe('anthropic');
-    // 1 Threat Modeler + 1 especialista por hipótese testável (4 no checkout)
-    expect(ai.completions).toHaveLength(5);
+    // 1 Threat Modeler + 1 especialista por hipótese testável (6 no checkout, com as 2 do DB_Chaos)
+    expect(ai.completions).toHaveLength(7);
 
     const broken = await runChaosPipeline(vulnerable, { provider: fakeProvider('{').provider });
     // o Threat Modeler e cada especialista caem no padrão do motor, e cada um registra o motivo
     expect(broken.errors[0]).toBe('threat_modeler: resposta da IA não é JSON válido');
-    expect(broken.errors).toHaveLength(5);
-    expect(broken.specs).toHaveLength(4);
+    expect(broken.errors).toHaveLength(7);
+    expect(broken.specs).toHaveLength(6);
   });
 });

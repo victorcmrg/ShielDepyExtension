@@ -52,6 +52,18 @@ describe('runner dos testes de caos (E4/4a)', () => {
     expect(results.find((x) => x.hypothesisId === 'POST /x__timeout__api.y.com')).toMatchObject({ status: 'invalid', message: expect.stringMatching(/não rodou/) });
   });
 
+  it('DB_Chaos sem a gravação alvo depois da API: a falha não disparou → inválido, nunca achado', () => {
+    const r = report();
+    for (const f of r.testResults)
+      for (const a of f.assertionResults)
+        if (a.ancestorTitles[0] === RACE && a.status === 'failed')
+          a.failureMessages = ['AssertionError: a falha não disparou: nenhuma gravação em stock depois da chamada à API nesta requisição: expected false to be true'];
+    expect(classifyVitestReport(r, [RACE])[0]).toMatchObject({
+      status: 'invalid',
+      message: 'a falha não disparou: nenhuma gravação em stock depois da chamada à API nesta requisição',
+    });
+  });
+
   it('chama o Vitest do projeto com o reporter JSON num arquivo temporário (processo injetado)', async () => {
     const dir = example('checkout-express');
     if (!vitestEntry(dir)) return; // sem npm install no exemplo, não há o que conferir

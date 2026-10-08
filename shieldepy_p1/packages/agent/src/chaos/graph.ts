@@ -1,7 +1,7 @@
 // O pipeline de caos como grafo do LangGraph. Os nós chamam o `LLMProvider` do ShielDepy (sem
 // chat models do LangChain); o estado só carrega dados validados.
 //
-//   START → threat_modeler ─(Send, uma por hipótese testável)→ network | concurrency → render → write → END
+//   START → threat_modeler ─(Send, uma por hipótese testável)→ network | concurrency | db → render → write → END
 //
 // `render` transforma as specs em `.spec.ts` (templates determinísticos); `write` grava pelo
 // `ChaosIo` injetado — o pacote não toca no disco sozinho.
@@ -60,8 +60,8 @@ export interface ChaosDeps {
   io?: ChaosIo;
 }
 
-/** Hipóteses que viram teste no MVP (rede e concorrência). */
-const isSpecifiable = (h: Hypothesis) => h.testable && (h.agent === 'network' || h.agent === 'concurrency');
+/** O nó de cada agente do catálogo. */
+const NODE = { network: 'network', concurrency: 'concurrency', db_chaos: 'db' } as const;
 
 export function buildChaosGraph(deps: ChaosDeps = {}) {
   const specialist = async (state: ChaosStateType) => {
@@ -88,6 +88,7 @@ export function buildChaosGraph(deps: ChaosDeps = {}) {
     })
     .addNode('network', specialist)
     .addNode('concurrency', specialist)
+    .addNode('db', specialist)
     // junta os ramos: roda uma vez, com todas as specs
     .addNode('render', (state) => {
       if (!deps.render) return {};
@@ -104,13 +105,14 @@ export function buildChaosGraph(deps: ChaosDeps = {}) {
     .addConditionalEdges(
       'threat_modeler',
       (state) => {
-        const sends = state.hypotheses.filter(isSpecifiable).map((h) => new Send(h.agent, { ...state, hypothesis: h }));
+        const sends = state.hypotheses.filter((h) => h.testable).map((h) => new Send(NODE[h.agent], { ...state, hypothesis: h }));
         return sends.length > 0 ? sends : 'render';
       },
-      ['network', 'concurrency', 'render']
+      ['network', 'concurrency', 'db', 'render']
     )
     .addEdge('network', 'render')
     .addEdge('concurrency', 'render')
+    .addEdge('db', 'render')
     .addEdge('render', 'write')
     .addEdge('write', END)
     .compile();

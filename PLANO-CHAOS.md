@@ -76,7 +76,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 5. E5: mapa incremental e custo, tarefas 5a–5g | `feat/mapa-incremental` | concluído, mergeado; falta a medição paga (5e) |
 | V2. Caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado |
 | V3. Portal: o caos enviado pelo CI, com histórico, tarefas V3a–V3e | `feat/portal-v3` | concluído, mergeado; falta pôr o portal no ar |
-| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1 feita) |
+| 6. **E6: DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | **em andamento** (D1–D3 feitas) |
 | 7. E7: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (ver avaliação) |
 
 ### Registro
@@ -614,6 +614,25 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Exemplos: `noChargeWithoutOrder(ctx?)` nos dois (cobranças `POST /v1/charges` − estornos `POST /v1/refunds` ≤ pedidos; sem contexto, `true`). Os testes de fumaça chamam os invariantes sem argumento e continuam passando.
   - Docs: o contrato no `docs/chaos-ci.md` (com o parágrafo do contexto), o README e o `CONFIG_TEMPLATE` da CLI.
   - Conferido: `chaos` no vulnerável continua com os 4 achados e o corrigido aguenta os 3; `npm test` e `tsc` nos dois exemplos; suíte **321** passando.
+- 2026-10-08: **D2 + D3 concluídos (catálogo, spec, especialista e template do DB_Chaos)**, num commit só: o template tem que saber gerar a `DbSpec` para o código compilar.
+  - **Catálogo:** `partial_failure_after_external_call` passa a `testable: true`, com uma restrição por alvo (`testableOn`): só quando a tabela é gravada via `pg`. Gravação via Prisma continua sem teste, com o motivo. Cada entrada ganhou o `untestedReason`, usado pela CLI, pelo relatório e pelo `chaos-results.json` (antes o texto estava repetido nos três).
+  - **`DbSpec`:** `{ kind: 'db', target, op: any|insert|update|delete, error: connection|constraint|timeout, expect }`. O padrão do motor é `op: any`, `error: connection` e os invariantes nesta ordem: os `stateCheck` do projeto, `noUnhandledError`, `statusIn [502, 503, 504]` e `respondsWithin 6000`.
+  - **Decisões (mudam o desenho):**
+    - o estado vem **primeiro**, porque a primeira asserção que quebra é a que vai para o relatório. O achado que importa é "cobrou e não gravou" (`noChargeWithoutOrder`), não o 500 que veio junto;
+    - `statusIn` sem o 500 do desenho (era `[500, 502, 503]`). O `noUnhandledError` já proíbe o 500, então ficou `[502, 503, 504]`, igual aos 5xx da rede.
+  - **Validação do que a IA propõe:** o `op` só pode ser `any` ou um verbo que a rota de fato grava na tabela depois da primeira chamada externa (`dbOpsAfterApi`, lido da topologia); o especialista recebe essa lista como `writesAfterApi`. O `error` tem que estar no catálogo. O resto é descartado e registrado.
+  - **Grafo:** o nó `db` entra no fan-out por `Send` (o agente `db_chaos` do catálogo vai para o nó `db`). Agora toda hipótese `testable` vira spec.
+  - **Template `db`:**
+    - troca o `query` do `Pool` e do `Client` do `pg` (os dois, e no `default` também), como o app os enxerga. Com o `vi.mock('pg')` do exemplo são as classes do PGlite; sem mock, as do `pg` de verdade. Ler um export que o mock não tem lança no Vitest, por isso a leitura fica num `try`;
+    - a espiã liga quando há chamada saudável em `apiCalls` (D1) e falha a primeira gravação na tabela alvo com o erro no formato do `pg` (mensagem do Postgres e `code`: `ECONNRESET`, `23505` ou `57014`). Depois deixa passar tudo; só vale no bloco de caos;
+    - o SQL é lido por palavras, sem regex. O primeiro verbo de gravação decide: `INSERT INTO t`, `UPDATE [ONLY] t` (menos `FOR UPDATE`/`DO UPDATE`), `DELETE FROM [ONLY] t`. Isso tira aspas e schema e aceita CTE (`WITH … UPDATE`).
+  - **Decisão nova: "a falha não disparou" é inválido, não achado.** Se nenhuma gravação na tabela alvo acontece depois da API (ex.: o `release` do corrigido, que só roda no caminho de erro), o teste falha com uma mensagem que começa com `DB_NOT_FIRED`, e o runner da E4 classifica como **inválido**, com o motivo. O mesmo vale se o app não usar o `pg`.
+  - **Achado no corrigido (a 1ª parte da D4, registrada antes de corrigir):** `chaos examples/checkout-express-fixed --offline` → **exit 1**:
+    - **Crítico** em `partial_failure_after_external_call` / `orders`, com `stateCheck: noChargeWithoutOrder`. O `INSERT` do pedido falha depois da cobrança, nada é estornado e a exceção sobe: a requisição fica pendurada (o Express 4 não pega promise rejeitada) e o cliente fica cobrado sem pedido;
+    - `stock`: inválido ("a falha não disparou"), porque o `stock` só é gravado depois da API no `release`;
+    - continuam aguentando: corrida, 5xx e corpo inválido.
+  - **Vulnerável:** 6 achados, os 4 de antes **mais** a falha parcial em `orders` e em `stock` (Crítico, `noChargeWithoutOrder`).
+  - Testes: `specialists.test.ts` (spec padrão, validação do `op` e do `error`, `testableOn` com Prisma, o ramo `db` com IA), `templates.test.ts` (o arquivo gerado, e ele compila nos dois exemplos), `chaos-run.test.ts` (o "não disparou" vira inválido) e a aceitação da CLI com os números novos (o corrigido sai exit 1 até a D4). Suíte **326**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -1115,8 +1134,8 @@ O DB_Chaos tem que **pegar isso no corrigido** (e no vulnerável). Depois o corr
 
 ### Tarefas
 - ✅ **D1. Contrato com contexto.** Invariantes `(ctx?)`, o tipo `ChaosInvariantContext`, os templates passando `ctx.apiCalls` (o MSW já está em todos), a doc do contrato (`docs/chaos-ci.md`, README, `CONFIG_TEMPLATE` da CLI) e `noChargeWithoutOrder` nos dois exemplos. Teste: os testes de rede e de corrida que já existem continuam passando nos dois exemplos.
-- **D2. Catálogo, spec e especialista.** `testable: true`, `DbSpec` + `parseSpec` + o padrão do motor, o `specialistSystem('db')`, o ramo `db` no grafo. Testes no estilo do `specialists.test.ts`.
-- **D3. Template `db`.** Espiã no `pg` (Pool e Client), ligada pelo `request:end` do MSW, a primeira gravação na tabela alvo falhando, invariantes com contexto, e o teste compilando contra os exemplos (teste de compilação da 3e).
+- ✅ **D2. Catálogo, spec e especialista.** `testable: true`, `DbSpec` + `parseSpec` + o padrão do motor, o `specialistSystem('db')`, o ramo `db` no grafo. Testes no estilo do `specialists.test.ts`.
+- ✅ **D3. Template `db`.** Espiã no `pg` (Pool e Client), ligada pelo `request:end` do MSW, a primeira gravação na tabela alvo falhando, invariantes com contexto, e o teste compilando contra os exemplos (teste de compilação da 3e).
 - **D4. Exemplos:**
   - **vulnerável:** continua sem compensação → achados Crítico (`orders`, `stock`);
   - **corrigido:** **antes de corrigir**, rodar e registrar que o DB_Chaos pega a falha (o "achado no corrigido"). Depois implementar a compensação (`StripeGateway.refund`, `release` da reserva, 502) e conferir que passa;

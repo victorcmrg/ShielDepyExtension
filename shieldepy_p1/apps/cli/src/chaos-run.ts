@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { CHAOS_TESTS_DIR, CONTROL_TEST_NAME, specFileName, type TestResult } from '@shieldepy/agent/chaos';
+import { CHAOS_TESTS_DIR, CONTROL_TEST_NAME, DB_NOT_FIRED, specFileName, type TestResult } from '@shieldepy/agent/chaos';
 
 export type { TestResult };
 
@@ -65,7 +65,10 @@ export function classifyVitestReport(report: VitestJson, expected: string[]): Te
       } else if (!chaos || (chaos.status !== 'passed' && chaos.status !== 'failed')) {
         results.set(id, { hypothesisId: id, status: 'invalid', message: `o teste de caos não rodou${chaos ? ` (${chaos.status})` : ''}`, durationMs: ms(control) });
       } else if (chaos.status === 'failed') {
-        results.set(id, { hypothesisId: id, status: 'failed', message: cleanFailureMessage(chaos.failureMessages?.[0]), durationMs: ms(chaos) });
+        const message = cleanFailureMessage(chaos.failureMessages?.[0]);
+        // DB_Chaos sem a gravação alvo depois da API: nada foi injetado, então não é achado
+        const status = message.startsWith(DB_NOT_FIRED) ? 'invalid' : 'failed';
+        results.set(id, { hypothesisId: id, status, message, durationMs: ms(chaos) });
       } else results.set(id, { hypothesisId: id, status: 'passed', durationMs: ms(chaos) });
     }
   }

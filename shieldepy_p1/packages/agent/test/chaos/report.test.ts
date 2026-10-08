@@ -26,7 +26,8 @@ const surface: AttackSurface = {
         { order: 1, kind: 'db_read', target: 'stock', via: 'pg', at: 'src/repositories/StockRepository.ts:7', in: 'available', confidence: 'proven' },
         { order: 2, kind: 'api_call', target: 'api.stripe.com', via: 'fetch', timeout: 'no', at: 'src/gateways/StripeGateway.ts:8', in: 'charge', confidence: 'proven' },
         { order: 3, kind: 'db_write', target: 'stock', via: 'pg', at: 'src/repositories/StockRepository.ts:12', in: 'decrement', confidence: 'proven' },
-        { order: 4, kind: 'db_write', target: 'orders', via: 'pg', at: 'src/repositories/OrderRepository.ts:14', in: 'insert', confidence: 'proven' },
+        // via Prisma: o DB_Chaos só injeta no pg, então esta hipótese fica sem teste (com o motivo)
+        { order: 4, kind: 'db_write', target: 'orders', via: 'prisma', at: 'src/repositories/OrderRepository.ts:14', in: 'insert', confidence: 'proven' },
       ],
       tags: [
         { tag: 'external-io', targets: ['api.stripe.com'] },
@@ -66,8 +67,8 @@ describe('E4/4c — relatório markdown', () => {
     expect(md).toContain('- **1. `db_read stock` em `available` (`src/repositories/StockRepository.ts:7`)** ← alvo da falha');
     expect(md).toContain('- 2. `api_call api.stripe.com` em `charge` (`src/gateways/StripeGateway.ts:8`), sem timeout');
     expect(md).toContain('`.shieldepy/chaos-tests/POST__checkout__race_condition__stock.spec.ts`');
-    expect(md).toMatch(/### Aguentou\n\n- ✅ `POST \/checkout` · http_5xx_intermittent/);
-    expect(md).toMatch(/partial_failure_after_external_call em `orders`: precisa de falha injetada no banco/);
+    expect(md).toMatch(/### Aguentou\n\n- ✅ `POST \/checkout` · partial_failure_after_external_call em `stock`/);
+    expect(md).toContain('partial_failure_after_external_call em `orders`: a falha no banco só é injetada no pg (Prisma e outros, depois)');
     expect(md).toContain('IA: nenhuma chamada (custo zero) · topologia `c4568dc36e2e4331`');
   });
 

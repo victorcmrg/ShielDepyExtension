@@ -1,4 +1,4 @@
-// Especialistas Network e Concurrency: um por hipótese testável. Tier `fast` — só escolhem
+// Especialistas Network, Concurrency e DB_Chaos: um por hipótese testável. Tier `fast` — só escolhem
 // parâmetros e invariantes de uma spec que já nasce válida (o padrão do motor). Sem provider, ou se
 // a resposta não servir, fica o padrão.
 
@@ -6,7 +6,7 @@ import { canonicalJson, type AttackSurface } from '@shieldepy/core';
 import { completeDetailed, isAbortError, type Completion, type LLMProvider, type Logger } from '../provider';
 import { stripFences } from '../text';
 import type { Hypothesis } from './hypotheses';
-import { defaultSpec, LIMITS, MALFORMED_BODIES, parseSpec, type ChaosSpec } from './specs';
+import { DB_ERRORS, dbOpsAfterApi, defaultSpec, LIMITS, MALFORMED_BODIES, parseSpec, type ChaosSpec } from './specs';
 
 export interface SpecialistDeps {
   provider?: LLMProvider;
@@ -32,8 +32,10 @@ const INVARIANTS_DOC = [
   '- {"kind":"stateCheck","name":"..."}: invariante de negócio declarado pelo projeto (só os nomes listados)',
 ].join('\n');
 
+const ROLE: Record<ChaosSpec['kind'], string> = { network: 'falhas de rede', concurrency: 'concorrência', db: 'falhas no banco (DB_Chaos)' };
+
 /** System estável por agente (vai para o cache de prompt). */
-export function specialistSystem(agent: 'network' | 'concurrency'): string {
+export function specialistSystem(agent: ChaosSpec['kind']): string {
   const params =
     agent === 'network'
       ? [
@@ -41,9 +43,15 @@ export function specialistSystem(agent: 'network' | 'concurrency'): string {
           `- http_5xx_intermittent: {"status": ${LIMITS.statuses5xx.join(' | ')}}`,
           `- malformed_response: {"body": ${MALFORMED_BODIES.map((b) => `"${b}"`).join(' | ')}}`,
         ].join('\n')
-      : `- race_condition: {"parallel": ${LIMITS.parallel.min}–${LIMITS.parallel.max}} requisições iguais ao mesmo tempo`;
+      : agent === 'concurrency'
+        ? `- race_condition: {"parallel": ${LIMITS.parallel.min}–${LIMITS.parallel.max}} requisições iguais ao mesmo tempo`
+        : [
+            '- partial_failure_after_external_call: a API externa responde com sucesso e, logo depois, a primeira gravação na tabela alvo falha.',
+            `  {"op": "any" ou um dos verbos de "writesAfterApi" (a gravação que falha), "error": ${DB_ERRORS.map((e) => `"${e}"`).join(' | ')}}`,
+            '  Prefira invariantes de estado (stateCheck): o risco é o sistema ficar inconsistente (ex.: cobrou e não gravou o pedido).',
+          ].join('\n');
   return [
-    `Você é o especialista de ${agent === 'network' ? 'falhas de rede' : 'concorrência'} do ShielDepy.`,
+    `Você é o especialista de ${ROLE[agent]} do ShielDepy.`,
     'Recebe UMA hipótese de falha já validada e a rota (operações de I/O em ordem, tags). Escolha os parâmetros do',
     'teste e os invariantes que devem continuar verdadeiros sob a falha. Você não escreve código e não vê dados:',
     'a requisição vem do projeto.',
@@ -65,7 +73,13 @@ export async function specifyTest(h: Hypothesis, surface: AttackSurface, deps: S
   if (!deps.provider) return { spec: base, dropped: [] };
 
   const route = surface.routes.find((r) => r.id === h.routeId);
-  const input = { hypothesis: { failure: h.failure, target: h.target, rationale: h.rationale }, route, invariants: names, default: base };
+  const input = {
+    hypothesis: { failure: h.failure, target: h.target, rationale: h.rationale },
+    route,
+    invariants: names,
+    default: base,
+    ...(base.kind === 'db' && { writesAfterApi: dbOpsAfterApi(route, base.target) }),
+  };
   let completion: Completion | undefined;
   try {
     completion = await completeDetailed(deps.provider, {
@@ -77,7 +91,7 @@ export async function specifyTest(h: Hypothesis, surface: AttackSurface, deps: S
       json: true,
       signal: deps.signal,
     });
-    const { spec, dropped } = parseSpec(stripFences(completion.text), base, names);
+    const { spec, dropped } = parseSpec(stripFences(completion.text), base, names, route);
     if (dropped.length > 0) deps.log?.(`[${base.kind}] ${h.id}: ${dropped.length} item(ns) da IA descartado(s)`);
     return { spec, completion, dropped };
   } catch (err) {

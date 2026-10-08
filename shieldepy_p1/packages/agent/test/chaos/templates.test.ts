@@ -60,6 +60,8 @@ describe('E3/3e — templates', () => {
     expect(paths).toEqual([
       `${CHAOS_TESTS_DIR}/POST__checkout__race_condition__stock.spec.ts`,
       `${CHAOS_TESTS_DIR}/POST__checkout__timeout__api.stripe.com.spec.ts`,
+      `${CHAOS_TESTS_DIR}/POST__checkout__partial_failure_after_external_call__orders.spec.ts`,
+      `${CHAOS_TESTS_DIR}/POST__checkout__partial_failure_after_external_call__stock.spec.ts`,
       `${CHAOS_TESTS_DIR}/POST__checkout__http_5xx_intermittent__api.stripe.com.spec.ts`,
       `${CHAOS_TESTS_DIR}/POST__checkout__malformed_response__api.stripe.com.spec.ts`,
       `${CHAOS_TESTS_DIR}/vitest.config.ts`,
@@ -81,10 +83,20 @@ describe('E3/3e — templates', () => {
     expect(timeout).toContain('await delay(15000);');
     expect(timeout).toContain('const outcomes = [await send(6000)];');
 
-    const vite = state.files[4]!.content;
+    // E6/D3: a espiã no pg, ligada pela chamada à API, e o estado verificado primeiro
+    const partial = state.files[2]!.content;
+    expect(partial).toContain("import * as pg from 'pg';");
+    expect(partial).toContain('const TARGET = "orders";');
+    expect(partial).toContain('const write = !state.injected && apiCalls.length > 0 ? writeOf(sql) : undefined;');
+    expect(partial).toContain("code: 'ECONNRESET'");
+    expect(partial.indexOf('await stateCheck("noChargeWithoutOrder");')).toBeLessThan(partial.indexOf('noUnhandledError:'));
+    expect(partial).toContain('a falha não disparou: nenhuma gravação em orders depois da chamada à API nesta requisição');
+    expect(state.files[0]!.content).not.toContain("from 'pg'");
+
+    const vite = state.files[6]!.content;
     expect(vite).toContain("import project from \"../../vitest.config\";");
     expect(vite).toContain('setupFiles: ["chaos/setup.ts"]');
-    expect(JSON.parse(state.files[5]!.content)).toEqual({ extends: '../../tsconfig.json', compilerOptions: { noEmit: true }, include: ['./*.spec.ts'] });
+    expect(JSON.parse(state.files[7]!.content)).toEqual({ extends: '../../tsconfig.json', compilerOptions: { noEmit: true }, include: ['./*.spec.ts'] });
   });
 
   it('contrato incompleto vira aviso (o teste rodaria, mas o controle cairia)', async () => {
