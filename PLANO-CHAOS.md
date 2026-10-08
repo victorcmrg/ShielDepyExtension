@@ -25,7 +25,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**267** no fim da E3; **274** depois da 4a).
+- `npm run check`: typecheck + testes unitários (**267** no fim da E3; **282** depois da 4b).
 - `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
 - `npm run cli -- chaos examples/checkout-express --no-run --offline`: gera os testes de caos.
@@ -46,7 +46,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
 - **E2 completa e mergeada** (PR #3, `b4eeb7b`).
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
-- **E4 — em andamento** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`). 4a feita. Começar pela seção "Como retomar num chat novo", acima, e depois "E4 — contexto".
+- **E4 — em andamento** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`). 4a e 4b feitas. Começar pela seção "Como retomar num chat novo", acima, e depois "E4 — contexto".
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -58,7 +58,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
-| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | em andamento (4a feita) |
+| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | em andamento (4a e 4b feitas) |
 | 5. E5: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente, depois da E2 (ver avaliação) |
 
 ### Registro
@@ -318,6 +318,22 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Corrida entre arquivos de teste corrigida:** o teste de compilação do agent (3e) e os testes da CLI gravavam e apagavam o mesmo `examples/*/.shieldepy/chaos-tests` em processos paralelos. Com o Vitest rodando ali por ~20 s, um apagaria os arquivos do outro. O de compilação agora usa `.shieldepy/tsc-check/` (mesma profundidade, então os `../../` gerados valem), e a CLI apaga só `chaos-tests`.
   - O comando `chaos` ainda exige `--no-run`: ligar o runner ao comando entra com o gate (4b), para não existir um "rodou e saiu 0" sem portão.
   - Suíte: **274 testes**.
+- 2026-10-08: **4b concluído (portão).**
+  - **Severidade** (`agent/src/chaos/results.ts`, `chaosSeverity`), sempre do motor e nunca da IA:
+    - **Crítico:** `race_condition` e `partial_failure`, e qualquer achado que corrompa o estado (`stateCheck`, `maxSuccesses`), mesmo vindo de uma falha de rede (ex.: pedido gravado sem cobrança);
+    - **Alto:** a rota fica pendurada ou a falha vira 500 (`respondsWithin`, "não respondeu", `noUnhandledError`);
+    - **Médio:** a rota responde, mas com um status fora do esperado.
+  - `TestResult` passou para o `@shieldepy/agent/chaos` (o relatório da 4c também usa), com `chaosOutcomes` (resultado + hipótese + severidade, mais grave primeiro) e `gateHits`.
+  - **Comando:** `shieldepy chaos <pasta>` agora gera **e roda** (`--no-run` só gera). Saídas:
+    - **exit 1:** achado com severidade `--fail-on` ou pior. **Decisão:** sem `--fail-on`, qualquer achado bloqueia (é o que a aceitação pede: `chaos --offline` → exit 1);
+    - **exit 2:** o Vitest não rodou (`ChaosRunError`) ou **todos** os testes saíram inválidos. **Decisão:** inválido sozinho não bloqueia, mas se nada foi provado o CI não pode ficar verde em silêncio;
+    - **exit 0:** o resto, inclusive achados abaixo do `--fail-on`.
+  - O texto mostra cada resultado (`✖ Crítico race_condition POST /checkout stock`, a mensagem, o tempo, e "não conta:" nos inválidos). O `--json` ganha `results`, `gate { failOn, hits }` e `runError`.
+  - **Dois bugs achados no caminho:**
+    - **Varredura de pastas:** o `scanDir` dos extratores e o `listSourceFiles` usavam `readdir` recursivo e só filtravam `node_modules`/`.shieldepy` depois. Isso é lento num projeto real (o CI sempre tem `node_modules`) e quebrava com ENOENT quando outro processo apagava `.shieldepy/` no meio da varredura. Agora os dois usam `walkSourceTree` (core), que nem entra nas pastas ignoradas.
+    - **O mapa dependia da ordem de indexação.** Com a nova varredura (ordenada), o `GET /orders/:id` perdeu a aresta para `CheckoutService.find`. O motivo: `container.ts` exporta `new CheckoutService()`, e quando o `CheckoutService.ts` chegava depois, a religação subia até o `container.ts`, mas não até quem importa o container. Agora `forwardsImports` também vale para instância exportada (`valueTypes`) e objeto exportado com referências (`objectRefs`). Há um teste que indexa o exemplo em três ordens e exige o mesmo hash; sem a correção, ele falha.
+  - A aceitação de verdade (comando completo, Vitest real) já está na CLI: o vulnerável sai com **exit 1** e 4 achados, e o corrigido com **exit 0** e 3 aprovados.
+  - Suíte: **282 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -659,7 +675,7 @@ Medido no vulnerável:
 
 ### Tarefas da E4
 - **4a. Runner** ✅ Concluída em 2026-10-08 (Vitest do alvo chamado pelo `node`, sem `npx`; ver o registro). (`apps/cli/src/chaos-run.ts`; a CLI já tem `apps/cli/src/chaos.ts`, então nada de pasta `chaos/` com o mesmo nome): `spawn` do Vitest com o reporter JSON e `--outputFile` num arquivo temporário (não o stdout, que mistura logs do app), parse e `TestResult { hypothesisId, status: passed|failed|invalid, message, durationMs }`, com a classificação acima. O processo é injetado para testar sem rodar o Vitest; o teste usa um JSON de exemplo no formato medido.
-- **4b. Gate:** severidade por falha, `--fail-on`, exit 1 com achado válido e exit 2 com erro de ambiente.
+- **4b. Gate:** ✅ Concluída em 2026-10-08 (sem `--fail-on`, qualquer achado bloqueia; todos inválidos = exit 2; ver o registro). severidade por falha, `--fail-on`, exit 1 com achado válido e exit 2 com erro de ambiente.
 - **4c. Relatório markdown** (determinístico + parágrafo opcional da IA).
 - **4d. GitHub Actions** (`.github/workflows/shieldepy-chaos.yml`): Node 22, `npm ci` no ShielDepy e no alvo, `shieldepy chaos --report --fail-on Alto`, `$GITHUB_STEP_SUMMARY` e comentário no PR (`gh pr comment --edit-last || gh pr comment`), `ANTHROPIC_API_KEY` por secret e `--offline` sem ela. Também um template em `docs/` para repositórios-alvo.
 - **4e. Aceitação:**

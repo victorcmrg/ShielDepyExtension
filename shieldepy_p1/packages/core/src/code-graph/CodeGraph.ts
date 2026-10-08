@@ -1219,13 +1219,21 @@ export class CodeGraph {
     }
   }
 
-  /** O arquivo repassa algo que importou (`export * from`, `export { x } from`, `export { importado }`)? */
+  /**
+   * O arquivo repassa algo que depende de outro arquivo? `export * from`, `export { x } from`,
+   * `export { importado }`, e também uma instância exportada (`export const svc = new Svc()`, com
+   * `Svc` vindo de outro arquivo) ou um objeto exportado que aponta para nomes (`export default
+   * { createApp }`): quem importa a instância resolve `svc.m()` pela classe, então tem que religar
+   * quando a classe chega. Sem isso, o mapa dependia da ordem de indexação.
+   */
   private forwardsImports(fileId: string): boolean {
     const info = this.moduleInfo.get(fileId);
     if (!info) return false;
     if (info.reexports.length > 0) return true;
     const imported = new Set(info.imports.map((b) => b.local));
-    return [...info.exports.values()].some((local) => imported.has(local));
+    const exported = new Set(info.exports.values());
+    if ([...exported].some((local) => imported.has(local) || info.valueTypes.has(local))) return true;
+    return [...info.objectRefs.keys()].some((path) => exported.has(path.split('.', 1)[0]!));
   }
 
   private importTargets(fileId: string): string[] {

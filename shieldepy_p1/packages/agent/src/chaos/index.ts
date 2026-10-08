@@ -6,3 +6,4 @@ export * from './specs';
 export * from './specialists';
 export * from './graph';
 export * from './templates';
+export * from './results';

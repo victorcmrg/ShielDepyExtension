@@ -1,6 +1,8 @@
 // `shieldepy chaos <pasta>`: topologia → superfície de ataque → LangGraph (Threat Modeler +
-// especialistas) → testes de caos gravados em `.shieldepy/chaos-tests/`. Rodar os testes e
-// bloquear o PR é a E4; aqui o comando gera e relata (com o custo da IA e o hash da topologia).
+// especialistas) → testes de caos gravados em `.shieldepy/chaos-tests/` → Vitest do projeto →
+// portão. Exit 1 com achado válido (de severidade `--fail-on` ou pior); exit 2 quando o ambiente
+// não deixou provar nada (Vitest ausente, sem relatório, todos os testes inválidos). Com
+// `--no-run`, só gera os testes e o relatório de hipóteses.
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -18,17 +20,23 @@ import {
   silentHost,
 } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { CostMeter, providerFromEnv } from '@shieldepy/agent';
-import { CATALOG, CHAOS_TESTS_DIR, runChaosPipeline, type ChaosStateType } from '@shieldepy/agent/chaos';
+import { CostMeter, providerFromEnv, type Severity } from '@shieldepy/agent';
+import { CATALOG, CHAOS_TESTS_DIR, chaosOutcomes, gateHits, runChaosPipeline, type ChaosOutcome, type ChaosStateType, type TestResult } from '@shieldepy/agent/chaos';
 import { loadRulesFromPath } from '@shieldepy/extractors';
 import type { Registry } from '@shieldepy/extractors';
+import { ChaosRunError, runChaosTests } from './chaos-run';
 
 export interface ChaosArgs {
   target: string;
   json: boolean;
   noRun: boolean;
   offline: boolean;
+  /** Portão: sai 1 com achado desta severidade ou pior. Padrão: qualquer achado. */
+  failOn?: Severity;
 }
+
+/** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
+export type ChaosTestRunner = (root: string, hypothesisIds: string[]) => Promise<TestResult[]>;
 
 interface ChaosIoLike {
   out: (line: string) => void;
@@ -47,17 +55,18 @@ const CONFIG_TEMPLATE = `export default {
   requests: { 'POST /checkout': { path: '/checkout', body: {} } }, // uma requisição válida por rota
 };`;
 
-export async function runChaosCommand(args: ChaosArgs, io: ChaosIoLike, registry: () => Promise<Registry>): Promise<number> {
+export async function runChaosCommand(
+  args: ChaosArgs,
+  io: ChaosIoLike,
+  registry: () => Promise<Registry>,
+  runTests: ChaosTestRunner = runChaosTests
+): Promise<number> {
   const root = path.resolve(args.target);
   const configPath = path.join(root, CHAOS_CONFIG_FILE);
   if (!existsSync(configPath)) {
     io.err(`erro: falta ${CHAOS_CONFIG_FILE} na raiz de ${args.target}.`);
     io.err('Ele diz como subir o app, zerar o estado, o que nunca pode acontecer e como é uma requisição válida:\n');
     io.err(CONFIG_TEMPLATE);
-    return 2;
-  }
-  if (!args.noRun) {
-    io.err('erro: rodar os testes de caos e bloquear o PR chega na E4. Por enquanto use --no-run (gera os testes e o relatório).');
     return 2;
   }
 
@@ -99,6 +108,23 @@ export async function runChaosCommand(args: ChaosArgs, io: ChaosIoLike, registry
   for (const c of state.completions) meter.add(c);
   const cost = meter.report();
 
+  // rodar: só as hipóteses que viraram arquivo de teste
+  let outcomes: ChaosOutcome[] | undefined;
+  let runError: string | undefined;
+  const tested = state.specs.map((s) => s.hypothesisId);
+  if (!args.noRun && tested.length > 0) {
+    io.err(`rodando ${tested.length} teste(s) de caos com o Vitest do projeto (controle + caos)...`);
+    try {
+      outcomes = chaosOutcomes(await runTests(root, tested), state.hypotheses);
+    } catch (err) {
+      if (!(err instanceof ChaosRunError)) throw err;
+      runError = err.message;
+    }
+  }
+  const failOn = args.failOn ?? 'Baixo';
+  const hits = outcomes ? gateHits(outcomes, failOn) : [];
+  const allInvalid = !!outcomes && outcomes.length > 0 && outcomes.every((o) => o.status === 'invalid');
+
   if (args.json) {
     io.out(
       canonicalJson(
@@ -113,15 +139,48 @@ export async function runChaosCommand(args: ChaosArgs, io: ChaosIoLike, registry
           warnings: state.warnings,
           errors: state.errors,
           cost,
+          ...(outcomes ? { results: outcomes, gate: { failOn, hits: hits.length } } : {}),
+          ...(runError ? { runError } : {}),
         },
         2
       )
     );
-  } else printChaos(state, args.target, cost, io.out);
+  } else {
+    printChaos(state, args.target, cost, io.out, args.noRun);
+    if (outcomes) printOutcomes(outcomes, io.out);
+  }
+
+  if (runError) {
+    io.err(`erro de ambiente: ${runError}`);
+    return 2;
+  }
+  if (hits.length > 0) {
+    io.err(`✖ portão: ${hits.length} achado(s) de caos com severidade ${failOn} ou pior.`);
+    return 1;
+  }
+  if (allInvalid) {
+    io.err('erro de ambiente: nenhum teste de caos foi válido (todos os controles falharam ou não rodaram). Nada foi provado.');
+    return 2;
+  }
   return 0;
 }
 
-function printChaos(state: ChaosStateType, label: string, cost: ReturnType<CostMeter['report']>, out: (line: string) => void): void {
+const STATUS_LABEL = { passed: '✓ aguentou', failed: '✖', invalid: '? inválido' } as const;
+
+function printOutcomes(outcomes: ChaosOutcome[], out: (line: string) => void): void {
+  const failed = outcomes.filter((o) => o.status === 'failed').length;
+  const invalid = outcomes.filter((o) => o.status === 'invalid').length;
+  out(`🔥 resultado: ${failed} achado(s), ${outcomes.length - failed - invalid} aguentou(aram), ${invalid} inválido(s)`);
+  for (const o of outcomes) {
+    const label = o.status === 'failed' ? `${STATUS_LABEL.failed} ${o.severity}` : STATUS_LABEL[o.status];
+    const secs = (o.durationMs / 1000).toFixed(1).replace('.', ',');
+    out(`   ${label.padEnd(11)} ${o.failure.padEnd(36)} ${o.routeId.padEnd(18)} ${o.target.padEnd(16)} ${secs} s`);
+    if (o.message) out(`        ${o.status === 'invalid' ? 'não conta: ' : ''}${o.message}`);
+  }
+  out('');
+}
+
+function printChaos(state: ChaosStateType, label: string, cost: ReturnType<CostMeter['report']>, out: (line: string) => void, noRun: boolean): void {
   const engine = state.engine === 'offline' ? 'motor (offline)' : `IA (${state.engine})`;
   out(`\n🧪 caos de ${label} — hipóteses: ${engine}, topologia ${state.surface.topologyHash.slice(0, 16)}`);
   if (state.summary) out(`   ${state.summary}`);
@@ -158,6 +217,7 @@ function printChaos(state: ChaosStateType, label: string, cost: ReturnType<CostM
   const specs = state.written.filter((f) => f.endsWith('.spec.ts')).length;
   if (specs > 0) {
     out(`✓ ${specs} teste(s) de caos em ${CHAOS_TESTS_DIR}/`);
-    out(`  rodar (até a E4): npx vitest run --config ${CHAOS_TESTS_DIR}/vitest.config.ts\n`);
+    if (noRun) out(`  rodar à mão: npx vitest run --config ${CHAOS_TESTS_DIR}/vitest.config.ts`);
+    out('');
   } else out('nenhum teste gerado (nenhuma rota sensível com falha testável)\n');
 }

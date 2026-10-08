@@ -4,7 +4,10 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, parseArgs } from '../src/main';
-import { runChaosTests, vitestEntry } from '../src/chaos-run';
+import { defaultWasmDir } from '@shieldepy/core/wasm-path';
+import { loadRegistry } from '@shieldepy/extractors';
+import { ChaosRunError, vitestEntry, type TestResult } from '../src/chaos-run';
+import { runChaosCommand, type ChaosTestRunner } from '../src/chaos';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const example = (rel: string) => path.join(ROOT, 'examples', rel);
@@ -206,15 +209,11 @@ describe('CLI chaos (E3)', () => {
     }
   });
 
-  it('sem shieldepy.chaos.config.ts: aborta com o modelo do arquivo; sem --no-run: avisa que rodar é a E4', async () => {
+  it('sem shieldepy.chaos.config.ts: aborta com o modelo do arquivo', async () => {
     const noConfig = await run('chaos', example('pedidos-microservices'), '--no-run', '--offline');
     expect(noConfig.code).toBe(2);
     expect(noConfig.err).toMatch(/falta shieldepy\.chaos\.config\.ts/);
     expect(noConfig.err).toMatch(/requests:/);
-
-    const noRun = await run('chaos', example('checkout-express'), '--offline');
-    expect(noRun.code).toBe(2);
-    expect(noRun.err).toMatch(/chega na E4/);
   });
 });
 
@@ -223,24 +222,75 @@ const TIMEOUT = 'POST /checkout__timeout__api.stripe.com';
 const H5XX = 'POST /checkout__http_5xx_intermittent__api.stripe.com';
 const MALFORMED = 'POST /checkout__malformed_response__api.stripe.com';
 
-// De verdade: gera os testes (offline) e roda o Vitest de cada exemplo. Precisa do npm install neles.
-// Fica neste arquivo (e não no do runner) porque escreve em examples/*/.shieldepy, como os testes
+describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
+  const dir = example('checkout-express');
+  const registry = () => loadRegistry(defaultWasmDir());
+  async function gate(runner: ChaosTestRunner, failOn?: 'Crítico' | 'Alto') {
+    const out: string[] = [];
+    const err: string[] = [];
+    try {
+      const code = await runChaosCommand({ target: dir, json: false, noRun: false, offline: true, failOn }, { out: (l) => out.push(l), err: (l) => err.push(l), env: {} }, registry, runner);
+      return { code, out: out.join('\n'), err: err.join('\n') };
+    } finally {
+      fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
+    }
+  }
+  const results = (byId: Record<string, [TestResult['status'], string?]>): ChaosTestRunner => async (_root, ids) =>
+    ids.map((id) => ({ hypothesisId: id, status: byId[id]?.[0] ?? 'passed', message: byId[id]?.[1], durationMs: 10 }));
+
+  it('roda só as hipóteses com teste; achado → exit 1, com a severidade e a mensagem', async () => {
+    let asked: string[] = [];
+    const r = await gate(async (root, ids) => {
+      asked = ids;
+      return results({ [RACE]: ['failed', 'stateCheck: stockNeverNegative'], [TIMEOUT]: ['failed', 'respondsWithin: o cliente ficou mais de 6000 ms sem resposta'] })(root, ids);
+    });
+    expect(asked.sort()).toEqual([H5XX, MALFORMED, RACE, TIMEOUT].sort()); // partial_failure não tem teste
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/2 achado\(s\), 2 aguentou\(aram\), 0 inválido/);
+    expect(r.out).toMatch(/✖ Crítico\s+race_condition[\s\S]*stateCheck: stockNeverNegative/);
+    expect(r.out).toMatch(/✖ Alto\s+timeout/);
+    expect(r.err).toMatch(/portão: 2 achado\(s\) de caos com severidade Baixo ou pior/);
+  });
+
+  it('--fail-on Crítico deixa passar um achado Alto; inválido nunca bloqueia', async () => {
+    const r = await gate(results({ [TIMEOUT]: ['failed', 'respondsWithin: x'], [H5XX]: ['invalid', 'o controle (sem caos) falhou: y'] }), 'Crítico');
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/\? inválido[\s\S]*não conta: o controle \(sem caos\) falhou: y/);
+  });
+
+  it('erro de ambiente → exit 2: o Vitest não rodou, ou todos os testes são inválidos', async () => {
+    const crashed = await gate(async () => {
+      throw new ChaosRunError('o Vitest não está instalado em x');
+    });
+    expect(crashed.code).toBe(2);
+    expect(crashed.err).toMatch(/erro de ambiente: o Vitest não está instalado/);
+
+    const allInvalid = await gate(async (_root, ids) => ids.map((id) => ({ hypothesisId: id, status: 'invalid' as const, message: 'controle falhou', durationMs: 0 })));
+    expect(allInvalid.code).toBe(2);
+    expect(allInvalid.err).toMatch(/nenhum teste de caos foi válido/);
+  });
+});
+
+// De verdade: gera os testes (offline), roda o Vitest de cada exemplo e aplica o portão. Precisa do
+// npm install neles. Fica neste arquivo porque escreve em examples/*/.shieldepy, como os testes
 // acima: no mesmo arquivo eles rodam em sequência, e um não apaga a pasta do outro.
-describe('CLI chaos: runner contra os exemplos (E4/4a, Vitest de verdade)', () => {
+describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', () => {
   for (const [name, expected] of [
-    ['checkout-express', { failed: [RACE, TIMEOUT, H5XX, MALFORMED], passed: [] as string[] }],
-    ['checkout-express-fixed', { failed: [] as string[], passed: [RACE, H5XX, MALFORMED] }],
+    ['checkout-express', { code: 1, failed: [RACE, TIMEOUT, H5XX, MALFORMED], passed: [] as string[] }],
+    ['checkout-express-fixed', { code: 0, failed: [] as string[], passed: [RACE, H5XX, MALFORMED] }],
   ] as const) {
     it.skipIf(!vitestEntry(example(name)))(
-      `${name}: ${expected.failed.length} achado(s), ${expected.passed.length} aprovado(s), nenhum inválido`,
+      `${name}: exit ${expected.code}, ${expected.failed.length} achado(s), ${expected.passed.length} aprovado(s), nenhum inválido`,
       async () => {
         const dir = example(name);
         try {
-          expect((await run('chaos', dir, '--no-run', '--offline')).code).toBe(0);
-          const results = await runChaosTests(dir, [...expected.failed, ...expected.passed]);
-          expect(results.filter((r) => r.status === 'failed').map((r) => r.hypothesisId).sort()).toEqual([...expected.failed].sort());
-          expect(results.filter((r) => r.status === 'passed').map((r) => r.hypothesisId).sort()).toEqual([...expected.passed].sort());
-          expect(results.filter((r) => r.status === 'invalid')).toEqual([]);
+          const { code, out } = await run('chaos', dir, '--offline', '--json');
+          expect(code).toBe(expected.code);
+          const r = JSON.parse(out) as { results: TestResult[] };
+          const ids = (status: string) => r.results.filter((x) => x.status === status).map((x) => x.hypothesisId).sort();
+          expect(ids('failed')).toEqual([...expected.failed].sort());
+          expect(ids('passed')).toEqual([...expected.passed].sort());
+          expect(ids('invalid')).toEqual([]);
         } finally {
           fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
         }

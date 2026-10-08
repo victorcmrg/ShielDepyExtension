@@ -8,18 +8,9 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { CHAOS_TESTS_DIR, CONTROL_TEST_NAME, specFileName } from '@shieldepy/agent/chaos';
+import { CHAOS_TESTS_DIR, CONTROL_TEST_NAME, specFileName, type TestResult } from '@shieldepy/agent/chaos';
 
-export type TestStatus = 'passed' | 'failed' | 'invalid';
-
-export interface TestResult {
-  hypothesisId: string;
-  status: TestStatus;
-  /** `failed`: a invariante violada; `invalid`: por que o resultado não vale. */
-  message?: string;
-  /** Duração do teste de caos (ou do controle, quando só ele rodou). */
-  durationMs: number;
-}
+export type { TestResult };
 
 /** O pedaço do JSON do reporter do Vitest que o runner lê (medido no 3e/E4). */
 interface VitestJson {

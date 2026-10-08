@@ -37,10 +37,14 @@ const USAGE = `uso:
   shieldepy topology <pasta> [--json] [--surface] [--out <arquivo>] [--html <arquivo>]
                                                      rotas Express, operações de I/O em ordem e tags de risco
                                                      (--surface: só o recorte que vai para a IA)
-  shieldepy chaos   <pasta> --no-run [--offline] [--json]
+  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--no-run] [--json]
                                                      gera testes de caos para as rotas sensíveis em
-                                                     .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts);
-                                                     --offline: só o motor, sem IA (custo zero)
+                                                     .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts),
+                                                     roda com o Vitest do projeto e serve de portão:
+                                                     exit 1 = achado (--fail-on; padrão: qualquer um),
+                                                     exit 2 = o ambiente não deixou provar nada;
+                                                     --offline: só o motor, sem IA (custo zero);
+                                                     --no-run: só gera os testes
 
   report  = só o motor (determinístico, sem rede)
   explain = motor + IA (ANTHROPIC_API_KEY ou GEMINI_API_KEY); sem chave, explicador offline
@@ -185,7 +189,7 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
       }
       case 'chaos': {
         if (!args.target) throw new Error('informe a pasta do projeto');
-        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline }, io, registryWithTreeSitter);
+        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn }, io, registryWithTreeSitter);
       }
       default:
         io.err(USAGE);
