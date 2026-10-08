@@ -15,6 +15,7 @@ import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extractors';
 import { explainCollisions, explainOffline, providerFromEnv, severityRank, type Severity } from '@shieldepy/agent';
 import { printCollisions, printCycles, printReport, printSystemGraph } from './print';
+import { renderGraphHtml } from '@shieldepy/viewer';
 
 export interface Io {
   out: (line: string) => void;
@@ -27,7 +28,9 @@ const USAGE = `uso:
   shieldepy explain <pasta|arquivo|fixture.json> [--json] [--fail-on <...>]
   shieldepy report  --pg [postgres://...]            (ou DATABASE_URL)
   shieldepy cycles  <pasta> [--json]                 ciclos de chamada entre funções/arquivos (TS/JS)
-  shieldepy graph   <pasta> [--json] [--out <arquivo>] mapa do sistema: código + regras + cobertura
+  shieldepy graph   <pasta> [--json] [--out <arquivo>] [--html <arquivo>]
+                                                     mapa do sistema: código + regras + cobertura
+                                                     (--html gera um visualizador interativo, offline)
 
   report  = só o motor (determinístico, sem rede)
   explain = motor + IA (ANTHROPIC_API_KEY ou GEMINI_API_KEY); sem chave, explicador offline
@@ -40,6 +43,7 @@ interface Args {
   pg: boolean;
   failOn?: Severity;
   out?: string;
+  html?: string;
 }
 
 const SEVERITY_ALIASES: Record<string, Severity> = { critico: 'Crítico', crítico: 'Crítico', alto: 'Alto', medio: 'Médio', médio: 'Médio', baixo: 'Baixo' };
@@ -50,10 +54,11 @@ export function parseArgs(argv: string[]): Args {
     const a = argv[i]!;
     if (a === '--json') args.json = true;
     else if (a === '--pg') args.pg = true;
-    else if (a === '--out' || a.startsWith('--out=')) {
+    else if (a === '--out' || a.startsWith('--out=') || a === '--html' || a.startsWith('--html=')) {
+      const flag = a.startsWith('--out') ? 'out' : 'html';
       const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
-      if (!value) throw new Error('--out precisa de um caminho de arquivo');
-      args.out = value;
+      if (!value) throw new Error(`--${flag} precisa de um caminho de arquivo`);
+      args[flag] = value;
     }
     else if (a === '--fail-on' || a.startsWith('--fail-on=')) {
       const value = a.includes('=') ? a.split('=')[1]! : argv[++i];
@@ -130,6 +135,11 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
           await mkdir(path.dirname(path.resolve(args.out)), { recursive: true });
           await writeFile(args.out, canonicalJson(system, 2) + '\n', 'utf8');
           io.err(`✓ mapa salvo em ${args.out}`);
+        }
+        if (args.html) {
+          await mkdir(path.dirname(path.resolve(args.html)), { recursive: true });
+          await writeFile(args.html, renderGraphHtml(system, args.target), 'utf8');
+          io.err(`✓ visualizador salvo em ${args.html} (abra no navegador)`);
         }
         if (args.json) io.out(canonicalJson(system, 2));
         else printSystemGraph(system, args.target, io.out);

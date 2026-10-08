@@ -12,7 +12,7 @@ import { ScanAnimator } from './analysis/ScanAnimator';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
 import { explainWorkspaceCollisions, login, logout, refreshAccess, requireAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
-import { CMD, FILE_GLOB, INLINE_LANGUAGES, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
+import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
 import { InlineSuggestionProvider } from './inline/InlineSuggestionProvider';
 import { AiService } from './services/AiService';
 import { AuthService } from './services/AuthService';
@@ -21,7 +21,8 @@ import { ShieldepyViewProvider } from './views/ShieldepyViewProvider';
 import { StatusBar } from './views/StatusBar';
 import { ConflictBalloon, openLocation } from './views/ConflictBalloon';
 import { ExplorerDecorations } from './views/ExplorerDecorations';
-import { indexWorkspace, isAnalyzable, reindexFromDisk, setPathGate } from './workspace/files';
+import { MapPanel } from './views/MapPanel';
+import { indexWorkspace, isAnalyzable, reindexFromDisk, setPathGate, warnIfTruncated, type IndexReport } from './workspace/files';
 import { WorkspaceModel } from './workspace/WorkspaceModel';
 
 let model: WorkspaceModel | undefined;
@@ -31,6 +32,12 @@ let model: WorkspaceModel | undefined;
 interface TestApi {
   signInWithToken(token: string): Promise<unknown>;
   decorationFor(fsPath: string): { badge?: string; tooltip?: string; color?: string; propagate?: boolean } | undefined;
+  /** Estatísticas do grafo em memória (cobertura, imports quebrados). */
+  graphStats(): unknown;
+  /** Mapa mostrado pela última vez no painel (comando "Ver Mapa do Sistema"). */
+  lastMap(): unknown;
+  /** Reindexa o workspace inteiro e devolve o relatório (teto, parcial). */
+  reindex(): Promise<IndexReport>;
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<TestApi | undefined> {
@@ -125,6 +132,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   // --- views ----------------------------------------------------------------------------
   const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
+  const mapPanel = new MapPanel(context.extensionUri, workspace);
+  push(mapPanel);
   push(
     // retainContextWhenHidden: trocar de aba não descarta o rascunho não enviado do chat.
     vscode.window.registerWebviewViewProvider(VIEW_CHAT, chat, { webviewOptions: { retainContextWhenHidden: true } }),
@@ -146,6 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
       if (typeof file === 'string') return openLocation(file, Number(line));
     }),
     vscode.commands.registerCommand(CMD.scanWorkspace, guarded(() => chat.runFullScan())),
+    vscode.commands.registerCommand(CMD.showMap, guarded(() => mapPanel.show())),
     vscode.commands.registerCommand(CMD.attachFinding, guarded((finding: FindingAttachment) => chat.attachFinding(finding))),
     vscode.commands.registerCommand(CMD.toggleInline, async () => {
       const next = !config.inlineEnabled();
@@ -205,6 +215,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   // Mudanças fora do editor (git checkout, gerador de código): arquivo aberto é tratado pelos
   // eventos acima; o resto é relido do disco pra o grafo e as colisões não ficarem velhos.
+  // tsconfig/jsconfig mudou (ex: `paths`): o grafo refaz a resolução de imports e chamadas.
+  // Debounce: um `git checkout` mexe em vários de uma vez.
+  let configTimer: ReturnType<typeof setTimeout> | undefined;
+  const onModuleConfig = (uri: vscode.Uri) => {
+    clearTimeout(configTimer);
+    configTimer = setTimeout(() => {
+      log(`[index] configuração de módulos mudou (${vscode.workspace.asRelativePath(uri)}): refazendo a resolução de imports.`);
+      workspace.graph.reloadModuleConfig();
+    }, 300);
+  };
+  const configWatcher = vscode.workspace.createFileSystemWatcher(MODULE_CONFIG_GLOB);
+  push(configWatcher, configWatcher.onDidCreate(onModuleConfig), configWatcher.onDidChange(onModuleConfig), configWatcher.onDidDelete(onModuleConfig), {
+    dispose: () => clearTimeout(configTimer),
+  });
+
   const watcher = vscode.workspace.createFileSystemWatcher(FILE_GLOB);
   const onDisk = (uri: vscode.Uri) => {
     if (!vscode.workspace.textDocuments.some((d) => d.uri.toString() === uri.toString())) void reindexFromDisk(workspace, uri);
@@ -212,7 +237,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   push(watcher, watcher.onDidCreate(onDisk), watcher.onDidChange(onDisk));
 
   indexWorkspace(workspace, log)
-    .then(() => {
+    .then((report) => {
+      void warnIfTruncated(report);
       collisions.publish();
       for (const doc of vscode.workspace.textDocuments) analyzer.runNow(doc);
     })
@@ -224,6 +250,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   if (context.extensionMode !== vscode.ExtensionMode.Test) return undefined;
   return {
     signInWithToken: (token) => auth.signInWithToken(token),
+    graphStats: () => workspace.graph.stats,
+    lastMap: () => mapPanel.last,
+    reindex: () => indexWorkspace(workspace, log),
     decorationFor: (fsPath) => {
       const d = explorer.provideFileDecoration(vscode.Uri.file(fsPath));
       return d && { badge: d.badge, tooltip: d.tooltip, color: d.color?.id, propagate: d.propagate };

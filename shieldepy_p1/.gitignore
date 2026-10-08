@@ -3,5 +3,10 @@ dist/
 *.vsix
 .env
 apps/vscode/wasm/
+apps/vscode/media/vendor/
 .vscode-test/
 apps/web/data/
+
+# saídas geradas pelo shieldepy (mapa, topologia, testes de caos)
+mapa*.html
+.shieldepy/

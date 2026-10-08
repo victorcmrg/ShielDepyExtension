@@ -5,6 +5,7 @@ independente dos outros (cada um tem o próprio `package.json`, `node_modules` e
 
 ```
 ShielDepyExtension/
+├── PLANO-CHAOS.md                 ← 🧭 plano em andamento (Chaos Engineering dirigida pelo grafo)
 ├── shieldepy_p1/                  ← ✅ SISTEMA ATUAL — é aqui que se trabalha
 ├── legado_grafo_arvore/           ← 🗄️ LEGADO — extensão original (grafo em árvore)
 └── legado_api_leitura_metadados/  ← 🗄️ LEGADO — Projeto18 (Grafo de Interações)
@@ -22,6 +23,14 @@ explica como o sistema funciona, onde fica cada coisa e como rodar.
 ```bash
 cd shieldepy_p1 && npm install && npm run check     # F5 abrindo a pasta shieldepy_p1
 ```
+
+**Em andamento:** [`PLANO-CHAOS.md`](PLANO-CHAOS.md) descreve o pipeline em 4 etapas:
+1. **E1**, concluída: o grafo mapeia o sistema inteiro e mostra a cobertura (`shieldepy graph`).
+2. **E2:** a topologia de rotas e I/O.
+3. **E3:** agentes LangGraph que geram testes de caos para os pontos críticos.
+4. **E4:** gate de CI que bloqueia o PR.
+
+O progresso e as decisões de cada tarefa ficam registrados no próprio plano.
 
 ## 🗄️ Legados
 

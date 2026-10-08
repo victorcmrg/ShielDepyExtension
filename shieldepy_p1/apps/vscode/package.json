@@ -82,6 +82,10 @@
         "title": "ShielDepy: Analisar Pasta Inteira"
       },
       {
+        "command": "shieldepy.showMap",
+        "title": "ShielDepy: Ver Mapa do Sistema"
+      },
+      {
         "command": "shieldepy.setApiKey",
         "title": "ShielDepy: Configurar Chave da IA"
       },
@@ -230,6 +234,13 @@
           "default": [],
           "description": "Globs extras ignorados pela análise (além de node_modules, dist, etc.). Ex.: **/*.test.ts"
         },
+        "shieldepy.index.maxFiles": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 10,
+          "maximum": 50000,
+          "description": "Máximo de arquivos indexados no mapa do workspace. Acima disso o mapa fica parcial e o ShielDepy avisa."
+        },
         "shieldepy.statusBar.enabled": {
           "type": "boolean",
           "default": true,
@@ -269,7 +280,8 @@
   "dependencies": {
     "@shieldepy/agent": "*",
     "@shieldepy/core": "*",
-    "@shieldepy/extractors": "*"
+    "@shieldepy/extractors": "*",
+    "@shieldepy/viewer": "*"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

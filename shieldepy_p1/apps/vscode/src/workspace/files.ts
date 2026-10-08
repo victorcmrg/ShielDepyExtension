@@ -46,10 +46,21 @@ export function findWorkspaceFiles(limit: number): Thenable<vscode.Uri[]> {
   return vscode.workspace.findFiles(FILE_GLOB, excludePattern(), limit);
 }
 
+export interface IndexReport {
+  indexed: number;
+  limit: number;
+  /** Havia mais arquivos que o teto: o mapa ficou parcial. */
+  truncated: boolean;
+}
+
 /** Indexação inicial (sem IA): grafo estrutural + regras de todos os arquivos do workspace. */
-export async function indexWorkspace(model: WorkspaceModel, log: (m: string) => void): Promise<void> {
-  const files = await findWorkspaceFiles(3000);
-  log(`[index] ${files.length} arquivo(s) encontrado(s).`);
+export async function indexWorkspace(model: WorkspaceModel, log: (m: string) => void): Promise<IndexReport> {
+  const limit = config.maxIndexedFiles();
+  // pede um a mais: é assim que se sabe que o workspace passou do teto
+  const found = await findWorkspaceFiles(limit + 1);
+  const truncated = found.length > limit;
+  const files = truncated ? found.slice(0, limit) : found;
+  log(`[index] ${files.length} arquivo(s) encontrado(s)${truncated ? ` — teto de ${limit} atingido, mapa PARCIAL` : ''}.`);
   let skipped = 0;
   for (const uri of files) {
     try {
@@ -64,8 +75,26 @@ export async function indexWorkspace(model: WorkspaceModel, log: (m: string) => 
       log(`[index] falha ao indexar ${uri.fsPath}: ${err}`);
     }
   }
-  const { nodes, edges } = model.graph.stats;
-  log(`[index] concluído: ${nodes} nós, ${edges} arestas, ${model.rules.length} regra(s), ${model.collisions().length} colisão(ões)${skipped ? `, ${skipped} ignorado(s) (>2MB)` : ''}.`);
+  const stats = model.graph.stats;
+  log(`[index] concluído: ${stats.nodes} nós, ${stats.edges} arestas, ${model.rules.length} regra(s), ${model.collisions().length} colisão(ões)${skipped ? `, ${skipped} ignorado(s) (>2MB)` : ''}.`);
+  const internal = stats.callsResolved + stats.callsHeuristic + stats.callsUnresolved;
+  if (internal > 0) {
+    const pct = ((100 * stats.callsResolved) / internal).toFixed(1);
+    log(`[index] cobertura: ${pct}% das chamadas internas provadas (${stats.callsHeuristic} por nome, ${stats.callsUnresolved} sem alvo, ${stats.importsUnresolved} import(s) quebrado(s)).`);
+  }
+  return { indexed: files.length - skipped, limit, truncated };
+}
+
+/** Avisa que o workspace passou do teto e o mapa ficou parcial (com atalho pra resolver). */
+export async function warnIfTruncated(report: IndexReport): Promise<void> {
+  if (!report.truncated) return;
+  const action = await vscode.window.showWarningMessage(
+    `ShielDepy: o workspace tem mais de ${report.limit} arquivos de código — o mapa está PARCIAL. Aumente o teto ou exclua pastas geradas.`,
+    'Ajustar teto',
+    'Excluir pastas'
+  );
+  if (action === 'Ajustar teto') void vscode.commands.executeCommand('workbench.action.openSettings', 'shieldepy.index.maxFiles');
+  if (action === 'Excluir pastas') void vscode.commands.executeCommand('workbench.action.openSettings', 'shieldepy.analysis.exclude');
 }
 
 export function workspaceRoots(): string[] {

@@ -143,9 +143,33 @@ export class CodeGraph {
     return this.moduleInfo.get(fileId);
   }
 
-  /** Esquece os tsconfig/jsconfig lidos — chamar quando um deles mudar. */
+  /** Esquece os tsconfig/jsconfig lidos (sem religar nada) — ver `reloadModuleConfig`. */
   invalidateConfig(): void {
     this.resolver.invalidate();
+  }
+
+  /**
+   * Um tsconfig/jsconfig mudou (ex: `paths` novo): relê a configuração e refaz, em TODOS os
+   * arquivos de código, a resolução dos imports e as arestas de chamada — sem reparsear nada
+   * (a tabela de módulo de cada arquivo continua válida; só o destino dos especificadores muda).
+   */
+  reloadModuleConfig(): void {
+    this.resolver.invalidate();
+    const touchedPackages = new Set<string>();
+    for (const [fileId, info] of this.moduleInfo) {
+      if (!this.graph.hasNode(fileId)) continue;
+      const attrs = this.graph.getNodeAttributes(fileId);
+      if (attrs.kind !== 'file') continue;
+      for (const e of this.graph.outEdges(fileId)) {
+        if (this.graph.getEdgeAttribute(e, 'type') !== 'imports') continue;
+        const target = this.graph.target(e);
+        if (this.isPackage(target)) touchedPackages.add(target);
+        this.graph.dropEdge(e);
+      }
+      this.linkImports(fileId, attrs.path, info.specs);
+    }
+    this.dropOrphanPackages(touchedPackages);
+    for (const fileId of this.moduleInfo.keys()) this.relinkCalls(fileId);
   }
 
   /** Registra quem quer reaproveitar a árvore de cada arquivo (ex: extrator de regras). */

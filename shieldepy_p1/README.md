@@ -57,7 +57,10 @@ as regras duas a duas:
 
 ```
  abrir o workspace
-   └─ indexa todos os arquivos (sem IA) ──► grafo estrutural + regras + colisões
+   └─ indexa até `shieldepy.index.maxFiles` arquivos (padrão 3000, sem IA)
+        ──► grafo estrutural + regras + colisões; loga a cobertura do mapa
+        ──► passou do teto? avisa que o mapa ficou PARCIAL
+ mudar tsconfig/jsconfig (`paths`) ──► o grafo refaz a resolução de imports, sem recarregar
                                                    │
  editar / salvar / abrir um arquivo                ▼
    └─ BackgroundAnalyzer (depois de ~1,2 s parado)
@@ -74,6 +77,13 @@ as regras duas a duas:
                  ──► lista "Problemas encontrados" na barra lateral
                  ──► #id estável, citável no chat
 ```
+
+**"ShielDepy: Ver Mapa do Sistema"** abre o mesmo visualizador da CLI num painel do editor:
+- cobertura e pontos fracos do mapa;
+- cadeias em camadas;
+- **"Abrir código"**, que leva ao arquivo e à linha.
+
+As bibliotecas (Cytoscape + fcose) vêm de `media/vendor/` com a CSP por nonce, como nos outros webviews.
 
 No **chat** você pergunta sobre um achado, citando o `#id` ou usando "Ask AI" na lista. Se pedir
 uma correção, a IA propõe o arquivo inteiro corrigido. **Antes de mostrar o botão "Aplicar"**, a
@@ -123,6 +133,12 @@ Não se adivinha quando o receptor é sabidamente de fora do projeto (`X[]`, `Ma
 
 Esse artefato é a entrada das próximas etapas (veja `PLANO-CHAOS.md` na raiz).
 
+`--html mapa.html` gera um visualizador interativo autocontido: Cytoscape.js com o layout `fcose`, embutidos, sem CDN, e abre offline. Ele serve para **conferir o mapa**:
+- símbolos agrupados por arquivo, arestas por tipo e heurísticas destacadas;
+- busca e pontos fracos clicáveis;
+- clique num nó para ver **"Cadeia abaixo"** (tudo que ele alcança, como rota → banco) e **"Quem chega aqui"**, em camadas;
+- link direto pela URL: `mapa.html#fluxo=src/routes/checkout.ts`.
+
 ## Mapa do código
 
 As dependências andam numa direção só:
@@ -146,6 +162,7 @@ apps/vscode   apps/cli   apps/web        ← interfaces (só aqui existe `vscode
 | Imports/exports/re-exports de um arquivo (tabela de módulo) | `packages/core/src/code-graph/extract-module.ts` |
 | Resolução de especificadores (relativo, tsconfig `paths`, pacote) | `packages/core/src/code-graph/resolve-import.ts` |
 | Artefato do mapa do sistema (`shieldepy graph`) | `packages/core/src/system-graph.ts` |
+| Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
 | Suporte a Java / Python / C# | `packages/extractors/src/treesitter/*` (gramáticas em `packages/core/wasm`) |
@@ -210,6 +227,7 @@ npm run cli -- explain fixtures/postgres-example.json          # motor + IA (ou 
 npm run cli -- report  <pasta> --fail-on critico               # portão de CI: sai com 1
 npm run cli -- cycles  <pasta>                                 # ciclos de chamada
 npm run cli -- graph   <pasta> [--json] [--out mapa.json]      # mapa do sistema + cobertura
+npm run cli -- graph   <pasta> --html mapa.html              # visualizador interativo (offline)
 npm run cli -- report  --pg postgres://user:pass@host/db       # triggers de um Postgres real
 ```
 
