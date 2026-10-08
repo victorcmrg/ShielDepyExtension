@@ -50,6 +50,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
 - **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
 - **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
+- **V3 — em andamento** na branch `feat/portal-v3`, empilhada sobre a `feat/visualizador-v2`. Ordem de merge: E4 → E5 → V2 → V3.
 - **V2 completo** na branch `feat/visualizador-v2` (V2a–V2e), empilhada sobre a `feat/mapa-incremental`. Ordem de merge: E4 → E5 → V2. Ver "V2 — desenho e tarefas" na seção "Visualização do grafo".
 - **E5 — pronta, menos a medição paga** na branch `feat/mapa-incremental`: 5a–5d, 5f e a parte gratuita da 5e. Para medir: `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (estimativa abaixo de US$ 0,50).
 
@@ -62,7 +63,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
 | V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído; falta o merge (depois da E4 e da E5) |
-| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend` | a definir | pendente (separado do V2 em 2026-10-08) |
+| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend`, tarefas V3a–V3e | `feat/portal-v3` | em andamento |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | pronta, menos a medição paga (5e) |
@@ -576,6 +577,31 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Comando novo "ShielDepy: Comparar mapa com uma branch" (padrão: `origin/main`), que mostra o diff no painel.
   - Cenários E2E.
 - **V2e. Escala.** ✅ Concluída em 2026-10-08 (medido; sem troca de biblioteca). Medir o visualizador com o grafo grande (`apps/`) e registrar a avaliação do Sigma.js e do ELK. Só trocar de biblioteca se a medição pedir.
+
+### V3 — portal: resultados do caos enviados pelo CI (escrito em 2026-10-08, antes de começar)
+
+> Branch `feat/portal-v3`, empilhada sobre a `feat/visualizador-v2`. Pedido do usuário: "mais UI/UX bonitinho": o mapa de grafos (Cytoscape) é uma ferramenta de **conferência** e ficou "cru, quadradão". No portal, a peça central **não é o grafo do código**, e sim **a rota e o que acontece nela**.
+
+**Decisões (tomadas sem perguntar, registradas aqui):**
+- **Autenticação do CI: token por projeto** (`sdci_...`). O dono cria no portal, o valor aparece **uma vez só** e o banco guarda só o hash, como os tokens da extensão. O token só publica em repositórios do próprio projeto (o remote é conferido). Pode ser revogado.
+- **O que vai para o servidor:** o `ChaosResults` (que agora carrega também a **superfície de ataque**) e os metadados do git (commit, branch, PR, link do job). **Nenhum código-fonte**, só os mesmos fatos que a IA já pode ver: rotas, operações, tabelas, hosts e `arquivo:linha`.
+- **Retenção:** as últimas **100 execuções por repositório**; as mais velhas saem na hora de gravar uma nova.
+- **Publicar nunca muda o portão:** o envio é um passo separado no CI, com `continue-on-error`. Portal fora do ar não deixa o PR vermelho.
+
+**Peças:**
+- **CLI:** `shieldepy publish <pasta> --portal <url>` (token em `SHIELDEPY_PORTAL_TOKEN`). Lê o `.shieldepy/chaos-results.json`, o remote e o commit pelo git, e o PR e o link do job pelas variáveis do GitHub Actions. Devolve o link da execução no portal e, com `--append-link <relatório.md>`, acrescenta esse link ao relatório do PR.
+- **Servidor:** tabelas `project_ci_tokens` e `chaos_runs`.
+  - Rotas para o dono gerenciar os tokens (`/api/projects/:id/ci-tokens`).
+  - O envio do CI (`POST /api/ci/chaos-runs`).
+  - A visão do projeto (`/api/projects/:id/chaos`) e a execução completa (`/api/projects/:id/chaos/runs/:runId`).
+- **Portal (React):**
+  - **Página do projeto:** um painel "Caos no CI" com um cartão por repositório (status da última execução, branch e PR, contagens, e uma faixa com as últimas execuções em verde e vermelho) e um painel "Integração com o CI" (tokens e o passo a passo).
+  - **Página da execução** (`/projects/:id/runs/:runId`): status em destaque, métricas, o escopo do PR e **cada rota como uma linha do tempo das operações** (`lê stock → chama api.stripe.com → grava stock → grava orders`). O alvo de cada falha fica marcado na operação, com a severidade, a invariante violada e o arquivo do teste. Também traz as tags, as hipóteses sem teste e o histórico do repositório.
+- **Workflow e template:** um passo "Publicar no portal" quando há `SHIELDEPY_PORTAL_TOKEN` (secret) e `SHIELDEPY_PORTAL_URL` (variável).
+
+**Tarefas:** **V3a** contrato + CLI `publish` · **V3b** servidor (banco, tokens, rotas, testes) · **V3c** portal: página do projeto e tokens · **V3d** portal: página da execução (a linha do tempo) · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs.
+
+**Aceitação:** o `chaos` no vulnerável seguido do `publish` para um portal local → o projeto mostra o repositório **bloqueado**, e a página da execução mostra o `POST /checkout` com os 4 achados nas operações certas. Um token de outro projeto, ou um remote fora do projeto → 403.
 
 **Aceitação do V2:**
 - `chaos examples/checkout-express --offline --html` → `POST /checkout` em vermelho, com os 4 achados na lista. No `-fixed`, em verde.
