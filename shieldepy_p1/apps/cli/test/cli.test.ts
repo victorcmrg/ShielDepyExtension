@@ -275,7 +275,9 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
       expect(() => new Function(scripts[5]!)).not.toThrow();
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
-      fs.rmSync(path.join(dir, '.shieldepy'), { recursive: true, force: true });
+      // só o que este teste criou: o de compilação (agent) usa .shieldepy/tsc-check ao mesmo tempo
+      fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
+      fs.rmSync(path.join(dir, '.shieldepy', 'chaos-results.json'), { force: true });
     }
   });
 
