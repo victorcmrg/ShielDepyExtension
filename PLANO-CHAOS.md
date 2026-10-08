@@ -461,6 +461,16 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **`--html <arquivo>`** no `chaos` e no `diff`: o visualizador com a topologia e o overlay. No `chaos --base`, o diff do PR vai junto. No `diff`, as rotas tocadas (`affectedRoutes`) também vão, e a saída de texto lista cada rota tocada com o motivo.
   - **Visualizador:** `renderGraphHtml(..., overlay?)`, com `ViewerOverlay { chaos?, diff? }` embutido como `OVERLAY`. Os tipos são **mínimos e próprios** do visualizador (estruturalmente iguais aos do agent), para ele não depender do pacote de agentes, que puxa o LangGraph. Sem overlay, nada muda.
   - Suíte: **308 testes**.
+- 2026-10-08: **V2b concluído (caos no visualizador).**
+  - **Seção "Caos" no topo da barra lateral** (com um resultado aberto, ela é o assunto principal). Traz:
+    - o banner: bloqueado, aguentou, nenhuma rota tocada, não executado (`--no-run`) ou erro de ambiente;
+    - um aviso quando o resultado é de **outra versão do mapa** (`topologyHash` diferente);
+    - os chips de contagem, neutros quando zero, e o escopo do PR;
+    - os **achados como cartões** (severidade, rota, falha, alvo, tempo, invariante violada e arquivo do teste). Clicar abre o fluxo da rota; no webview, há também "Abrir teste" (mensagem `openTest`, tratada na V2d);
+    - as listas "Aguentou", "Inválidos" e "Sem teste nesta execução", e a legenda.
+  - **No grafo:** rota com achado em vermelho (borda grossa) e com `✖` no rótulo; aguentou com borda verde e `✓`; inválido com borda tracejada. A operação de I/O alvo de um achado ganha borda vermelha, e isso vale também no modo fluxo. A lista de rotas mostra o mesmo ícone.
+  - **Conferido em screenshots no Chrome headless:** o vulnerável mostra "Bloqueado: 4 achado(s)", a rota `✖ POST /checkout` e o Stripe e as operações em `stock` marcados; o corrigido mostra "O código aguentou todas as falhas injetadas" e `✓ POST /checkout`. Os ajustes que os screenshots pediram: o caminho do teste vazava do cartão, e o vermelho da rota quebrada se confundia com o rosa normal das rotas (daí o `✖`/`✓` no rótulo).
+  - O script do visualizador continua compilando (teste da CLI); sem overlay, nada muda.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -495,7 +505,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 
 **Tarefas:**
 - **V2a. Resultado do caos persistido.** ✅ Concluída em 2026-10-08. O `chaos` grava sempre `.shieldepy/chaos-results.json` (`ChaosResults`): `topologyHash`, escopo, resultados com severidade e mensagem, hipóteses sem teste, portão e custo. Com `--html <arquivo>`, grava também o visualizador com a topologia e o resultado.
-- **V2b. Caos no visualizador.**
+- **V2b. Caos no visualizador.** ✅ Concluída em 2026-10-08.
   - Rota com achado em vermelho (com a severidade), aguentou em verde, inválido tracejado, fora do escopo ou sem teste neutra.
   - Lista lateral "Caos": achados com falha, alvo, invariante violada e arquivo do teste. Clicar abre o fluxo da rota, com a operação-alvo destacada.
   - Legenda.

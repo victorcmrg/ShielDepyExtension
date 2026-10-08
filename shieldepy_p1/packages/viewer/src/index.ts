@@ -114,6 +114,7 @@ ${csp}
     <h1>Mapa do sistema</h1>
     <p class="muted" id="label">${escapeHtml(label)}</p>
   </header>
+  <section id="chaos" hidden></section>
   <section id="coverage"></section>
   <section>
     <input id="search" type="search" placeholder="Buscar símbolo ou arquivo (Enter)" autocomplete="off">
@@ -153,6 +154,7 @@ const STYLE = `
   --file: #eef2f7; --file-border: #c9d3e0; --fn: #2f6fdf; --method: #7a4fd1; --class: #0f8a6a;
   --pkg: #b5651d; --calls: #4a5568; --refs: #2f6fdf; --imports: #b9bcc4; --heur: #e0861a;
   --hl: #e5484d; --accent: #2f6fdf; --route: #c2255c; --db: #0b7285; --api: #d9480f;
+  --bad: #d92d20; --ok: #12854a; --warn: #b54708; --bad-bg: #fdecea; --ok-bg: #e7f6ec; --warn-bg: #fef4e6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -160,6 +162,7 @@ const STYLE = `
     --file: #22262e; --file-border: #3a4150; --fn: #6aa0ff; --method: #b294ff; --class: #3fcf9f;
     --pkg: #e3a15c; --calls: #a0a7b4; --refs: #6aa0ff; --imports: #4a4e57; --heur: #f0a040;
     --hl: #ff6b6f; --accent: #6aa0ff; --route: #f06595; --db: #3bc9db; --api: #ff922b;
+    --bad: #ff6b6b; --ok: #4ad685; --warn: #f5a524; --bad-bg: #3a1d1d; --ok-bg: #16301f; --warn-bg: #3a2a12;
   }
 }
 * { box-sizing: border-box; }
@@ -196,6 +199,22 @@ button:hover { border-color: var(--accent); }
 .row { display: flex; gap: 6px; flex-wrap: wrap; }
 .weak-item { text-align: left; display: block; width: 100%; }
 code { font-size: 12px; }
+.banner { padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+.banner.bad { background: var(--bad-bg); color: var(--bad); }
+.banner.ok { background: var(--ok-bg); color: var(--ok); }
+.banner.warn { background: var(--warn-bg); color: var(--warn); }
+.finding { text-align: left; display: block; width: 100%; border-left: 4px solid var(--bad); }
+.finding small, .finding code { display: block; color: var(--muted); }
+.finding code { word-break: break-all; white-space: normal; }
+.finding .sev { font-weight: 700; color: var(--bad); }
+.finding.alto { border-left-color: var(--warn); }
+.finding.alto .sev { color: var(--warn); }
+.chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; margin-right: 4px; }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.muted { background: var(--line); color: var(--muted); }
+ul.plain { list-style: none; padding: 0; margin: 4px 0 0; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
 @media (max-width: 720px) { body { flex-direction: column; } #side { width: 100%; max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--line); } }
 `;
 
@@ -226,6 +245,29 @@ const APP = String.raw`
         topo.edges.push({ source: o.symbol, target: ioId(o), type: 'io' });
       }
     }
+  }
+
+  // ---- caos (V2): status de cada rota e alvos dos achados
+  const CHAOS = OVERLAY.chaos || null;
+  const routeChaos = new Map();
+  const failedTargets = new Set();
+  if (CHAOS) {
+    const rank = { failed: 3, invalid: 2, passed: 1 };
+    for (const o of CHAOS.outcomes) {
+      const cur = routeChaos.get(o.routeId);
+      if (!cur || rank[o.status] > rank[cur.status] || (o.status === 'failed' && o.severity === 'Crítico')) routeChaos.set(o.routeId, { status: o.status, severity: o.severity });
+      if (o.status === 'failed') failedTargets.add(o.target);
+    }
+  }
+  /** Classes extras de um nó: status do caos na rota, alvo de achado na operação de I/O. */
+  function overlayClasses(n) {
+    const c = [];
+    if (n.kind === 'route') {
+      const st = routeChaos.get(n.name);
+      if (st) c.push('chaos-' + st.status);
+    }
+    if ((n.kind === 'io-db' || n.kind === 'io-api') && failedTargets.has(n.op.target)) c.push('chaos-target');
+    return c;
   }
 
   // ---- painel de cobertura
@@ -268,9 +310,11 @@ const APP = String.raw`
     for (const n of nodes) {
       // arquivo vira caixa só se tiver símbolo dentro ou aresta própria (ex.: references do topo)
       if (n.kind === 'file' && (!state.group || (!usedFiles.has(n.id) && !linked.has(n.id)))) continue;
-      const data = { id: n.id, label: n.kind === 'file' ? n.id : n.name, kind: n.kind, raw: n };
+      const st = n.kind === 'route' ? routeChaos.get(n.name) : undefined;
+      const mark = st ? (st.status === 'failed' ? '✖ ' : st.status === 'passed' ? '✓ ' : '? ') : '';
+      const data = { id: n.id, label: n.kind === 'file' ? n.id : mark + n.name, kind: n.kind, raw: n };
       if (state.group && n.file) data.parent = n.file;
-      out.push({ data, classes: 'k-' + n.kind });
+      out.push({ data, classes: ['k-' + n.kind].concat(overlayClasses(n)).join(' ') });
     }
     const shown = new Set(out.map((e) => e.data.id));
     const edgeIds = new Set();
@@ -300,6 +344,10 @@ const APP = String.raw`
     { selector: '.k-io-api', style: { 'background-color': css('--api'), shape: 'hexagon', width: 22, height: 20, 'font-weight': 600 } },
     { selector: '.e-route', style: { width: 2, 'line-color': css('--route'), 'target-arrow-color': css('--route') } },
     { selector: '.e-io', style: { width: 2, 'line-color': css('--db'), 'target-arrow-color': css('--db') } },
+    { selector: '.chaos-failed', style: { 'border-width': 4, 'border-color': css('--bad'), 'background-color': css('--bad') } },
+    { selector: '.chaos-passed', style: { 'border-width': 3, 'border-color': css('--ok') } },
+    { selector: '.chaos-invalid', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--muted') } },
+    { selector: '.chaos-target', style: { 'border-width': 4, 'border-color': css('--bad') } },
     { selector: '.faded', style: { opacity: 0.08 } },
     { selector: '.hl', style: { opacity: 1, 'z-index': 10 } },
     { selector: 'edge.hl', style: { width: 2.4 } },
@@ -457,7 +505,8 @@ const APP = String.raw`
     for (const r of TOPOLOGY.routes) {
       const b = document.createElement('button');
       b.className = 'route-item';
-      b.textContent = r.id;
+      const st = routeChaos.get(r.id);
+      b.textContent = (st ? (st.status === 'failed' ? '✖ ' : st.status === 'passed' ? '✓ ' : '? ') : '') + r.id;
       const tags = document.createElement('small');
       tags.textContent = r.operations.length + ' operação(ões)' + (r.tags.length ? ' · ' + r.tags.map((t) => t.tag).join(', ') : '');
       b.appendChild(tags);
@@ -468,6 +517,61 @@ const APP = String.raw`
       };
       list.appendChild(b);
     }
+  }
+
+  // ---- seção "Caos" (V2): o resultado do último shieldepy chaos sobre o mapa
+  function openRoute(id, title) {
+    if (!state.filters.routes) { state.filters.routes = true; const box = document.querySelector('[data-filter=routes]'); if (box) box.checked = true; build(); }
+    const node = cy.getElementById(routeId({ id }));
+    if (!node.empty()) showFlow(chain(node, 'down'), node, title || id);
+  }
+  if (CHAOS) {
+    const sec = document.getElementById('chaos');
+    sec.hidden = false;
+    const failed = CHAOS.outcomes.filter((o) => o.status === 'failed');
+    const passed = CHAOS.outcomes.filter((o) => o.status === 'passed');
+    const invalid = CHAOS.outcomes.filter((o) => o.status === 'invalid');
+    let html = '<h2>Caos</h2>';
+    if (TOPOLOGY && CHAOS.topologyHash !== TOPOLOGY.contentHash) html += '<div class="banner warn">Este resultado é de outra versão do mapa. Rode o <code>shieldepy chaos</code> de novo.</div>';
+    if (CHAOS.runError) html += '<div class="banner warn">Os testes não rodaram (erro de ambiente): ' + escape(CHAOS.runError.split('\n')[0]) + '</div>';
+    else if (!CHAOS.ran) html += '<div class="banner warn">Testes gerados, mas não executados (<code>--no-run</code>).</div>';
+    else if (CHAOS.hits > 0) html += '<div class="banner bad"><b>Bloqueado:</b> ' + CHAOS.hits + ' achado(s)' + (CHAOS.failOn === 'Baixo' ? '' : ' com severidade ' + escape(CHAOS.failOn) + ' ou pior') + '.</div>';
+    else if (CHAOS.scope && CHAOS.scope.tested.length === 0) html += '<div class="banner ok">Nenhuma rota sensível tocada pelo PR.</div>';
+    else html += '<div class="banner ok">O código aguentou ' + (failed.length ? 'o portão (' + failed.length + ' achado(s) abaixo dele)' : 'todas as falhas injetadas') + '.</div>';
+    html += '<p class="small"><span class="chip ' + (failed.length ? 'bad' : 'muted') + '">' + failed.length + ' achado(s)</span><span class="chip ' + (passed.length ? 'ok' : 'muted') + '">' + passed.length + ' aguentou</span><span class="chip muted">' + invalid.length + ' inválido(s)</span><span class="chip muted">' + CHAOS.untested.length + ' sem teste</span></p>';
+    if (CHAOS.scope) html += '<p class="muted small">Escopo: ' + (CHAOS.scope.all ? 'todas as rotas (' + escape(CHAOS.scope.all) + ')' : CHAOS.scope.tested.length + ' rota(s) tocada(s) desde ' + escape(CHAOS.scope.base)) + '</p>';
+    sec.innerHTML = html;
+    for (const o of failed) {
+      const b = document.createElement('button');
+      b.className = 'finding' + (o.severity === 'Crítico' ? '' : ' alto');
+      b.innerHTML = '<span class="sev">' + escape(o.severity || '') + '</span> ' + escape(o.routeId) + '<small>' + escape(o.failure) + ' em ' + escape(o.target) + ' · ' + (o.durationMs / 1000).toFixed(1) + ' s</small><small>' + escape(o.message || '') + '</small><code>' + escape(o.testFile) + '</code>';
+      b.onclick = () => openRoute(o.routeId, o.routeId + ' · ' + o.failure + ' em ' + o.target);
+      sec.appendChild(b);
+      if (vscodeApi) {
+        const t = document.createElement('button');
+        t.textContent = 'Abrir teste';
+        t.onclick = () => vscodeApi.postMessage({ type: 'openTest', file: o.testFile });
+        sec.appendChild(t);
+      }
+    }
+    const list = (title, items) => {
+      if (items.length === 0) return;
+      const h = document.createElement('p');
+      h.className = 'muted small';
+      h.textContent = title;
+      const ul = document.createElement('ul');
+      ul.className = 'plain';
+      for (const text of items) { const li = document.createElement('li'); li.textContent = text; ul.appendChild(li); }
+      sec.appendChild(h);
+      sec.appendChild(ul);
+    };
+    list('Aguentou', passed.map((o) => '✓ ' + o.routeId + ' · ' + o.failure + ' em ' + o.target));
+    list('Inválidos (não contam no portão)', invalid.map((o) => '? ' + o.routeId + ' · ' + o.failure + ': ' + (o.message || '')));
+    list('Sem teste nesta execução', CHAOS.untested.map((u) => '○ ' + u.routeId + ' · ' + u.failure + ' em ' + u.target + ': ' + u.reason));
+    const legend = document.createElement('p');
+    legend.className = 'muted small';
+    legend.innerHTML = '<span class="chip bad">rota</span> quebrou · <span class="chip ok">rota</span> aguentou · <span class="chip muted">tracejada</span> inválida · operação de I/O com borda vermelha = alvo de um achado';
+    sec.appendChild(legend);
   }
 
   build();
