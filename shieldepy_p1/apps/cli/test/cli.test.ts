@@ -93,6 +93,27 @@ describe('CLI', () => {
     }
   });
 
+  it('graph --html: visualizador autocontido (bibliotecas + dados embutidos, script válido)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-html-'));
+    try {
+      const file = path.join(dir, 'mapa.html');
+      const { code } = await run('graph', example('checkout-express'), '--html', file);
+      expect(code).toBe(0);
+      const html = fs.readFileSync(file, 'utf8');
+      const scripts = html.split('<script>').slice(1).map((s) => s.slice(0, s.indexOf('</script>')));
+      // cytoscape, layout-base, cose-base, fcose, dados, app — nada vem de CDN
+      expect(scripts).toHaveLength(6);
+      expect(html).not.toMatch(/<script src=/);
+      const data = scripts[4]!;
+      const system = JSON.parse(data.slice(data.indexOf('=') + 1).trim().replace(/;$/, ''));
+      expect(system.stats.callsResolved).toBeGreaterThan(0);
+      expect(system.nodes.some((n: { id: string }) => n.id.startsWith('src/services/CheckoutService.ts#checkout'))).toBe(true);
+      expect(() => new Function(scripts[5]!)).not.toThrow();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('argumentos inválidos → código 2 com o uso', async () => {
     expect((await run('report', 'x', '--fail-on', 'grave')).code).toBe(2);
     expect((await run('voar')).code).toBe(2);

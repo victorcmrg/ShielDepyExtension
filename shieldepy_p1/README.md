@@ -123,6 +123,12 @@ Não se adivinha quando o receptor é sabidamente de fora do projeto (`X[]`, `Ma
 
 Esse artefato é a entrada das próximas etapas (veja `PLANO-CHAOS.md` na raiz).
 
+`--html mapa.html` gera um visualizador interativo autocontido: Cytoscape.js com o layout `fcose`, embutidos, sem CDN, e abre offline. Ele serve para **conferir o mapa**:
+- símbolos agrupados por arquivo, arestas por tipo e heurísticas destacadas;
+- busca e pontos fracos clicáveis;
+- clique num nó para ver **"Cadeia abaixo"** (tudo que ele alcança, como rota → banco) e **"Quem chega aqui"**, em camadas;
+- link direto pela URL: `mapa.html#fluxo=src/routes/checkout.ts`.
+
 ## Mapa do código
 
 As dependências andam numa direção só:
@@ -210,6 +216,7 @@ npm run cli -- explain fixtures/postgres-example.json          # motor + IA (ou 
 npm run cli -- report  <pasta> --fail-on critico               # portão de CI: sai com 1
 npm run cli -- cycles  <pasta>                                 # ciclos de chamada
 npm run cli -- graph   <pasta> [--json] [--out mapa.json]      # mapa do sistema + cobertura
+npm run cli -- graph   <pasta> --html mapa.html              # visualizador interativo (offline)
 npm run cli -- report  --pg postgres://user:pass@host/db       # triggers de um Postgres real
 ```
 
