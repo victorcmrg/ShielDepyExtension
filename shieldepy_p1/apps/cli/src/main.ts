@@ -41,7 +41,7 @@ const USAGE = `uso:
   shieldepy diff    <pasta> --base <ref> [--json]
                                                      o que mudou na estrutura do código desde o merge-base com <ref>
                                                      (símbolos novos/removidos/renomeados/com corpo alterado, topo dos arquivos, arestas)
-  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--report <arquivo.md>] [--no-run] [--json]
+  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--report <arquivo.md>] [--base <ref>] [--no-run] [--json]
                                                      gera testes de caos para as rotas sensíveis em
                                                      .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts),
                                                      roda com o Vitest do projeto e serve de portão:
@@ -49,6 +49,7 @@ const USAGE = `uso:
                                                      exit 2 = o ambiente não deixou provar nada;
                                                      --offline: só o motor, sem IA (custo zero);
                                                      --report: relatório markdown (resumo do CI / comentário do PR);
+                                                     --base: só as rotas que o PR tocou desde o merge-base com <ref>;
                                                      --no-run: só gera os testes
 
   report  = só o motor (determinístico, sem rede)
@@ -201,7 +202,7 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
       }
       case 'chaos': {
         if (!args.target) throw new Error('informe a pasta do projeto');
-        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report }, io, registryWithTreeSitter);
+        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report, base: args.base }, io, registryWithTreeSitter);
       }
       default:
         io.err(USAGE);

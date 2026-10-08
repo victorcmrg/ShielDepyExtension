@@ -2,22 +2,28 @@
 // especialistas) → testes de caos gravados em `.shieldepy/chaos-tests/` → Vitest do projeto →
 // portão. Exit 1 com achado válido (de severidade `--fail-on` ou pior); exit 2 quando o ambiente
 // não deixou provar nada (Vitest ausente, sem relatório, todos os testes inválidos). Com
-// `--no-run`, só gera os testes e o relatório de hipóteses.
+// `--no-run`, só gera os testes e o relatório de hipóteses. Com `--base <ref>` (E5), só as rotas
+// sensíveis que o PR tocou vão para a IA e para os testes.
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
+  affectedRoutes,
   attackSurface,
   buildSystemGraph,
   buildTopology,
   canonicalJson,
+  diffSystemGraphs,
   CHAOS_CONFIG_FILE,
   CodeGraph,
   indexFiles,
   listSourceFiles,
   readChaosConfig,
   silentHost,
+  type AttackSurface,
+  type SystemGraph,
+  type TopologyGraph,
 } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { CostMeter, providerFromEnv, type Severity } from '@shieldepy/agent';
@@ -31,12 +37,15 @@ import {
   runChaosPipeline,
   type ChaosExplanation,
   type ChaosOutcome,
+  type ChaosScope,
   type ChaosStateType,
   type TestResult,
 } from '@shieldepy/agent/chaos';
 import { loadRulesFromPath } from '@shieldepy/extractors';
 import type { Registry } from '@shieldepy/extractors';
 import { ChaosRunError, runChaosTests } from './chaos-run';
+import { buildMapOf } from './diff';
+import { GitBaseError, withBaseCheckout } from './git-base';
 
 export interface ChaosArgs {
   target: string;
@@ -47,6 +56,8 @@ export interface ChaosArgs {
   failOn?: Severity;
   /** Grava o relatório markdown (para o `$GITHUB_STEP_SUMMARY` e o comentário do PR). */
   report?: string;
+  /** Só as rotas que o PR tocou desde o merge-base com este ref (E5). */
+  base?: string;
 }
 
 /** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
@@ -92,8 +103,25 @@ export async function runChaosCommand(
     return 2;
   }
   const { rules } = loadRulesFromPath(root, await registry());
-  const topology = buildTopology(graph, buildSystemGraph(graph, rules, root), root);
-  const surface = attackSurface(topology);
+  const system = buildSystemGraph(graph, rules, root);
+  const topology = buildTopology(graph, system, root);
+  const fullSurface = attackSurface(topology);
+
+  // --base: só as rotas sensíveis que o PR tocou (o resto não vai para a IA nem para os testes)
+  let scope: ChaosScope | undefined;
+  let surface = fullSurface;
+  if (args.base) {
+    try {
+      scope = await scopeAgainstBase(root, args.base, system, topology, fullSurface, config.setupFiles, registry);
+    } catch (err) {
+      if (!(err instanceof GitBaseError)) throw err;
+      io.err(`erro: ${err.message}`);
+      return 2;
+    }
+    const keep = new Set(scope.tested);
+    surface = { ...fullSurface, routes: fullSurface.routes.filter((r) => keep.has(r.id)), collisions: fullSurface.collisions.filter((c) => c.routes.some((id) => keep.has(id))) };
+    io.err(scope.all ? `escopo: todas as rotas (${scope.all})` : `escopo: ${scope.tested.length} de ${fullSurface.routes.length} rota(s) sensível(is) tocada(s) desde ${args.base}`);
+  }
 
   const provider = args.offline ? undefined : providerFromEnv(io.env, io.err);
   // regera do zero: hipótese que sumiu não pode deixar um teste velho para trás
@@ -155,6 +183,7 @@ export async function runChaosCommand(
       cost,
       runError,
       explanation,
+      scope,
     });
     await mkdir(path.dirname(path.resolve(args.report)), { recursive: true });
     await writeFile(args.report, markdown, 'utf8');
@@ -175,6 +204,7 @@ export async function runChaosCommand(
           warnings: state.warnings,
           errors: state.errors,
           cost,
+          ...(scope ? { scope } : {}),
           ...(outcomes ? { results: outcomes, gate: { failOn, hits: hits.length } } : {}),
           ...(runError ? { runError } : {}),
         },
@@ -182,6 +212,7 @@ export async function runChaosCommand(
       )
     );
   } else {
+    if (scope) printScope(scope, io.out);
     printChaos(state, args.target, cost, io.out, args.noRun);
     if (outcomes) printOutcomes(outcomes, io.out);
   }
@@ -199,6 +230,40 @@ export async function runChaosCommand(
     return 2;
   }
   return 0;
+}
+
+/** Monta a topologia da base e decide quais rotas sensíveis o PR tocou. */
+async function scopeAgainstBase(
+  root: string,
+  ref: string,
+  system: SystemGraph,
+  topology: TopologyGraph,
+  surface: AttackSurface,
+  setupFiles: string[],
+  registry: () => Promise<Registry>
+): Promise<ChaosScope> {
+  return withBaseCheckout(root, ref, async (baseDir, info) => {
+    const before = await buildMapOf(baseDir, registry);
+    const baseTopology = buildTopology(before.graph, before.system, baseDir);
+    const result = affectedRoutes(baseTopology, topology, diffSystemGraphs(before.system, system), info.changedFiles, setupFiles);
+    const sensitive = new Set(surface.routes.map((r) => r.id));
+    const affected = result.affected.filter((a) => sensitive.has(a.id));
+    return {
+      base: ref,
+      commit: info.commit,
+      ...(result.all && { all: result.all }),
+      tested: affected.map((a) => a.id),
+      affected,
+      untouched: result.untouched.filter((id) => sensitive.has(id)),
+    };
+  });
+}
+
+function printScope(scope: ChaosScope, out: (line: string) => void): void {
+  out(`
+🔀 escopo desde ${scope.base} (base ${scope.commit.slice(0, 10)}): ${scope.all ? `todas as rotas, porque ${scope.all}` : `${scope.tested.length} rota(s) sensível(is) tocada(s), ${scope.untouched.length} de fora`}`);
+  if (!scope.all) for (const a of scope.affected) out(`   ● ${a.id}: ${a.why.join('; ')}`);
+  if (scope.untouched.length > 0) out(`   ○ não tocadas (sem teste nesta execução): ${scope.untouched.join(', ')}`);
 }
 
 const STATUS_LABEL = { passed: '✓ aguentou', failed: '✖', invalid: '? inválido' } as const;

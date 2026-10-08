@@ -30,6 +30,21 @@ export interface ChaosReportInput {
   cost: CostReport;
   runError?: string;
   explanation?: ChaosExplanation;
+  scope?: ChaosScope;
+}
+
+/** `--base` (E5): só as rotas sensíveis que o PR tocou foram testadas. */
+export interface ChaosScope {
+  /** O ref pedido (`origin/main`) e o merge-base usado. */
+  base: string;
+  commit: string;
+  /** Todas as rotas entraram, e por quê (config, dependência, setup). */
+  all?: string;
+  /** Rotas sensíveis testadas nesta execução. */
+  tested: string[];
+  affected: { id: string; why: string[] }[];
+  /** Rotas sensíveis que o PR não tocou (ficaram de fora). */
+  untouched: string[];
 }
 
 export interface ChaosExplanation {
@@ -65,7 +80,8 @@ export function renderChaosReport(input: ChaosReportInput): string {
   const untested = input.hypotheses.filter((h) => !tested.has(h.id));
   const out: string[] = [CHAOS_REPORT_MARKER, `## 🔥 ShielDepy — engenharia de caos em ${code(input.label)}`, ''];
 
-  if (input.runError) out.push(`> ⚠️ **Os testes não rodaram (erro de ambiente).** ${cell(input.runError.split('\n', 1)[0]!)}`);
+  if (input.scope && input.scope.tested.length === 0) out.push('> ✅ **Nenhuma rota sensível tocada por este PR:** nada a testar.');
+  else if (input.runError) out.push(`> ⚠️ **Os testes não rodaram (erro de ambiente).** ${cell(input.runError.split('\n', 1)[0]!)}`);
   else if (!outcomes) out.push('> Testes gerados, mas não executados (`--no-run`).');
   else if (input.hits > 0) out.push(`> ❌ **Bloqueado:** ${input.hits} achado(s)${input.failOn === 'Baixo' ? '' : ` com severidade ${input.failOn} ou pior`}.`);
   else if (outcomes.length > 0 && invalid.length === outcomes.length) out.push('> ⚠️ **Nada foi provado:** todos os testes saíram inválidos (o controle, sem caos, falhou).');
@@ -73,6 +89,14 @@ export function renderChaosReport(input: ChaosReportInput): string {
   else out.push('> ✅ **Passou:** o código aguentou todas as falhas injetadas.');
   out.push('');
   if (outcomes) out.push(`**${failed.length}** achado(s) · **${passed.length}** aguentou(aram) · **${invalid.length}** inválido(s) · **${untested.length}** hipótese(s) sem teste`, '');
+
+  if (input.scope) {
+    const s = input.scope;
+    out.push(`**Escopo:** ${s.all ? `todas as rotas sensíveis, porque ${cell(s.all)}` : `${s.tested.length} rota(s) sensível(is) tocada(s) desde ${code(s.base)} (base ${code(s.commit.slice(0, 10))})`}`, '');
+    if (!s.all) for (const a of s.affected) out.push(`- ${code(a.id)}: ${cell(a.why.join('; '))}`);
+    if (s.untouched.length > 0) out.push(`- não tocadas, sem teste nesta execução: ${s.untouched.map(code).join(', ')}`);
+    if (!s.all && (s.affected.length > 0 || s.untouched.length > 0)) out.push('');
+  }
 
   if (input.explanation?.text) out.push(input.explanation.text, '');
 

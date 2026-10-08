@@ -126,3 +126,20 @@ describe('E4/4c — parágrafo da IA', () => {
     expect(down).toMatchObject({ engine: 'offline', error: '503' });
   });
 });
+
+describe('E5/5d — escopo do PR no relatório', () => {
+  it('nenhuma rota sensível tocada: status próprio, sem achados', () => {
+    const md = renderChaosReport({ ...base, hypotheses: [], failOn: 'Alto', hits: 0, scope: { base: 'origin/main', commit: 'abc1234def567', tested: [], affected: [], untouched: ['POST /checkout'] } });
+    expect(md).toContain('> ✅ **Nenhuma rota sensível tocada por este PR:** nada a testar.');
+    expect(md).toContain('**Escopo:** 0 rota(s) sensível(is) tocada(s) desde `origin/main` (base `abc1234def`)');
+    expect(md).toContain('- não tocadas, sem teste nesta execução: `POST /checkout`');
+  });
+
+  it('rotas tocadas aparecem com o motivo; mudança global diz por que entrou tudo', () => {
+    const scope = { base: 'origin/main', commit: 'abc1234def567', tested: ['POST /checkout'], affected: [{ id: 'POST /checkout', why: ['código no caminho mudou: src/gateways/StripeGateway.ts#StripeGateway.charge'] }], untouched: [] };
+    const md = renderChaosReport({ ...base, outcomes: outcomes({}), failOn: 'Alto', hits: 0, scope });
+    expect(md).toContain('- `POST /checkout`: código no caminho mudou: src/gateways/StripeGateway.ts#StripeGateway.charge');
+    const all = renderChaosReport({ ...base, outcomes: outcomes({}), failOn: 'Alto', hits: 0, scope: { ...scope, all: 'mudou package.json (vale para todas as rotas)' } });
+    expect(all).toContain('**Escopo:** todas as rotas sensíveis, porque mudou package.json (vale para todas as rotas)');
+  });
+});

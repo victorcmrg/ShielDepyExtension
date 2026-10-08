@@ -26,7 +26,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **300** depois da 5c).
+- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **306** depois da 5d).
 - `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
@@ -405,6 +405,27 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - montagem no `container.ts`: `topChanged`; arquivo novo: `files.added` e o símbolo novo;
     - ref inexistente e pasta sem git: exit 2.
   - Suíte: **300 testes**.
+- 2026-10-08: **5d concluído (caos só no que o PR tocou).**
+  - **Topologia:** cada rota ganhou `reach`, com todo símbolo percorrido a partir dos handlers (ids estáveis, ordenados). Não vai para a superfície nem para a IA.
+  - **`affectedRoutes(base, head, diff, changedFiles, setupFiles)`** (`core/src/topology/affected.ts`). Uma rota de agora entra, com o motivo escrito, se:
+    - é nova;
+    - a cadeia de handlers mudou;
+    - as operações ou as tags mudaram;
+    - um símbolo do alcance mudou, é novo ou foi renomeado (alcance de agora) ou sumiu (alcance de antes);
+    - o código de topo mudou no arquivo de registro da rota ou num arquivo do alcance.
+  - **Mudança global → todas as rotas:** `shieldepy.chaos.config.ts`, um `setupFiles`, `package.json`, lockfiles, `.npmrc`, `tsconfig*.json` e `vite/vitest.config`. Decisão conservadora: na dúvida, a rota entra.
+  - **`shieldepy chaos --base <ref>`:**
+    - monta a topologia da base (worktree da 5c) e filtra a superfície **antes** da IA. Rotas e colisões de fora não custam token nem teste;
+    - sem rota sensível tocada, o pipeline roda com a superfície vazia (sem chamada à IA, sem teste) e sai **0**;
+    - o texto, o `--json` (`scope`) e o relatório mostram o escopo: base e merge-base, cada rota tocada com o motivo, as não tocadas, e "todas, porque mudou X";
+    - o relatório tem um status próprio: "Nenhuma rota sensível tocada por este PR".
+  - **Furo achado e fechado:** os testes gerados ficam em `.shieldepy/chaos-tests/`, com um `vitest.config.ts`. Num repositório que não ignore `.shieldepy/`, ele apareceria como arquivo novo e dispararia "todas as rotas". A lista do git agora descarta as pastas que o mapa ignora (`IGNORED_DIRS`).
+  - **Aceitação, testada numa cópia do `checkout-express` em git temporário:**
+    - só comentário → nenhuma rota tocada, nenhum teste, exit 0;
+    - corpo do `StripeGateway.charge` → só `POST /checkout` ("código no caminho mudou: …StripeGateway.charge"), e `GET /orders/:id` fica de fora;
+    - corpo do `OrderRepository.findById` → só `GET /orders/:id`, que não tem falha testável, então nenhum teste;
+    - `package.json` → todas, com o motivo.
+  - Suíte: **306 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -794,7 +815,7 @@ Medido no vulnerável:
 - **5a. Ids estáveis.** ✅ Concluída em 2026-10-08. Id sem linha, com sufixo de ordem nos repetidos, e a linha como atributo. Migrar quem lê a linha do id (`surface.ts`, visualizador, extensão). Teste: inserir linhas no topo de um arquivo não muda nenhum id nem aresta (o `contentHash` muda, e deve mudar: o mapa guarda `startLine`).
 - **5b. Hash do corpo e do topo do arquivo** ✅ Concluída em 2026-10-08, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
 - **5c. Diff.** ✅ Concluída em 2026-10-08. `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
-- **5d. Caos só no que o PR tocou.** `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.
+- **5d. Caos só no que o PR tocou.** ✅ Concluída em 2026-10-08. `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.
 - **5e. Custo real.**
   - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
   - Decidir o padrão do `deep` com esse dado. Separar o tier do caos do tier do chat, se for preciso.

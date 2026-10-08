@@ -7,6 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
+import { IGNORED_DIRS } from '@shieldepy/core';
 
 const run = promisify(execFile);
 
@@ -26,7 +27,11 @@ export class GitBaseError extends Error {}
 export interface BaseInfo {
   /** Commit usado como base (merge-base entre o ref e o HEAD). */
   commit: string;
-  /** Arquivos que mudaram na pasta desde a base, relativos a ela (com `/`), inclusive os não commitados. */
+  /**
+   * Arquivos que mudaram na pasta desde a base, relativos a ela (com `/`), inclusive os não
+   * commitados. Sem o que o mapa ignora (`node_modules`, `.shieldepy`): os testes gerados têm um
+   * `vitest.config.ts`, que não pode passar por mudança de config do projeto.
+   */
   changedFiles: string[];
 }
 
@@ -45,6 +50,7 @@ export async function baseInfo(dir: string, ref: string): Promise<BaseInfo & { t
   const prefix = rel ? `${rel}/` : '';
   const changedFiles = [...new Set([...tracked.split('\n'), ...untracked.split('\n')].filter(Boolean))]
     .map((f) => (f.startsWith(prefix) ? f.slice(prefix.length) : f))
+    .filter((f) => !f.split('/').some((seg) => IGNORED_DIRS.has(seg)))
     .sort();
   return { commit, changedFiles, top, rel };
 }

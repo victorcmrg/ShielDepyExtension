@@ -20,6 +20,7 @@ export * from './topology/routes';
 export * from './topology/io';
 export * from './topology/build';
 export * from './topology/surface';
+export * from './topology/affected';
 export * from './chaos-config';
 export * from './sql/classify';
 

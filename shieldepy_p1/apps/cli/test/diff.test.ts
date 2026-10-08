@@ -110,3 +110,78 @@ describe('E5/5c — shieldepy diff --base', () => {
     }
   });
 });
+
+describe('E5/5d — shieldepy chaos --base: só as rotas que o PR tocou', () => {
+  let dir: string;
+  const edit = (rel: string, from: string, to: string) => {
+    const full = path.join(dir, rel);
+    const text = fs.readFileSync(full, 'utf8');
+    expect(text).toContain(from);
+    fs.writeFileSync(full, text.replace(from, to));
+  };
+  const reset = () => {
+    execFileSync('git', ['checkout', '--quiet', '--', '.'], { cwd: dir });
+    fs.rmSync(path.join(dir, '.shieldepy'), { recursive: true, force: true });
+  };
+  async function chaos() {
+    const out: string[] = [];
+    const code = await main(['chaos', dir, '--base', 'HEAD', '--no-run', '--offline', '--json'], { out: (l) => out.push(l), err: () => {}, env: {} });
+    const r = JSON.parse(out.join('\n'));
+    return { code, scope: r.scope, specs: r.specs.map((s: { hypothesisId: string }) => s.hypothesisId) as string[] };
+  }
+
+  beforeAll(() => {
+    dir = gitCopy();
+  });
+  afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('só comentário e linhas em branco: nenhuma rota tocada, nenhum teste, exit 0', async () => {
+    edit('src/services/CheckoutService.ts', 'export class CheckoutService', '/** doc nova */\n\nexport class CheckoutService');
+    try {
+      const r = await chaos();
+      expect(r.code).toBe(0);
+      expect(r.scope).toMatchObject({ tested: [], affected: [] });
+      expect(r.scope.untouched.sort()).toEqual(['GET /orders/:id', 'POST /checkout']);
+      expect(r.specs).toEqual([]);
+    } finally {
+      reset();
+    }
+  });
+
+  it('corpo do StripeGateway.charge: só POST /checkout entra, com o motivo; GET /orders/:id fica de fora', async () => {
+    edit('src/gateways/StripeGateway.ts', "currency: 'brl'", "currency: 'usd'");
+    try {
+      const r = await chaos();
+      expect(r.scope.tested).toEqual(['POST /checkout']);
+      expect(r.scope.affected[0].why).toEqual(['código no caminho mudou: src/gateways/StripeGateway.ts#StripeGateway.charge']);
+      expect(r.scope.untouched).toEqual(['GET /orders/:id']);
+      expect(r.specs.length).toBeGreaterThan(0);
+      expect(r.specs.every((id) => id.startsWith('POST /checkout__'))).toBe(true);
+    } finally {
+      reset();
+    }
+  });
+
+  it('corpo do OrderRepository.findById: só GET /orders/:id (que não tem falha testável, então nenhum teste)', async () => {
+    edit('src/repositories/OrderRepository.ts', 'WHERE id = $1', 'WHERE id = $1 LIMIT 1');
+    try {
+      const r = await chaos();
+      expect(r.scope.tested).toEqual(['GET /orders/:id']);
+      expect(r.scope.untouched).toEqual(['POST /checkout']);
+      expect(r.specs).toEqual([]);
+    } finally {
+      reset();
+    }
+  });
+
+  it('package.json mudou: todas as rotas, com o motivo', async () => {
+    edit('package.json', '"private": true', '"private": true, "version": "0.0.2"');
+    try {
+      const r = await chaos();
+      expect(r.scope.all).toMatch(/mudou package\.json/);
+      expect(r.scope.tested.sort()).toEqual(['GET /orders/:id', 'POST /checkout']);
+    } finally {
+      reset();
+    }
+  });
+});
