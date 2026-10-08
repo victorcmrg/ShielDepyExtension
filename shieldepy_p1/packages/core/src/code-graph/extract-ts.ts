@@ -3,7 +3,7 @@
 // Tudo aqui é lido da AST: nada de regex sobre o texto do código.
 
 import { constructedType, FUNCTION_VALUE_TYPES, memberChain, typeRef, walk, type TypeRef } from './ast';
-import { DEFAULT_EXPORT_NAME } from './extract-module';
+import { DEFAULT_EXPORT_NAME, propertyKey } from './extract-module';
 import type { SyntaxNode } from './parser';
 import type { CallArg, SymbolKind } from './types';
 
@@ -357,14 +357,30 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
   return { kind: 'name', chain, ref, ...(scope && { scope }) };
 }
 
-/** Nome do contêiner de um método: classe, ou variável que guarda o objeto literal. */
+/**
+ * Nome de um objeto literal: `const repo = {…}` → `repo`; `export default {…}` → `default`;
+ * aninhado (`export default { invariants: {…} }`) → `default.invariants`.
+ */
+function objectPath(object: SyntaxNode): string | undefined {
+  const holder = object.parent;
+  if (holder?.type === 'variable_declarator') {
+    const name = holder.childForFieldName('name');
+    return name?.type === 'identifier' ? name.text : undefined;
+  }
+  if (holder?.type === 'export_statement') return DEFAULT_EXPORT_NAME;
+  if (holder?.type === 'pair' && holder.parent?.type === 'object') {
+    const base = objectPath(holder.parent);
+    const key = propertyKey(holder.childForFieldName('key'));
+    return base && key ? `${base}.${key}` : undefined;
+  }
+  return undefined;
+}
+
+/** Nome do contêiner de um método: classe, ou o caminho do objeto literal que o guarda. */
 function containerOf(node: SyntaxNode): string | undefined {
   const parent = node.parent;
   if (parent?.type === 'class_body' && parent.parent) return className(parent.parent);
-  if (parent?.type === 'object' && parent.parent?.type === 'variable_declarator') {
-    return parent.parent.childForFieldName('name')?.text;
-  }
-  return undefined;
+  return parent?.type === 'object' ? objectPath(parent) : undefined;
 }
 
 /** `app.post('/checkout')` — rótulo de um callback anônimo passado num nível em que não há função envolvente. */
@@ -421,7 +437,8 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
     } else if (node.type === 'variable_declarator' || node.type === 'public_field_definition' || node.type === 'pair') {
       // `const f = () => {}`, campo `handle = () => {}`, e `{ find: async () => {} }` em objeto literal
       const value = node.childForFieldName('value');
-      const name = node.childForFieldName(node.type === 'pair' ? 'key' : 'name')?.text;
+      // chave entre aspas (`'with-dash': () => {}`) vira o nome sem as aspas
+      const name = node.type === 'pair' ? propertyKey(node.childForFieldName('key')) : node.childForFieldName('name')?.text;
       if (name && value && FUNCTION_VALUE_TYPES.has(value.type)) {
         if (node.type === 'variable_declarator') push(node, 'function', name, value, { returns: returnType(value) });
         else push(node, 'method', name, value, { container: containerOf(node), returns: returnType(value) });

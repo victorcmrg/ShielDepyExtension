@@ -1,8 +1,8 @@
 {
-  "name": "checkout-express",
+  "name": "checkout-express-fixed",
   "private": true,
   "type": "module",
-  "description": "Exemplo do ShielDepy: checkout com race condition proposital (lê estoque, cobra, grava sem lock) e chamada ao Stripe sem timeout.",
+  "description": "Exemplo do ShielDepy: o mesmo checkout, corrigido — reserva o estoque num UPDATE atômico antes de cobrar, devolve se a cobrança falhar, e chama o Stripe com timeout.",
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

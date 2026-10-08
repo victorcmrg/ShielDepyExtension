@@ -16,7 +16,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, mergeada na `main` (PR #1).**
 - **E2 — Topologia** (tarefas 2a–2f, ver a seção "Fase 1 / E2"), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
 - **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
-- **E2 completa em 2026-10-08** na branch `feat/topologia` (criada a partir da `main` `6756ded`), commitada fatia a fatia e ainda não enviada: o usuário sobe a branch e faz o merge. A E3 começa depois, numa branch nova a partir da `main`.
+- **E2 completa e mergeada** (PR #3, `b4eeb7b`). A E3 está em andamento na branch `feat/chaos-agentes`, criada a partir da `main` depois desse merge.
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -27,7 +27,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, aguardando push e merge do usuário |
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
-| 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` (criar a partir da `main` após o merge da E2) | próximo |
+| 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | em andamento |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
 | 5. E5: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente, depois da E2 (ver avaliação) |
 
@@ -184,6 +184,29 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - README do `shieldepy_p1`: seção "Topologia: rotas e operações de I/O", comando na lista da CLI, arquivos no mapa do código e limites conhecidos.
   - Escrita a seção **"E3 — contexto sobre o que a E2 entregou"**: o que a E3 reaproveita, o catálogo × tags, as pendências achadas no código (o exemplo não executa, falta a variante corrigida, o provider não devolve tokens, os modelos padrão, a tabela de custo) e as tarefas 3a–3f com a aceitação.
   - **Estado final da E2:** 233 testes unitários, E2E 24/24, typecheck limpo, extensão compila, e o mapa do `checkout-express` continua com o mesmo hash da E1 (`6801cb46…`). Pronta para o usuário subir a branch `feat/topologia` e fazer o merge.
+- 2026-10-08: **E2 mergeada** (PR #3). Branch `feat/chaos-agentes` criada a partir da `main` (`b4eeb7b`). **E3 iniciada.**
+- 2026-10-08: **3a concluído (exemplos executáveis).** Três mudanças em relação ao plano, todas por causa do que apareceu ao rodar de verdade:
+  - **Banco dos testes: PGlite, não `pg-mem`.** No `pg-mem` 3.0.14, repetir o mesmo `UPDATE` parametrizado dava valores errados (5 → -4 → 5 → -4). Um teste de caos que acusa "estoque negativo" não pode depender disso. O PGlite (`@electric-sql/pglite`) é Postgres de verdade em WASM, no mesmo processo. Tem uma conexão só, mas a corrida do checkout acontece **entre** consultas (lê → `await` Stripe → grava), então se reproduz igual.
+  - **A variante corrigida reserva o estoque antes de cobrar**, num `UPDATE ... WHERE quantity >= $2` atômico, com compensação se a cobrança falhar, em vez de `FOR UPDATE` + transação. O PGlite tem uma conexão só, então não dá para testar trava de linha entre conexões. Além disso, "reservar primeiro" é o idioma mais comum em produção. O `FOR UPDATE` continua coberto pelos testes de `sensitivityTags`.
+  - **`shieldepy.chaos.config.ts` ganhou `requests`**: uma requisição válida por rota (id da topologia). A IA vê a superfície, mas não sabe montar um corpo válido; sem isso todo teste de caos pararia no `400` da validação. O contrato fica `{ createApp, setupFiles, reset, invariants, requests }`.
+  - **`checkout-express`** (o código de produção não mudou, só o `findById` abaixo):
+    - `chaos/db.ts`: PGlite com o schema e um `Pool` mínimo compatível com o `pg`;
+    - `chaos/setup.ts`: `vi.mock('pg')` aponta para esse `Pool`;
+    - `shieldepy.chaos.config.ts`, com `stockNeverNegative` e `atMostOneOrder`;
+    - `vitest.config.ts` com o alias `@/`;
+    - tsconfig em `moduleResolution: Bundler`, para o `tsc --noEmit` que a 3e vai usar.
+  - **Teste de fumaça do vulnerável:** o defeito é real. 10 compras simultâneas do último item vendem mais de uma vez e deixam o estoque negativo.
+  - **`checkout-express-fixed`:** reserva atômica, compensação, `AbortSignal.timeout(5000)` e falha do Stripe → `502`. O teste de fumaça confere exatamente 1 venda em 10, Stripe `503` → `502` com o estoque devolvido, e resposta inválida → `502`. A topologia dela é `db_write stock → api_call (timeout yes) → db_write stock (compensação) → db_write orders`, com as tags `external-io, multi-write-same-target(stock), write-after-api-call`: sem `read-then-write`, `no-transaction` nem `no-timeout`. Isso ficou fixado num teste da E2.
+  - **Bug real do exemplo corrigido:** o `findById` fazia `SELECT *` e devolvia `product_id`/`charge_id`, mas o tipo `Order` promete `productId`/`chargeId`. Agora usa alias no SQL, na mesma linha, e a topologia não mudou.
+  - **O grafo melhorou (achado no caminho):** o teste de fumaça chamava `config.reset()` / `config.invariants.x()` / `config.createApp()` e caía em heurística.
+    - Métodos de objeto literal agora têm contêiner com caminho (`default`, `default.invariants`).
+    - Propriedade abreviada ou que aponta para um nome (`{ createApp }`, `start: seed`) é seguida pelo novo `ModuleInfo.objectRefs`.
+    - Chave entre aspas perde as aspas no nome.
+    - Bug antigo corrigido: o `extract-module` comparava nós do Tree-sitter com `===`, o que nunca é verdadeiro no `web-tree-sitter`, então `export default new Svc()` nunca registrava o tipo.
+    - Os dois exemplos saem **100% provados**. No `packages/` do próprio ShielDepy, 1153 → 1162 resolvidas, sem piora.
+  - **Observação para depois:** o `packages/` do ShielDepy tem 5 chamadas heurísticas e 2 sem alvo, vindas de código da E2 (`CodeGraph.ts`, `system-graph.ts`, `build.ts`, testes). Não bloqueia nada. Também: o `shieldepy graph apps` fica lento porque varre `apps/vscode/.vscode-test` (o VS Code baixado pelo E2E), que não está entre as pastas ignoradas.
+  - O E2E não copia mais o `node_modules` do exemplo para o workspace de teste.
+  - Suíte: **236 testes**. E2E 24/24. Os testes de fumaça dos exemplos: 3/3 no vulnerável e 4/4 no corrigido (`npm test` dentro de cada exemplo).
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -438,7 +461,7 @@ Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 
 ### Tarefas da E3
 
-- **3a. Exemplo executável e variante corrigida.**
+- **3a. Exemplo executável e variante corrigida.** ✅ Concluída em 2026-10-08 (PGlite no lugar do `pg-mem`; a corrigida reserva antes de cobrar; config com `requests`; ver o registro).
   - `checkout-express` com o `pool` injetável, `pg-mem`, seed e `shieldepy.chaos.config.ts`.
   - `checkout-express-fixed` com lock + transação + timeout.
   - Teste da E2: a topologia do vulnerável continua igual, e a do corrigido perde `no-transaction` e `no-timeout`.
@@ -492,7 +515,7 @@ I/O (escrever arquivos, rodar processo) é injetado nos nós via interface `Chao
 5. **GitHub Actions**: `.github/workflows/shieldepy-chaos.yml` (raiz do repo) — checkout, Node 22, `npm ci`, `shieldepy chaos <alvo> --report chaos-report.md --fail-on Alto`, publica em `$GITHUB_STEP_SUMMARY` e comenta no PR com `gh pr comment --edit-last || gh pr comment` (`permissions: pull-requests: write`); `ANTHROPIC_API_KEY` via secret, roda `--offline` quando ausente. Também um template documentado em `docs/` para repositórios-alvo.
 
 ## Exemplo de validação
-`shieldepy_p1/examples/checkout-express/`: `POST /checkout` que faz `SELECT stock` (pg, via `pg-mem` em memória) → `fetch('https://api.stripe.com/v1/charges')` → `UPDATE stock`/`INSERT orders` **sem lock** (race proposital) e sem timeout no fetch. Inclui `shieldepy.chaos.config.ts` com invariante `stockNeverNegative`. Variante `checkout-express-fixed` (com `SELECT ... FOR UPDATE`/transação + `AbortSignal.timeout`) deve passar.
+`shieldepy_p1/examples/checkout-express/`: `POST /checkout` que faz `SELECT stock` (pg; nos testes, PGlite em memória) → `fetch('https://api.stripe.com/v1/charges')` → `UPDATE stock`/`INSERT orders` **sem lock** (race proposital) e sem timeout no fetch. Inclui `shieldepy.chaos.config.ts` com os invariantes `stockNeverNegative` e `atMostOneOrder` e as requisições válidas. A variante `checkout-express-fixed` (reserva atômica antes de cobrar, com compensação, e `AbortSignal.timeout`) deve passar. *(Atualizado na 3a: PGlite no lugar do `pg-mem`, e reserva atômica no lugar de `FOR UPDATE`.)*
 
 ## Arquivos críticos
 - Novo: `packages/core/src/topology/*`, `packages/core/src/sql/lexer.ts` (movido de extractors), `packages/agent/src/chaos/*`, `apps/cli/src/chaos/run.ts`, `.github/workflows/shieldepy-chaos.yml`, `examples/checkout-express*`.

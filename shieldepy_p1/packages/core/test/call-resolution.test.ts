@@ -281,6 +281,47 @@ describe('Fase 0 — resolução de chamadas por tipo do receptor', () => {
     expect(graph.hasEdge(symbolId(graph, 'a', f), symbolId(graph, 'b', f), 'references')).toBe(true);
     expect(graph.cyclesInFile(f)).toEqual([]);
   });
+
+  it('objeto literal exportado (default e aninhado) e propriedade que aponta para função importada', () => {
+    const app = indexFile(graph, fx, 'app.ts', 'export function createApp() {}\n');
+    const cfg = indexFile(
+      graph,
+      fx,
+      'config.ts',
+      [
+        "import { createApp } from './app';",
+        'function seed() {}',
+        'export default {',
+        '  createApp,',
+        '  start: seed,',
+        '  async reset() {},',
+        "  invariants: { async stockNeverNegative() { return true; }, 'with-dash': async () => true },",
+        '};',
+      ].join('\n')
+    );
+    const t = indexFile(
+      graph,
+      fx,
+      'smoke.ts',
+      "import config from './config';\nexport async function run() {\n  config.createApp();\n  config.start();\n  await config.reset();\n  await config.invariants.stockNeverNegative();\n}\n"
+    );
+    const run = symbolId(graph, 'run', t);
+    expect(graph.hasEdge(run, symbolId(graph, 'createApp', app), 'calls')).toBe(true);
+    expect(graph.hasEdge(run, symbolId(graph, 'seed', cfg), 'calls')).toBe(true);
+    expect(graph.hasEdge(run, methodId(graph, 'default', 'reset', cfg), 'calls')).toBe(true);
+    expect(graph.hasEdge(run, methodId(graph, 'default.invariants', 'stockNeverNegative', cfg), 'calls')).toBe(true);
+    expect(methodId(graph, 'default.invariants', 'with-dash', cfg)).toBeDefined();
+    expect(graph.fileCoverage(t)).toMatchObject({ callsResolved: 4, callsHeuristic: 0, callsUnresolved: 0 });
+  });
+
+  it('`export default new Svc()`: a instância exportada leva ao método da classe', () => {
+    const svc = indexFile(graph, fx, 'svc.ts', 'class Svc { save() {} }\nclass Other { save() {} }\nexport default new Svc();\n');
+    const t = indexFile(graph, fx, 'use.ts', "import svc from './svc';\nexport function run() { svc.save(); }\n");
+    const run = symbolId(graph, 'run', t);
+    expect(graph.hasEdge(run, methodId(graph, 'Svc', 'save', svc), 'calls')).toBe(true);
+    expect(graph.hasEdge(run, methodId(graph, 'Other', 'save', svc), 'calls')).toBe(false);
+    expect(graph.fileCoverage(t).callsHeuristic).toBe(0);
+  });
 });
 
 describe('E2 — cada chamada em ordem, com posição e argumentos (callSitesIn / callsOf)', () => {

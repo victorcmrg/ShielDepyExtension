@@ -1046,16 +1046,26 @@ export class CodeGraph {
    * `local.m()` onde `local` é um nome do topo de `fileId`: classe (método estático), objeto
    * literal (`const repo = { save() {} }`) ou instância (`const svc = new Svc()`).
    */
-  private resolveMemberOfLocal(fileId: string, local: string, rest: string[], method: string, ctx: ResolutionContext): CallResolution | undefined {
+  private resolveMemberOfLocal(
+    fileId: string,
+    local: string,
+    rest: string[],
+    method: string,
+    ctx: ResolutionContext,
+    depth = 0
+  ): CallResolution | undefined {
     const classes = this.topLevelByName(fileId, local).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
     if (classes.length > 0) return this.membersOf(classes, rest, method, ctx);
-    if (rest.length === 0) {
-      const members = this.ownedSymbols(fileId).filter((id) => {
-        const m = this.graph.getNodeAttributes(id);
-        return isSymbolNode(m) && m.container === local && m.name === method;
-      });
-      if (members.length > 0) return { outcome: 'callsResolved', targets: members };
-    }
+    // objeto literal, inclusive aninhado: `config.invariants.check()` → método de contêiner `config.invariants`
+    const container = [local, ...rest].join('.');
+    const members = this.ownedSymbols(fileId).filter((id) => {
+      const m = this.graph.getNodeAttributes(id);
+      return isSymbolNode(m) && m.container === container && m.name === method;
+    });
+    if (members.length > 0) return { outcome: 'callsResolved', targets: members };
+    // propriedade que aponta para um nome (`export default { createApp }`): segue o nome, no arquivo do objeto
+    const alias = this.moduleInfo.get(fileId)?.objectRefs.get(`${container}.${method}`);
+    if (alias && depth < 8) return this.resolveCall(fileId, { name: alias }, ctx, depth + 1);
     const type = this.moduleInfo.get(fileId)?.valueTypes.get(local);
     return type ? this.resolveMember(fileId, type, rest, method, ctx) : undefined;
   }
@@ -1150,7 +1160,7 @@ export class CodeGraph {
   private hasContainer(fileId: string, name: string): boolean {
     return this.ownedSymbols(fileId).some((id) => {
       const attrs = this.graph.getNodeAttributes(id);
-      return isSymbolNode(attrs) && attrs.container === name;
+      return isSymbolNode(attrs) && attrs.container !== undefined && (attrs.container === name || attrs.container.startsWith(`${name}.`));
     });
   }
 

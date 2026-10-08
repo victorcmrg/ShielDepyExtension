@@ -109,6 +109,23 @@ describe('E2/2d — topologia', () => {
     expect(t.stats).toMatchObject({ routes: 2, sensitiveRoutes: 2, operations: 5, callsHeuristic: 0, callsUnresolved: 0 });
   });
 
+  it('checkout-express-fixed: reservar antes de cobrar e timeout tiram as tags de corrida e de timeout', async () => {
+    const dir = path.join(REPO_ROOT, 'examples/checkout-express-fixed');
+    await indexFiles(graph, await listSourceFiles(dir), silentHost);
+    const t = buildTopology(graph, buildSystemGraph(graph, [], dir), dir);
+    const checkout = t.routes.find((r) => r.id === 'POST /checkout')!;
+    expect(checkout.operations.map((o) => `${o.kind} ${o.target} ${o.through.at(-1)!.split('#')[1]!.split(':')[0]}`)).toEqual([
+      'db_write stock reserve',
+      'api_call api.stripe.com charge',
+      'db_write stock release',
+      'db_write orders insert',
+    ]);
+    expect(checkout.operations[1]).toMatchObject({ timeout: 'yes' });
+    // sobram só as tags verdadeiras: a compensação escreve de novo no estoque, depois da API
+    expect(tagNames(checkout)).toEqual(['external-io(api.stripe.com)', 'multi-write-same-target(stock)', 'write-after-api-call(orders,stock)']);
+    expect(t.stats).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
+  });
+
   it('determinística: mesma entrada em outra ordem de indexação → mesmo hash', async () => {
     const files = {
       'app.ts': "import express from 'express';\nimport { save } from './repo';\nconst app = express();\napp.post('/x', async () => { await save(); });\n",
