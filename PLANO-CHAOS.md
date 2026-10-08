@@ -15,7 +15,8 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 
 - **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, mergeada na `main` (PR #1).**
 - **E2 — Topologia** (tarefas 2a–2f, ver a seção "Fase 1 / E2"), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
-- **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2). A E2 está em andamento na branch `feat/topologia`, criada a partir da `main` (`6756ded`).
+- **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
+- **E2 completa em 2026-10-08** na branch `feat/topologia` (criada a partir da `main` `6756ded`), commitada fatia a fatia e ainda não enviada: o usuário sobe a branch e faz o merge. A E3 começa depois, numa branch nova a partir da `main`.
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -24,7 +25,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído, mergeado |
 | 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
-| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | em andamento |
+| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, aguardando push e merge do usuário |
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
 | 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
@@ -176,6 +177,12 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **CLI:** `shieldepy topology <pasta> [--json] [--surface] [--out arquivo] [--html arquivo]`. Na saída de texto, cada rota vem com a cadeia de handlers, as operações em ordem com `arquivo:linha` e detalhe (`sem timeout`, `FOR UPDATE`, `por nome`), as tags e os registros que não deu para ler.
   - **Visualizador:** `renderGraphHtml(system, label, mode, topology?)`. Com a topologia, rotas viram nós (ligados aos handlers) e cada operação de I/O vira um nó (`db_write stock`, `api_call api.stripe.com`, ligado ao símbolo que a faz). Também ganha a lista lateral de rotas com as tags, o filtro "rotas e operações de I/O" e o link `#rota=POST /checkout`, que abre o fluxo da rota. Conferido em screenshot no Chrome headless (mapa geral e fluxo do `POST /checkout`). Sem a topologia, o visualizador da E1 continua igual.
   - Suíte: **233 testes**. A extensão compila.
+- 2026-10-08: **2f concluído, e com ele a E2.**
+  - **Extensão:** comando **"ShielDepy: Exportar Topologia (rotas e I/O)"**. Usa o grafo e as regras que já estão em memória (sem reindexar), grava `.shieldepy/topology-graph.json` na raiz e avisa quantas rotas, rotas sensíveis e operações saíram, com atalhos "Abrir arquivo" e "Ver rotas no mapa". O aviso diz quando o mapa tem chamadas não provadas.
+  - O painel **"Ver Mapa do Sistema"** passa a receber a topologia: rotas e operações viram nós também no editor, e o "Abrir código" de uma rota leva ao registro dela.
+  - **E2E: 24/24 num VS Code 1.141 real.** O cenário novo exporta a topologia do workspace e confere `POST /checkout` com `db_read stock → api_call api.stripe.com → db_write stock → db_write orders`, as tags, a confiança `proven`, o arquivo igual ao que está em memória e o painel do mapa com a mesma topologia.
+  - README do `shieldepy_p1`: seção "Topologia: rotas e operações de I/O", comando na lista da CLI, arquivos no mapa do código e limites conhecidos.
+  - **Estado final da E2:** 233 testes unitários, E2E 24/24, typecheck limpo, extensão compila, e o mapa do `checkout-express` continua com o mesmo hash da E1 (`6801cb46…`). Pronta para o usuário subir a branch `feat/topologia` e fazer o merge.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -276,7 +283,7 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
   - `attackSurface(topology)`: só rotas com I/O e baldes com colisão. É isto, e não o código, que vai para a IA.
   - `shieldepy topology <pasta> [--json] [--out .shieldepy/topology-graph.json]`.
   - O `--html` do V1 mostra rotas e operações como nós.
-- **2f. Extensão (pequeno).** Comando "ShielDepy: Exportar topologia" usando o `WorkspaceModel` (grafo + regras já em memória).
+- **2f. Extensão (pequeno).** ✅ Concluída em 2026-10-08. Comando "ShielDepy: Exportar topologia" usando o `WorkspaceModel` (grafo + regras já em memória).
 
 ### Resultado esperado no `checkout-express` (é o teste de aceitação da E2)
 
@@ -423,9 +430,9 @@ I/O (escrever arquivos, rodar processo) é injetado nos nós via interface `Chao
    - Os testes das fixtures da Fase 0 passam.
    - Só depois disso começa a Fase 2.
 1. `npm test` — testes Vitest novos:
-   - `core/test/topology/*`: extratores de rota/I/O sobre fixtures inline (fetch, axios, pg SQL, prisma), BFS por chamadas, tags, filtro, hash estável (duas execuções = mesmo JSON).
+   - `core/test/topology/*`: extratores de rota/I/O sobre fixtures inline (fetch, axios, pg SQL, prisma), BFS por chamadas, tags, filtro, hash estável (duas execuções = mesmo JSON). ✅ E2: `routes.test.ts`, `io.test.ts` e `build.test.ts`.
    - `agent/test/chaos/*`: validação de hipóteses (descarta rota inexistente/falha fora do catálogo), templates geram código que compila (`tsc --noEmit` em snapshot), grafo LangGraph com `LLMProvider` fake e `ChaosIo` fake percorre todos os estados.
-   - `cli/test`: `topology` em `examples/checkout-express` gera `POST /checkout` com `db_read→api_call→db_write` e tags `read-then-write`, `write-after-api-call`.
+   - `cli/test`: `topology` em `examples/checkout-express` gera `POST /checkout` com `db_read→api_call→db_write` e tags `read-then-write`, `write-after-api-call`. ✅ E2.
 2. `npm run typecheck`.
 3. E2E manual: `npm run cli -- chaos examples/checkout-express --offline` → exit 1, relatório aponta race (estoque negativo) e timeout no Stripe; mesmo comando em `checkout-express-fixed` → exit 0. Repetir com `ANTHROPIC_API_KEY`.
 4. Abrir PR de teste no GitHub com o exemplo vulnerável e confirmar check vermelho + comentário no PR.

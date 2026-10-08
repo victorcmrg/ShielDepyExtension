@@ -86,6 +86,10 @@
         "title": "ShielDepy: Ver Mapa do Sistema"
       },
       {
+        "command": "shieldepy.exportTopology",
+        "title": "ShielDepy: Exportar Topologia (rotas e I/O)"
+      },
+      {
         "command": "shieldepy.setApiKey",
         "title": "ShielDepy: Configurar Chave da IA"
       },

@@ -3,7 +3,7 @@
 
 import * as vscode from 'vscode';
 import { explainCollisions, reviewChange, type DiagnosisReport } from '@shieldepy/agent';
-import { toFileId } from '@shieldepy/core';
+import { buildSystemGraph, buildTopology, canonicalJson, toFileId, type TopologyGraph } from '@shieldepy/core';
 import { config } from './config';
 import { CMD } from './constants';
 import { t } from './i18n';
@@ -135,6 +135,41 @@ function renderReport(report: DiagnosisReport): string {
     );
   }
   return lines.join('\n');
+}
+
+/** Onde a topologia exportada fica, relativo à raiz do workspace (o mesmo caminho que a CLI usa no plano). */
+export const TOPOLOGY_FILE = ['.shieldepy', 'topology-graph.json'] as const;
+
+/**
+ * "Exportar Topologia": grava `.shieldepy/topology-graph.json` com o grafo e as regras que já estão
+ * em memória (sem reindexar nada). O aviso não é aguardado — quem chama (inclusive o E2E) recebe a
+ * topologia na hora; "Abrir arquivo" e "Ver rotas no mapa" ficam como atalho.
+ */
+export async function exportTopology(workspace: WorkspaceModel, showMap: () => void): Promise<TopologyGraph | undefined> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    void vscode.window.showInformationMessage('ShielDepy: abra uma pasta para exportar a topologia.');
+    return undefined;
+  }
+  const root = folder.uri.fsPath;
+  const topology = buildTopology(workspace.graph, buildSystemGraph(workspace.graph, workspace.rules, root), root);
+  const target = vscode.Uri.joinPath(folder.uri, ...TOPOLOGY_FILE);
+  await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(folder.uri, TOPOLOGY_FILE[0]));
+  await vscode.workspace.fs.writeFile(target, Buffer.from(canonicalJson(topology, 2) + '\n', 'utf8'));
+
+  const s = topology.stats;
+  const partial = s.callsHeuristic + s.callsUnresolved > 0 ? ' O mapa tem chamadas não provadas: parte do percurso pode estar faltando.' : '';
+  void vscode.window
+    .showInformationMessage(
+      `ShielDepy: ${s.routes} rota(s), ${s.sensitiveRoutes} sensível(is), ${s.operations} operação(ões) de I/O → ${TOPOLOGY_FILE.join('/')}.${partial}`,
+      'Abrir arquivo',
+      'Ver rotas no mapa'
+    )
+    .then(async (pick) => {
+      if (pick === 'Abrir arquivo') await vscode.window.showTextDocument(target);
+      else if (pick === 'Ver rotas no mapa') showMap();
+    });
+  return topology;
 }
 
 async function showMarkdown(content: string): Promise<void> {

@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_NAME } from '@shieldepy/agent';
-import { CodeGraph, isFileOnDisk, readFileOnDisk, toFileId, type Host } from '@shieldepy/core';
+import { CodeGraph, isFileOnDisk, readFileOnDisk, toFileId, type Host, type TopologyGraph } from '@shieldepy/core';
 import { loadRegistry } from '@shieldepy/extractors';
 import { AnalyzingDecorationProvider } from './analysis/AnalyzingDecorationProvider';
 import { BackgroundAnalyzer } from './analysis/BackgroundAnalyzer';
@@ -10,7 +10,7 @@ import { FindingsCache } from './analysis/FindingsCache';
 import { FindingsManager } from './analysis/FindingsManager';
 import { ScanAnimator } from './analysis/ScanAnimator';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
-import { explainWorkspaceCollisions, login, logout, refreshAccess, requireAccess, reviewImpact, setApiKey } from './commands';
+import { explainWorkspaceCollisions, exportTopology, login, logout, refreshAccess, requireAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
 import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
 import { InlineSuggestionProvider } from './inline/InlineSuggestionProvider';
@@ -36,6 +36,8 @@ interface TestApi {
   graphStats(): unknown;
   /** Mapa mostrado pela última vez no painel (comando "Ver Mapa do Sistema"). */
   lastMap(): unknown;
+  /** Topologia do último "Exportar Topologia" (ou a do painel do mapa). */
+  lastTopology(): unknown;
   /** Reindexa o workspace inteiro e devolve o relatório (teto, parcial). */
   reindex(): Promise<IndexReport>;
 }
@@ -134,6 +136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
   const mapPanel = new MapPanel(context.extensionUri, workspace);
   push(mapPanel);
+  let exported: TopologyGraph | undefined;
   push(
     // retainContextWhenHidden: trocar de aba não descarta o rascunho não enviado do chat.
     vscode.window.registerWebviewViewProvider(VIEW_CHAT, chat, { webviewOptions: { retainContextWhenHidden: true } }),
@@ -156,6 +159,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     }),
     vscode.commands.registerCommand(CMD.scanWorkspace, guarded(() => chat.runFullScan())),
     vscode.commands.registerCommand(CMD.showMap, guarded(() => mapPanel.show())),
+    vscode.commands.registerCommand(
+      CMD.exportTopology,
+      guarded(async () => {
+        exported = (await exportTopology(workspace, () => mapPanel.show())) ?? exported;
+      })
+    ),
     vscode.commands.registerCommand(CMD.attachFinding, guarded((finding: FindingAttachment) => chat.attachFinding(finding))),
     vscode.commands.registerCommand(CMD.toggleInline, async () => {
       const next = !config.inlineEnabled();
@@ -252,6 +261,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     signInWithToken: (token) => auth.signInWithToken(token),
     graphStats: () => workspace.graph.stats,
     lastMap: () => mapPanel.last,
+    lastTopology: () => exported ?? mapPanel.lastTopology,
     reindex: () => indexWorkspace(workspace, log),
     decorationFor: (fsPath) => {
       const d = explorer.provideFileDecoration(vscode.Uri.file(fsPath));

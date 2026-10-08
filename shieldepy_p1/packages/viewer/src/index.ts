@@ -359,12 +359,14 @@ const APP = String.raw`
     el.hidden = false;
     el.innerHTML = '<h2>' + escape(raw.name) + '</h2><dl>' + rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + escape(String(v)) + '</dd>').join('') + '</dl>' +
       '<div class="row"><button id="down">Cadeia abaixo</button><button id="up">Quem chega aqui</button><button id="clear">Limpar</button>' +
-      (vscodeApi && (raw.file || raw.kind === 'file') ? '<button id="open">Abrir código</button>' : '') + '</div>';
+      (vscodeApi && (raw.file || raw.kind === 'file' || raw.route) ? '<button id="open">Abrir código</button>' : '') + '</div>';
     document.getElementById('down').onclick = () => showFlow(chain(node, 'down'), node, 'Cadeia a partir de ' + raw.name);
     document.getElementById('up').onclick = () => showFlow(chain(node, 'up'), node, 'Quem chega em ' + raw.name);
     document.getElementById('clear').onclick = () => { cy.elements().unselect(); clearHighlight(); };
     const open = document.getElementById('open');
-    if (open) open.onclick = () => vscodeApi.postMessage({ type: 'open', file: raw.kind === 'file' ? raw.id : raw.file, line: raw.startLine || 0 });
+    // rota abre onde ela é registrada
+    if (open && raw.route) open.onclick = () => vscodeApi.postMessage({ type: 'open', file: raw.route.file, line: raw.route.line });
+    else if (open) open.onclick = () => vscodeApi.postMessage({ type: 'open', file: raw.kind === 'file' ? raw.id : raw.file, line: raw.startLine || 0 });
   }
   function escape(t) {
     return t.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
