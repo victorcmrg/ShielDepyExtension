@@ -129,6 +129,8 @@ export type CallArg =
   | { kind: 'function'; symbolId?: string }
   /** Identificador ou cadeia (`router`, `ctrl.create`), resolvido como referência. */
   | { kind: 'name'; chain: string[]; outcome: CallOutcome; targets: string[]; package?: string; origin?: ValueOrigin }
+  /** Resultado de outra chamada (`express.json()`, `auth('admin')`) — ela própria aparece como chamada separada. */
+  | { kind: 'call'; callee: string[] }
   | { kind: 'other' };
 
 /** Uma chamada do código, já resolvida, com a posição e os argumentos. */

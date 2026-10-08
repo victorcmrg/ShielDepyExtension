@@ -343,6 +343,10 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
     const symbolId = symbolAt.get(arg.startIndex)?.id;
     return symbolId ? { kind: 'function', symbolId } : { kind: 'function' };
   }
+  if (arg.type === 'call_expression') {
+    const callee = memberChain(arg.childForFieldName('function'));
+    if (callee) return { kind: 'call', callee };
+  }
   const chain = memberChain(arg);
   if (!chain || chain[0] === 'super' || (chain.length === 1 && chain[0] === 'this')) return { kind: 'other' };
   const scope = chain[0] === 'this' ? undefined : declarationScope(arg, chain[0]!);

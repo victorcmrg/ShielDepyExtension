@@ -134,6 +134,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Saída de `callsOf`/`callSitesIn`: `{ caller, line, column, name, object, outcome, targets, package, shadowed, receiverOrigin, args }`. O `outcome` vale `resolved | heuristic | unresolved | external | unbound`. `fetch` global sai `unbound` sem `shadowed`.
   - O lexer SQL foi movido para `packages/core/src/sql/lexer.ts` e é exportado como `tokenizeSql`; `extractors` importa de lá.
   - Suíte: 204 → **210 testes**. Typecheck limpo e a extensão compila.
+- 2026-10-08: **2b concluído (rotas Express)**, em `packages/core/src/topology/routes.ts` (`findExpressRoutes`).
+  - **Roteador:** qualquer valor cujas chamadas resolvem para `pkg:express` (`express()`, `Router()`, `express.Router()`, `require('express')`). A identidade dele é a `origin` (onde é declarado), ou `this.router` dentro do arquivo.
+  - **Rota:** `get|post|put|patch|delete|head|options|all` com path literal e pelo menos um handler. `app.get('env')` é leitura de configuração e não entra. Path dinâmico vai para `skipped`, com motivo.
+  - **Montagem:** `use([prefixo], x)` em que `x` é um roteador conhecido. A rota sobe pelas montagens somando prefixos; um roteador montado duas vezes gera duas rotas, e ciclo de montagem não trava.
+  - **Middlewares:** os outros argumentos de `use` entram na cadeia, mas só os registrados **antes** (no mesmo arquivo) e dentro do prefixo, que é a semântica do Express. Middleware de pacote sai com `package`. Chamada (`express.json()`, `auth()`) sai `opaque`: aparece na cadeia, mas o percurso não entra. Para isso, `CallArg` ganhou o tipo `call` (`callee`).
+  - **`checkout-express`:** `POST /checkout: express.json() → validateCheckout → checkoutController.create` e `GET /orders/:id: express.json() → <inline>`. O `express.json()` vem do `app.use` de `app.ts`, que fica antes da montagem, e por isso está certo.
+  - **Limite (da E1, não da 2b):** campo sem anotação iniciado por chamada (`router = Router()`) não tem tipo, então `this.router.post` não é reconhecido. Com anotação (`router: Router = Router()`), é. Também ficam de fora `router.route('/x').get(...)` e roteador recebido como parâmetro (`register(r: Router)`), que sai sem o prefixo de quem chama.
+  - Suíte: **216 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -211,7 +219,7 @@ Hoje a resolução de cada chamada é interna (`resolveCall`), e as arestas junt
   - `line`/`firstArg` no `RawCall`, mais `callsOf` e `referencesAt`.
   - Mover o lexer SQL para o core; `extractors` passa a importar de lá.
   - Testes no `call-resolution.test.ts`.
-- **2b. Rotas Express** (`topology/routes.ts`):
+- **2b. Rotas Express** (`topology/routes.ts`): ✅ Concluída em 2026-10-08.
   - Registrar com receptor resolvido para `pkg:express`, verbos `get|post|put|patch|delete|all` e path literal.
   - Montagem com prefixo `app.use('/api', router)`, seguindo `router` importado até a sua declaração. Compor os prefixos.
   - Cada rota guarda os handlers **em ordem** (middlewares + handler final).

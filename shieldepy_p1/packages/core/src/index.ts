@@ -15,6 +15,9 @@ export * from './code-graph/indexer';
 
 export { tokenize as tokenizeSql, type Token as SqlToken } from './sql/lexer';
 
+export * from './topology/types';
+export * from './topology/routes';
+
 export * from './system-graph';
 export * from './findings';
 export * from './host';
