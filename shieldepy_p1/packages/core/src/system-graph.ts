@@ -15,7 +15,7 @@ import { toFileId } from './paths';
 export const SYSTEM_GRAPH_VERSION = 1;
 
 export interface SystemNode {
-  /** Arquivo: caminho relativo (`src/app.ts`); símbolo: `src/app.ts#nome:linha`; pacote: `pkg:nome`. */
+  /** Arquivo: caminho relativo (`src/app.ts`); símbolo: `src/app.ts#Contêiner.nome` (estável, sem a linha); pacote: `pkg:nome`. */
   id: string;
   kind: 'file' | 'package' | 'function' | 'class' | 'method' | 'selector';
   name: string;
@@ -30,6 +30,9 @@ export interface SystemNode {
   implements?: string[];
   fields?: Record<string, string[]>;
   returns?: string[];
+  /** Símbolo: hash do corpo; arquivo TS/JS: hash do código de topo (o diff entre mapas usa os dois). */
+  bodyHash?: string;
+  topHash?: string;
   /** Arquivo citado por um import mas ainda não lido. */
   external?: boolean;
 }
@@ -114,7 +117,7 @@ export function buildSystemGraph(graph: CodeGraph, rules: Rule[], root: string):
   const snapshot = graph.toSnapshot();
   const nodes: SystemNode[] = snapshot.nodes.map(({ id, attributes: a }) => {
     if (a.kind === 'package') return { id, kind: 'package', name: a.name };
-    if (!isSymbolNode(a)) return { id: rel(id), kind: 'file', name: path.posix.basename(rel(id)), ...(a.external && { external: true }) };
+    if (!isSymbolNode(a)) return { id: rel(id), kind: 'file', name: path.posix.basename(rel(id)), ...(a.topHash && { topHash: a.topHash }), ...(a.external && { external: true }) };
     return {
       id: rel(id),
       kind: a.kind,
@@ -123,6 +126,7 @@ export function buildSystemGraph(graph: CodeGraph, rules: Rule[], root: string):
       startLine: a.startLine,
       endLine: a.endLine,
       signature: a.signature,
+      bodyHash: a.bodyHash,
       container: a.container,
       extends: a.extends,
       implements: a.implements,

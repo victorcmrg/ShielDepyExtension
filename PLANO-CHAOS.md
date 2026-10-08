@@ -26,7 +26,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **291** depois da 5a).
+- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **295** depois da 5b).
 - `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
@@ -379,6 +379,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Correção ao plano:** o `contentHash` do mapa **muda** quando as linhas se deslocam, e deve mudar, porque o mapa guarda `startLine` e `arquivo:linha`. O que não muda são os ids e as arestas, e é sobre eles que o diff da 5c trabalha. O teste confere isso: comentário e linhas em branco acima de tudo mantêm os mesmos nós e arestas.
   - Cobertura do `packages/` igual (1468 resolvidas, 7 heurísticas, 2 sem alvo, 0 imports quebrados), com 1 símbolo a mais: antes, dois símbolos de mesmo nome na mesma linha caíam no mesmo id. Agora há 21 ids com `~n` no `packages/`.
   - Suíte: **291 testes**.
+- 2026-10-08: **5b concluído (hash do corpo e do código de topo)**, em `code-graph/fingerprint.ts`.
+  - **`bodyHash`** (16 hex de um SHA-256) das folhas da AST do símbolo, em ordem: tipo + texto, sem comentários. Pontuação e operadores entram (`x + 1` ≠ `x - 1`). O **nome do próprio símbolo fica de fora**, então renomear sem mexer no corpo mantém o hash. Quando o nó hasheado é o próprio símbolo (método, classe), o nó `name` é pulado; em `const f = () => {}`, o hash é da função.
+  - **`topHash`** no nó de arquivo TS/JS: as folhas **fora** de todos os símbolos (imports, constantes, montagem, `export const svc = new Svc(...)`). Mudar o corpo de uma função não mexe nele.
+  - Calculados no mesmo parse do `updateFile`, sem segundo parse. Os dois vão para o `SystemGraph` (`bodyHash` nos símbolos e `topHash` nos arquivos).
+  - O hash da classe inclui os métodos, então mudar um método muda a classe também. O diff vai olhar os métodos; a classe só serve de contexto.
+  - **Custo medido:** no pior caso (duas varreduras completas por arquivo), 169 ms de 1,9 s para indexar 99 arquivos do `packages/`, cerca de 9%. Numa edição na extensão, 1 a 2 ms.
+  - Testes: comentário, espaço e linhas acima não mudam nada; `x + 1` → `x - 1` muda só aquele método (e a classe); renomear mantém o hash; o topo muda com import e com constante exportada, e não com o corpo.
+  - Suíte: **295 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -766,7 +774,7 @@ Medido no vulnerável:
 
 ### Tarefas
 - **5a. Ids estáveis.** ✅ Concluída em 2026-10-08. Id sem linha, com sufixo de ordem nos repetidos, e a linha como atributo. Migrar quem lê a linha do id (`surface.ts`, visualizador, extensão). Teste: inserir linhas no topo de um arquivo não muda nenhum id nem aresta (o `contentHash` muda, e deve mudar: o mapa guarda `startLine`).
-- **5b. Hash do corpo e do topo do arquivo**, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
+- **5b. Hash do corpo e do topo do arquivo** ✅ Concluída em 2026-10-08, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
 - **5c. Diff.** `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
 - **5d. Caos só no que o PR tocou.** `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.
 - **5e. Custo real.**

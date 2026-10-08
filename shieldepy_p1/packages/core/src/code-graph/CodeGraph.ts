@@ -4,6 +4,7 @@ import type { Host } from '../host';
 import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
+import { topLevelHash } from './fingerprint';
 import { extractCalls, extractSymbols, type CallDesc, type RawArg, type RawCall, type Scope, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
@@ -504,9 +505,8 @@ export class CodeGraph {
     try {
       const root = tree.rootNode;
       const implementedBefore = this.implementedNames(fileId);
-      this.resetFileNode(fileId, { kind: 'file', path: fsPath });
-
       const symbols = extractSymbols(root, fileId);
+      this.resetFileNode(fileId, { kind: 'file', path: fsPath, topHash: topLevelHash(root, symbols) });
       for (const sym of symbols) {
         this.graph.mergeNode(sym.id, {
           kind: sym.kind,
@@ -515,6 +515,7 @@ export class CodeGraph {
           startLine: sym.startLine,
           endLine: sym.endLine,
           signature: sym.signature,
+          bodyHash: sym.bodyHash,
           ...(sym.container !== undefined && { container: sym.container }),
           ...(sym.extends !== undefined && { extends: sym.extends }),
           ...(sym.implements !== undefined && { implements: sym.implements }),

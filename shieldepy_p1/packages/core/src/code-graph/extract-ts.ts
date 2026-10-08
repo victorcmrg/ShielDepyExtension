@@ -5,6 +5,7 @@
 import { constructedType, FUNCTION_VALUE_TYPES, memberChain, typeRef, walk, type TypeRef } from './ast';
 import { DEFAULT_EXPORT_NAME, propertyKey } from './extract-module';
 import type { SyntaxNode } from './parser';
+import { bodyHash } from './fingerprint';
 import type { CallArg, SymbolKind } from './types';
 
 export type { TypeRef } from './ast';
@@ -17,6 +18,8 @@ export interface SymbolInfo {
   endLine: number;
   /** Lista de parâmetros (texto literal, ex: "(a: string, b: number)"). */
   signature?: string;
+  /** Hash do corpo pela AST (sem comentários, espaço e o próprio nome): o diff entre mapas (E5) vê se ele mudou. */
+  bodyHash: string;
   /** Offsets de caractere — atribuir chamada por linha não separa duas arrow functions na mesma linha. */
   startIndex: number;
   endIndex: number;
@@ -409,6 +412,8 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
       startLine: node.startPosition.row,
       endLine: node.endPosition.row,
       signature: paramsNode?.text,
+      // o nó hasheado é a função; quando ela é o próprio nó do símbolo (método, classe), o nome sai
+      bodyHash: bodyHash(fn, fn.startIndex === node.startIndex && fn.type === node.type ? node.childForFieldName('name') : undefined),
       startIndex: node.startIndex,
       endIndex: node.endIndex,
     };

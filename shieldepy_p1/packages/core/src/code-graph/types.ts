@@ -13,6 +13,8 @@ export interface FileNodeAttrs {
   /** Placeholder criado por um import antes de o arquivo alvo ser parseado. */
   external?: boolean;
   htmlUsages?: HtmlUsage[];
+  /** TS/JS: hash do código de topo (fora dos símbolos) — imports, montagem, instância exportada. */
+  topHash?: string;
 }
 
 export interface SymbolNodeAttrs {
@@ -24,6 +26,8 @@ export interface SymbolNodeAttrs {
   endLine: number;
   /** Lista de parâmetros (texto literal, ex: "(a: string, b: number)") — grátis, vem do próprio parse. */
   signature?: string;
+  /** Hash do corpo (AST, sem comentários nem o próprio nome). */
+  bodyHash?: string;
   /** Método: classe ou objeto literal que o contém. */
   container?: string;
   /** Classe: tipo base (`extends`), interfaces (`implements`) e tipo de cada campo conhecido. */
