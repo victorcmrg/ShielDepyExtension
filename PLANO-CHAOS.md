@@ -59,6 +59,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     O resto é heurístico marcado: variáveis cujo tipo vem do retorno de uma função.
   - Suíte: 180 → 194 testes.
   - Melhoria futura (não bloqueia a E1): inferir o tipo pelo retorno anotado (`const sim = model.fork()`).
+- 2026-10-07: **1c, parte 1: tipo de retorno.**
+  - Cada função registra o retorno anotado (`Promise<T>` vira T).
+  - O receptor pode ser o resultado de outra chamada: `const r = makeRepo(); r.save()`, `makeRepo().save()`, `new Repo().save()`, `(await load()).save()`.
+  - Valor devolvido por pacote é externo (`Router().post`, `res.status(400).json()`), e o nativo não é adivinhado.
+  - Receptor que não dá pra seguir (`a[0].b()`) só usa o fallback pelo nome do método, nunca o de função solta.
+  - **Medição no ShielDepy:** `packages/` 99,9% e `apps/` 99,0% resolvidas com prova, 0 sem resolução.
+  - Suíte: 196 testes.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

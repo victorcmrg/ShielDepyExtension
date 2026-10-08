@@ -29,6 +29,8 @@ export interface SymbolInfo {
   fields?: Record<string, TypeRef>;
   /** Classe: nomes de TODAS as propriedades (com ou sem tipo conhecido) — `this.log()` com `log: (m) => void` é valor, não método. */
   properties?: string[];
+  /** Função/método: tipo de retorno anotado (`Promise<T>` desembrulhado pra T). */
+  returns?: TypeRef;
 }
 
 /**
@@ -36,10 +38,13 @@ export interface SymbolInfo {
  * `type` é o tipo da parte inicial da cadeia; `rest` são as propriedades que ainda faltam
  * percorrer até o método (`this.deps.repo.save()` com `deps: Deps` → type Deps, rest ['repo']).
  */
-export interface Receiver {
-  type: TypeRef;
-  rest: string[];
-}
+export type Receiver =
+  | { type: TypeRef; rest: string[] }
+  /** O receptor é o RESULTADO de outra chamada: `res.status(400).json()`, `const r = Router(); r.post()`. */
+  | { call: CallDesc; rest: string[] };
+
+/** Uma chamada sem o chamador — o mesmo formato serve pro receptor de outra chamada. */
+export type CallDesc = Omit<RawCall, 'caller' | 'kind' | 'symbolId'>;
 
 /**
  * Uma chamada (ou referência) ainda por NOME: o CodeGraph resolve pra um símbolo depois (e religa
@@ -56,6 +61,8 @@ export interface RawCall {
   shadowed?: boolean;
   /** O receptor é local e de tipo nativo/estrutural (`X[]`, `string`, `[]`, `''`) — nunca é código do projeto. */
   opaque?: boolean;
+  /** O receptor é uma expressão que não dá pra seguir (`a[0].b()`): só o fallback por nome do MÉTODO serve. */
+  dynamic?: boolean;
   /** `ref`: função passada como valor (`app.post('/x', handler)`), vira aresta `references`. */
   kind?: 'call' | 'ref';
   /** Referência a um símbolo já conhecido (callback anônimo que virou símbolo). */
@@ -160,11 +167,36 @@ function annotatedType(annotation: SyntaxNode | null | undefined): TypeRef | nul
 }
 
 /**
+ * Tipo de retorno anotado de uma função; `Promise<T>` vira T (quem usa o valor faz `await`).
+ * Retorno anotado mas não nominal (`string`, `X[]`) → `[]`: sabe-se que não é classe do projeto.
+ */
+function returnType(fn: SyntaxNode): TypeRef | undefined {
+  const annotation = fn.childForFieldName('return_type');
+  if (!annotation) return undefined;
+  let inner: SyntaxNode | null | undefined = annotation.type === 'type_annotation' ? annotation.namedChildren[0] : annotation;
+  if (inner?.type === 'generic_type' && inner.childForFieldName('name')?.text === 'Promise') {
+    const args = inner.childForFieldName('type_arguments') ?? inner.namedChildren.find((c) => c.type === 'type_arguments');
+    inner = args?.namedChildren[0] ?? null;
+  }
+  return typeRef(inner) ?? [];
+}
+
+function unwrap(node: SyntaxNode | null | undefined): SyntaxNode | null | undefined {
+  let n = node;
+  while (n && (n.type === 'await_expression' || n.type === 'parenthesized_expression' || n.type === 'non_null_expression')) {
+    n = n.namedChildren[0];
+  }
+  return n;
+}
+
+type LocalType = TypeRef | null | 'opaque' | { call: CallDesc } | undefined;
+
+/**
  * Tipo de uma variável/parâmetro visível em `from`, procurando nos escopos de dentro pra fora.
  * `undefined` = não é local (pode ser import ou global); `null` = é local mas sem tipo conhecido;
- * `'opaque'` = é local e de tipo nativo/estrutural.
+ * `'opaque'` = é local e de tipo nativo/estrutural; `{ call }` = valor de retorno de uma chamada.
  */
-function localType(from: SyntaxNode, name: string): TypeRef | null | 'opaque' | undefined {
+function localType(from: SyntaxNode, name: string): LocalType {
   for (let n = from.parent; n; n = n.parent) {
     if (FUNCTION_SCOPE_TYPES.has(n.type)) {
       const single = n.childForFieldName('parameter');
@@ -179,13 +211,19 @@ function localType(from: SyntaxNode, name: string): TypeRef | null | 'opaque' | 
         if (decl?.type !== 'lexical_declaration' && decl?.type !== 'variable_declaration') continue;
         for (const d of decl.namedChildren) {
           if (d.type !== 'variable_declarator' || d.childForFieldName('name')?.text !== name) continue;
+          // `const x = x.foo()` — a própria declaração: sem isso a descrição da chamada entra em laço
+          if (from.startIndex >= d.startIndex && from.endIndex <= d.endIndex) return null;
           const value = d.childForFieldName('value');
           // `const f = () => {}` é símbolo, `const o = { m() {} }` tem métodos e `require()` é import: o grafo resolve
           if (value && (FUNCTION_VALUE_TYPES.has(value.type) || value.type === 'object' || isRequire(value))) return undefined;
           const annotated = annotatedType(d.childForFieldName('type'));
           if (annotated !== null) return annotated;
           if (value && OPAQUE_VALUE_TYPES.has(value.type)) return 'opaque';
-          return constructedType(value) ?? null;
+          const constructed = constructedType(value);
+          if (constructed) return constructed;
+          const inner = unwrap(value);
+          const call = inner?.type === 'call_expression' ? describeCall(inner) : undefined;
+          return call ? { call } : null;
         }
       }
     }
@@ -193,7 +231,7 @@ function localType(from: SyntaxNode, name: string): TypeRef | null | 'opaque' | 
   return undefined;
 }
 
-function receiverOf(node: SyntaxNode, chain: string[]): { receiver?: Receiver; shadowed?: boolean; opaque?: boolean } {
+function receiverOf(node: SyntaxNode, chain: string[]): Pick<CallDesc, 'receiver' | 'shadowed' | 'opaque'> {
   const [root, ...rest] = chain;
   if (root === 'this' || root === 'super') {
     const cls = enclosingClass(node);
@@ -208,7 +246,27 @@ function receiverOf(node: SyntaxNode, chain: string[]): { receiver?: Receiver; s
   const t = localType(node, root!);
   if (t === null) return { shadowed: true };
   if (t === 'opaque') return { shadowed: true, opaque: true };
+  if (t && !Array.isArray(t)) return { receiver: { call: t.call, rest } };
   return t ? { receiver: { type: t, rest } } : {};
+}
+
+/** Descreve uma chamada (`f()`, `a.b.c()`, `x().y()`, `new X()`) do jeito que o grafo resolve. */
+function describeCall(node: SyntaxNode): CallDesc | undefined {
+  const fn = node.childForFieldName(node.type === 'call_expression' ? 'function' : 'constructor');
+  if (fn?.type === 'identifier') {
+    const local = localType(node, fn.text);
+    return { name: fn.text, ...(local !== undefined && (local === null || !Array.isArray(local)) ? { shadowed: true } : {}) };
+  }
+  if (fn?.type !== 'member_expression') return undefined;
+  const name = fn.childForFieldName('property')?.text;
+  if (!name) return undefined;
+  const objectNode = fn.childForFieldName('object');
+  const object = memberChain(objectNode);
+  if (object) return { name, object, ...receiverOf(node, object) };
+  // `res.status(400).json()` / `(await repo.find()).map()` — o receptor é o resultado de outra chamada
+  const inner = unwrap(objectNode);
+  const innerCall = inner?.type === 'call_expression' || inner?.type === 'new_expression' ? describeCall(inner) : undefined;
+  return innerCall ? { name, receiver: { call: innerCall, rest: [] } } : { name, dynamic: true };
 }
 
 /** Nome do contêiner de um método: classe, ou variável que guarda o objeto literal. */
@@ -270,15 +328,15 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
       });
     } else if (node.type === 'function_declaration' || node.type === 'generator_function_declaration' || node.type === 'method_definition') {
       const name = node.childForFieldName('name')?.text ?? DEFAULT_EXPORT_NAME;
-      if (node.type === 'method_definition') push(node, 'method', name, node, { container: containerOf(node) });
-      else push(node, 'function', name, node);
+      if (node.type === 'method_definition') push(node, 'method', name, node, { container: containerOf(node), returns: returnType(node) });
+      else push(node, 'function', name, node, { returns: returnType(node) });
     } else if (node.type === 'variable_declarator' || node.type === 'public_field_definition' || node.type === 'pair') {
       // `const f = () => {}`, campo `handle = () => {}`, e `{ find: async () => {} }` em objeto literal
       const value = node.childForFieldName('value');
       const name = node.childForFieldName(node.type === 'pair' ? 'key' : 'name')?.text;
       if (name && value && FUNCTION_VALUE_TYPES.has(value.type)) {
-        if (node.type === 'variable_declarator') push(node, 'function', name, value);
-        else push(node, 'method', name, value, { container: containerOf(node) });
+        if (node.type === 'variable_declarator') push(node, 'function', name, value, { returns: returnType(value) });
+        else push(node, 'method', name, value, { container: containerOf(node), returns: returnType(value) });
       }
     } else if (node.type === 'export_statement') {
       // `export default () => {}` / `export default function () {}` — anônimos ganham o nome `default`
@@ -329,17 +387,9 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
   const results: RawCall[] = [];
   walk(root, (node) => {
     if (node.type === 'call_expression' || node.type === 'new_expression') {
-      const fn = node.childForFieldName(node.type === 'call_expression' ? 'function' : 'constructor');
       const caller = enclosing(node.startIndex);
-      if (!fn || !caller) return;
-      if (fn.type === 'identifier') {
-        const local = localType(node, fn.text);
-        results.push({ caller, name: fn.text, ...(local === null || local === 'opaque' ? { shadowed: true } : {}) });
-      } else if (fn.type === 'member_expression') {
-        const name = fn.childForFieldName('property')?.text;
-        const object = memberChain(fn.childForFieldName('object'));
-        if (name) results.push({ caller, name, object, ...(object ? receiverOf(node, object) : {}) });
-      }
+      const desc = caller ? describeCall(node) : undefined;
+      if (caller && desc) results.push({ caller, ...desc });
       return;
     }
 

@@ -4,7 +4,7 @@ import type { Host } from '../host';
 import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
-import { extractCalls, extractSymbols, type RawCall, type TypeRef } from './extract-ts';
+import { extractCalls, extractSymbols, type CallDesc, type RawCall, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
@@ -428,6 +428,7 @@ export class CodeGraph {
           ...(sym.implements !== undefined && { implements: sym.implements }),
           ...(sym.fields !== undefined && { fields: sym.fields }),
           ...(sym.properties !== undefined && { properties: sym.properties }),
+          ...(sym.returns !== undefined && { returns: sym.returns }),
         });
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
@@ -667,13 +668,18 @@ export class CodeGraph {
     };
   }
 
-  private resolveCall(fileId: string, call: RawCall, ctx: ResolutionContext): CallResolution {
+  private resolveCall(fileId: string, call: CallDesc, ctx: ResolutionContext, depth = 0): CallResolution {
     // `f()` com `f` variável local (parâmetro, callback) não é nenhum símbolo do projeto;
     // `obj.m()` com `obj` local sem tipo ainda pode cair no fallback por nome.
     if (call.shadowed) return call.object && !call.opaque ? this.guess(call, ctx) : NATIVE;
 
+    if (call.dynamic) return this.guess(call, ctx);
+
     if (call.receiver) {
-      const byType = this.resolveMember(fileId, call.receiver.type, call.receiver.rest, call.name, ctx);
+      const byType =
+        'call' in call.receiver
+          ? this.resolveReturnMember(fileId, call.receiver.call, call.receiver.rest, call.name, ctx, depth)
+          : this.resolveMember(fileId, call.receiver.type, call.receiver.rest, call.name, ctx);
       if (byType) return byType;
     }
 
@@ -712,8 +718,49 @@ export class CodeGraph {
     return this.guess(call, ctx);
   }
 
+  /**
+   * `m` no valor devolvido por outra chamada: `new X().m()`, `repo().save()` com `repo(): Repo`,
+   * `Router().post()` (pacote → externa), `JSON.parse(x).m()` (nativo).
+   */
+  private resolveReturnMember(
+    fileId: string,
+    inner: CallDesc,
+    rest: string[],
+    method: string,
+    ctx: ResolutionContext,
+    depth: number
+  ): CallResolution | undefined {
+    if (depth > 8) return undefined;
+    const produced = this.resolveCall(fileId, inner, ctx, depth + 1);
+    if (produced.outcome === 'callsExternal') return produced;
+    if (produced.outcome === 'unbound') return NATIVE;
+    if (produced.outcome !== 'callsResolved') return undefined;
+
+    const classes = new Set<string>();
+    let external: string | undefined;
+    let declared = false;
+    for (const id of produced.targets) {
+      const attrs = this.graph.hasNode(id) ? this.graph.getNodeAttributes(id) : undefined;
+      if (!attrs || !isSymbolNode(attrs)) continue;
+      if (attrs.kind === 'class') {
+        classes.add(id);
+        continue;
+      }
+      if (!attrs.returns) continue;
+      declared = true;
+      if (attrs.returns.length === 0) continue;
+      const t = this.resolveType(attrs.file, attrs.returns, ctx);
+      for (const c of t.classes) classes.add(c);
+      external ??= t.external;
+    }
+    if (classes.size > 0) return this.membersOf([...classes], rest, method, ctx);
+    if (external) return this.external(external);
+    // retorno anotado com tipo de fora do projeto → nativo; sem anotação → fallback por nome
+    return declared ? NATIVE : undefined;
+  }
+
   /** Fallback por nome (comportamento antigo): o arquivo + o que ele importa. */
-  private guess(call: RawCall, ctx: ResolutionContext): CallResolution {
+  private guess(call: CallDesc, ctx: ResolutionContext): CallResolution {
     const guessed = ctx.legacy(call.name);
     return guessed.length > 0 ? { outcome: 'callsHeuristic', targets: guessed } : { outcome: 'unbound', targets: [] };
   }

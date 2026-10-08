@@ -178,6 +178,49 @@ describe('Fase 0 — resolução de chamadas por tipo do receptor', () => {
     expect(graph.fileCoverage(f)).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
   });
 
+  it('receptor vindo de retorno: tipo anotado (com Promise), `new X().m()` e chamada encadeada', () => {
+    const repo = indexFile(graph, fx, 'repo.ts', 'export class Repo { save() {} }\nexport class Other { save() {} }\nexport function makeRepo(): Repo { return new Repo(); }\n');
+    const f = indexFile(
+      graph,
+      fx,
+      'f.ts',
+      [
+        "import { makeRepo, Repo } from './repo';",
+        'async function load(): Promise<Repo> { return makeRepo(); }',
+        'export async function a() { const r = makeRepo(); r.save(); }',
+        'export async function b() { const r = await load(); r.save(); }',
+        'export function c() { makeRepo().save(); new Repo().save(); }',
+      ].join('\n')
+    );
+    const save = methodId(graph, 'Repo', 'save', repo);
+    const other = methodId(graph, 'Other', 'save', repo);
+    for (const fn of ['a', 'b', 'c']) {
+      expect(graph.hasEdge(symbolId(graph, fn, f), save, 'calls')).toBe(true);
+      expect(graph.hasEdge(symbolId(graph, fn, f), other, 'calls')).toBe(false);
+    }
+    expect(graph.fileCoverage(f)).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
+  });
+
+  it('valor devolvido por pacote é externo (`Router().post`, `res.status().json`)', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'routes.ts',
+      [
+        "import { Router, type Response } from 'express';",
+        'function post() {}',
+        'function json() {}',
+        'const router = Router();',
+        'export function register(res: Response) { router.post("/x"); res.status(400).json({}); }',
+      ].join('\n')
+    );
+    const register = symbolId(graph, 'register', f);
+    expect(graph.hasEdge(register, symbolId(graph, 'post', f), 'calls')).toBe(false);
+    expect(graph.hasEdge(register, symbolId(graph, 'json', f), 'calls')).toBe(false);
+    expect(graph.hasEdge(register, packageNodeId('express'), 'calls')).toBe(true);
+    expect(graph.fileCoverage(f)).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
+  });
+
   it('parâmetro com o mesmo nome de um import esconde o import (sem aresta falsa)', () => {
     const repo = indexFile(graph, fx, 'repo.ts', 'export function save() {}\n');
     const f = indexFile(graph, fx, 'f.ts', "import { save } from './repo';\nexport function run(save: () => void) { save(); }\n");

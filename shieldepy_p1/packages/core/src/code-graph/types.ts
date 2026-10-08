@@ -31,6 +31,8 @@ export interface SymbolNodeAttrs {
   implements?: string[];
   fields?: Record<string, string[]>;
   properties?: string[];
+  /** Função/método: tipo de retorno anotado (`Promise<T>` → T); `[]` = anotado, mas não é classe. */
+  returns?: string[];
 }
 
 /** Dependência externa (`pg`, `@prisma/client`, `node:fs`) — id `pkg:<nome>`. */
