@@ -9,7 +9,7 @@ describe('walkSourceTree', () => {
   it('não desce nas pastas ignoradas e devolve caminhos relativos ordenados', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-walk-'));
     try {
-      for (const f of ['src/b.ts', 'src/a/x.ts', 'z.ts', 'node_modules/pkg/i.js', '.shieldepy/chaos-tests/t.spec.ts', 'dist/out.js', 'src/node_modules/y.ts']) {
+      for (const f of ['src/b.ts', 'src/a/x.ts', 'z.ts', 'node_modules/pkg/i.js', '.shieldepy/chaos-tests/t.spec.ts', '.vscode-test/vscode/out/main.js', 'dist/out.js', 'src/node_modules/y.ts']) {
         fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
         fs.writeFileSync(path.join(root, f), '');
       }

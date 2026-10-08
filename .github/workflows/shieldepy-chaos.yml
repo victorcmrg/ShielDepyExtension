@@ -60,6 +60,7 @@ jobs:
     env:
       TARGET: examples/${{ matrix.example }}
       REPORT: ${{ github.workspace }}/chaos-report.md
+      MAP: ${{ github.workspace }}/chaos-map.html
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -99,11 +100,19 @@ jobs:
             fi
           fi
           set +e
-          node apps/cli/bin/shieldepy.js chaos "$TARGET" --fail-on Alto --report "$REPORT" $offline $scope
+          node apps/cli/bin/shieldepy.js chaos "$TARGET" --fail-on Alto --report "$REPORT" --html "$MAP" $offline $scope
           code=$?
           set -e
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "saída do shieldepy chaos: $code"
+
+      - name: Mapa com o resultado (artefato)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shieldepy-mapa-${{ matrix.example }}
+          path: ${{ github.workspace }}/chaos-map.html
+          if-no-files-found: ignore
 
       - name: Resumo do job
         if: always()

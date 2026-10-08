@@ -55,7 +55,7 @@ Copie [`shieldepy-chaos.template.yml`](shieldepy-chaos.template.yml) para `.gith
 | `FAIL_ON` | severidade mínima que bloqueia o PR | `Alto` |
 | `SHIELDEPY_REF` | versão do ShielDepy (branch, tag ou commit) | `main` |
 
-O job baixa o ShielDepy, instala o ShielDepy e o app (`npm ci`), roda `shieldepy chaos`, publica o relatório no resumo do job e comenta no PR. Nas execuções seguintes, ele edita o mesmo comentário.
+O job baixa o ShielDepy, instala o ShielDepy e o app (`npm ci`), roda `shieldepy chaos`, publica o relatório no resumo do job e comenta no PR. Nas execuções seguintes, ele edita o mesmo comentário. O mapa interativo, com o resultado do caos e o diff do PR por cima, fica nos artefatos do job (`shieldepy-mapa`): baixe e abra o `chaos-map.html` no navegador. Com `#mudancas` no fim do endereço, ele já abre filtrado no que o PR mudou.
 
 ## Só o que o PR tocou (`--base`)
 

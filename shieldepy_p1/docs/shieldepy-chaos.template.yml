@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 20
     env:
       REPORT: ${{ github.workspace }}/chaos-report.md
+      MAP: ${{ github.workspace }}/chaos-map.html
       # sem o secret, roda --offline (só o motor, custo zero)
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
@@ -74,8 +75,16 @@ jobs:
           scope=""
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then scope="--base origin/$GITHUB_BASE_REF"; fi
           set +e
-          node "$RUNNER_TEMP/shieldepy/shieldepy_p1/apps/cli/bin/shieldepy.js" chaos "$APP_DIR" --fail-on "$FAIL_ON" --report "$REPORT" $offline $scope
+          node "$RUNNER_TEMP/shieldepy/shieldepy_p1/apps/cli/bin/shieldepy.js" chaos "$APP_DIR" --fail-on "$FAIL_ON" --report "$REPORT" --html "$MAP" $offline $scope
           echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Mapa com o resultado (artefato)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shieldepy-mapa
+          path: ${{ github.workspace }}/chaos-map.html
+          if-no-files-found: ignore
 
       - name: Resumo do job
         if: always()

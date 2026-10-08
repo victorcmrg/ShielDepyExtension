@@ -37,7 +37,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - Os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram, porque falta medir com chamada paga.
 - `partial_failure` e `retry_storm` não têm teste (aparecem no relatório como "sem teste no MVP", sem bloquear).
 - O workflow da E4 nunca rodou no GitHub (depende do push), e nenhum secret `ANTHROPIC_API_KEY` foi configurado: no CI ele roda `--offline` até o usuário decidir pagar pela IA.
-- As observações do registro da 3a (5 heurísticas e 2 sem alvo no `packages/` do próprio ShielDepy; `graph apps` lento por causa do `.vscode-test`).
+- As observações do registro da 3a: 5 heurísticas e 2 sem alvo no `packages/` do próprio ShielDepy. (O `graph apps` lento foi resolvido na V2e: o `.vscode-test` agora é ignorado.)
 
 ## Progresso e fluxo de trabalho
 
@@ -50,7 +50,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
 - **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
 - **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
-- **V2 — em andamento** na branch `feat/visualizador-v2`, empilhada sobre a `feat/mapa-incremental`. Ver "V2 — desenho e tarefas" na seção "Visualização do grafo".
+- **V2 completo** na branch `feat/visualizador-v2` (V2a–V2e), empilhada sobre a `feat/mapa-incremental`. Ordem de merge: E4 → E5 → V2. Ver "V2 — desenho e tarefas" na seção "Visualização do grafo".
 - **E5 — pronta, menos a medição paga** na branch `feat/mapa-incremental`: 5a–5d, 5f e a parte gratuita da 5e. Para medir: `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (estimativa abaixo de US$ 0,50).
 
 | Tarefa | Branch | Status |
@@ -61,7 +61,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
-| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | em andamento |
+| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído; falta o merge (depois da E4 e da E5) |
 | V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend` | a definir | pendente (separado do V2 em 2026-10-08) |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
@@ -497,6 +497,25 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - um resultado regravado atualiza o painel aberto sozinho;
     - "Comparar com HEAD" depois de mudar o `StripeGateway.charge` → `changed`, com `POST /checkout` tocada e `GET /orders/:id` de fora, e o caos continua no painel.
   - Extensão com **636 KB** (era 613; entraram o diff e o `git-base`). Suíte unitária: **308**.
+- 2026-10-08: **V2e concluído (escala), e com ele o V2.**
+  - **Medição** (Chrome headless, tempo até o layout terminar, com um script injetado logo depois do visualizador):
+
+    | Grafo | Nós | Arestas | Layout pronto |
+    |---|---|---|---|
+    | `checkout-express` | 68 | 113 | 0,4 s |
+    | `apps/` (real) | 3.526 | 14.848 | 6,9 s |
+    | sintético | 2.200 | 5.899 | 3,0 s |
+    | sintético | 5.500 | 14.744 | 7,3 s |
+    | sintético | 11.000 | 29.482 | 8,2 s |
+    | sintético | 22.000 | 58.959 | 7,8 s |
+
+    Acima de 6 mil elementos o visualizador já usa o layout de rascunho, então o tempo **estabiliza em ~8 s até 22 mil nós**.
+  - **Decisão: não trocar de biblioteca agora.** O Sigma.js (WebGL) aguentaria mais, mas não tem nós compostos (o agrupamento por arquivo) e exigiria reescrever o visualizador. O ELK não é necessário: os fluxos de rota são pequenos e o `breadthfirst` dá conta. Nesse tamanho, o problema é de **leitura**, não de velocidade. **Gatilho para reavaliar:** mapas acima de ~50 mil nós ou travamento na interação.
+  - **O que entrou:** em mapa grande (mais de 3 mil nós) com diff, o visualizador já abre filtrado em "só o que o PR mudou".
+  - **Observação antiga resolvida:** o `.vscode-test` (o VS Code baixado pelo E2E) entrou no `IGNORED_DIRS`. O `graph apps` sai em ~19 s, com 3.526 nós; antes, varria milhares de arquivos JS do VS Code.
+  - **CI:** o portão grava o mapa (`--html`) e o anexa como artefato do job (`shieldepy-mapa`), no workflow e no template. O guia diz como abrir, inclusive com `#mudancas`.
+  - README: seção do visualizador com o resultado e os arquivos novos no mapa do código.
+  - **Estado final do V2:** 308 testes unitários, E2E 27/27, extensão com 636 KB. Pronto para o merge, depois da E4 e da E5.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -546,7 +565,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - O painel do mapa lê o `.shieldepy/chaos-results.json` e atualiza quando ele muda.
   - Comando novo "ShielDepy: Comparar mapa com uma branch" (padrão: `origin/main`), que mostra o diff no painel.
   - Cenários E2E.
-- **V2e. Escala.** Medir o visualizador com o grafo grande (`apps/`) e registrar a avaliação do Sigma.js e do ELK. Só trocar de biblioteca se a medição pedir.
+- **V2e. Escala.** ✅ Concluída em 2026-10-08 (medido; sem troca de biblioteca). Medir o visualizador com o grafo grande (`apps/`) e registrar a avaliação do Sigma.js e do ELK. Só trocar de biblioteca se a medição pedir.
 
 **Aceitação do V2:**
 - `chaos examples/checkout-express --offline --html` → `POST /checkout` em vermelho, com os 4 achados na lista. No `-fixed`, em verde.

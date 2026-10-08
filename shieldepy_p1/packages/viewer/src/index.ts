@@ -673,8 +673,9 @@ const APP = String.raw`
     sec.appendChild(legend);
   }
 
-  // #mudancas abre direto no filtro "só o que o PR mudou" (link do artefato do CI)
-  if (DIFF && location.hash === '#mudancas') {
+  // #mudancas abre direto no filtro "só o que o PR mudou" (link do artefato do CI). Em mapa grande
+  // (V2e: acima de ~3 mil nós o layout leva vários segundos e o todo não se lê), o diff já abre filtrado.
+  if (DIFF && (location.hash === '#mudancas' || (SYSTEM.nodes.length > 3000 && !DIFF.diff.empty))) {
     state.filters.changed = true;
     const box = document.querySelector('[data-filter=changed]');
     if (box) box.checked = true;

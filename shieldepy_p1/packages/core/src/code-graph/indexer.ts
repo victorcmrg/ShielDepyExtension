@@ -4,8 +4,9 @@ import * as path from 'node:path';
 import type { Host } from '../host';
 import { CodeGraph } from './CodeGraph';
 
-// `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa
-export const IGNORED_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.shieldepy']);
+// `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa;
+// `.vscode-test`: o VS Code que o @vscode/test-electron baixa para os testes E2E (milhares de arquivos JS)
+export const IGNORED_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.shieldepy', '.vscode-test']);
 
 /**
  * Arquivos de uma pasta, recursivamente, como caminhos relativos ordenados. Não desce nas pastas

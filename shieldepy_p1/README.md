@@ -221,6 +221,12 @@ O `--report chaos-report.md` grava o relatório em markdown para o resumo do CI 
 
 O workflow deste repositório fica em `.github/workflows/shieldepy-chaos.yml`, e o guia para um repositório-alvo em [`docs/chaos-ci.md`](docs/chaos-ci.md). Use `--no-run` para só gerar os testes.
 
+**Visualizador com o resultado (V2).** `--html <arquivo>` no `chaos` e no `diff` grava o mapa interativo com o resultado por cima:
+- **caos:** rota com achado em vermelho (`✖`), aguentou em verde (`✓`), inválida tracejada, e a operação de I/O alvo com borda vermelha. A seção "Caos" traz os achados (invariante violada e arquivo do teste), que abrem o fluxo da rota;
+- **diff do PR:** símbolos novos, com corpo alterado e renomeados marcados, rotas tocadas com o motivo, e o filtro "só o que o PR mudou" (link `#mudancas`).
+
+O `chaos` também grava `.shieldepy/chaos-results.json` a cada execução. Na extensão, o painel **"Ver Mapa do Sistema"** lê esse arquivo e se atualiza sozinho quando a CLI roda de novo. **"ShielDepy: Comparar Mapa com uma Branch"** mostra o diff contra o merge-base com uma branch.
+
 **Só o que o PR tocou.** `--base <ref>` monta o mapa no merge-base com o ref (num `git worktree` temporário) e testa só as rotas sensíveis que o PR tocou: rota nova, cadeia de handlers, operações, tags, corpo de qualquer função no caminho ou código de topo de um arquivo do caminho. Mudança de config, dependência ou setup faz todas entrarem. Isso só funciona porque os ids de símbolo são estáveis (`arquivo#Contêiner.nome`, sem a linha) e cada símbolo tem um hash do corpo pela AST, que ignora comentários e espaço. `shieldepy diff <pasta> --base <ref>` mostra o diff de estrutura sozinho: símbolos novos, removidos, renomeados e com corpo alterado.
 
 ## Mapa do código
@@ -256,7 +262,9 @@ apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode
 | Severidade dos achados e portão; relatório markdown do PR | `packages/agent/src/chaos/results.ts`, `report.ts` |
 | Workflow do GitHub Actions (e o modelo para repositórios-alvo) | `.github/workflows/shieldepy-chaos.yml`, `docs/` |
 | Id estável de símbolo e hash do corpo/topo pela AST | `packages/core/src/code-graph/extract-ts.ts` (`stableIds`), `fingerprint.ts` |
-| Diff entre mapas e rotas tocadas por um PR | `packages/core/src/map-diff.ts`, `topology/affected.ts`; base pelo git em `apps/cli/src/git-base.ts` |
+| Diff entre mapas e rotas tocadas por um PR | `packages/core/src/map-diff.ts`, `topology/affected.ts`; base pelo git em `packages/core/src/git-base.ts` |
+| Resultado do caos em disco (`chaos-results.json`) | `packages/agent/src/chaos/results.ts` (`ChaosResults`) |
+| Caos e diff por cima do mapa (overlay do visualizador) | `packages/viewer/src/index.ts` (`ViewerOverlay`); painel da extensão em `apps/vscode/src/views/MapPanel.ts` |
 | Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
