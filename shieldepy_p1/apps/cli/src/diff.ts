@@ -22,7 +22,7 @@ import {
 import { renderGraphHtml } from '@shieldepy/viewer';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRulesFromPath, type Registry } from '@shieldepy/extractors';
-import { GitBaseError, withBaseCheckout, type BaseInfo } from './git-base';
+import { GitBaseError, withBaseCheckout, type BaseInfo } from '@shieldepy/core';
 
 interface DiffIo {
   out: (line: string) => void;

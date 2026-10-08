@@ -26,6 +26,7 @@ export * from './sql/classify';
 
 export * from './system-graph';
 export * from './map-diff';
+export * from './git-base';
 export * from './findings';
 export * from './host';
 export * from './paths';

@@ -483,6 +483,20 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Conferido no Chrome headless**, com `currency: 'brl'` → `'usd'` no `StripeGateway`: o `charge` e a classe em âmbar, o `POST /checkout` como tocado, e, filtrado, só `charge`, `StripeGateway`, `checkout`, `api_call api.stripe.com` e a rota com os handlers. Ajuste pedido pelo screenshot: ids longos quebram linha nos botões.
   - Teste: `diff --html` embute o diff e as rotas tocadas, e o script compila.
   - Suíte: **308 testes**.
+- 2026-10-08: **V2d concluído (extensão).**
+  - **`git-base` foi da CLI para o core** (`packages/core/src/git-base.ts`; só Node, sem rede), porque a CLI e a extensão usam.
+  - **Painel do mapa:**
+    - lê o `.shieldepy/chaos-results.json` do workspace: o da raiz, se houver; senão, o mais recente, e o painel mostra de qual projeto ele é;
+    - um `FileSystemWatcher` atualiza o painel aberto quando a CLI grava um resultado novo;
+    - "Abrir teste" abre o arquivo do teste, resolvido a partir da pasta do projeto, sem sair da raiz do workspace.
+  - **Decisão: desatualização por data na extensão.** A extensão monta o mapa a partir da raiz do workspace, e a CLI a partir da pasta do projeto, então o `topologyHash` nunca bate lá. O resultado é marcado como desatualizado quando algum arquivo do mapa dentro do projeto foi alterado depois dele. O visualizador ganhou `ViewerChaos.stale`; sem ele, vale o hash (CLI).
+  - **Comando "ShielDepy: Comparar Mapa com uma Branch"** (`shieldepy.compareMap`): pede o ref (padrão `origin/main`), monta o mapa do merge-base num worktree temporário, indexado à parte, e mostra o diff e as rotas tocadas no painel, com um resumo numa notificação. O diff fica no painel até ele fechar.
+  - **Limite anotado:** o mapa atual vem da extensão (com o teto e as exclusões dela), e o da base é indexado inteiro. Num repositório acima do teto, ou com arquivos fora do git que a extensão indexa, o diff pode mostrar "novos" que não são do PR.
+  - **E2E: 27/27.** O `run.mjs` agora cria um repositório git de verdade, com o mesmo remote e a mesma branch, porque o worktree precisa de um commit. Três cenários novos:
+    - um resultado gravado aparece no painel (não desatualizado);
+    - um resultado regravado atualiza o painel aberto sozinho;
+    - "Comparar com HEAD" depois de mudar o `StripeGateway.charge` → `changed`, com `POST /checkout` tocada e `GET /orders/:id` de fora, e o caos continua no painel.
+  - Extensão com **636 KB** (era 613; entraram o diff e o `git-base`). Suíte unitária: **308**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -527,7 +541,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Lista lateral "Mudanças" (inclui os removidos, que não estão no mapa atual) e as rotas tocadas, com o motivo.
   - Filtro "só o que o PR mudou": nós mudados, vizinhos diretos e rotas tocadas.
   - CLI: `diff --html` e `chaos --base --html`.
-- **V2d. Extensão.**
+- **V2d. Extensão.** ✅ Concluída em 2026-10-08.
   - O `git-base` vai para o core (só Node).
   - O painel do mapa lê o `.shieldepy/chaos-results.json` e atualiza quando ele muda.
   - Comando novo "ShielDepy: Comparar mapa com uma branch" (padrão: `origin/main`), que mostra o diff no painel.

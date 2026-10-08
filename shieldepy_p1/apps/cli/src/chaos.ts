@@ -49,7 +49,7 @@ import type { Registry } from '@shieldepy/extractors';
 import { ChaosRunError, runChaosTests } from './chaos-run';
 import { renderGraphHtml } from '@shieldepy/viewer';
 import { buildMapOf } from './diff';
-import { GitBaseError, withBaseCheckout } from './git-base';
+import { GitBaseError, withBaseCheckout } from '@shieldepy/core';
 
 export interface ChaosArgs {
   target: string;

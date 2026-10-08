@@ -38,6 +38,10 @@ interface TestApi {
   lastMap(): unknown;
   /** Topologia do último "Exportar Topologia" (ou a do painel do mapa). */
   lastTopology(): unknown;
+  /** Overlay do último mapa renderizado (caos e diff, V2). */
+  lastOverlay(): unknown;
+  /** "Comparar mapa com uma branch" sem a caixa de entrada. */
+  compareMap(ref: string): Promise<unknown>;
   /** Reindexa o workspace inteiro e devolve o relatório (teto, parcial). */
   reindex(): Promise<IndexReport>;
 }
@@ -134,7 +138,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   // --- views ----------------------------------------------------------------------------
   const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
-  const mapPanel = new MapPanel(context.extensionUri, workspace);
+  const mapPanel = new MapPanel(context.extensionUri, workspace, path.join(context.extensionPath, 'wasm'));
   push(mapPanel);
   let exported: TopologyGraph | undefined;
   push(
@@ -159,6 +163,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     }),
     vscode.commands.registerCommand(CMD.scanWorkspace, guarded(() => chat.runFullScan())),
     vscode.commands.registerCommand(CMD.showMap, guarded(() => mapPanel.show())),
+    vscode.commands.registerCommand(
+      CMD.compareMap,
+      guarded(async (given?: unknown) => {
+        const ref =
+          typeof given === 'string'
+            ? given
+            : await vscode.window.showInputBox({
+                title: 'ShielDepy: comparar o mapa com…',
+                prompt: 'Branch, tag ou commit. A comparação é com o merge-base, como num PR.',
+                value: 'origin/main',
+              });
+        if (!ref) return;
+        try {
+          const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `ShielDepy: montando o mapa de ${ref}…` }, () => mapPanel.compare(ref));
+          const d = result?.diff;
+          if (d) {
+            const touched = result.routes?.all ? 'todas as rotas' : `${result.routes?.affected.length ?? 0} rota(s) tocada(s)`;
+            void vscode.window.showInformationMessage(
+              d.empty
+                ? `ShielDepy: nenhuma mudança de estrutura desde ${ref}.`
+                : `ShielDepy: desde ${ref}, ${d.symbols.changed.length} alterado(s), ${d.symbols.added.length} novo(s), ${d.symbols.renamed.length} renomeado(s), ${d.symbols.removed.length} removido(s); ${touched}.`
+            );
+          }
+        } catch (err) {
+          void vscode.window.showErrorMessage(`ShielDepy: não deu para comparar com ${ref}: ${err instanceof Error ? err.message : err}`);
+        }
+      })
+    ),
     vscode.commands.registerCommand(
       CMD.exportTopology,
       guarded(async () => {
@@ -262,6 +294,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     graphStats: () => workspace.graph.stats,
     lastMap: () => mapPanel.last,
     lastTopology: () => exported ?? mapPanel.lastTopology,
+    lastOverlay: () => mapPanel.lastOverlay,
+    compareMap: (ref) => mapPanel.compare(ref),
     reindex: () => indexWorkspace(workspace, log),
     decorationFor: (fsPath) => {
       const d = explorer.provideFileDecoration(vscode.Uri.file(fsPath));

@@ -242,6 +242,73 @@ exports.run = async function run() {
     assert(api.lastTopology().routes.some((r) => r.id === 'POST /checkout'), 'painel do mapa sem a topologia');
   });
 
+  // V2d: o resultado do `shieldepy chaos` aparece por cima do mapa, e o painel se atualiza sozinho
+  const chaosResults = (hits, status) => ({
+    version: 1,
+    project: 'checkout',
+    topologyHash: 'outra-raiz',
+    engine: 'offline',
+    ran: true,
+    failOn: 'Baixo',
+    hits,
+    outcomes: [
+      {
+        hypothesisId: 'POST /checkout__race_condition__stock',
+        routeId: 'POST /checkout',
+        failure: 'race_condition',
+        target: 'stock',
+        status,
+        ...(status === 'failed' && { severity: 'Crítico', message: 'stateCheck: stockNeverNegative' }),
+        durationMs: 200,
+        testFile: '.shieldepy/chaos-tests/POST__checkout__race_condition__stock.spec.ts',
+      },
+    ],
+    untested: [],
+    cost: { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, usd: 0, unpriced: [], withoutUsage: 0 },
+  });
+  const resultsFile = file('checkout/.shieldepy/chaos-results.json');
+  const writeResults = (r) => vscode.workspace.fs.writeFile(resultsFile, Buffer.from(JSON.stringify(r)));
+
+  await check('V2d: o resultado do caos (.shieldepy/chaos-results.json) aparece no painel do mapa', async () => {
+    await writeResults(chaosResults(1, 'failed'));
+    await vscode.commands.executeCommand('shieldepy.showMap');
+    await waitFor('overlay do caos no painel', () => api.lastOverlay() && api.lastOverlay().chaos, 10000);
+    const chaos = api.lastOverlay().chaos;
+    assert(chaos.project === 'checkout' && chaos.hits === 1, `resultado: ${chaos.project} ${chaos.hits}`);
+    assert(chaos.outcomes[0].status === 'failed' && chaos.outcomes[0].routeId === 'POST /checkout', 'achado não chegou');
+    // escrito agora: mais novo que o código do projeto (o hash não serve, a raiz é outra)
+    assert(chaos.stale === false, 'resultado recém-escrito marcado como desatualizado');
+  });
+
+  await check('V2d: rodar o caos de novo (arquivo novo) atualiza o painel aberto sozinho', async () => {
+    await writeResults(chaosResults(0, 'passed'));
+    await waitFor('painel atualizar com o resultado novo', () => api.lastOverlay().chaos && api.lastOverlay().chaos.hits === 0, 10000);
+    assert(api.lastOverlay().chaos.outcomes[0].status === 'passed', 'status não atualizou');
+  });
+
+  await check('V2d: "Comparar mapa com uma branch" mostra o diff do PR e a rota tocada', async () => {
+    const gateway = file('checkout/src/gateways/StripeGateway.ts');
+    const original = Buffer.from(await vscode.workspace.fs.readFile(gateway)).toString('utf8');
+    assert(original.includes("currency: 'brl'"), 'exemplo mudou: falta currency brl');
+    await vscode.workspace.fs.writeFile(gateway, Buffer.from(original.split("currency: 'brl'").join("currency: 'usd'")));
+    try {
+      const charge = 'checkout/src/gateways/StripeGateway.ts#StripeGateway.charge';
+      let result;
+      await waitFor('o diff ver o corpo novo do charge', async () => {
+        result = await api.compareMap('HEAD');
+        return result && result.diff.symbols.changed.includes(charge);
+      }, 30000);
+      assert(result.routes.affected.some((a) => a.id === 'POST /checkout'), `rotas tocadas: ${JSON.stringify(result.routes.affected)}`);
+      assert(!result.routes.affected.some((a) => a.id === 'GET /orders/:id'), 'GET /orders/:id não deveria ser tocada');
+      assert(api.lastOverlay().diff && api.lastOverlay().diff.base === 'HEAD', 'o painel não recebeu o diff');
+      // o caos continua no painel junto com o diff
+      assert(api.lastOverlay().chaos, 'o resultado do caos sumiu do painel');
+    } finally {
+      await vscode.workspace.fs.writeFile(gateway, Buffer.from(original));
+      await vscode.workspace.fs.delete(resultsFile);
+    }
+  });
+
   const tsconfig = file('checkout/tsconfig.json');
   const tsconfigOriginal = Buffer.from(await vscode.workspace.fs.readFile(tsconfig)).toString('utf8');
 

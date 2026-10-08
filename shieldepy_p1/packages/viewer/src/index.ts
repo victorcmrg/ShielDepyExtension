@@ -44,6 +44,12 @@ export type ViewerMode =
 export interface ViewerChaos {
   project: string;
   topologyHash: string;
+  /**
+   * Resultado desatualizado, decidido por quem chama. A extensão monta o mapa a partir da raiz do
+   * workspace, e a CLI a partir da pasta do projeto, então o hash não serve lá: ela compara a data do
+   * resultado com a do código. Sem isto, vale a comparação de `topologyHash` (CLI).
+   */
+  stale?: boolean;
   ran: boolean;
   runError?: string;
   failOn: string;
@@ -583,7 +589,9 @@ const APP = String.raw`
     const passed = CHAOS.outcomes.filter((o) => o.status === 'passed');
     const invalid = CHAOS.outcomes.filter((o) => o.status === 'invalid');
     let html = '<h2>Caos</h2>';
-    if (TOPOLOGY && CHAOS.topologyHash !== TOPOLOGY.contentHash) html += '<div class="banner warn">Este resultado é de outra versão do mapa. Rode o <code>shieldepy chaos</code> de novo.</div>';
+    const stale = typeof CHAOS.stale === 'boolean' ? CHAOS.stale : !!TOPOLOGY && CHAOS.topologyHash !== TOPOLOGY.contentHash;
+    html += '<p class="muted small">Projeto: ' + escape(CHAOS.project) + '</p>';
+    if (stale) html += '<div class="banner warn">Este resultado é de outra versão do mapa. Rode o <code>shieldepy chaos</code> de novo.</div>';
     if (CHAOS.runError) html += '<div class="banner warn">Os testes não rodaram (erro de ambiente): ' + escape(CHAOS.runError.split('\n')[0]) + '</div>';
     else if (!CHAOS.ran) html += '<div class="banner warn">Testes gerados, mas não executados (<code>--no-run</code>).</div>';
     else if (CHAOS.hits > 0) html += '<div class="banner bad"><b>Bloqueado:</b> ' + CHAOS.hits + ' achado(s)' + (CHAOS.failOn === 'Baixo' ? '' : ' com severidade ' + escape(CHAOS.failOn) + ' ou pior') + '.</div>';

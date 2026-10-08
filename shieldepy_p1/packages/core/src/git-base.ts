@@ -1,4 +1,5 @@
 // O mapa "de antes" de um PR (E5): a mesma pasta, no commit base, num `git worktree` temporário.
+// Fica no core (só Node, sem rede) porque a CLI e a extensão (V2d) usam.
 // Só lê código (Tree-sitter), então não precisa de `npm install`. A base é o merge-base entre o
 // ref e o HEAD, como num PR: o que a `main` ganhou depois que a branch saiu não conta como mudança.
 
@@ -7,7 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
-import { IGNORED_DIRS } from '@shieldepy/core';
+import { IGNORED_DIRS } from './code-graph/indexer';
 
 const run = promisify(execFile);
 
