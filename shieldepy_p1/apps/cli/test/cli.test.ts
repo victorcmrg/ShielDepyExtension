@@ -249,7 +249,7 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
     expect(r.out).toMatch(/2 achado\(s\), 2 aguentou\(aram\), 0 inválido/);
     expect(r.out).toMatch(/✖ Crítico\s+race_condition[\s\S]*stateCheck: stockNeverNegative/);
     expect(r.out).toMatch(/✖ Alto\s+timeout/);
-    expect(r.err).toMatch(/portão: 2 achado\(s\) de caos com severidade Baixo ou pior/);
+    expect(r.err).toContain('portão: 2 achado(s) de caos.');
   });
 
   it('--report grava o markdown do PR, inclusive quando o ambiente falhou', async () => {

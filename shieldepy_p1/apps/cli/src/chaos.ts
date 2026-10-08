@@ -191,7 +191,7 @@ export async function runChaosCommand(
     return 2;
   }
   if (hits.length > 0) {
-    io.err(`✖ portão: ${hits.length} achado(s) de caos com severidade ${failOn} ou pior.`);
+    io.err(`✖ portão: ${hits.length} achado(s) de caos${failOn === 'Baixo' ? '' : ` com severidade ${failOn} ou pior`}.`);
     return 1;
   }
   if (allInvalid) {

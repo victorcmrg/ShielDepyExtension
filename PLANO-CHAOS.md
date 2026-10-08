@@ -9,12 +9,12 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-08, antes da E4)
+## Como retomar num chat novo (atualizado em 2026-10-08, com a E4 completa)
 
-**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4** está em andamento na branch `feat/chaos-gate` (veja no **Registro** quais fatias já foram feitas). Leia, nesta ordem:
+**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** na branch `feat/chaos-gate` (4a–4e), esperando o usuário subir a branch e fazer o merge. Depois do merge, a única parte da aceitação que falta é o **PR de teste no GitHub** (ver o registro da 4e). As próximas frentes candidatas estão na tabela de progresso: V2 (visualizador de produto, com os resultados do caos), E5 (outras linguagens) e o `DB_Chaos_Agent`. Leia, nesta ordem:
 1. esta seção;
-2. **"E4 — contexto sobre o que a E3 entregou"** (decisões herdadas, o que reaproveitar, pendências, tarefas 4a–4e);
-3. o fim do **Registro**, para os detalhes de cada fatia já feita.
+2. o fim do **Registro**, para os detalhes de cada fatia (a E4 começa em "E4 iniciada");
+3. a seção da etapa que for começar.
 
 **Combinados com o usuário (seguir sem perguntar):**
 - Responder **em português**.
@@ -25,16 +25,17 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**267** no fim da E3; **288** depois da 4c).
+- `npm run check`: typecheck + testes unitários (**288** no fim da E4).
 - `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
-- `npm run cli -- chaos examples/checkout-express --no-run --offline`: gera os testes de caos.
-- Dentro de um exemplo (`examples/checkout-express` e `-fixed`, que precisam de `npm install` próprio): `npm test` roda o teste de fumaça, e `npx vitest run --config .shieldepy/chaos-tests/vitest.config.ts` roda os testes gerados.
+- `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
+- Dentro de um exemplo (`examples/checkout-express` e `-fixed`, que precisam de `npm install` próprio): `npm test` roda o teste de fumaça. Sem esse `npm install`, os testes da CLI e do agent que rodam o Vitest e o `tsc` dos exemplos são pulados.
 - Atenção no Windows: os caminhos têm acento e espaço (`Área de Trabalho`), então use sempre aspas. Os arquivos do repositório estão em CRLF, e edições por script que procuram `\n` podem não casar; prefira o editor.
 
 **Ainda não feito, de propósito (não é bug):**
 - Os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram, porque falta medir com chamada paga.
-- `partial_failure` e `retry_storm` não têm teste.
+- `partial_failure` e `retry_storm` não têm teste (aparecem no relatório como "sem teste no MVP", sem bloquear).
+- O workflow da E4 nunca rodou no GitHub (depende do push), e nenhum secret `ANTHROPIC_API_KEY` foi configurado: no CI ele roda `--offline` até o usuário decidir pagar pela IA.
 - As observações do registro da 3a (5 heurísticas e 2 sem alvo no `packages/` do próprio ShielDepy; `graph apps` lento por causa do `.vscode-test`).
 
 ## Progresso e fluxo de trabalho
@@ -46,7 +47,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
 - **E2 completa e mergeada** (PR #3, `b4eeb7b`).
 - **E3 completa e mergeada** (PR #4, `ccc11c2`).
-- **E4 — em andamento** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`). 4a–4d feitas; falta a 4e. Começar pela seção "Como retomar num chat novo", acima, e depois "E4 — contexto".
+- **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Falta o usuário subir a branch, fazer o merge e abrir o PR de teste no GitHub.
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -58,7 +59,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
 | V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
-| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | em andamento (4a–4d feitas) |
+| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
 | 5. E5: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente, depois da E2 (ver avaliação) |
 
 ### Registro
@@ -357,6 +358,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Simulado localmente** com o mesmo bash dos passos: no `chaos-gate`, o corrigido sai 0; no `self-test`, o vulnerável sai 1, com a corrida e o timeout encontrados no relatório. O YAML foi validado com `js-yaml`, e os lockfiles têm os binários de Linux (rollup/esbuild). **Não rodou no GitHub:** isso depende do push.
   - **Template para repositórios-alvo:** `shieldepy_p1/docs/shieldepy-chaos.template.yml`, com o guia `docs/chaos-ci.md` (contrato, dependências, `env` do topo, códigos de saída, severidade, IA e custo, limites). Como o ShielDepy não está no npm, o template faz o checkout dele e o **move para `$RUNNER_TEMP`**: com `APP_DIR: .`, ele ficaria dentro do app e entraria no mapa.
   - README: execução, portão, `--report`, o workflow e os arquivos novos no mapa do código.
+- 2026-10-08: **4e concluído (aceitação), e com ele a E4.**
+  - **`shieldepy chaos examples/checkout-express --offline` → exit 1**, com 4 achados: `race_condition stock` (Crítico, `stateCheck: stockNeverNegative`), `timeout api.stripe.com` (Alto, 6 s sem resposta), e `http_5xx` e `malformed_response` (Alto, a rota fica pendurada). O relatório aponta a corrida e o timeout com as operações e o `arquivo:linha`.
+  - **O mesmo no `checkout-express-fixed` → exit 0**, com 3 testes aguentando. Os dois casos estão fixados na suíte (Vitest de verdade, pulados sem `npm install` nos exemplos) e no job `self-test` do CI.
+  - **PR de teste, simulado localmente:** tirar o `signal: AbortSignal.timeout(...)` do `StripeGateway` do `-fixed` faz o motor ver `no-timeout` e gerar a hipótese de timeout. O teste quebra (`respondsWithin`, 6 s), e `--fail-on Alto` sai com **exit 1** e o relatório "Bloqueado: 1 achado". O arquivo foi restaurado.
+  - **Roteiro do PR de teste no GitHub (falta fazer, depende do push):** depois do merge da E4, criar uma branch a partir da `main` que só remova a linha `signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),` de `shieldepy_p1/examples/checkout-express-fixed/src/gateways/StripeGateway.ts` e abrir o PR. Esperado: o job `chaos-gate` vermelho ("o código quebra sob falha injetada"), o `self-test` e o `check` verdes, e um comentário no PR com o relatório (tabela com `🟠 Alto` · `timeout` · `api.stripe.com`). Depois, fechar o PR sem merge.
+  - **Mensagem do portão:** sem `--fail-on`, diz só "N achado(s) de caos", em vez de "severidade Baixo ou pior". O relatório faz igual.
+  - **Conferido no fim:** typecheck limpo, **288 testes**, **E2E 24/24** num VS Code real (o core mudou na 4b: varredura e religação), extensão com **612 KB** (o caos continua fora do bundle).
+  - **Estado final da E4:** pronta para o usuário subir a branch `feat/chaos-gate` e fazer o merge.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -701,7 +710,7 @@ Medido no vulnerável:
 - **4b. Gate:** ✅ Concluída em 2026-10-08 (sem `--fail-on`, qualquer achado bloqueia; todos inválidos = exit 2; ver o registro). severidade por falha, `--fail-on`, exit 1 com achado válido e exit 2 com erro de ambiente.
 - **4c. Relatório markdown** ✅ Concluída em 2026-10-08 (`--report`; ver o registro). (determinístico + parágrafo opcional da IA).
 - **4d. GitHub Actions** ✅ Concluída em 2026-10-08 (portão no exemplo corrigido + self-test no vulnerável + job de testes; ver o registro). (`.github/workflows/shieldepy-chaos.yml`): Node 22, `npm ci` no ShielDepy e no alvo, `shieldepy chaos --report --fail-on Alto`, `$GITHUB_STEP_SUMMARY` e comentário no PR (`gh pr comment --edit-last || gh pr comment`), `ANTHROPIC_API_KEY` por secret e `--offline` sem ela. Também um template em `docs/` para repositórios-alvo.
-- **4e. Aceitação:**
+- **4e. Aceitação:** ✅ Concluída em 2026-10-08 nos dois primeiros itens. O terceiro depende do push (roteiro no registro).
   - `shieldepy chaos examples/checkout-express --offline` → exit 1, com o relatório apontando a corrida e o timeout;
   - o mesmo em `checkout-express-fixed` → exit 0;
   - um PR de teste no GitHub com check vermelho e comentário.
@@ -755,5 +764,5 @@ I/O (escrever arquivos, rodar processo) é injetado nos nós via interface `Chao
    - `agent/test/chaos/*`: validação de hipóteses (descarta rota inexistente/falha fora do catálogo), templates geram código que compila (`tsc --noEmit` em snapshot), grafo LangGraph com `LLMProvider` fake e `ChaosIo` fake percorre todos os estados. ✅ E3: `threat-modeler.test.ts`, `specialists.test.ts` e `templates.test.ts` (que compila contra os exemplos de verdade).
    - `cli/test`: `topology` em `examples/checkout-express` gera `POST /checkout` com `db_read→api_call→db_write` e tags `read-then-write`, `write-after-api-call`. ✅ E2.
 2. `npm run typecheck`.
-3. E2E manual: `npm run cli -- chaos examples/checkout-express --offline` → exit 1, relatório aponta race (estoque negativo) e timeout no Stripe; mesmo comando em `checkout-express-fixed` → exit 0. Repetir com `ANTHROPIC_API_KEY`.
-4. Abrir PR de teste no GitHub com o exemplo vulnerável e confirmar check vermelho + comentário no PR.
+3. E2E manual: `npm run cli -- chaos examples/checkout-express --offline` → exit 1, relatório aponta race (estoque negativo) e timeout no Stripe; mesmo comando em `checkout-express-fixed` → exit 0. ✅ E4 (também coberto pela suíte). Repetir com `ANTHROPIC_API_KEY`: pendente, porque é uma chamada paga.
+4. Abrir PR de teste no GitHub com o exemplo vulnerável e confirmar check vermelho + comentário no PR. Pendente (depende do push). Roteiro no registro da 4e: o PR tira o timeout do `checkout-express-fixed`.
