@@ -1,0 +1,140 @@
+# ShielDepy — engenharia de caos dirigida por análise estática, como portão de PR.
+#
+# O motor mapeia as rotas sensíveis (topologia), gera testes de caos só para elas, roda com o
+# Vitest do projeto-alvo e bloqueia o PR quando o código quebra sob falha (controle passou, caos
+# falhou). O relatório vai para o resumo do job e para um comentário no PR.
+#
+# Neste repositório:
+#   - chaos-gate: o portão de verdade, no exemplo CORRIGIDO (checkout-express-fixed). Tem que ficar
+#     verde; um PR que reintroduza a corrida ou tire o timeout do Stripe é barrado e comentado.
+#   - self-test: o exemplo VULNERÁVEL (checkout-express) tem que ser barrado (exit 1, com a corrida
+#     e o timeout no relatório). Garante que o detector não ficou cego.
+#   - check: typecheck + testes unitários, com os exemplos instalados (os testes que compilam e
+#     rodam os testes gerados são pulados sem o npm install dos exemplos).
+#
+# IA: com o secret ANTHROPIC_API_KEY, o Threat Modeler, os especialistas e o parágrafo do relatório
+# usam a IA (custo no rodapé do relatório). Sem ele, roda --offline (só o motor, custo zero).
+
+name: ShielDepy chaos
+
+on:
+  pull_request:
+    paths:
+      - 'shieldepy_p1/**'
+      - '.github/workflows/shieldepy-chaos.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'shieldepy_p1/**'
+      - '.github/workflows/shieldepy-chaos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: shieldepy-chaos-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: shieldepy_p1
+
+jobs:
+  chaos:
+    name: ${{ matrix.role }} (${{ matrix.example }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - role: chaos-gate
+            example: checkout-express-fixed
+          - role: self-test
+            example: checkout-express
+    env:
+      TARGET: examples/${{ matrix.example }}
+      REPORT: ${{ github.workspace }}/chaos-report.md
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            shieldepy_p1/package-lock.json
+            shieldepy_p1/examples/*/package-lock.json
+
+      - name: Instalar o ShielDepy
+        run: npm ci
+
+      - name: Instalar o projeto-alvo
+        run: npm ci --prefix "$TARGET"
+
+      - name: Rodar o caos
+        id: chaos
+        run: |
+          offline=""
+          if [ -z "$ANTHROPIC_API_KEY" ]; then offline="--offline"; echo "sem ANTHROPIC_API_KEY: rodando só o motor (--offline)"; fi
+          set +e
+          node apps/cli/bin/shieldepy.js chaos "$TARGET" --fail-on Alto --report "$REPORT" $offline
+          code=$?
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "saída do shieldepy chaos: $code"
+
+      - name: Resumo do job
+        if: always()
+        run: |
+          if [ -f "$REPORT" ]; then cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Comentar no PR
+        # só o portão comenta; em PR de fork o token não escreve, e isso não derruba o job
+        if: always() && matrix.role == 'chaos-gate' && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f "$REPORT" ] || { echo "sem relatório para comentar"; exit 0; }
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$REPORT" --edit-last || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$REPORT"
+
+      - name: Portão
+        env:
+          CODE: ${{ steps.chaos.outputs.code }}
+        run: |
+          if [ "${{ matrix.role }}" = "chaos-gate" ]; then
+            if [ "$CODE" = "1" ]; then echo "::error::ShielDepy: o código quebra sob falha injetada (ver o relatório)."; fi
+            if [ "$CODE" = "2" ]; then echo "::error::ShielDepy: erro de ambiente, nada foi provado (ver o log)."; fi
+            exit "$CODE"
+          fi
+          # self-test: o vulnerável TEM que ser barrado, com a corrida e o timeout
+          if [ "$CODE" != "1" ]; then echo "::error::self-test: o exemplo vulnerável deveria sair com 1, saiu com $CODE"; exit 1; fi
+          grep -q '`race_condition` | `stock`' "$REPORT" || { echo "::error::self-test: a corrida em stock não apareceu"; exit 1; }
+          grep -q '`timeout` | `api.stripe.com`' "$REPORT" || { echo "::error::self-test: o timeout do Stripe não apareceu"; exit 1; }
+          echo "self-test ok: o vulnerável foi barrado pela corrida e pelo timeout"
+
+  check:
+    name: typecheck + testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            shieldepy_p1/package-lock.json
+            shieldepy_p1/examples/*/package-lock.json
+      - run: npm ci
+      - name: Instalar os exemplos executáveis
+        run: |
+          npm ci --prefix examples/checkout-express
+          npm ci --prefix examples/checkout-express-fixed
+      - run: npm run check
