@@ -225,6 +225,22 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Resultado no `checkout-express` (offline):** `race_condition(stock)` e `timeout(api.stripe.com)` com prioridade 1; `partial_failure(orders, stock)` sem teste; `5xx` e `malformed_response` do Stripe. O `GET /orders/:id` não gera nada. No `checkout-express-fixed` some o `timeout` (o Stripe tem timeout), e a corrida continua para provar a correção.
   - **Bundle da extensão:** exportar o caos do índice do `@shieldepy/agent` levava o LangGraph para dentro da extensão (611 KB → 1,9 MB). Por isso ele ficou num subcaminho, e a extensão continua com 612 KB.
   - Suíte: **250 testes**.
+- 2026-10-08: **3d concluído (especialistas Network e Concurrency).**
+  - **A IA não escreve código nem vê dados:** cada especialista (tier `fast`, system em cache) recebe uma hipótese, a rota e **os nomes** dos invariantes do projeto, e só ajusta uma spec que já nasce válida (o padrão do motor). O corpo da requisição vem do `requests` do config.
+  - **`specs.ts`:**
+    - `NetworkSpec`: host e uma falha, que é `delay` (timeout), `status` (500/502/503/504) ou `malformed` (`html`, `truncated_json`, `empty`, `wrong_shape`).
+    - `ConcurrencySpec`: requisições em paralelo, de 2 a 50.
+    - Invariantes: `statusIn`, `respondsWithin`, `noUnhandledError` (nenhum 500), `maxSuccesses` e `stateCheck(nome)`, este só com os nomes declarados no config.
+    - `parseSpec` limita as faixas, descarta o que não vale (com o motivo) e garante duas coisas: os invariantes do projeto sempre entram (a IA pode acrescentar, não esquecer) e, no timeout, o atraso injetado sempre passa da paciência do cliente.
+  - **Padrões do motor:**
+    - timeout: atraso de 15 s e paciência de 6 s;
+    - 5xx: `503`, sem 500, status em 502/503/504;
+    - corpo inválido: HTML, sem 500, status 502;
+    - corrida: 10 em paralelo, sem 500;
+    - todos com os `stateCheck` do projeto.
+    - O padrão foi escolhido para separar os dois exemplos: o vulnerável quebra (fica pendurado, ou 500 no `response.json()`), e o corrigido responde 502.
+  - **Grafo:** `threat_modeler → (Send, uma por hipótese testável) → network | concurrency → END`. As specs saem em ordem estável (a das hipóteses), independente de qual ramo paralelo termina primeiro. IA fora do ar num especialista: fica a spec padrão e o erro é registrado.
+  - Suíte: **257 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -494,7 +510,7 @@ A escrita de cache custa 1,25× a entrada (TTL de 5 min). O prefixo mínimo cach
   - `nodes/threat-modeler.ts` com entrada = `attackSurface` serializada;
   - `validate-hypotheses.ts`: rota existe, falha no catálogo e habilitada pelas tags; o resto é descartado e contado;
   - `offline.ts`: hipóteses direto das tags.
-- **3d. Especialistas Network e Concurrency** preenchendo `NetworkSpec`/`ConcurrencySpec` (só parâmetros e invariantes, validados), com fan-out por `Send`.
+- **3d. Especialistas Network e Concurrency** ✅ Concluída em 2026-10-08. Preenchendo `NetworkSpec`/`ConcurrencySpec` (só parâmetros e invariantes, validados), com fan-out por `Send`.
 - **3e. Templates e escrita.**
   - `templates/network.ts` e `templates/concurrency.ts` → `.shieldepy/chaos-tests/<rota>__<falha>.spec.ts` e o `vitest.config.ts` gerado.
   - Cada spec já sai com o bloco **`control`** (a mesma requisição, sem caos), que a E4 usa contra falso positivo.

@@ -166,9 +166,13 @@ describe('E3/3c — grafo LangGraph', () => {
     const { provider } = fakeProvider(JSON.stringify({ hypotheses: [] }));
     const ai = await runChaosPipeline(vulnerable, { provider });
     expect(ai.engine).toBe('anthropic');
-    expect(ai.completions).toHaveLength(1);
+    // 1 Threat Modeler + 1 especialista por hipótese testável (4 no checkout)
+    expect(ai.completions).toHaveLength(5);
 
     const broken = await runChaosPipeline(vulnerable, { provider: fakeProvider('{').provider });
-    expect(broken.errors).toEqual(['threat_modeler: resposta da IA não é JSON válido']);
+    // o Threat Modeler e cada especialista caem no padrão do motor, e cada um registra o motivo
+    expect(broken.errors[0]).toBe('threat_modeler: resposta da IA não é JSON válido');
+    expect(broken.errors).toHaveLength(5);
+    expect(broken.specs).toHaveLength(4);
   });
 });

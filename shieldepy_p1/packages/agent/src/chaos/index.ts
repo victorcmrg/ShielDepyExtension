@@ -2,4 +2,6 @@
 export * from './catalog';
 export * from './hypotheses';
 export * from './threat-modeler';
+export * from './specs';
+export * from './specialists';
 export * from './graph';
