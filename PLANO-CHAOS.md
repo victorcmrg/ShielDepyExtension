@@ -207,6 +207,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Observação para depois:** o `packages/` do ShielDepy tem 5 chamadas heurísticas e 2 sem alvo, vindas de código da E2 (`CodeGraph.ts`, `system-graph.ts`, `build.ts`, testes). Não bloqueia nada. Também: o `shieldepy graph apps` fica lento porque varre `apps/vscode/.vscode-test` (o VS Code baixado pelo E2E), que não está entre as pastas ignoradas.
   - O E2E não copia mais o `node_modules` do exemplo para o workspace de teste.
   - Suíte: **236 testes**. E2E 24/24. Os testes de fumaça dos exemplos: 3/3 no vulnerável e 4/4 no corrigido (`npm test` dentro de cada exemplo).
+- 2026-10-08: **3b concluído (tokens e custo).**
+  - **Provider:** `LLMProvider` ganhou `completeWithUsage` (opcional), que devolve `{ text, model, usage }`. Quem usa `complete` não muda nada (são seis lugares). `completeDetailed(provider, req)` cai no `complete` quando o provider não tem a versão com tokens (ex.: os falsos dos testes); aí o custo sai como desconhecido.
+    - **Anthropic:** `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` e o modelo que respondeu de fato.
+    - **Gemini:** `usageMetadata`, com os tokens de raciocínio somados à saída (são cobrados assim).
+  - **Cache de prompt:** `CompletionRequest.cacheSystem` manda o `system` como bloco com `cache_control: ephemeral`. O Threat Modeler vai usar isso no system + catálogo, que são estáveis.
+  - **Custo:** `agent/src/cost.ts`, com a tabela de preços conferida (Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5; aceita id com data), `costUsd` (cache de escrita a 1,25×) e o `CostMeter`, que soma uma execução. Modelo sem preço (Gemini, ou um Claude fora da tabela) vai para `unpriced`, nunca com um preço inventado. Chamada sem tokens vai para `withoutUsage`.
+  - **Tabela de custo do plano corrigida:** o "Haiku 5.5" a US$ 0,10/0,50 não existe; o Haiku 4.5 custa US$ 1/5, e as estimativas foram recalculadas.
+  - **Não feito de propósito:** os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram. Trocar o `deep` afeta o custo do chat e da revisão que já existem, e a decisão depende de medir o Threat Modeler de verdade, o que exige chamada paga à API. O Threat Modeler aceita `SHIELDEPY_DEEP_MODEL`.
+  - Suíte: **242 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -382,7 +391,7 @@ Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 
 **Recomendação:** fazer **depois da E2 em TS**, quando o pipeline estiver provado de ponta a ponta. Ordem sugerida: Java/Spring (melhor retorno; stack comum em empresas) → C#/ASP.NET → Python. Fica como **E5 — outras linguagens**.
 
-## Custo estimado da IA (E3), preços de 2026-10-06
+## Custo estimado da IA (E3), preços conferidos em 2026-10-08
 
 **Agentes LLM no pipeline:**
 - **MVP:** 3 nós com IA. O **Threat Modeler** (tier `deep`) e os especialistas **Network** e **Concurrency** (tier `fast`; só preenchem specs estruturadas).
@@ -390,21 +399,25 @@ Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 - **Sem IA:** escrever, rodar e gerar o relatório determinístico.
 - **Modo `--offline`:** custo zero.
 
-| Modelo | Entrada / 1M tokens | Saída / 1M tokens |
-|---|---|---|
-| Claude Opus 5.5 | US$ 4,00 | US$ 20,00 |
-| Claude Sonnet 5.5 | US$ 2,00 | US$ 10,00 |
-| Claude Haiku 5.5 ⚠️ | US$ 0,10 | US$ 0,50 |
+Preços da Claude API (Anthropic, 1ª parte), conferidos na referência oficial em 2026-10-08. A mesma tabela está no código, em `packages/agent/src/cost.ts`.
 
-> ⚠️ Revisão de 2026-10-08: não existe "Haiku 5.5"; o Haiku atual é o Haiku 4.5. Os preços desta tabela e da tabela abaixo precisam ser conferidos na tarefa 3b, antes de virar número de relatório.
+| Modelo | ID | Entrada / 1M | Saída / 1M | Leitura de cache / 1M |
+|---|---|---|---|---|
+| Claude Opus 5.5 | `claude-opus-5-5` | US$ 4,00 | US$ 20,00 | US$ 0,20 |
+| Claude Sonnet 5.5 | `claude-sonnet-5-5` | US$ 2,00 | US$ 10,00 | US$ 0,20 |
+| Claude Haiku 4.5 | `claude-haiku-4-5` | US$ 1,00 | US$ 5,00 | US$ 0,10 |
 
-**Estimativa por execução.** O raciocínio (thinking) é cobrado como saída. Os números são de ordem de grandeza e devem ser medidos com `response.usage` na E3. Câmbio assumido: R$ 5,50 por dólar.
+A escrita de cache custa 1,25× a entrada (TTL de 5 min). O prefixo mínimo cacheável é de 512 tokens no Opus/Sonnet 5.5 e de 4096 no Haiku 4.5.
 
-| Superfície de ataque | Tokens (entrada / saída) | Opus 5.5 | Sonnet 5.5 | Haiku 5.5 | Misto (Threat Modeler Opus + especialistas Haiku) |
+> Correção de 2026-10-08: a versão anterior desta tabela tinha uma linha "Claude Haiku 5.5" a US$ 0,10 / 0,50. Esse modelo não existe, e o Haiku atual (4.5) custa **10× isso**. As estimativas abaixo foram recalculadas.
+
+**Estimativa por execução.** O raciocínio (thinking) é cobrado como saída. São ordens de grandeza, que a E3 mede de verdade com o `CostMeter`. Câmbio assumido: R$ 5,50 por dólar. Na coluna "Misto", a suposição é que o Threat Modeler usa metade dos tokens, no Opus, e os especialistas a outra metade, no Haiku.
+
+| Superfície de ataque | Tokens (entrada / saída) | Opus 5.5 | Sonnet 5.5 | Haiku 4.5 | Misto (Threat Modeler Opus + especialistas Haiku) |
 |---|---|---|---|---|---|
-| Pequena (~2 rotas, ex.: `checkout-express`) | ~8k / ~6k | ~R$ 0,83 | ~R$ 0,42 | ~R$ 0,02 | ~R$ 0,60 |
-| Média (~20 rotas sensíveis) | ~30k / ~25k | ~R$ 3,40 | ~R$ 1,70 | ~R$ 0,09 | ~R$ 1,50 |
-| Grande (~100 rotas sensíveis) | ~120k / ~80k | ~R$ 11,40 | ~R$ 5,70 | ~R$ 0,30 | ~R$ 5,00 |
+| Pequena (~2 rotas, ex.: `checkout-express`) | ~8k / ~6k | ~R$ 0,84 | ~R$ 0,42 | ~R$ 0,21 | ~R$ 0,52 |
+| Média (~20 rotas sensíveis) | ~30k / ~25k | ~R$ 3,41 | ~R$ 1,71 | ~R$ 0,85 | ~R$ 2,13 |
+| Grande (~100 rotas sensíveis) | ~120k / ~80k | ~R$ 11,44 | ~R$ 5,72 | ~R$ 2,86 | ~R$ 7,15 |
 
 **Alavancas de custo, previstas para a E3:**
 1. **Rodar só para as rotas cuja cadeia o PR tocou** (diff de hash do mapa). A maioria dos PRs fica com custo zero.
@@ -466,7 +479,7 @@ Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
   - `checkout-express-fixed` com lock + transação + timeout.
   - Teste da E2: a topologia do vulnerável continua igual, e a do corrigido perde `no-transaction` e `no-timeout`.
   - Um teste manual de cada (supertest), para provar que o app sobe em memória.
-- **3b. Provider com `usage`** e custo por execução (tokens → R$ pela tabela, conferida).
+- **3b. Provider com `usage`** e custo por execução (tokens → R$ pela tabela, conferida). ✅ Concluída em 2026-10-08.
 - **3c. Estado, catálogo e Threat Modeler** (`agent/src/chaos/`):
   - `state.ts` (LangGraph `Annotation.Root`), `catalog.ts` (a tabela acima, como dados);
   - `nodes/threat-modeler.ts` com entrada = `attackSurface` serializada;

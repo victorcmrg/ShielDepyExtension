@@ -1,6 +1,7 @@
 // Camada de IA. O core nunca importa daqui; os apps escolhem o provider e chamam os casos de uso.
 export * from './provider';
 export * from './select';
+export * from './cost';
 export * from './text';
 export { AnthropicProvider, DEFAULT_ANTHROPIC_MODELS, type AnthropicProviderOptions } from './providers/anthropic';
 export { GeminiProvider, DEFAULT_GEMINI_MODEL, type GeminiProviderOptions } from './providers/gemini';

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { CompletionRequest, LLMProvider, ModelTier } from '../provider';
+import type { Completion, CompletionRequest, LLMProvider, ModelTier } from '../provider';
 
 export const DEFAULT_ANTHROPIC_MODELS: Record<ModelTier, string> = {
   fast: 'claude-haiku-4-5-20251001',
@@ -26,13 +26,18 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async complete(request: CompletionRequest): Promise<string> {
+    return (await this.completeWithUsage(request)).text;
+  }
+
+  async completeWithUsage(request: CompletionRequest): Promise<Completion> {
     // Sem `temperature`: os modelos atuais (Opus 5, Sonnet 5…) rejeitam o parâmetro com 400, e
     // o modelo "deep" é configurável pelo usuário. JSON é garantido pelo prompt + validação.
     const response = await this.client.messages.create(
       {
         model: this.models[request.tier],
         max_tokens: request.maxTokens,
-        system: request.system,
+        // system estável vira bloco com cache_control: as próximas chamadas leem o prefixo do cache
+        system: request.cacheSystem ? [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }] : request.system,
         messages: request.messages,
       },
       { signal: request.signal }
@@ -42,10 +47,23 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error('o modelo recusou a solicitação (stop_reason: refusal)');
     }
 
-    return response.content
+    const text = response.content
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')
       .map((block) => block.text)
       .join('\n');
+    const u = response.usage;
+    return {
+      text,
+      model: response.model ?? this.models[request.tier],
+      ...(u && {
+        usage: {
+          inputTokens: u.input_tokens,
+          outputTokens: u.output_tokens,
+          ...(u.cache_read_input_tokens ? { cacheReadTokens: u.cache_read_input_tokens } : {}),
+          ...(u.cache_creation_input_tokens ? { cacheWriteTokens: u.cache_creation_input_tokens } : {}),
+        },
+      }),
+    };
   }
 }
 
