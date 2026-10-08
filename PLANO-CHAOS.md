@@ -26,7 +26,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **306** depois da 5d).
+- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **307** depois da 5e, parte gratuita).
 - `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
@@ -432,6 +432,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - O roteiro do PR de teste da 4e continua valendo: tirar o timeout do `-fixed` só mexe no exemplo, então o portão usa `--base`, o `POST /checkout` entra (o corpo de `StripeGateway.charge` mudou) e o teste de timeout quebra.
   - Simulado localmente: esta branch mexe no motor (portão completo). `chaos -fixed --base HEAD` sai 0, com "Nenhuma rota sensível tocada por este PR" no relatório. YAML validado.
   - Docs: seção "Só o que o PR tocou (`--base`)" no `docs/chaos-ci.md`; o README ganhou o `diff`, o `--base` e os arquivos novos no mapa do código.
+- 2026-10-08: **5e, parte gratuita.** A medição paga não foi feita: não há `ANTHROPIC_API_KEY` neste ambiente, e gastar exige autorização do usuário.
+  - **Risco achado no provider:** o Sonnet 5.5 (e o Opus 5.5) raciocinam por padrão, e esse raciocínio também consome o `max_tokens`. Com 4000 no Threat Modeler e 800 nos especialistas, a resposta pode sair cortada no meio do JSON, e antes isso aparecia como "JSON inválido". Agora o provider da Anthropic lança "resposta cortada no limite de N tokens (stop_reason: max_tokens) — modelo" **quando a resposta é JSON**. Texto livre (o chat da extensão) cortado continua sendo entregue. A medição vai dizer se é preciso subir o `maxTokens` ou baixar o esforço no tier `deep`.
+  - **`cacheSystem`:** mantido e documentado no `provider.ts`. Abaixo do mínimo ele não faz nada (sem erro e sem custo); hoje só o Threat Modeler no Sonnet 5.5 cacheia, e só entre execuções com menos de 5 min de intervalo. Não vale encher o prompt para chegar aos 4096 do Haiku.
+  - **Medição pronta para o usuário rodar:** `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (`scripts/measure-chaos-cost.ts`, incluído no typecheck).
+    - Roda o `chaos` completo (gera, roda os testes e escreve o relatório com o parágrafo da IA) nos dois exemplos, com o `deep` no Haiku 4.5 e no Sonnet 5.5, e o `fast` sempre no Haiku 4.5.
+    - Imprime uma tabela (hipóteses e quantas vieram da IA, descartadas, erros, chamadas, tokens, cache, US$, segundos) e grava o JSON em `.shieldepy/`.
+    - Sem `--sim-gastar` ou sem a chave, recusa e sai 2.
+    - **Estimativa:** abaixo de US$ 0,50 no total (4 execuções; cada uma faz de 1 a 6 chamadas pequenas).
+  - **Decisão adiada até a medição:** o padrão do `deep` e a separação entre o tier do caos e o tier do chat.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -822,7 +831,7 @@ Medido no vulnerável:
 - **5b. Hash do corpo e do topo do arquivo** ✅ Concluída em 2026-10-08, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
 - **5c. Diff.** ✅ Concluída em 2026-10-08. `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
 - **5d. Caos só no que o PR tocou.** ✅ Concluída em 2026-10-08. `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.
-- **5e. Custo real.**
+- **5e. Custo real.** Parte gratuita ✅ concluída em 2026-10-08. **Falta a medição paga**, que depende do usuário (ver o registro).
   - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
   - Decidir o padrão do `deep` com esse dado. Separar o tier do caos do tier do chat, se for preciso.
   - Tirar ou documentar o `cacheSystem` onde o prompt fica abaixo do mínimo.

@@ -38,6 +38,12 @@ describe('AnthropicProvider', () => {
     const { client } = fakeClient({ stop_reason: 'refusal', content: [] });
     await expect(new AnthropicProvider({ apiKey: 'k', client }).complete(req)).rejects.toThrow(/refusal/);
   });
+
+  it('resposta cortada no max_tokens vira erro explícito (o raciocínio também gasta o limite)', async () => {
+    const { client } = fakeClient({ stop_reason: 'max_tokens', model: 'claude-sonnet-5-5', content: [{ type: 'text', text: '{"hypotheses": [' }] });
+    await expect(new AnthropicProvider({ apiKey: 'k', client }).complete({ ...req, json: true })).rejects.toThrow(/cortada no limite de 10 tokens.*claude-sonnet-5-5/);
+    expect(await new AnthropicProvider({ apiKey: 'k', client }).complete(req)).toBe('{"hypotheses": ['); // texto livre: segue
+  });
 });
 
 describe('GeminiProvider', () => {

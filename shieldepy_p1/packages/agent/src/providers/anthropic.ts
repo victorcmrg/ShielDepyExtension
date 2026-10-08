@@ -46,6 +46,12 @@ export class AnthropicProvider implements LLMProvider {
     if (response.stop_reason === 'refusal') {
       throw new Error('o modelo recusou a solicitação (stop_reason: refusal)');
     }
+    // resposta cortada: num modelo que raciocina (Sonnet 5.5, Opus 5.5), o raciocínio também gasta o
+    // max_tokens. Um JSON pela metade tem que aparecer como corte, não como "JSON inválido". Texto
+    // livre (chat) cortado ainda serve, e segue como está.
+    if (response.stop_reason === 'max_tokens' && request.json) {
+      throw new Error(`resposta cortada no limite de ${request.maxTokens} tokens (stop_reason: max_tokens) — ${response.model}`);
+    }
 
     const text = response.content
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')

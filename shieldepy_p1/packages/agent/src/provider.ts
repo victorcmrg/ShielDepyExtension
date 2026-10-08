@@ -21,7 +21,10 @@ export interface CompletionRequest {
   signal?: AbortSignal;
   /**
    * O `system` é estável entre chamadas (catálogo, instruções fixas): marca para cache de prompt
-   * (Anthropic). Só compensa se ele passar do mínimo cacheável do modelo; abaixo disso não faz nada.
+   * (Anthropic). Só compensa se ele passar do mínimo cacheável do modelo; abaixo disso não faz nada
+   * (sem erro e sem custo). Medido na E5: o system do Threat Modeler tem ~600 tokens e o dos
+   * especialistas ~300; o mínimo é 4096 no Haiku 4.5 e 512 no Sonnet 5.5. Ou seja, hoje só o
+   * Threat Modeler no Sonnet cacheia, e só entre execuções com menos de 5 min de intervalo.
    */
   cacheSystem?: boolean;
 }
