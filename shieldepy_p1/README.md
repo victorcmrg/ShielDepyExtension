@@ -57,7 +57,10 @@ as regras duas a duas:
 
 ```
  abrir o workspace
-   └─ indexa todos os arquivos (sem IA) ──► grafo estrutural + regras + colisões
+   └─ indexa até `shieldepy.index.maxFiles` arquivos (padrão 3000, sem IA)
+        ──► grafo estrutural + regras + colisões; loga a cobertura do mapa
+        ──► passou do teto? avisa que o mapa ficou PARCIAL
+ mudar tsconfig/jsconfig (`paths`) ──► o grafo refaz a resolução de imports, sem recarregar
                                                    │
  editar / salvar / abrir um arquivo                ▼
    └─ BackgroundAnalyzer (depois de ~1,2 s parado)
@@ -74,6 +77,13 @@ as regras duas a duas:
                  ──► lista "Problemas encontrados" na barra lateral
                  ──► #id estável, citável no chat
 ```
+
+**"ShielDepy: Ver Mapa do Sistema"** abre o mesmo visualizador da CLI num painel do editor:
+- cobertura e pontos fracos do mapa;
+- cadeias em camadas;
+- **"Abrir código"**, que leva ao arquivo e à linha.
+
+As bibliotecas (Cytoscape + fcose) vêm de `media/vendor/` com a CSP por nonce, como nos outros webviews.
 
 No **chat** você pergunta sobre um achado, citando o `#id` ou usando "Ask AI" na lista. Se pedir
 uma correção, a IA propõe o arquivo inteiro corrigido. **Antes de mostrar o botão "Aplicar"**, a
@@ -152,6 +162,7 @@ apps/vscode   apps/cli   apps/web        ← interfaces (só aqui existe `vscode
 | Imports/exports/re-exports de um arquivo (tabela de módulo) | `packages/core/src/code-graph/extract-module.ts` |
 | Resolução de especificadores (relativo, tsconfig `paths`, pacote) | `packages/core/src/code-graph/resolve-import.ts` |
 | Artefato do mapa do sistema (`shieldepy graph`) | `packages/core/src/system-graph.ts` |
+| Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
 | Suporte a Java / Python / C# | `packages/extractors/src/treesitter/*` (gramáticas em `packages/core/wasm`) |

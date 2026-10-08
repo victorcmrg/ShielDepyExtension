@@ -121,6 +121,9 @@ export class ModuleResolver {
         if (file) return { kind: 'file', path: file };
       }
     }
+    // `@/x`, `~/x` e `#x` não são nomes de pacote válidos no npm: são aliases do projeto que não
+    // resolveram (tsconfig sem `paths`, ou `imports` do package.json) — import quebrado, não externo.
+    if (spec.startsWith('@/') || spec.startsWith('~/') || spec.startsWith('#')) return { kind: 'unresolved' };
     return { kind: 'package', name: packageName(spec) };
   }
 

@@ -1,47 +1,73 @@
-// Visualizador do mapa do sistema: um HTML autocontido (Cytoscape.js + dados embutidos), que
-// abre offline em qualquer navegador. É a ferramenta de CONFERÊNCIA do mapeamento (E1): ver se a
-// cadeia rota → serviço → repositório → pacote está certa e onde o mapa ainda adivinha.
-// O visualizador "de produto" (extensão/portal, com topologia e resultados do caos) vem depois —
-// ver PLANO-CHAOS.md.
+// Visualizador do mapa do sistema (Cytoscape.js + layout fcose). Dois modos:
+//   - `inline`: HTML autocontido, bibliotecas e dados embutidos — a CLI grava e abre offline;
+//   - `webview`: a extensão do VS Code serve as bibliotecas como recursos do webview, com CSP
+//     por nonce (nada inline sem nonce), e ganha o botão "Abrir código" (postMessage → editor).
+// É a ferramenta de CONFERÊNCIA do mapeamento (E1). O visualizador "de produto" (topologia e
+// resultados do caos) vem depois — ver PLANO-CHAOS.md.
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { SystemGraph } from '@shieldepy/core';
-
-const require = createRequire(import.meta.url);
+import libraries from '../libraries.json' with { type: 'json' };
 
 /**
- * Cytoscape + layout fcose (feito pra grafos com nós compostos — arquivo contendo símbolos).
- * UMD na ordem de dependência; o fcose se registra sozinho ao achar o `cytoscape` global.
+ * Cytoscape + fcose (feito pra grafos com nós compostos — arquivo contendo símbolos), na ordem
+ * de dependência; o fcose se registra sozinho ao achar o `cytoscape` global. A lista mora em
+ * `libraries.json` porque o build da extensão (apps/vscode/esbuild.mjs) também a lê, pra copiar
+ * cada arquivo pra `media/vendor/<file>`. O `exports` do cytoscape mapeia `./dist/*` → `./dist/*.js`,
+ * por isso o especificador dele vai sem extensão.
  */
-function librarySources(): string[] {
-  const files = [
-    // o `exports` do cytoscape mapeia `./dist/*` → `./dist/*.js`: o caminho vai sem extensão
-    require.resolve('cytoscape/dist/cytoscape.min'),
-    require.resolve('layout-base/layout-base.js'),
-    require.resolve('cose-base/cose-base.js'),
-    require.resolve('cytoscape-fcose/cytoscape-fcose.js'),
-  ];
-  return files.map((f) => readFileSync(f, 'utf8').split('</script').join('<\\/script'));
+export const VIEWER_LIBRARIES: ReadonlyArray<{ specifier: string; file: string }> = libraries;
+
+/** Caminhos em disco das bibliotecas (resolvidos a partir deste pacote). */
+export function viewerLibraryPaths(): string[] {
+  // createRequire só aqui dentro: no bundle CJS da extensão `import.meta.url` não existe
+  const require = createRequire(import.meta.url);
+  return VIEWER_LIBRARIES.map((lib) => require.resolve(lib.specifier));
 }
 
-/** JSON seguro dentro de <script>: `<` vira `\u003c` (no JSON, `<` só aparece dentro de strings). */
+export type ViewerMode =
+  | { kind: 'inline' }
+  | {
+      kind: 'webview';
+      /** URIs (asWebviewUri) das bibliotecas, na ordem de VIEWER_LIBRARIES. */
+      libraryUris: string[];
+      nonce: string;
+      cspSource: string;
+    };
+
+/** JSON seguro dentro de <script>: `<` vira `<` (no JSON, `<` só aparece dentro de strings). */
 function embedJson(value: unknown): string {
-  return JSON.stringify(value).split('<').join('\\u003c');
+  return JSON.stringify(value).split('<').join('\u003c');
 }
 
 function escapeHtml(text: string): string {
   return text.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;');
 }
 
-export function renderGraphHtml(system: SystemGraph, label: string): string {
+export function renderGraphHtml(system: SystemGraph, label: string, mode: ViewerMode = { kind: 'inline' }): string {
+  const nonce = mode.kind === 'webview' ? ` nonce="${mode.nonce}"` : '';
+  const csp =
+    mode.kind === 'webview'
+      ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${mode.cspSource} data:; style-src 'nonce-${mode.nonce}'; script-src 'nonce-${mode.nonce}' ${mode.cspSource};">`
+      : '';
+  const libraries =
+    mode.kind === 'webview'
+      ? mode.libraryUris.map((uri) => `<script${nonce} src="${escapeHtml(uri)}"></script>`).join('\n')
+      : viewerLibraryPaths()
+          .map((file) => `<script>${readFileSync(file, 'utf8').split('</script').join('<\/script')}</script>`)
+          .join('\n');
+
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+${csp}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mapa — ${escapeHtml(label)}</title>
-<style>${STYLE}</style>
+<style${nonce}>${STYLE}</style>
+<!-- o Cytoscape injeta este <style> se ele não existir; a CSP do webview bloquearia a injeção -->
+<style${nonce} id="__________cytoscape_stylesheet">.__________cytoscape_container { position: relative; }</style>
 </head>
 <body>
 <aside id="side">
@@ -72,11 +98,9 @@ export function renderGraphHtml(system: SystemGraph, label: string): string {
   <div id="flowbar" hidden><span id="flowtitle"></span><button id="back">Voltar ao mapa</button></div>
   <div id="cy" aria-label="Grafo do sistema"></div>
 </main>
-${librarySources()
-  .map((src) => `<script>${src}</script>`)
-  .join('\n')}
-<script>const SYSTEM = ${embedJson(system)};</script>
-<script>${APP}</script>
+${libraries}
+<script${nonce}>const SYSTEM = ${embedJson(system)};</script>
+<script${nonce}>${APP}</script>
 </body>
 </html>
 `;
@@ -137,6 +161,8 @@ const APP = String.raw`
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const isTest = (id) => id.includes('/test/') || id.includes('/tests/') || id.includes('.test.') || id.includes('.spec.') || id.includes('test-e2e/');
   const fileOf = (n) => (n.kind === 'file' ? n.id : n.file);
+  // dentro do webview do VS Code: o botão "Abrir código" fala com a extensão
+  const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : undefined;
   const state = { group: true, filters: { calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
 
   // ---- painel de cobertura
@@ -146,12 +172,14 @@ const APP = String.raw`
   document.getElementById('hash').textContent = SYSTEM.contentHash.slice(0, 16);
   document.getElementById('coverage').innerHTML =
     '<h2>Cobertura das chamadas internas</h2>' +
-    '<div class="big">' + pct.toFixed(1) + '%</div><div class="meter"><div style="width:' + pct + '%"></div></div>' +
+    '<div class="big">' + pct.toFixed(1) + '%</div><div class="meter"><div id="meterfill"></div></div>' +
     '<dl><dt>provadas</dt><dd>' + s.callsResolved + '</dd><dt>heurística</dt><dd>' + s.callsHeuristic + '</dd>' +
     '<dt>sem alvo</dt><dd>' + s.callsUnresolved + '</dd><dt>p/ pacotes</dt><dd>' + s.callsExternal + '</dd>' +
     '<dt>imports quebrados</dt><dd>' + s.importsUnresolved + '</dd>' +
     '<dt>arquivos</dt><dd>' + s.files + '</dd><dt>símbolos</dt><dd>' + s.symbols + '</dd><dt>pacotes</dt><dd>' + s.packages + '</dd>' +
     '<dt>regras / colisões</dt><dd>' + s.rules + ' / ' + s.collisions + '</dd></dl>';
+  // largura via CSSOM: atributo style="" em HTML é bloqueado pela CSP do webview
+  document.getElementById('meterfill').style.width = pct + '%';
 
   // ---- elementos
   function elements() {
@@ -277,10 +305,13 @@ const APP = String.raw`
     const el = document.getElementById('details');
     el.hidden = false;
     el.innerHTML = '<h2>' + escape(raw.name) + '</h2><dl>' + rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + escape(String(v)) + '</dd>').join('') + '</dl>' +
-      '<div class="row"><button id="down">Cadeia abaixo</button><button id="up">Quem chega aqui</button><button id="clear">Limpar</button></div>';
+      '<div class="row"><button id="down">Cadeia abaixo</button><button id="up">Quem chega aqui</button><button id="clear">Limpar</button>' +
+      (vscodeApi && (raw.file || raw.kind === 'file') ? '<button id="open">Abrir código</button>' : '') + '</div>';
     document.getElementById('down').onclick = () => showFlow(chain(node, 'down'), node, 'Cadeia a partir de ' + raw.name);
     document.getElementById('up').onclick = () => showFlow(chain(node, 'up'), node, 'Quem chega em ' + raw.name);
     document.getElementById('clear').onclick = () => { cy.elements().unselect(); clearHighlight(); };
+    const open = document.getElementById('open');
+    if (open) open.onclick = () => vscodeApi.postMessage({ type: 'open', file: raw.kind === 'file' ? raw.id : raw.file, line: raw.startLine || 0 });
   }
   function escape(t) {
     return t.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');

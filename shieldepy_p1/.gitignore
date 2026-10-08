@@ -3,6 +3,7 @@ dist/
 *.vsix
 .env
 apps/vscode/wasm/
+apps/vscode/media/vendor/
 .vscode-test/
 apps/web/data/
 

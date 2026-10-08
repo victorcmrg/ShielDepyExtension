@@ -1,0 +1,6 @@
+[
+  { "specifier": "cytoscape/dist/cytoscape.min", "file": "cytoscape.min.js" },
+  { "specifier": "layout-base/layout-base.js", "file": "layout-base.js" },
+  { "specifier": "cose-base/cose-base.js", "file": "cose-base.js" },
+  { "specifier": "cytoscape-fcose/cytoscape-fcose.js", "file": "cytoscape-fcose.js" }
+]

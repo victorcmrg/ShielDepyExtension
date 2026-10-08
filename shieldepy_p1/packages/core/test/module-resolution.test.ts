@@ -98,6 +98,21 @@ describe('Fase 0 — resolução por tabela de módulo (imports/exports)', () =>
     expect(graph.stats.importsUnresolved).toBe(0);
   });
 
+  it('tsconfig mudou: reloadModuleConfig refaz imports e chamadas sem reparsear', () => {
+    fx.write('tsconfig.json', '{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"] } } }');
+    const repo = indexFile(graph, fx, 'src/db/repo.ts', 'export function save() {}\n');
+    const svc = indexFile(graph, fx, 'src/svc.ts', "import { save } from '~/db/repo';\nexport function run() { save(); }\n");
+    // '~/…' ainda não é alias: import quebrado (não é nome de pacote válido)
+    expect(calls('run', svc, 'save', repo)).toBe(false);
+    expect(graph.fileCoverage(svc).importsUnresolved).toEqual(['~/db/repo']);
+
+    fx.write('tsconfig.json', '{ "compilerOptions": { "baseUrl": ".", "paths": { "~/*": ["src/*"] } } }');
+    graph.reloadModuleConfig();
+    expect(graph.hasEdge(svc, repo, 'imports')).toBe(true);
+    expect(calls('run', svc, 'save', repo)).toBe(true);
+    expect(graph.stats.importsUnresolved).toBe(0);
+  });
+
   it('pacotes externos viram nós `package`; chamadas a eles contam como externas', () => {
     const svc = indexFile(
       graph,
@@ -152,5 +167,7 @@ describe('ModuleResolver / utilitários', () => {
     const resolver = new ModuleResolver({ isFile: () => false });
     expect(resolver.resolve(path.resolve('/p/a.ts'), 'express')).toEqual({ kind: 'package', name: 'express' });
     expect(resolver.resolve(path.resolve('/p/a.ts'), './b')).toEqual({ kind: 'unresolved' });
+    for (const alias of ['@/x', '~/x', '#x']) expect(resolver.resolve(path.resolve('/p/a.ts'), alias)).toEqual({ kind: 'unresolved' });
+    expect(resolver.resolve(path.resolve('/p/a.ts'), '@prisma/client')).toEqual({ kind: 'package', name: '@prisma/client' });
   });
 });

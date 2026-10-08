@@ -14,8 +14,7 @@
     "@shieldepy/agent": "*",
     "@shieldepy/core": "*",
     "@shieldepy/extractors": "*",
-    "cytoscape": "^3.30.4",
-    "cytoscape-fcose": "^2.2.0",
+    "@shieldepy/viewer": "*",
     "tsx": "^4.23.15"
   }
 }

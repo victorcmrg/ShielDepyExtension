@@ -15,7 +15,7 @@ import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extractors';
 import { explainCollisions, explainOffline, providerFromEnv, severityRank, type Severity } from '@shieldepy/agent';
 import { printCollisions, printCycles, printReport, printSystemGraph } from './print';
-import { renderGraphHtml } from './viewer';
+import { renderGraphHtml } from '@shieldepy/viewer';
 
 export interface Io {
   out: (line: string) => void;

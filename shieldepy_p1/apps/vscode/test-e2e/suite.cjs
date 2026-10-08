@@ -51,7 +51,7 @@ exports.run = async function run() {
 
   await check('comandos registrados', async () => {
     const all = await vscode.commands.getCommands(true);
-    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard']) {
+    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard', 'shieldepy.showMap']) {
       assert(all.includes(c), `faltando ${c}`);
     }
   });
@@ -196,6 +196,60 @@ exports.run = async function run() {
     await setRepoAllowed(true);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
     await waitFor('ciclo voltar', () => ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
+  });
+
+  // --- mapa do sistema (E1 dentro do editor) ---------------------------------------------
+  const edgeIn = (map, source, target, type) =>
+    map.edges.some((e) => e.source.startsWith(source) && e.target.startsWith(target) && e.type === type);
+
+  await check('o mapa do workspace sai 100% provado (sem import quebrado, sem chamada sem alvo)', async () => {
+    const stats = await waitFor('indexação com o checkout', () => {
+      const s = api.graphStats();
+      return s.callsResolved > 0 ? s : undefined;
+    });
+    assert(stats.callsUnresolved === 0, `chamadas sem alvo: ${stats.callsUnresolved}`);
+    assert(stats.callsHeuristic === 0, `chamadas por heurística: ${stats.callsHeuristic}`);
+    assert(stats.importsUnresolved === 0, `imports quebrados: ${stats.importsUnresolved}`);
+  });
+
+  await check('"Ver Mapa do Sistema" abre o painel com a cadeia rota → controller → service → repositórios → pg', async () => {
+    await vscode.commands.executeCommand('shieldepy.showMap');
+    const labels = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).map((t) => t.label);
+    await waitFor(`painel do mapa abrir (abas: ${labels().join(', ')}; mapa gerado: ${!!api.lastMap()})`, () => labels().includes('Mapa do sistema'), 10000);
+    const map = api.lastMap();
+    assert(map && map.contentHash, 'mapa não foi gerado');
+    const c = 'checkout/src/';
+    assert(edgeIn(map, `${c}routes/checkout.ts`, `${c}controllers/CheckoutController.ts#create`, 'references'), 'rota → controller');
+    assert(edgeIn(map, `${c}controllers/CheckoutController.ts#create`, `${c}services/CheckoutService.ts#checkout`, 'calls'), 'controller → service');
+    assert(edgeIn(map, `${c}services/CheckoutService.ts#checkout`, `${c}gateways/StripeGateway.ts#charge`, 'calls'), 'service → Stripe (pela interface)');
+    assert(edgeIn(map, `${c}repositories/StockRepository.ts#decrement`, 'pkg:pg', 'calls'), 'repositório → pg');
+  });
+
+  const tsconfig = file('checkout/tsconfig.json');
+  const tsconfigOriginal = Buffer.from(await vscode.workspace.fs.readFile(tsconfig)).toString('utf8');
+
+  await check('mudar `paths` no tsconfig refaz a resolução sem recarregar a janela', async () => {
+    // tira o alias `@/*`: os imports `@/…` do checkout viram imports quebrados
+    await vscode.workspace.fs.writeFile(tsconfig, Buffer.from(tsconfigOriginal.split('"@/*"').join('"@nope/*"')));
+    await waitFor('imports quebrados aparecerem', () => api.graphStats().importsUnresolved > 0, 15000);
+    // devolve o alias: tudo volta a resolver
+    await vscode.workspace.fs.writeFile(tsconfig, Buffer.from(tsconfigOriginal));
+    await waitFor('imports voltarem', () => api.graphStats().importsUnresolved === 0 && api.graphStats().callsUnresolved === 0, 15000);
+    await vscode.commands.executeCommand('shieldepy.showMap');
+    assert(edgeIn(api.lastMap(), 'checkout/src/routes/checkout.ts', 'checkout/src/controllers/CheckoutController.ts#create', 'references'), 'cadeia não voltou');
+  });
+
+  await check('workspace acima do teto: a indexação avisa que o mapa ficou parcial', async () => {
+    const cfg = vscode.workspace.getConfiguration('shieldepy');
+    await cfg.update('index.maxFiles', 10, vscode.ConfigurationTarget.Workspace);
+    try {
+      const report = await api.reindex();
+      assert(report.truncated && report.limit === 10, `relatório: ${JSON.stringify(report)}`);
+    } finally {
+      await cfg.update('index.maxFiles', undefined, vscode.ConfigurationTarget.Workspace);
+    }
+    const report = await api.reindex();
+    assert(!report.truncated, 'continuou parcial depois de voltar o teto');
   });
 
   console.log('');

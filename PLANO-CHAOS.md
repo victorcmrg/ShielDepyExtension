@@ -118,6 +118,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Mudança estrutural:** o lexer SQL vai de `extractors` para o core.
   - **Aceitação:** a topologia esperada do `checkout-express` está escrita na seção.
 - 2026-10-07: o plano passou a registrar o que a extensão mapeia hoje (com 5 ressalvas) e a estimativa de custo da IA por execução (seções próprias).
+- 2026-10-07: **ressalvas 2–5 da extensão resolvidas.** Detalhes na seção "Extensão do VS Code". O E2E passa 23/23 num VS Code real, e a suíte unitária tem 201 testes.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -248,12 +249,24 @@ Ao ativar, a extensão:
 
 É o **mesmo código do core** que a CLI usa, então a qualidade medida (99–100% das chamadas provadas) vale para ela.
 
-**Ressalvas (pendências pequenas, fora da E1):**
-1. **Só TS/JS tem grafo de chamadas.** Java/Python/C# geram apenas regras de evento (colisões).
-2. **Teto de 3000 arquivos.** Acima disso o mapa fica parcial, e só aparece no log. Falta avisar o usuário.
-3. **Editar `tsconfig.json` (`paths`) não invalida o cache do resolvedor.** O `invalidateConfig()` nunca é chamado, e o watcher não observa `.json`. Hoje é preciso recarregar a janela.
-4. **A extensão não mostra o mapa nem a cobertura ao usuário.** Isso só existe na CLI (`graph`/`--html`). Entra na tarefa 2f e no V2.
-5. **O E2E da extensão (`apps/vscode/test-e2e`) não foi rodado nesta etapa.** Os testes unitários do `WorkspaceModel` usam o Tree-sitter real.
+**Ressalvas** (as de 2 a 5 foram resolvidas em 2026-10-07, branch `feat/grafo-visualizador`):
+1. **Só TS/JS tem grafo de chamadas.** Java/Python/C# geram apenas regras de evento (colisões). Ver "Grafo de chamadas para outras linguagens", abaixo.
+2. ~~Teto de 3000 arquivos sem aviso.~~ Resolvido.
+   - A configuração `shieldepy.index.maxFiles` define o teto (padrão 3000).
+   - Ao passar do teto, a extensão avisa que o mapa ficou PARCIAL, com atalhos para ajustar o teto ou excluir pastas.
+   - A cobertura também vai para o log.
+3. ~~`tsconfig` sem invalidação.~~ Resolvido.
+   - A extensão observa `**/{tsconfig,jsconfig}*.json`.
+   - Quando um deles muda, `CodeGraph.reloadModuleConfig()` refaz imports e chamadas sem reparsear.
+   - `@/…`, `~/…` e `#…` que não resolvem passam a contar como import quebrado, e não como pacote.
+4. ~~Mapa invisível na extensão.~~ Resolvido.
+   - Comando **"ShielDepy: Ver Mapa do Sistema"**: painel com o mesmo visualizador da CLI e botão "Abrir código".
+   - O visualizador virou o pacote `@shieldepy/viewer`, com dois modos: inline (CLI) e webview com CSP por nonce.
+   - O Cytoscape injetava um `<style>` que a CSP bloqueava. O estilo agora vai pré-declarado com o nonce.
+5. ~~E2E não rodado.~~ Resolvido: **23/23 num VS Code 1.141 real.**
+   - Os 19 cenários antigos continuam passando.
+   - Novos cenários: workspace com o `checkout-express` mapeado 100%, painel do mapa com a cadeia completa, `tsconfig` alterado ao vivo e teto excedido.
+   - Não coberto pelo E2E: o clique em "Abrir código" dentro do webview (o handler de mensagem valida que o caminho fica dentro da raiz).
 
 ## Custo estimado da IA (E3), preços de 2026-10-06
 

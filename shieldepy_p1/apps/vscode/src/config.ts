@@ -54,6 +54,10 @@ export const config = {
   excludeGlobs(): string[] {
     return this.raw.get<string[]>('analysis.exclude', []).map((g) => g.trim()).filter(Boolean);
   },
+  /** Teto de arquivos indexados no mapa do workspace. */
+  maxIndexedFiles(): number {
+    return Math.max(10, this.raw.get<number>('index.maxFiles', 3000));
+  },
   statusBarEnabled(): boolean {
     return this.raw.get<boolean>('statusBar.enabled', true);
   },
