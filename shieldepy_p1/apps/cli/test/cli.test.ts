@@ -252,6 +252,33 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
     expect(r.err).toMatch(/portão: 2 achado\(s\) de caos com severidade Baixo ou pior/);
   });
 
+  it('--report grava o markdown do PR, inclusive quando o ambiente falhou', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-report-'));
+    const report = path.join(tmp, 'sub', 'chaos-report.md');
+    try {
+      const out: string[] = [];
+      const io = { out: (l: string) => out.push(l), err: (l: string) => out.push(l), env: {} };
+      const args = { target: dir, json: false, noRun: false, offline: true, report };
+      const code = await runChaosCommand(args, io, registry, results({ [RACE]: ['failed', 'stateCheck: stockNeverNegative'] }));
+      expect(code).toBe(1);
+      const md = fs.readFileSync(report, 'utf8');
+      expect(md).toMatch(/^<!-- shieldepy-chaos -->/);
+      expect(md).toContain('> ❌ **Bloqueado:** 1 achado(s).');
+      expect(md).toContain('| 🔴 Crítico | `POST /checkout` | `race_condition` | `stock` | stateCheck: stockNeverNegative |');
+      expect(md).toContain('**Resumo:** requisições simultâneas em POST /checkout corrompem stock');
+      expect(out.join('\n')).toMatch(/relatório salvo em/);
+
+      const crashed = await runChaosCommand(args, io, registry, async () => {
+        throw new ChaosRunError('o Vitest não está instalado em x');
+      });
+      expect(crashed).toBe(2);
+      expect(fs.readFileSync(report, 'utf8')).toContain('**Os testes não rodaram (erro de ambiente).** o Vitest não está instalado em x');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
+    }
+  });
+
   it('--fail-on Crítico deixa passar um achado Alto; inválido nunca bloqueia', async () => {
     const r = await gate(results({ [TIMEOUT]: ['failed', 'respondsWithin: x'], [H5XX]: ['invalid', 'o controle (sem caos) falhou: y'] }), 'Crítico');
     expect(r.code).toBe(0);

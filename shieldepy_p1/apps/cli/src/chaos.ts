@@ -21,7 +21,19 @@ import {
 } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { CostMeter, providerFromEnv, type Severity } from '@shieldepy/agent';
-import { CATALOG, CHAOS_TESTS_DIR, chaosOutcomes, gateHits, runChaosPipeline, type ChaosOutcome, type ChaosStateType, type TestResult } from '@shieldepy/agent/chaos';
+import {
+  CATALOG,
+  CHAOS_TESTS_DIR,
+  chaosOutcomes,
+  explainChaosOutcomes,
+  gateHits,
+  renderChaosReport,
+  runChaosPipeline,
+  type ChaosExplanation,
+  type ChaosOutcome,
+  type ChaosStateType,
+  type TestResult,
+} from '@shieldepy/agent/chaos';
 import { loadRulesFromPath } from '@shieldepy/extractors';
 import type { Registry } from '@shieldepy/extractors';
 import { ChaosRunError, runChaosTests } from './chaos-run';
@@ -33,6 +45,8 @@ export interface ChaosArgs {
   offline: boolean;
   /** Portão: sai 1 com achado desta severidade ou pior. Padrão: qualquer achado. */
   failOn?: Severity;
+  /** Grava o relatório markdown (para o `$GITHUB_STEP_SUMMARY` e o comentário do PR). */
+  report?: string;
 }
 
 /** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
@@ -104,10 +118,6 @@ export async function runChaosCommand(
     },
   });
 
-  const meter = new CostMeter();
-  for (const c of state.completions) meter.add(c);
-  const cost = meter.report();
-
   // rodar: só as hipóteses que viraram arquivo de teste
   let outcomes: ChaosOutcome[] | undefined;
   let runError: string | undefined;
@@ -124,6 +134,32 @@ export async function runChaosCommand(
   const failOn = args.failOn ?? 'Baixo';
   const hits = outcomes ? gateHits(outcomes, failOn) : [];
   const allInvalid = !!outcomes && outcomes.length > 0 && outcomes.every((o) => o.status === 'invalid');
+
+  // o parágrafo do relatório: da IA só com achado e provider; senão, do motor
+  let explanation: ChaosExplanation | undefined;
+  if (args.report && outcomes) explanation = await explainChaosOutcomes(outcomes, surface, { provider, log: io.err });
+
+  const meter = new CostMeter();
+  for (const c of [...state.completions, ...(explanation?.completion ? [explanation.completion] : [])]) meter.add(c);
+  const cost = meter.report();
+
+  if (args.report) {
+    const markdown = renderChaosReport({
+      label: path.basename(root),
+      surface,
+      hypotheses: state.hypotheses,
+      outcomes,
+      failOn,
+      hits: hits.length,
+      engine: state.engine,
+      cost,
+      runError,
+      explanation,
+    });
+    await mkdir(path.dirname(path.resolve(args.report)), { recursive: true });
+    await writeFile(args.report, markdown, 'utf8');
+    io.err(`✓ relatório salvo em ${args.report}`);
+  }
 
   if (args.json) {
     io.out(

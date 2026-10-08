@@ -37,13 +37,14 @@ const USAGE = `uso:
   shieldepy topology <pasta> [--json] [--surface] [--out <arquivo>] [--html <arquivo>]
                                                      rotas Express, operações de I/O em ordem e tags de risco
                                                      (--surface: só o recorte que vai para a IA)
-  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--no-run] [--json]
+  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--report <arquivo.md>] [--no-run] [--json]
                                                      gera testes de caos para as rotas sensíveis em
                                                      .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts),
                                                      roda com o Vitest do projeto e serve de portão:
                                                      exit 1 = achado (--fail-on; padrão: qualquer um),
                                                      exit 2 = o ambiente não deixou provar nada;
                                                      --offline: só o motor, sem IA (custo zero);
+                                                     --report: relatório markdown (resumo do CI / comentário do PR);
                                                      --no-run: só gera os testes
 
   report  = só o motor (determinístico, sem rede)
@@ -58,6 +59,7 @@ interface Args {
   failOn?: Severity;
   out?: string;
   html?: string;
+  report?: string;
   surface: boolean;
   noRun: boolean;
   offline: boolean;
@@ -74,8 +76,8 @@ export function parseArgs(argv: string[]): Args {
     else if (a === '--surface') args.surface = true;
     else if (a === '--no-run') args.noRun = true;
     else if (a === '--offline') args.offline = true;
-    else if (a === '--out' || a.startsWith('--out=') || a === '--html' || a.startsWith('--html=')) {
-      const flag = a.startsWith('--out') ? 'out' : 'html';
+    else if (['--out', '--html', '--report'].some((f) => a === f || a.startsWith(`${f}=`))) {
+      const flag = a.startsWith('--out') ? 'out' : a.startsWith('--html') ? 'html' : 'report';
       const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
       if (!value) throw new Error(`--${flag} precisa de um caminho de arquivo`);
       args[flag] = value;
@@ -189,7 +191,7 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
       }
       case 'chaos': {
         if (!args.target) throw new Error('informe a pasta do projeto');
-        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn }, io, registryWithTreeSitter);
+        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report }, io, registryWithTreeSitter);
       }
       default:
         io.err(USAGE);
