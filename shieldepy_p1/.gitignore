@@ -11,3 +11,6 @@ apps/frontend/dist-ssr/
 # saídas geradas pelo shieldepy (mapa, topologia, testes de caos)
 mapa*.html
 .shieldepy/
+
+# demo local (npm run demo): projeto, banco do portal e perfil do VS Code
+.demo/

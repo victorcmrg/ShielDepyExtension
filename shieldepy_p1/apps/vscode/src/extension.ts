@@ -12,7 +12,7 @@ import { ScanAnimator } from './analysis/ScanAnimator';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
 import { explainWorkspaceCollisions, exportTopology, login, logout, refreshAccess, requireAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
-import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
+import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, SECRET_AUTH_TOKEN, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
 import { InlineSuggestionProvider } from './inline/InlineSuggestionProvider';
 import { AiService } from './services/AiService';
 import { AuthService } from './services/AuthService';
@@ -56,6 +56,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   const auth = new AuthService(context.secrets, log);
   push(auth);
   await auth.ensureLoaded(context.extension.id);
+  // Demo local (`npm run demo`): o script cria um token no portal local e abre o VS Code com ele.
+  // Ainda passa pelo /api/me do servidor, como qualquer token; só poupa o login no navegador. O
+  // portal da demo é recriado a cada execução, então um token guardado de antes já não vale.
+  const demoToken = process.env.SHIELDEPY_DEMO_TOKEN;
+  if (demoToken && (await context.secrets.get(SECRET_AUTH_TOKEN)) !== demoToken) await auth.signInWithToken(demoToken);
   // Só repositórios dos projetos da pessoa são analisados (o servidor decide pelo remote do .git).
   setPathGate((fsPath) => auth.isAllowedPath(fsPath));
   // Sem acesso, o Chat some da barra lateral: a tela de bloqueio aparece uma vez só, no painel.

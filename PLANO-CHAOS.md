@@ -15,7 +15,9 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **E6 — DB_Chaos: concluída** na branch `feat/db-chaos` (D1–D6, sem push), esperando o usuário subir e fazer o merge. O catálogo não tem mais falha "sem teste no MVP" além do `retry_storm`. O DB_Chaos achou a falha parcial **no exemplo corrigido** (cobrava e não gravava o pedido), e o corrigido ganhou a compensação.
 
-**Depois do merge, a próxima etapa é a E7** (grafo de chamadas para Java/C#/Python; ver a avaliação em "Grafo de chamadas para outras linguagens"). Ela ainda precisa de um desenho e de uma branch. Leia, nesta ordem:
+**Demo do TCC:** na branch `feat/demo-tcc`, criada a partir da `feat/db-chaos`. Use `npm run demo` (abre o VS Code com o plugin num sistema de exemplo) e `npm run demo:verificar` (confere o roteiro sem janela). Detalhes no fim do Registro e no README da raiz. **A E7 está parada a pedido do usuário.**
+
+**Depois do merge, a próxima etapa seria a E7** (grafo de chamadas para Java/C#/Python; ver a avaliação em "Grafo de chamadas para outras linguagens"). Ela ainda precisa de um desenho e de uma branch. Leia, nesta ordem:
 1. esta seção (inclui o que foi validado e o que ainda depende do usuário);
 2. a seção **"E6 — DB_Chaos"** e o fim do **Registro** (D1–D6), para as decisões que mudaram o desenho;
 3. a avaliação das outras linguagens, para desenhar a E7.
@@ -682,6 +684,23 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - o portal mostra a falha parcial em "grava orders" (screenshots da D5);
     - o self-test do CI foi simulado com o relatório real. A execução no GitHub fica para depois do merge.
   - **Fica para o usuário:** subir a branch e fazer o merge; depois, o PR de teste sem a compensação (roteiro em "Como retomar").
+- 2026-10-08: **Demo do TCC (`feat/demo-tcc`, a partir da `feat/db-chaos`).** O usuário parou a E7. Primeiro pensou em publicar no Vercel, mas desistiu: o que ele quer é clonar, rodar um comando e já apresentar o plugin.
+  - **`npm run demo`** (`scripts/demo/demo.mjs`, Node puro, sem shell; funciona com acento e espaço no caminho):
+    1. confere os pré-requisitos e instala e compila na primeira vez;
+    2. cria `.demo/sistema-loja` (fora do git), com três partes: `checkout/` (o `checkout-express`), `pedidos/` (o `pedidos-microservices`, com colisões) e `relatorios/` (um ciclo), um repositório com as branches `main` (com defeitos) e `correcao` (o `src` do corrigido);
+    3. sobe o portal num banco próprio (`scripts/demo/seed.ts` reaproveita o `seedDemo` e acrescenta o projeto, o token da extensão e o de CI);
+    4. roda o caos nas duas branches e publica;
+    5. abre o VS Code com `--extensionDevelopmentPath`, num perfil separado, com o `ROTEIRO.md` aberto em modo de leitura.
+  - O `ROTEIRO.md` é o passo a passo por aba do plugin: Lista de erros, o ciclo, o mapa com o caos, a topologia, a correção (`git switch correcao` + `npm run caos`), "Comparar Mapa com uma Branch" e o portal.
+  - **Na extensão:** `SHIELDEPY_DEMO_TOKEN` faz o login automático. Ele passa pelo `/api/me` como qualquer token, então não é atalho de acesso.
+  - **Dois bugs da extensão que a demo revelou (corrigidos):**
+    - o `reindexFromDisk` (observador de arquivos) não aplicava nem as pastas ignoradas nem o portão de repositório liberado. Os testes gerados em `.shieldepy/` entravam no grafo e poluíam o "Comparar Mapa", e arquivos de repositório não liberado podiam ser indexados;
+    - o `IGNORED_SEGMENT` não tinha `.shieldepy`.
+  - **Abrir o VS Code de dentro de outro VS Code:** o ambiente herda `ELECTRON_RUN_AS_NODE`, `VSCODE_ESM_ENTRYPOINT` etc., e o `Code.exe` novo sobe sem janela. O script tira todas as `VSCODE_*`, `ELECTRON_*` e `CHROME_CRASHPAD*`.
+  - **Comparar Mapa:** compara desde o merge-base, como um PR. Por isso o roteiro manda estar na `correcao` e comparar com a `main` (o contrário dá zero mudanças).
+  - **`npm run demo:verificar`:** percorre o roteiro num VS Code de teste (o do E2E), sem janela, e encerra tudo no fim, inclusive o portal (`taskkill /T` no Windows; matar só o pai deixava o servidor órfão). Passou nos 7 passos: login automático, grafo 100% provado (17 chamadas), as 2 colisões, o ciclo, o mapa com 6 achados, a correção com 0 achados e o mapa atualizando sozinho, e a comparação mostrando só a correção.
+  - **Incidente:** a máquina do usuário deu **tela azul** durante os testes. Eu tinha deixado vários VS Code (alguns presos, sem janela), Chrome headless, VS Codes de teste e o portal rodando ao mesmo tempo, e encerrado processos à força. Daí em diante: uma coisa pesada por vez, sempre encerrada no fim.
+  - Suíte **326**, E2E **27/27**; o README da raiz virou a porta de entrada da demo.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

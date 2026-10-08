@@ -3,7 +3,9 @@ import { config } from '../config';
 import { EXCLUDE_GLOB, FILE_GLOB, GRAPH_LANGUAGES, MAX_ANALYZABLE_BYTES, RULE_ONLY_LANGUAGES } from '../constants';
 import type { WorkspaceModel } from './WorkspaceModel';
 
-const IGNORED_SEGMENT = /[\\/](node_modules|dist|out|\.git|bin|obj|\.venv|venv|__pycache__)[\\/]/;
+// o mesmo do EXCLUDE_GLOB: sem `.shieldepy`, os testes de caos gerados entravam no mapa quando
+// o observador de arquivos os via nascer (a busca inicial já os ignorava)
+const IGNORED_SEGMENT = /[\\/](node_modules|dist|out|\.git|bin|obj|\.venv|venv|__pycache__|\.shieldepy|\.vscode-test)[\\/]/;
 
 /**
  * Portão por pasta: só analisa arquivos de repositórios liberados pra pessoa (definido no
@@ -103,6 +105,9 @@ export function workspaceRoots(): string[] {
 
 /** Relê um arquivo do disco (mudado fora do editor: git checkout, gerador, rename). */
 export async function reindexFromDisk(model: WorkspaceModel, uri: vscode.Uri): Promise<void> {
+  // as mesmas regras da busca inicial e do isAnalyzable: sem isso, o observador de arquivos punha
+  // no mapa os testes de caos gerados (.shieldepy/) e arquivos de repositório não liberado
+  if (uri.scheme !== 'file' || IGNORED_SEGMENT.test(uri.fsPath) || !pathGate(uri.fsPath)) return;
   try {
     const bytes = await vscode.workspace.fs.readFile(uri);
     model.updateFile(uri.fsPath, new TextDecoder().decode(bytes));

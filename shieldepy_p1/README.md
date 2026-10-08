@@ -331,7 +331,12 @@ npm install
 npm run check                 # typecheck + testes unitários/integração (vitest)
 npm run build:vscode          # gera apps/vscode/dist e copia os .wasm
 npm run test:e2e -w shieldepy # abre um VS Code DE VERDADE e testa a extensão ponta a ponta
+npm run demo                  # a demo da apresentação: sistema de exemplo + portal + VS Code com o plugin
+npm run demo:verificar        # confere o roteiro da demo sem abrir janela (e encerra tudo no fim)
 ```
+
+A demo (`scripts/demo/`) está explicada no [README da raiz](../README.md#ver-funcionando-demo-para-a-apresentação).
+O passo a passo da apresentação é o `ROTEIRO.md`, gerado dentro do sistema da demo (`.demo/sistema-loja/`).
 
 **Extensão**: abra esta pasta no VS Code e aperte **F5**. Abre uma janela nova com `examples/`.
 Em `pedidos-microservices/services`, `pricing` e `tax` devem ficar marcados em vermelho
