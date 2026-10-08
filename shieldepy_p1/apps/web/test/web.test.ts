@@ -2,9 +2,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { TsParser } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { createRegistry } from '@shieldepy/extractors';
+import { loadRegistry } from '@shieldepy/extractors';
 import { createHandler } from '../src/app';
 import { RateLimiter, SessionStore } from '../src/sessions';
 
@@ -13,7 +12,7 @@ let base: string;
 
 beforeAll(async () => {
   const handler = createHandler({
-    registry: createRegistry({ tsParser: await TsParser.load(defaultWasmDir()) }),
+    registry: await loadRegistry(defaultWasmDir()),
     provider: undefined, // offline: determinístico, sem rede
     publicDir: fileURLToPath(new URL('../public', import.meta.url)),
     examplesDir: fileURLToPath(new URL('../../../examples', import.meta.url)),

@@ -1,17 +1,16 @@
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildGraph, collisionRuleIds, findCollisions, TsParser, type Collision, type Rule } from '@shieldepy/core';
+import { buildGraph, collisionRuleIds, findCollisions, type Collision, type Rule } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { createRegistry, scanDir, toRules, translateTriggers, type PgTriggerRow, type Registry } from '../src/index';
+import { loadRegistry, scanDir, toRules, translateTriggers, type PgTriggerRow, type Registry } from '../src/index';
 
 const EXAMPLES = fileURLToPath(new URL('../../../examples/', import.meta.url));
 
 let treeSitter: Registry;
-const regexOnly = createRegistry();
 
 beforeAll(async () => {
-  treeSitter = createRegistry({ tsParser: await TsParser.load(defaultWasmDir()) });
+  treeSitter = await loadRegistry(defaultWasmDir());
 });
 
 /**
@@ -20,11 +19,10 @@ beforeAll(async () => {
  * shipping escreve campo exclusivo e notification escuta outro evento (controles).
  */
 const SCENARIOS: Array<{ label: string; dir: string; engine: () => Registry; resource: string; event: string }> = [
-  { label: 'Node (Tree-sitter)', dir: 'pedidos-microservices', engine: () => treeSitter, resource: 'order', event: 'order.updated' },
-  { label: 'Node (regex, fallback)', dir: 'pedidos-microservices', engine: () => regexOnly, resource: 'order', event: 'order.updated' },
-  { label: 'Java / Spring', dir: 'pedidos-spring', engine: () => regexOnly, resource: 'Order', event: 'OrderUpdated' },
-  { label: 'Python / Django', dir: 'pedidos-django', engine: () => regexOnly, resource: 'Order', event: 'pre_save' },
-  { label: 'C# / MediatR', dir: 'pedidos-mediatr', engine: () => regexOnly, resource: 'Order', event: 'OrderUpdated' },
+  { label: 'Node / TS', dir: 'pedidos-microservices', engine: () => treeSitter, resource: 'order', event: 'order.updated' },
+  { label: 'Java / Spring', dir: 'pedidos-spring', engine: () => treeSitter, resource: 'Order', event: 'OrderUpdated' },
+  { label: 'Python / Django', dir: 'pedidos-django', engine: () => treeSitter, resource: 'Order', event: 'pre_save' },
+  { label: 'C# / MediatR', dir: 'pedidos-mediatr', engine: () => treeSitter, resource: 'Order', event: 'OrderUpdated' },
 ];
 
 describe.each(SCENARIOS)('$label — sistema de pedidos', ({ dir, engine, resource, event }) => {

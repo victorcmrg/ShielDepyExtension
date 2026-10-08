@@ -1,6 +1,6 @@
-// Extrator de regras TS/JS em cima da AST do Tree-sitter — substitui o regex do event bus.
+// Extrator de regras TS/JS em cima da AST do Tree-sitter.
 // Acha registros de handler (`bus.on('evento', handler)`, `emitter.once(...)`, `addListener`)
-// e o que o handler LÊ e ESCREVE no payload. Por ser AST, cobre o que o regex não cobria:
+// e o que o handler LÊ e ESCREVE no payload. Por ser AST, cobre:
 //   - destructuring do parâmetro      `({ total }) => ...`            (lê total)
 //   - alias                           `const o = order; o.total = 1`  (escreve total)
 //   - handler nomeado                 `bus.on('e', applyTax)`
@@ -10,7 +10,7 @@
 
 import type { SyntaxNode, TsParser } from '@shieldepy/core';
 import type { ParsedRule } from '../types';
-import { prefixResource } from '../regex/text';
+import { prefixResource } from '../naming';
 
 const LISTEN_METHODS = new Set(['on', 'once', 'addListener', 'prependListener', 'prependOnceListener']);
 const FUNCTION_TYPES = new Set(['arrow_function', 'function_expression', 'function', 'function_declaration']);

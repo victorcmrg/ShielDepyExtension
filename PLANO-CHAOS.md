@@ -21,7 +21,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído |
 | 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído |
 | 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído |
-| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter (gramáticas já no `tree-sitter-wasms`); PL/pgSQL precisa de gramática SQL à parte | `feat/chaos-grafo` | próximo |
+| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | em andamento |
 | 2. Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`) | a definir | pendente |
 | 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
 | 4. Fase 4: execução, gate, GitHub Actions | a definir | pendente |
@@ -76,6 +76,24 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - README do `shieldepy_p1` atualizado (como uma chamada vira aresta, mapa do código, limites).
   - Suíte: 199 testes.
   - **Medição atual:** `packages/` 99,5%, `apps/` 99,0%, `checkout-express` 100%, sempre com 0 chamadas sem alvo e 0 imports quebrados.
+- 2026-10-07: **1d, parte 1: extratores de regras sem regex.**
+  - Java/Spring, Python/Django e C#/MediatR foram reescritos sobre a AST Tree-sitter, com `GrammarParser` no core. Gramáticas `tree-sitter-java/python/c_sharp.wasm` foram adicionadas ao `copy-wasm` e ao pacote da extensão.
+  - **O que a AST cobre e a regex não cobria:**
+    - Java: `@TransactionalEventListener`, `@EventListener(classes = X.class)` e acesso direto a campo/`+=`.
+    - Python: `@receiver([pre_save, post_save], ...)` (uma regra por signal), `signal.connect(fn, sender=X)` e `+=`.
+    - C#: vários `INotificationHandler<T>` na mesma classe e `++`/`+=`.
+    - Em todas as três, comentário e string nunca viram acesso.
+  - **PL/pgSQL:** não há gramática Tree-sitter, e as de SQL não entram no corpo `$$`. Por isso foi escrito um analisador léxico (`postgres/lexer.ts`), que cobre:
+    - comentários aninhados, strings `'...'`/`E'...'` e identificadores com aspas;
+    - dollar-quote: o corpo da função é código, e SQL dinâmico é string;
+    - `NEW.x = …` no início de um comando como atribuição, mas não dentro de um `IF`;
+    - nome sem aspas convertido para minúsculas.
+  - **Fallback regex removido:**
+    - A pasta `extractors/src/regex/` foi apagada.
+    - `createRegistry` só registra linguagens com gramática carregada. O novo `loadRegistry(wasmDir)` carrega tudo e reporta `failed`.
+    - CLI, web, extensão do VS Code e testes foram migrados. A extensão chamava `createRegistry()` sem parser e ficaria sem Java/Python/C# em silêncio.
+  - Os testes antigos de regex foram trocados por `languages.test.ts`, com as mesmas expectativas mais os casos novos. Os 4 cenários de exemplo (TS/Java/Python/C#) continuam com as 3 colisões plantadas.
+  - Suíte: 196 testes. A extensão compila (`build:vscode`) e empacota as 6 gramáticas.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

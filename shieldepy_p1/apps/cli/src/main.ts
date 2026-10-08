@@ -9,11 +9,10 @@ import {
   indexFiles,
   listSourceFiles,
   silentHost,
-  TsParser,
   type Rule,
 } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { createRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extractors';
+import { loadRegistry, loadRulesFromPath, type Registry } from '@shieldepy/extractors';
 import { explainCollisions, explainOffline, providerFromEnv, severityRank, type Severity } from '@shieldepy/agent';
 import { printCollisions, printCycles, printReport, printSystemGraph } from './print';
 
@@ -69,11 +68,8 @@ export function parseArgs(argv: string[]): Args {
 }
 
 async function registryWithTreeSitter(): Promise<Registry> {
-  try {
-    return createRegistry({ tsParser: await TsParser.load(defaultWasmDir()) });
-  } catch {
-    return createRegistry(); // sem .wasm: TS/JS cai no extrator regex
-  }
+  // Gramática que não carregar só tira a sua linguagem (o arquivo sai como ignorado).
+  return loadRegistry(defaultWasmDir());
 }
 
 async function loadRules(args: Args, io: Io): Promise<{ label: string; rules: Rule[] }> {

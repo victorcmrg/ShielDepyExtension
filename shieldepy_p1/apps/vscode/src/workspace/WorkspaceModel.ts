@@ -30,7 +30,7 @@ export class WorkspaceModel {
   constructor(
     readonly graph: CodeGraph,
     /** Registro de extratores SEM Tree-sitter — só pra Java/Python/C# e pro fallback de TS. */
-    private readonly regexRegistry: Registry,
+    private readonly registry: Registry,
     /** Caminho relativo à raiz do workspace (dá nome legível às regras). */
     private readonly relative: (fsPath: string) => string = (p) => path.basename(p)
   ) {
@@ -41,7 +41,7 @@ export class WorkspaceModel {
 
   /** Cópia independente pra simular um conteúdo proposto (verificação de fix) — item 2.3. */
   fork(): WorkspaceModel {
-    const copy = new WorkspaceModel(this.graph.fork(), this.regexRegistry, this.relative);
+    const copy = new WorkspaceModel(this.graph.fork(), this.registry, this.relative);
     copy.rulesByFile = new Map(this.rulesByFile);
     return copy;
   }
@@ -60,7 +60,7 @@ export class WorkspaceModel {
     let parsed = this.takeParsedRules(id);
     if (parsed === undefined && (!TS_EXTENSIONS.has(extOf(fsPath)) || !this.graph.isReady)) {
       try {
-        parsed = this.regexRegistry.forPath(fsPath)?.parse(text, fsPath);
+        parsed = this.registry.forPath(fsPath)?.parse(text, fsPath);
       } catch {
         parsed = undefined;
       }

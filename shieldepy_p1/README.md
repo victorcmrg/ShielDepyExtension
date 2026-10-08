@@ -30,7 +30,7 @@ O sistema mantém dois grafos em memória, construídos a partir do mesmo códig
 |---|---|---|
 | **Pergunta que responde** | Quem importa e quem chama quem? | Quem lê e quem escreve qual campo, em qual evento? |
 | **Nós** | arquivos, funções, métodos, classes, seletores CSS, pacotes externos | regras reativas (um handler, listener, signal ou trigger) |
-| **Como é lido** | Tree-sitter (a árvore sintática real do TS/JS), regex no HTML/CSS | Tree-sitter no TS/JS; regex no Java, Python, C# e PL/pgSQL |
+| **Como é lido** | Tree-sitter (a árvore sintática real do TS/JS), leitura de tags no HTML/CSS | Tree-sitter no TS/JS, Java, Python e C#; analisador léxico no PL/pgSQL |
 | **O que prova** | ciclos de chamada; cadeia de chamadas (rota → serviço → repositório → pacote); classe do HTML sem CSS correspondente | colisões write-write e read-after-write |
 | **Onde vive** | `packages/core/src/code-graph/` | `packages/core/src/interactions/` |
 
@@ -148,7 +148,8 @@ apps/vscode   apps/cli   apps/web        ← interfaces (só aqui existe `vscode
 | Artefato do mapa do sistema (`shieldepy graph`) | `packages/core/src/system-graph.ts` |
 | O que é lido de HTML/CSS | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
-| Suporte a Java / Python / C# / Postgres | `packages/extractors/src/regex/*` |
+| Suporte a Java / Python / C# | `packages/extractors/src/treesitter/*` (gramáticas em `packages/core/wasm`) |
+| Triggers do Postgres (PL/pgSQL) | `packages/extractors/src/postgres/*` (tokenizador em `lexer.ts`) |
 | Qual extrator atende qual extensão de arquivo | `packages/extractors/src/registry.ts` |
 | Claude ou Gemini (chamada HTTP, modelo, retry) | `packages/agent/src/providers/*` |
 | Texto dos prompts | `packages/agent/src/code/prompts.ts`, `packages/agent/src/collisions/prompt.ts` |
@@ -175,9 +176,11 @@ apps/vscode   apps/cli   apps/web        ← interfaces (só aqui existe `vscode
 
 ### Como estender
 
-**Nova linguagem** (ex.: Go): crie `packages/extractors/src/regex/go.ts` exportando
-`(source) => ParsedRule[]`, registre em `registry.ts` e adicione uma pasta em `examples/` com as
-mesmas colisões plantadas do sistema de pedidos. O teste de cenário
+**Nova linguagem** (ex.: Go):
+1. Inclua a gramática (`tree-sitter-go.wasm`, do `tree-sitter-wasms`) em `packages/core/scripts/copy-wasm.cjs` e em `GrammarName` (`packages/core/src/code-graph/parser.ts`).
+2. Crie `packages/extractors/src/treesitter/go.ts`, que percorre a AST e devolve `ParsedRule[]`. Nada de regex sobre o texto.
+3. Registre em `registry.ts` (`createRegistry`/`loadRegistry`).
+4. Adicione uma pasta em `examples/` com as mesmas colisões plantadas do sistema de pedidos. O teste de cenário
 (`packages/extractors/test/scenarios.test.ts`) já cobre a nova stack se você acrescentar uma linha.
 Na extensão, inclua o `languageId` em `apps/vscode/src/constants.ts`.
 
@@ -266,7 +269,9 @@ Do Projeto18:
 
 ## Limites conhecidos
 
-- Java, Python, C# e Postgres ainda são lidos por regex; só TS/JS usa a árvore sintática.
+- PL/pgSQL é lido por tokens (não há gramática Tree-sitter dele): SQL dinâmico (`EXECUTE`) e
+  colunas mexidas em funções chamadas pelo trigger não são seguidos.
+- Sem a gramática `.wasm` de uma linguagem, os arquivos dela são ignorados (não há leitura aproximada).
 - `condition` das regras não é avaliada: regras que nunca rodam juntas ainda aparecem como colisão.
 - O grafo não infere tipo sem anotação além de `new X()` e retornos anotados. `const x = f()`
   com `f` sem tipo de retorno, ou um campo atribuído a partir de uma chamada, caem no fallback

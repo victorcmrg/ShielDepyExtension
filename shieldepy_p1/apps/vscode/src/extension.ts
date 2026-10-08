@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_NAME } from '@shieldepy/agent';
 import { CodeGraph, isFileOnDisk, readFileOnDisk, toFileId, type Host } from '@shieldepy/core';
-import { createRegistry } from '@shieldepy/extractors';
+import { loadRegistry } from '@shieldepy/extractors';
 import { AnalyzingDecorationProvider } from './analysis/AnalyzingDecorationProvider';
 import { BackgroundAnalyzer } from './analysis/BackgroundAnalyzer';
 import { CollisionPublisher } from './analysis/CollisionPublisher';
@@ -71,7 +71,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     vscode.commands.registerCommand(CMD.logout, () => logout(auth))
   );
 
-  // Grafo estrutural. Sem as gramáticas .wasm, segue com HTML/CSS e regras via regex — a
+  // Grafo estrutural. Sem as gramáticas .wasm, segue com HTML/CSS — a
   // extensão nunca deixa de ativar por causa disso.
   let graph: CodeGraph;
   try {
@@ -81,7 +81,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     void vscode.window.showWarningMessage('ShielDepy: gramáticas do Tree-sitter indisponíveis — grafo de TS/JS desativado (colisões seguem funcionando).');
     graph = new CodeGraph(undefined, host);
   }
-  model = new WorkspaceModel(graph, createRegistry(), (p) => vscode.workspace.asRelativePath(p));
+  // Extratores de regras (Java/Python/C# + TS). Gramática que não carregar só tira a sua linguagem.
+  const registry = await loadRegistry(path.join(context.extensionPath, 'wasm'), { tsParser: graph.tsParser });
+  if (registry.failed.length > 0) log(`[ShielDepy] gramáticas indisponíveis: ${registry.failed.join(', ')}`);
+  model = new WorkspaceModel(graph, registry, (p) => vscode.workspace.asRelativePath(p));
   const workspace = model;
 
   const cache = new FindingsCache(context.globalStorageUri.fsPath, log);
