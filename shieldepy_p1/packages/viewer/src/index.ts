@@ -115,12 +115,14 @@ ${csp}
     <p class="muted" id="label">${escapeHtml(label)}</p>
   </header>
   <section id="chaos" hidden></section>
+  <section id="diff" hidden></section>
   <section id="coverage"></section>
   <section>
     <input id="search" type="search" placeholder="Buscar símbolo ou arquivo (Enter)" autocomplete="off">
   </section>
   <section class="filters">
     <h2>Mostrar</h2>
+    ${overlay.diff ? '<label><input type="checkbox" data-filter="changed"> só o que o PR mudou (e os vizinhos)</label>' : ''}
     ${topology ? '<label><input type="checkbox" data-filter="routes" checked> <span class="sw route"></span> rotas e operações de I/O</label>' : ''}
     <label><input type="checkbox" data-filter="calls" checked> <span class="sw calls"></span> chamadas</label>
     <label><input type="checkbox" data-filter="references" checked> <span class="sw references"></span> referências (handler passado como valor)</label>
@@ -197,7 +199,7 @@ dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
 button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
 button:hover { border-color: var(--accent); }
 .row { display: flex; gap: 6px; flex-wrap: wrap; }
-.weak-item { text-align: left; display: block; width: 100%; }
+.weak-item { text-align: left; display: block; width: 100%; word-break: break-all; white-space: normal; }
 code { font-size: 12px; }
 .banner { padding: 8px 10px; border-radius: 8px; font-size: 13px; }
 .banner.bad { background: var(--bad-bg); color: var(--bad); }
@@ -226,7 +228,7 @@ const APP = String.raw`
   const fileOf = (n) => (n.kind === 'file' ? n.id : n.file);
   // dentro do webview do VS Code: o botão "Abrir código" fala com a extensão
   const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : undefined;
-  const state = { group: true, filters: { routes: true, calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
+  const state = { group: true, filters: { changed: false, routes: true, calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
 
   // ---- topologia (opcional): rota → handlers e símbolo → operação de I/O
   const routeId = (r) => 'route:' + r.id;
@@ -259,9 +261,34 @@ const APP = String.raw`
       if (o.status === 'failed') failedTargets.add(o.target);
     }
   }
-  /** Classes extras de um nó: status do caos na rota, alvo de achado na operação de I/O. */
+  // ---- diff do PR (V2): o que mudou desde a base, e as rotas que isso tocou
+  const DIFF = OVERLAY.diff || null;
+  const diffSets = { added: new Set(), changed: new Set(), renamedFrom: new Map(), topChanged: new Set(), filesAdded: new Set() };
+  const touchedRoutes = new Map();
+  if (DIFF) {
+    const d = DIFF.diff;
+    d.symbols.added.forEach((id) => diffSets.added.add(id));
+    d.symbols.changed.forEach((id) => diffSets.changed.add(id));
+    d.symbols.renamed.forEach((r) => diffSets.renamedFrom.set(r.to, r.from));
+    d.files.topChanged.forEach((id) => diffSets.topChanged.add(id));
+    d.files.added.forEach((id) => diffSets.filesAdded.add(id));
+  }
+  const routesInfo = (DIFF && DIFF.routes) || (CHAOS && CHAOS.scope) || null;
+  if (routesInfo) for (const a of routesInfo.affected) touchedRoutes.set(a.id, a.why);
+  function diffKind(n) {
+    if (n.kind === 'route') return touchedRoutes.has(n.name) ? 'route' : '';
+    if (n.kind === 'file') return diffSets.filesAdded.has(n.id) ? 'added' : diffSets.topChanged.has(n.id) ? 'top' : '';
+    if (diffSets.added.has(n.id)) return 'added';
+    if (diffSets.renamedFrom.has(n.id)) return 'renamed';
+    if (diffSets.changed.has(n.id)) return 'changed';
+    return '';
+  }
+
+  /** Classes extras de um nó: status do caos na rota, alvo de achado, e o que o PR mudou. */
   function overlayClasses(n) {
     const c = [];
+    const dk = DIFF || routesInfo ? diffKind(n) : '';
+    if (dk) c.push('diff-' + dk);
     if (n.kind === 'route') {
       const st = routeChaos.get(n.name);
       if (st) c.push('chaos-' + st.status);
@@ -301,7 +328,23 @@ const APP = String.raw`
     const edges = SYSTEM.edges
       .concat(withTopo ? topo.edges : [])
       .filter((e) => e.type !== 'defines' && (f[e.type] || e.type === 'route' || e.type === 'io') && present.has(e.source) && present.has(e.target));
-    const linked = new Set(edges.flatMap((e) => [e.source, e.target]));
+    let linked = new Set(edges.flatMap((e) => [e.source, e.target]));
+    if (f.changed && DIFF) {
+      const core = new Set(candidates.filter((n) => diffKind(n) !== '').map((n) => n.id));
+      const keep = new Set(core);
+      for (const e of edges) {
+        if (core.has(e.source)) keep.add(e.target);
+        if (core.has(e.target)) keep.add(e.source);
+      }
+      const kept = candidates.filter((n) => keep.has(n.id) || (n.kind === 'file' && candidates.some((m) => m.file === n.id && keep.has(m.id))));
+      candidates.length = 0;
+      candidates.push(...kept);
+      const still = new Set(kept.map((n) => n.id));
+      const kEdges = edges.filter((e) => still.has(e.source) && still.has(e.target));
+      edges.length = 0;
+      edges.push(...kEdges);
+      linked = new Set(edges.flatMap((e) => [e.source, e.target]).concat([...core]));
+    }
 
     // símbolo sem nenhuma aresta visível só polui a leitura do fluxo (a menos que pedido)
     const nodes = candidates.filter((n) => n.kind === 'file' || f.isolated || linked.has(n.id));
@@ -348,6 +391,12 @@ const APP = String.raw`
     { selector: '.chaos-passed', style: { 'border-width': 3, 'border-color': css('--ok') } },
     { selector: '.chaos-invalid', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--muted') } },
     { selector: '.chaos-target', style: { 'border-width': 4, 'border-color': css('--bad') } },
+    { selector: '.diff-added', style: { 'border-width': 3, 'border-color': css('--ok') } },
+    { selector: '.diff-changed', style: { 'border-width': 3, 'border-color': css('--warn') } },
+    { selector: '.diff-renamed', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--accent') } },
+    { selector: ':parent.diff-top', style: { 'border-width': 2, 'border-color': css('--warn') } },
+    { selector: ':parent.diff-added', style: { 'border-width': 2, 'border-color': css('--ok') } },
+    { selector: '.diff-route', style: { 'border-width': 3, 'border-style': 'double', 'border-color': css('--warn') } },
     { selector: '.faded', style: { opacity: 0.08 } },
     { selector: '.hl', style: { opacity: 1, 'z-index': 10 } },
     { selector: 'edge.hl', style: { width: 2.4 } },
@@ -428,6 +477,8 @@ const APP = String.raw`
       if (raw.op.timeout) rows.push(['timeout', raw.op.timeout]);
       if (raw.op.lock) rows.push(['trava', 'FOR UPDATE']);
     }
+    if (diffSets.renamedFrom.has(raw.id)) rows.push(['renomeado de', diffSets.renamedFrom.get(raw.id)]);
+    if (raw.kind === 'route' && touchedRoutes.has(raw.name)) rows.push(['tocada pelo PR', touchedRoutes.get(raw.name).join('; ')]);
     if (raw.file) rows.push(['arquivo', raw.file]);
     if (raw.startLine !== undefined) rows.push(['linhas', (raw.startLine + 1) + '–' + (raw.endLine + 1)]);
     if (raw.container) rows.push(['contêiner', raw.container]);
@@ -574,9 +625,56 @@ const APP = String.raw`
     sec.appendChild(legend);
   }
 
+  // ---- seção "Mudanças do PR" (V2)
+  if (DIFF) {
+    const d = DIFF.diff;
+    const sec = document.getElementById('diff');
+    sec.hidden = false;
+    let html = '<h2>Mudanças do PR</h2><p class="muted small">desde ' + escape(DIFF.base) + ' (base ' + escape(DIFF.commit.slice(0, 10)) + ')</p>';
+    if (d.empty) html += '<div class="banner ok">Nenhuma mudança de estrutura: só comentário, espaço ou linhas deslocadas.</div>';
+    html += '<p class="small"><span class="chip ' + (d.symbols.added.length ? 'ok' : 'muted') + '">' + d.symbols.added.length + ' novo(s)</span><span class="chip ' + (d.symbols.changed.length ? 'warn' : 'muted') + '">' + d.symbols.changed.length + ' alterado(s)</span><span class="chip muted">' + d.symbols.renamed.length + ' renomeado(s)</span><span class="chip muted">' + d.symbols.removed.length + ' removido(s)</span></p>';
+    sec.innerHTML = html;
+    const jump = (id) => {
+      if (!focus(id)) { state.filters.changed = false; const box = document.querySelector('[data-filter=changed]'); if (box) box.checked = false; build(); focus(id); }
+    };
+    const group = (title, items) => {
+      if (items.length === 0) return;
+      const h = document.createElement('p');
+      h.className = 'muted small';
+      h.textContent = title + ' (' + items.length + ')';
+      sec.appendChild(h);
+      for (const it of items.slice(0, 30)) {
+        const b = document.createElement(it.id ? 'button' : 'div');
+        b.className = it.id ? 'weak-item' : 'small';
+        b.textContent = it.text;
+        if (it.id) b.onclick = () => (it.route ? openRoute(it.id, it.id + ' · tocada pelo PR') : jump(it.id));
+        sec.appendChild(b);
+      }
+      if (items.length > 30) { const more = document.createElement('p'); more.className = 'muted small'; more.textContent = '… e mais ' + (items.length - 30); sec.appendChild(more); }
+    };
+    if (routesInfo) group(routesInfo.all ? 'Rotas tocadas: todas (' + routesInfo.all + ')' : 'Rotas tocadas', routesInfo.all ? [] : routesInfo.affected.map((a) => ({ id: a.id, route: true, text: a.id + ' — ' + a.why.join('; ') })));
+    group('Corpo alterado', d.symbols.changed.map((id) => ({ id, text: id })));
+    group('Novos', d.symbols.added.map((id) => ({ id, text: id })));
+    group('Renomeados', d.symbols.renamed.map((r) => ({ id: r.to, text: r.from + ' → ' + r.to })));
+    group('Código de topo alterado', d.files.topChanged.map((id) => ({ id, text: id })));
+    group('Arquivos novos', d.files.added.map((id) => ({ id, text: id })));
+    group('Removidos (não estão mais no mapa)', d.symbols.removed.concat(d.files.removed).map((id) => ({ text: '− ' + id })));
+    const legend = document.createElement('p');
+    legend.className = 'muted small';
+    legend.innerHTML = '<span class="chip ok">verde</span> novo · <span class="chip warn">âmbar</span> corpo alterado · <span class="chip muted">azul tracejado</span> renomeado · rota com borda dupla âmbar = tocada pelo PR';
+    sec.appendChild(legend);
+  }
+
+  // #mudancas abre direto no filtro "só o que o PR mudou" (link do artefato do CI)
+  if (DIFF && location.hash === '#mudancas') {
+    state.filters.changed = true;
+    const box = document.querySelector('[data-filter=changed]');
+    if (box) box.checked = true;
+  }
+
   build();
 
-  // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota
+  // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota; #mudancas filtra o diff
   const hash = decodeURIComponent(location.hash.slice(1));
   const [mode, target] = [hash.slice(0, hash.indexOf('=')), hash.slice(hash.indexOf('=') + 1)];
   if (mode === 'rota' && TOPOLOGY) {

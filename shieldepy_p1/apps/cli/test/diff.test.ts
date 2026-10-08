@@ -63,6 +63,20 @@ describe('E5/5c — shieldepy diff --base', () => {
       expect(d.symbols.removed).toEqual([]);
       expect(d.edges).toEqual({ added: [], removed: [] });
       expect(d.empty).toBe(false);
+
+      // V2c: --html leva o diff e as rotas tocadas para o visualizador
+      const html = path.join(dir, '..', path.basename(dir) + '-mapa.html');
+      try {
+        expect(await main(['diff', dir, '--base', 'HEAD', '--html', html], { out: () => {}, err: () => {}, env: {} })).toBe(0);
+        const scripts = fs.readFileSync(html, 'utf8').split('<script>').slice(1).map((s) => s.slice(0, s.indexOf('</script>')));
+        const overlay = new Function(`${scripts[4]}; return OVERLAY;`)();
+        expect(overlay.diff.diff.symbols.changed).toContain('src/gateways/StripeGateway.ts#StripeGateway.charge');
+        expect(overlay.diff.routes.affected.map((a: { id: string }) => a.id)).toEqual(['POST /checkout']);
+        expect(overlay.chaos).toBeUndefined();
+        expect(() => new Function(scripts[5]!)).not.toThrow();
+      } finally {
+        fs.rmSync(html, { force: true });
+      }
     } finally {
       reset();
     }

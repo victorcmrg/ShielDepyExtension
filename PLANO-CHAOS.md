@@ -471,6 +471,18 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **No grafo:** rota com achado em vermelho (borda grossa) e com `✖` no rótulo; aguentou com borda verde e `✓`; inválido com borda tracejada. A operação de I/O alvo de um achado ganha borda vermelha, e isso vale também no modo fluxo. A lista de rotas mostra o mesmo ícone.
   - **Conferido em screenshots no Chrome headless:** o vulnerável mostra "Bloqueado: 4 achado(s)", a rota `✖ POST /checkout` e o Stripe e as operações em `stock` marcados; o corrigido mostra "O código aguentou todas as falhas injetadas" e `✓ POST /checkout`. Os ajustes que os screenshots pediram: o caminho do teste vazava do cartão, e o vermelho da rota quebrada se confundia com o rosa normal das rotas (daí o `✖`/`✓` no rótulo).
   - O script do visualizador continua compilando (teste da CLI); sem overlay, nada muda.
+- 2026-10-08: **V2c concluído (diff do PR no visualizador).**
+  - **No grafo:**
+    - símbolo novo: borda verde;
+    - corpo alterado: âmbar;
+    - renomeado: azul tracejada (o painel de detalhes mostra "renomeado de");
+    - arquivo novo ou com o código de topo alterado: a caixa ganha borda;
+    - **rota tocada pelo PR:** borda dupla âmbar, com o motivo nos detalhes. As rotas tocadas vêm do `diff` (`affectedRoutes`) ou, num `chaos --base`, do escopo.
+  - **Seção "Mudanças do PR"** (logo depois da "Caos"): base e merge-base, chips de novos, alterados, renomeados e removidos, e listas clicáveis. Rota tocada abre o fluxo; símbolo dá foco. Os removidos aparecem só como texto, porque não estão mais no mapa.
+  - **Filtro "só o que o PR mudou (e os vizinhos)":** só aparece com diff. Mostra os nós mudados, os vizinhos diretos e as rotas tocadas. O link `#mudancas` já abre filtrado (útil no artefato do CI).
+  - **Conferido no Chrome headless**, com `currency: 'brl'` → `'usd'` no `StripeGateway`: o `charge` e a classe em âmbar, o `POST /checkout` como tocado, e, filtrado, só `charge`, `StripeGateway`, `checkout`, `api_call api.stripe.com` e a rota com os handlers. Ajuste pedido pelo screenshot: ids longos quebram linha nos botões.
+  - Teste: `diff --html` embute o diff e as rotas tocadas, e o script compila.
+  - Suíte: **308 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -510,7 +522,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Lista lateral "Caos": achados com falha, alvo, invariante violada e arquivo do teste. Clicar abre o fluxo da rota, com a operação-alvo destacada.
   - Legenda.
   - Aviso quando o resultado é de outra versão do mapa (`topologyHash` diferente).
-- **V2c. Diff no visualizador.**
+- **V2c. Diff no visualizador.** ✅ Concluída em 2026-10-08.
   - Nós `added` / `changed` / `renamed` marcados.
   - Lista lateral "Mudanças" (inclui os removidos, que não estão no mapa atual) e as rotas tocadas, com o motivo.
   - Filtro "só o que o PR mudou": nós mudados, vizinhos diretos e rotas tocadas.
