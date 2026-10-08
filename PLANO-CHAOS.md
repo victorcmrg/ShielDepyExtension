@@ -527,6 +527,17 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Testes:** 12 rotas → 3 chamadas (5, 5, 2), `max_tokens` 7.000/7.000/4.000, a colisão só no lote da rota dela e as 12 hipóteses da IA entram. O lote 2 falhando → o erro diz "lote 2/3", os lotes 1 e 3 mantêm a contribuição da IA e a base fica inteira.
   - **`RELATORIO-CUSTO-IA.md` atualizado:** o achado aparece como corrigido, e a escala e o custo mensal incluem o prompt de sistema e o raciocínio repetidos por lote. 100 rotas: ~US$ 0,49 só com Haiku e ~US$ 0,87 com o Threat Modeler no Sonnet.
   - Suíte: **310 testes**.
+- 2026-10-08: **V3 iniciado** (branch `feat/portal-v3`, empilhada sobre a `feat/visualizador-v2`). **V3a concluído (contrato e `publish`).**
+  - `ChaosResults` ganhou `surface` (a superfície de ataque inteira, só fatos), que o portal desenha. O `ChaosRunUpload` é o que vai para o portal: remote, commit, branch, PR, link do job e o resultado.
+  - `repoInfo(dir)` no `git-base` do core lê o remote `origin`, o commit e a branch.
+  - **`shieldepy publish <pasta> --portal <url> [--append-link <relatório.md>]`**, com o token em `SHIELDEPY_PORTAL_TOKEN`:
+    - lê o `.shieldepy/chaos-results.json`;
+    - tira o PR, a branch e o link do job das variáveis do GitHub Actions (`GITHUB_REF` `refs/pull/N/merge`, `GITHUB_HEAD_REF`, `GITHUB_RUN_ID`);
+    - faz o POST em `/api/ci/chaos-runs` e devolve o link da execução;
+    - com `--append-link`, acrescenta o link ao relatório do PR.
+  - Erro de configuração, portal fora do ar ou recusa → exit 2 com o motivo. No CI, o passo é separado do portão.
+  - Testes: o payload completo num repositório git temporário com um portal falso, os erros (sem token, sem portal, sem resultado, 403, rede) e o contexto do CI em PR e em push.
+  - Suíte: **313 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -599,7 +610,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Página da execução** (`/projects/:id/runs/:runId`): status em destaque, métricas, o escopo do PR e **cada rota como uma linha do tempo das operações** (`lê stock → chama api.stripe.com → grava stock → grava orders`). O alvo de cada falha fica marcado na operação, com a severidade, a invariante violada e o arquivo do teste. Também traz as tags, as hipóteses sem teste e o histórico do repositório.
 - **Workflow e template:** um passo "Publicar no portal" quando há `SHIELDEPY_PORTAL_TOKEN` (secret) e `SHIELDEPY_PORTAL_URL` (variável).
 
-**Tarefas:** **V3a** contrato + CLI `publish` · **V3b** servidor (banco, tokens, rotas, testes) · **V3c** portal: página do projeto e tokens · **V3d** portal: página da execução (a linha do tempo) · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs.
+**Tarefas:** **V3a** contrato + CLI `publish` ✅ · **V3b** servidor (banco, tokens, rotas, testes) · **V3c** portal: página do projeto e tokens · **V3d** portal: página da execução (a linha do tempo) · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs.
 
 **Aceitação:** o `chaos` no vulnerável seguido do `publish` para um portal local → o projeto mostra o repositório **bloqueado**, e a página da execução mostra o `POST /checkout` com os 4 achados nas operações certas. Um token de outro projeto, ou um remote fora do projeto → 403.
 

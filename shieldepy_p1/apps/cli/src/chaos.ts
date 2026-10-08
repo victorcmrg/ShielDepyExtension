@@ -209,6 +209,7 @@ export async function runChaosCommand(
     hits: hits.length,
     scope,
     cost,
+    surface: fullSurface,
   });
   await mkdir(path.join(root, path.dirname(CHAOS_RESULTS_FILE)), { recursive: true });
   await writeFile(path.join(root, CHAOS_RESULTS_FILE), canonicalJson(results, 2) + '\n', 'utf8');

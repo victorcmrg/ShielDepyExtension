@@ -20,6 +20,7 @@ import { printCollisions, printCycles, printReport, printSystemGraph, printTopol
 import { renderGraphHtml } from '@shieldepy/viewer';
 import { runChaosCommand } from './chaos';
 import { runDiffCommand } from './diff';
+import { runPublishCommand } from './publish';
 
 export interface Io {
   out: (line: string) => void;
@@ -52,6 +53,9 @@ const USAGE = `uso:
                                                      --base: só as rotas que o PR tocou desde o merge-base com <ref>;
                                                      --html: mapa com o resultado (e o diff do PR) por cima;
                                                      --no-run: só gera os testes
+  shieldepy publish <pasta> --portal <url> [--append-link <relatório.md>]
+                                                     manda o último resultado do caos para o portal (token em
+                                                     SHIELDEPY_PORTAL_TOKEN); --append-link põe o link no relatório
 
   report  = só o motor (determinístico, sem rede)
   explain = motor + IA (ANTHROPIC_API_KEY ou GEMINI_API_KEY); sem chave, explicador offline
@@ -67,6 +71,8 @@ interface Args {
   html?: string;
   report?: string;
   base?: string;
+  portal?: string;
+  appendLink?: string;
   surface: boolean;
   noRun: boolean;
   offline: boolean;
@@ -83,10 +89,10 @@ export function parseArgs(argv: string[]): Args {
     else if (a === '--surface') args.surface = true;
     else if (a === '--no-run') args.noRun = true;
     else if (a === '--offline') args.offline = true;
-    else if (['--out', '--html', '--report', '--base'].some((f) => a === f || a.startsWith(`${f}=`))) {
-      const flag = a.startsWith('--out') ? 'out' : a.startsWith('--html') ? 'html' : a.startsWith('--base') ? 'base' : 'report';
+    else if (['--out', '--html', '--report', '--base', '--portal', '--append-link'].some((f) => a === f || a.startsWith(`${f}=`))) {
+      const flag = a.startsWith('--out') ? 'out' : a.startsWith('--html') ? 'html' : a.startsWith('--base') ? 'base' : a.startsWith('--portal') ? 'portal' : a.startsWith('--append-link') ? 'appendLink' : 'report';
       const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
-      if (!value) throw new Error(flag === 'base' ? '--base precisa de um ref do git (ex.: origin/main)' : `--${flag} precisa de um caminho de arquivo`);
+      if (!value) throw new Error(flag === 'base' ? '--base precisa de um ref do git (ex.: origin/main)' : flag === 'portal' ? '--portal precisa do endereço do portal' : `--${flag} precisa de um caminho de arquivo`);
       args[flag] = value;
     }
     else if (a === '--fail-on' || a.startsWith('--fail-on=')) {
@@ -200,6 +206,10 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
         if (!args.target) throw new Error('informe a pasta');
         if (!args.base) throw new Error('informe o ref base: --base origin/main');
         return await runDiffCommand({ target: args.target, base: args.base, json: args.json, html: args.html }, io, registryWithTreeSitter);
+      }
+      case 'publish': {
+        if (!args.target) throw new Error('informe a pasta do projeto');
+        return await runPublishCommand({ target: args.target, portal: args.portal, appendLink: args.appendLink }, io);
       }
       case 'chaos': {
         if (!args.target) throw new Error('informe a pasta do projeto');

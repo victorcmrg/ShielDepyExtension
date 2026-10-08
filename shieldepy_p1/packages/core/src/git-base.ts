@@ -56,6 +56,14 @@ export async function baseInfo(dir: string, ref: string): Promise<BaseInfo & { t
   return { commit, changedFiles, top, rel };
 }
 
+/** Remote `origin`, commit e branch da pasta (o `shieldepy publish` usa). O que não der para ler fica de fora. */
+export async function repoInfo(dir: string): Promise<{ remote?: string; commit?: string; branch?: string }> {
+  const abs = path.resolve(dir);
+  const read = (args: string[]) => git(abs, args).then((v) => v || undefined, () => undefined);
+  const [remote, commit, branch] = await Promise.all([read(['remote', 'get-url', 'origin']), read(['rev-parse', 'HEAD']), read(['rev-parse', '--abbrev-ref', 'HEAD'])]);
+  return { ...(remote && { remote }), ...(commit && { commit }), ...(branch && branch !== 'HEAD' && { branch }) };
+}
+
 /** Roda `fn` com a pasta como ela era na base. O worktree é apagado no fim, dê certo ou não. */
 export async function withBaseCheckout<T>(dir: string, ref: string, fn: (baseDir: string, info: BaseInfo) => Promise<T>): Promise<T> {
   const info = await baseInfo(dir, ref);
