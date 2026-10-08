@@ -59,9 +59,37 @@ const ctx = await esbuild.context({
   plugins: [watchMarkersPlugin],
 });
 
+// A CLI do ShielDepy, empacotada junto (dist/shieldepy-cli.mjs): o comando "Rodar testes de caos"
+// a executa num processo à parte. Em ESM, para o defaultWasmDir (import.meta.url) achar <extensão>/wasm;
+// o banner dá `require` aos pacotes CJS embutidos (LangGraph e companhia).
+const cliCtx = await esbuild.context({
+  entryPoints: [join(here, '..', 'cli', 'src', 'bundle-entry.ts')],
+  bundle: true,
+  format: 'esm',
+  minify: production,
+  sourcemap: false,
+  platform: 'node',
+  target: 'node20',
+  outfile: join(here, 'dist', 'shieldepy-cli.mjs'),
+  banner: {
+    js: [
+      "import { createRequire as __shieldepyRequire } from 'node:module';",
+      "import { fileURLToPath as __shieldepyPath } from 'node:url';",
+      "import { dirname as __shieldepyDir } from 'node:path';",
+      'const require = __shieldepyRequire(import.meta.url);',
+      'const __filename = __shieldepyPath(import.meta.url);',
+      'const __dirname = __shieldepyDir(__filename);',
+    ].join(' '),
+  },
+  logLevel: 'warning',
+});
+
 if (watch) {
   await ctx.watch();
+  await cliCtx.watch();
 } else {
   await ctx.rebuild();
+  await cliCtx.rebuild();
   await ctx.dispose();
+  await cliCtx.dispose();
 }

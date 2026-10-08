@@ -64,6 +64,12 @@
         }
       ]
     },
+    "menus": {
+      "view/title": [
+        { "command": "shieldepy.showMap", "when": "view == shieldepy.panel && shieldepy.unlocked", "group": "navigation@1" },
+        { "command": "shieldepy.runChaos", "when": "view == shieldepy.panel && shieldepy.unlocked", "group": "navigation@2" }
+      ]
+    },
     "commands": [
       {
         "command": "shieldepy.reviewImpact",
@@ -83,7 +89,15 @@
       },
       {
         "command": "shieldepy.showMap",
-        "title": "ShielDepy: Ver Mapa do Sistema"
+        "title": "ShielDepy: Ver Mapa do Sistema",
+        "shortTitle": "Ver grafo do sistema",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "shieldepy.runChaos",
+        "title": "ShielDepy: Rodar Testes de Caos",
+        "shortTitle": "Rodar testes de caos",
+        "icon": "$(beaker)"
       },
       {
         "command": "shieldepy.exportTopology",

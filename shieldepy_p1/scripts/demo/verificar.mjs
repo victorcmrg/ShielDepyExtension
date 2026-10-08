@@ -2,7 +2,7 @@
 // Confere a demo sem abrir janela: prepara (se precisar), sobe o portal, percorre o ROTEIRO.md num
 // VS Code de teste (o mesmo do E2E) e encerra TUDO no fim, inclusive o portal.
 //   npm run demo:verificar
-// Use antes da apresentação. Leva uns 3 minutos (os testes de caos rodam 4 vezes).
+// Use antes da apresentação. Leva uns 2 minutos (os testes de caos rodam 2 vezes, pelo botão do plugin).
 
 import { spawn, spawnSync } from 'node:child_process';
 
@@ -14,8 +14,8 @@ import { ROOT, WORKSPACE } from './paths.mjs';
 const DEMO_SCRIPT = fileURLToPath(new URL('./demo.mjs', import.meta.url));
 const isWin = process.platform === 'win32';
 
-// a demo sem o VS Code de verdade: só prepara e mantém o portal no ar
-const demo = spawn(process.execPath, [DEMO_SCRIPT, '--sem-vscode'], { cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+// a demo sem o VS Code de verdade e sem o histórico do portal: só prepara e mantém o portal no ar
+const demo = spawn(process.execPath, [DEMO_SCRIPT, '--sem-vscode', '--sem-historico'], { cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
 const stopDemo = () => {
   if (demo.exitCode !== null) return;
   if (isWin) spawnSync('taskkill', ['/pid', String(demo.pid), '/T', '/F'], { stdio: 'ignore' });

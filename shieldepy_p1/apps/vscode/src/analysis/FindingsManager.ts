@@ -10,13 +10,15 @@ import type { FindingsCache, StoredFinding } from './FindingsCache';
  * Grupos de achados de um arquivo, atualizados por produtores diferentes:
  *   - analysis : ciclos/HTML (grafo) + riscos da IA — recalculado quando ESTE arquivo muda
  *   - colisao  : colisões do Grafo de Interações — recalculado quando QUALQUER regra do workspace muda
+ *   - caos     : falhas provadas pelos testes de caos — recalculado quando o chaos-results.json muda
  */
-export type FindingGroup = 'analysis' | 'colisao';
+export type FindingGroup = 'analysis' | 'colisao' | 'caos';
 
 const SOURCE_LABEL: Record<Finding['source'], string> = {
   grafo: 'ShielDepy (grafo)',
   colisao: 'ShielDepy (colisão)',
   ia: 'ShielDepy (IA)',
+  caos: 'ShielDepy (caos)',
 };
 
 /**

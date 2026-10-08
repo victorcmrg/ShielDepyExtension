@@ -21,6 +21,7 @@ import { ShieldepyViewProvider } from './views/ShieldepyViewProvider';
 import { StatusBar } from './views/StatusBar';
 import { ConflictBalloon, openLocation } from './views/ConflictBalloon';
 import { ExplorerDecorations } from './views/ExplorerDecorations';
+import { ChaosController } from './chaos/ChaosController';
 import { MapPanel } from './views/MapPanel';
 import { indexWorkspace, isAnalyzable, reindexFromDisk, setPathGate, warnIfTruncated, type IndexReport } from './workspace/files';
 import { WorkspaceModel } from './workspace/WorkspaceModel';
@@ -31,6 +32,10 @@ let model: WorkspaceModel | undefined;
 /** API exposta só no Extension Host de teste (E2E). */
 interface TestApi {
   signInWithToken(token: string): Promise<unknown>;
+  /** O botão "Rodar testes de caos", sem a escolha de projeto quando só há um. */
+  runChaos(): Promise<unknown>;
+  /** Achados publicados num arquivo (Problems + Lista de erros). */
+  findingsOf(fsPath: string): { source: string; severity: string; line: number; message: string }[];
   decorationFor(fsPath: string): { badge?: string; tooltip?: string; color?: string; propagate?: boolean } | undefined;
   /** Estatísticas do grafo em memória (cobertura, imports quebrados). */
   graphStats(): unknown;
@@ -144,13 +149,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   // --- views ----------------------------------------------------------------------------
   const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
+  const panelView = new ShieldepyViewProvider(context.extensionUri, findings, workspace, analyzing, ai, auth);
   const mapPanel = new MapPanel(context.extensionUri, workspace, path.join(context.extensionPath, 'wasm'));
   push(mapPanel);
+  // o botão "Rodar testes de caos": roda pela CLI empacotada e publica o resultado como erros
+  const chaos = new ChaosController(context.extensionUri, findings, output, () => mapPanel.show());
+  push(chaos, panelView.bindChaos(chaos), auth.onDidChangeAuth((state) => state === 'active' && void chaos.loadExisting()));
   let exported: TopologyGraph | undefined;
   push(
     // retainContextWhenHidden: trocar de aba não descarta o rascunho não enviado do chat.
     vscode.window.registerWebviewViewProvider(VIEW_CHAT, chat, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.window.registerWebviewViewProvider(VIEW_PANEL, new ShieldepyViewProvider(context.extensionUri, findings, workspace, analyzing, ai, auth)),
+    vscode.window.registerWebviewViewProvider(VIEW_PANEL, panelView),
     vscode.window.registerWebviewViewProvider(VIEW_SETTINGS, new SettingsViewProvider(context.extensionUri, ai, auth))
   );
 
@@ -158,7 +167,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   /** Comando que usa o workspace/IA: só roda com acesso confirmado no servidor. */
   const guarded = <A extends unknown[]>(fn: (...args: A) => unknown) =>
     async (...args: A) => {
-      if (await requireAccess(auth)) await fn(...args);
+      if (await requireAccess(auth)) return await fn(...args);
+      return undefined;
     };
   push(
     vscode.commands.registerCommand(CMD.setApiKey, () => setApiKey(ai)),
@@ -169,6 +179,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     }),
     vscode.commands.registerCommand(CMD.scanWorkspace, guarded(() => chat.runFullScan())),
     vscode.commands.registerCommand(CMD.showMap, guarded(() => mapPanel.show())),
+    vscode.commands.registerCommand(CMD.runChaos, guarded(() => chaos.run())),
     vscode.commands.registerCommand(
       CMD.compareMap,
       guarded(async (given?: unknown) => {
@@ -288,6 +299,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
       void warnIfTruncated(report);
       collisions.publish();
       for (const doc of vscode.workspace.textDocuments) analyzer.runNow(doc);
+      if (auth.canUse()) void chaos.loadExisting();
     })
     .catch((err) => log(`[ShielDepy] indexação inicial falhou: ${err}`));
 
@@ -302,6 +314,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     lastTopology: () => exported ?? mapPanel.lastTopology,
     lastOverlay: () => mapPanel.lastOverlay,
     compareMap: (ref) => mapPanel.compare(ref),
+    runChaos: () => chaos.run(),
+    findingsOf: (fsPath) => findings.get(fsPath).map((f) => ({ source: f.source, severity: f.severity, line: f.startLine, message: f.message })),
     reindex: () => indexWorkspace(workspace, log),
     decorationFor: (fsPath) => {
       const d = explorer.provideFileDecoration(vscode.Uri.file(fsPath));

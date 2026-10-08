@@ -20,6 +20,8 @@ import { escapeHtml, renderWebview } from './webview';
  */
 export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
+  private chaos: { isRunning: boolean; onDidChangeRunning: vscode.Event<boolean> } | undefined;
+  private chaosListener: vscode.Disposable | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -40,6 +42,7 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
         switch (message?.type) {
           case 'ready':
             this.refreshAll();
+            this.post({ type: 'chaosRunning', running: this.chaos?.isRunning ?? false });
             break;
           case 'reveal':
             await revealLine(String(message.fileId), Number(message.line));
@@ -61,6 +64,12 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
             break;
           case 'openSettings':
             await vscode.commands.executeCommand(CMD.focusSettings);
+            break;
+          case 'showMap':
+            await vscode.commands.executeCommand(CMD.showMap);
+            break;
+          case 'runChaos':
+            await vscode.commands.executeCommand(CMD.runChaos);
             break;
           case 'openRelated':
             await vscode.commands.executeCommand(CMD.openLocation, String(message.file), Number(message.line));
@@ -84,6 +93,14 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /** Liga o botão "Rodar testes de caos" ao estado da rodada (criado depois do painel, na ativação). */
+  bindChaos(chaos: { isRunning: boolean; onDidChangeRunning: vscode.Event<boolean> }): vscode.Disposable {
+    this.chaos = chaos;
+    this.chaosListener?.dispose();
+    this.chaosListener = chaos.onDidChangeRunning((running) => this.post({ type: 'chaosRunning', running }));
+    return this.chaosListener;
+  }
+
   /** HTML do painel no idioma atual. */
   private render(webviewView: vscode.WebviewView): void {
     webviewView.title = t('panelTitle');
@@ -105,6 +122,16 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
       <div class="guard-title" id="status">${escapeHtml(t('guardTitle'))}</div>
       <div class="guard-sub" id="statusSub"></div>
     </header>
+    <div class="actions" role="group">
+      <button class="action" id="actMap" type="button">
+        <span class="action-icon codicon-like" aria-hidden="true">◇</span>
+        <span class="action-text"><b>${escapeHtml(t('actionMap'))}</b><small>${escapeHtml(t('actionMapSub'))}</small></span>
+      </button>
+      <button class="action primary" id="actChaos" type="button">
+        <span class="action-icon" aria-hidden="true">⚡</span>
+        <span class="action-text"><b id="actChaosLabel">${escapeHtml(t('actionChaos'))}</b><small>${escapeHtml(t('actionChaosSub'))}</small></span>
+      </button>
+    </div>
     <div class="analyzing" id="analyzingRow"><span class="morph-shape"></span><span id="analyzingText"></span></div>
     <p class="notice" id="graphNotice" hidden>${escapeHtml(t('graphNotice'))}</p>
     <div class="tiles" id="stats" role="group" aria-label="${escapeHtml(t('filterGroup'))}">

@@ -20,6 +20,7 @@ export const CMD = {
   focusSettings: 'shieldepy.settings.focus',
   openLocation: 'shieldepy.openLocation',
   showMap: 'shieldepy.showMap',
+  runChaos: 'shieldepy.runChaos',
   exportTopology: 'shieldepy.exportTopology',
   compareMap: 'shieldepy.compareMap',
 } as const;

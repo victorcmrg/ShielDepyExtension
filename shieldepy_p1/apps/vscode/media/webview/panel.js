@@ -287,9 +287,18 @@
     }
   }
 
+  // --- ações principais: o grafo e os testes de caos (a extensão faz o resto) ---------------
+  $('actMap').addEventListener('click', () => vscode.postMessage({ type: 'showMap' }));
+  $('actChaos').addEventListener('click', () => vscode.postMessage({ type: 'runChaos' }));
+  function setChaosRunning(running) {
+    $('actChaos').disabled = running;
+    $('actChaosLabel').textContent = running ? T('actionChaosRunning') : T('actionChaos');
+  }
+
   window.addEventListener('message', (event) => {
     const msg = event.data || {};
-    if (msg.type === 'access') setAccess(msg.state, msg.company, msg.remote, msg.project);
+    if (msg.type === 'chaosRunning') setChaosRunning(Boolean(msg.running));
+    else if (msg.type === 'access') setAccess(msg.state, msg.company, msg.remote, msg.project);
     else if (msg.type === 'findingsByFile') {
       setCounts(msg.counts);
       renderGroups(msg.groups, msg.systemDisabled);

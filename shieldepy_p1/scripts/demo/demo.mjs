@@ -419,8 +419,8 @@ function roteiro() {
   return `# Roteiro da demo do ShielDepy
 
 O ShielDepy lê o código sem executar nada, monta o grafo do sistema, acha as rotas que fazem
-operações arriscadas (banco e APIs externas) e gera testes de caos só para elas. No PR, ele barra
-o que quebra sob falha.
+operações arriscadas (banco e APIs externas) e gera testes de caos só para elas. Quem comanda tudo
+é o plugin, por dois botões.
 
 Este sistema tem três partes:
 
@@ -432,110 +432,98 @@ Este sistema tem três partes:
 
 Branches: **main** (com os defeitos) e **correcao** (o checkout corrigido).
 
-> Para executar os comandos: **Ctrl+Shift+P** e digite "ShielDepy".
-> O terminal fica em **Ctrl+'** (aspas simples).
-
 ---
 
-## 1. O plugin entrou sozinho
+## 0. A janela
 
-Esta janela é a **[Extension Development Host]**: o VS Code com o plugin ShielDepy carregado direto
-do repositório. Se o VS Code perguntar se você confia nos autores da pasta, clique **"Sim, confio"**
-(sem isso, ele abre em modo restrito e o plugin não roda).
+Esta é a janela **[Extension Development Host]**: o VS Code com o plugin ShielDepy carregado direto do
+repositório. Se ele perguntar se você confia nos autores da pasta, clique **"Sim, confio"** (sem isso, o
+plugin não roda).
 
-1. Na **barra da esquerda**, clique no **ícone do escudo (ShielDepy)**.
-2. A aba **Lista de erros** abre já liberada. No topo aparece o **Protetor de código**, com o projeto
-   **"Sistema da loja (demo do TCC)"**. A extensão entrou no portal local com a conta \`dono@acme.test\`.
-3. Para ver o plugin trabalhando: **Exibir → Saída** (Ctrl+Shift+U) e escolha **ShielDepy** na lista
-   da direita. O log mostra o acesso, a indexação do grafo e cada análise.
+Na **barra da esquerda**, clique no **ícone do escudo (ShielDepy)**. O painel abre já liberado: em cima,
+o projeto **"Sistema da loja (demo do TCC)"** (o plugin entrou sozinho no portal local) e os dois botões:
 
-## 2. Lista de erros: colisões entre microserviços
+| Botão | O que faz |
+|---|---|
+| **◇ Ver grafo do sistema** | abre o mapa: rotas, controller → service → repositórios → banco e APIs |
+| **⚡ Rodar testes de caos** | gera e roda os testes, acusa os erros no código e mostra o grafo final com o que quebrou |
 
-1. Ainda na aba **Lista de erros**, os contadores mostram **Erro / Aviso / Info**.
-2. Em **Problemas** aparecem:
-   - **Escrita dupla em "total" no evento order.updated**: \`pedidos/services/pricing\` e \`pedidos/services/tax\`
-     reagem ao mesmo evento e escrevem o mesmo campo. A ordem é indefinida, e o total final depende de quem rodou por último;
-   - **"total" é lido e escrito sem ordem garantida**: \`pedidos/services/audit\` lê o \`total\` que os outros dois escrevem.
-3. Clique num problema: o editor abre no trecho exato.
-4. Os mesmos achados aparecem na aba **Problemas** do VS Code (Ctrl+Shift+M).
+Os mesmos botões aparecem como ícones no título do painel. Para ver o plugin trabalhando, abra a Saída
+(**Ctrl+Shift+U**) e escolha **ShielDepy**: cada passo dos testes aparece ali.
 
-## 3. Grafo de chamadas: um ciclo
+## 1. Lista de erros: o que o plugin já acha só lendo o código
 
-1. Abra \`relatorios/totais.ts\`.
-2. Aparece um aviso amarelo: **Ciclo de chamadas detectado** (\`totalDoPeriodo → resumoMensal → totalDoPeriodo\`).
-   Passe o mouse em cima: o aviso aponta a outra função do ciclo, em \`relatorios/resumo.ts\`.
+Abaixo dos botões fica a **Lista de erros** (contadores Erro / Aviso / Info):
+- **Escrita dupla em "total" no evento order.updated**: \`pedidos/services/pricing\` e \`pedidos/services/tax\`
+  reagem ao mesmo evento e escrevem o mesmo campo. O total final depende de quem rodou por último;
+- **"total" é lido e escrito sem ordem garantida**: \`pedidos/services/audit\` lê o que os outros dois escrevem.
 
-## 4. O mapa do sistema (o grafo)
+Clique num problema: o editor abre no trecho. Abra \`relatorios/totais.ts\`: aparece o aviso amarelo
+**Ciclo de chamadas detectado** (\`totalDoPeriodo → resumoMensal → totalDoPeriodo\`).
 
-1. **Ctrl+Shift+P → ShielDepy: Ver Mapa do Sistema**. Abre a aba **Mapa do sistema**:
-   - à esquerda: **Caos** (resultado dos testes, lido de \`checkout/.shieldepy/chaos-results.json\`),
-     **Cobertura das chamadas internas** (100% provado: nenhuma ligação adivinhada), as **rotas** e os
-     filtros **Mostrar** (rotas e operações de I/O, chamadas, imports, pacotes);
-   - no centro: o grafo inteiro, com arquivos, funções, classes, pacotes (\`pg\`, \`express\`) e as
-     operações de banco e de API.
-2. No painel **Caos**: **Bloqueado: 6 achado(s)**. Cada cartão mostra a falha injetada, a invariante
-   que quebrou e o arquivo do teste gerado.
-3. Clique em **POST /checkout**, na lista de rotas ou no grafo. Abre o **fluxo da rota**: requisição →
-   controller → service → repositórios → \`db_read stock\` → \`api_call api.stripe.com\` → \`db_write\`.
-   A rota fica vermelha (\`✖\`), e as operações atingidas pelo caos ficam com borda vermelha.
-4. Clique num nó (ex.: \`CheckoutService.checkout\`): o painel de detalhes mostra os botões **Cadeia abaixo**,
-   **Quem chega aqui** e **Abrir código**, que abre o editor na função. **Voltar ao mapa** volta ao grafo inteiro.
+## 2. Botão ◇ Ver grafo do sistema
 
-## 5. Topologia: o que vai para a IA
+Abre a aba **Mapa do sistema**:
+- à esquerda, **Cobertura das chamadas internas** (100% provado: nenhuma ligação adivinhada), as **rotas**
+  com as tags de risco e os filtros **Mostrar**;
+- no centro, o grafo: arquivos, funções, classes, pacotes (\`pg\`, \`express\`) e as operações de banco e de API.
 
-1. **Ctrl+Shift+P → ShielDepy: Exportar Topologia**.
-2. Abre \`.shieldepy/topology-graph.json\`: cada rota com as operações de I/O em ordem e as tags de
-   risco (\`read-then-write\`, \`no-timeout\`, \`write-after-api-call\`). É só isto que a IA vê, nunca o código.
+Clique em **POST /checkout** (na lista de rotas ou no grafo): abre o **fluxo da rota** — requisição →
+controller → service → repositórios → \`db_read stock\` → \`api_call api.stripe.com\` → \`db_write\`.
+Clique num nó: **Cadeia abaixo**, **Quem chega aqui** e **Abrir código**. **Voltar ao mapa** volta ao grafo inteiro.
 
-## 6. A correção, como num pull request
+## 3. Botão ⚡ Rodar testes de caos
 
-No terminal (Ctrl+'):
+1. Clique. Uma notificação mostra cada etapa: topologia → hipóteses de falha → testes gerados → Vitest
+   (controle + caos). Leva uns 30 s. O botão fica "Rodando os testes de caos…" e pode ser cancelado.
+2. No fim, **6 falhas provadas**:
+   - na **Lista de erros** e no **Problems** (Ctrl+Shift+M), cada uma na linha do código atingida:
+     - \`StockRepository.decrement\`: **corrida em stock** (\`stockNeverNegative\`);
+     - \`OrderRepository.insert\`: **falha parcial** — cobrou no Stripe e não gravou o pedido (\`noChargeWithoutOrder\`);
+     - \`StripeGateway.charge\`: **API lenta, com erro ou resposta inválida** — a rota fica pendurada;
+   - o **grafo final** abre sozinho: a rota **POST /checkout** em vermelho (\`✖\`), as operações atingidas
+     com borda vermelha, e o painel **Caos** com cada falha, a invariante violada e o teste gerado.
+3. Passe o mouse num erro: os pontos relacionados levam ao **teste que provou a falha**
+   (\`checkout/.shieldepy/chaos-tests/\`) e à rota.
+
+## 4. A correção, como num pull request
+
+No terminal (**Ctrl+'**), troque para a branch corrigida:
 
 \`\`\`
 git switch correcao
-npm run caos
 \`\`\`
 
-- O \`npm run caos\` gera os testes de caos de novo, roda com o Vitest e publica no portal. Leva uns 30 s.
-- Resultado: **0 achados**. A corrida, o timeout, o 5xx, o corpo inválido e a falha parcial **aguentam**.
-- O **Mapa do sistema** aberto atualiza sozinho: a rota fica verde (\`✓\`).
+Clique de novo em **⚡ Rodar testes de caos**: **0 falhas**. A corrida, o timeout, o 5xx, o corpo
+inválido e a falha parcial **aguentam**; os erros de caos somem da lista e a rota fica verde (\`✓\`).
 
-## 7. O que a correção mudou
+Depois, **Ctrl+Shift+P → ShielDepy: Comparar Mapa com uma Branch** → \`main\`: o mapa marca o que a
+correção mudou (\`StripeGateway.refund\`, \`StockRepository.reserve\`, \`StockRepository.release\`,
+\`OrderNotSavedError\`, o \`CheckoutService.checkout\` alterado) e as rotas que ela tocou. O filtro
+**só o que o PR mudou (e os vizinhos)**, em **Mostrar**, deixa só essa parte.
 
-1. **Ctrl+Shift+P → ShielDepy: Comparar Mapa com uma Branch** → digite \`main\`.
-2. O mapa marca o que mudou desde a \`main\`:
-   - símbolos novos: \`StripeGateway.refund\`, \`StockRepository.reserve\`, \`StockRepository.release\` e \`OrderNotSavedError\`;
-   - corpos alterados: \`CheckoutService.checkout\`, \`StripeGateway.charge\`;
-   - as rotas que a mudança tocou.
-3. A seção **Mudanças do PR** lista tudo, e o filtro **só o que o PR mudou (e os vizinhos)**, em **Mostrar**, deixa no grafo só essa parte.
+## 5. O portal (o histórico do CI)
 
-## 8. O portal (o histórico do CI)
+Abra **${PORTAL}** no navegador e entre com \`dono@acme.test\` / \`Acme-Dono-2026\`.
+**Projetos → Sistema da loja (demo do TCC)**: o painel **Caos no CI** tem o histórico (a main barrada,
+a correção aguentando). Clique numa execução: cada rota vira uma **linha do tempo** das operações, com a
+estação atingida marcada ("Falha parcial" em **grava orders**), a invariante violada e o teste.
 
-1. Abra **${PORTAL}** no navegador e entre com \`dono@acme.test\` / \`Acme-Dono-2026\`.
-2. Entre em **Projetos → Sistema da loja (demo do TCC)**. O painel **Caos no CI** tem o histórico do repositório.
-3. Clique numa execução. Cada rota aparece como **linha do tempo** das operações, com a estação atingida
-   marcada ("Falha parcial" em **grava orders**, "Corrida" em **lê stock**), a invariante violada e o teste.
-
-## 9. Voltar ao começo
+## 6. Voltar ao começo
 
 \`\`\`
 git switch main
-npm run caos
 \`\`\`
 
-O mapa volta a mostrar os 6 achados. Os arquivos gerados ficam em \`checkout/.shieldepy/\`:
-- \`chaos-report.md\`: o comentário que iria no PR;
-- \`mapa.html\`: o mapa, para abrir no navegador;
-- \`chaos-tests/\`: os testes gerados;
-- \`chaos-results.json\`: o que o plugin e o portal leem.
+e **⚡ Rodar testes de caos** de novo: as 6 falhas voltam. Os arquivos gerados ficam em \`checkout/.shieldepy/\`
+(\`chaos-tests/\`: os testes; \`chaos-results.json\`: o que o plugin lê).
 
 ---
 
-**Abas do plugin:**
-- **Escudo**, na barra da esquerda: Lista de erros;
-- **Engrenagem do ShielDepy**, na barra da esquerda: Configurações (conta, empresa, chave da IA);
-- **Chat do ShielDepy**, na barra da direita: perguntas sobre os achados. Precisa de chave da IA,
-  em **ShielDepy: Configurar Chave da IA**. A demo roda sem IA: as hipóteses e os testes vêm do motor.
+**Outras abas do plugin:** a **engrenagem do ShielDepy** (barra da esquerda) tem as configurações
+(conta, empresa, chave da IA); o **Chat do ShielDepy** (barra da direita) responde sobre os achados e
+precisa de chave da IA (**ShielDepy: Configurar Chave da IA**). A demo roda sem IA: as hipóteses e os
+testes vêm do motor, sem custo.
 `;
 }
 
@@ -547,9 +535,9 @@ ${bold('Sistema:')} ${WORKSPACE}
 ${bold('Portal:')}  ${PORTAL}   login ${bold(seed.owner.email)} / ${bold(seed.owner.password)}
 
 O passo a passo está no ${bold('ROTEIRO.md')}, que abriu no VS Code (também em ${join(WORKSPACE, 'ROTEIRO.md')}).
-Resumo: escudo na barra da esquerda → Lista de erros · relatorios/totais.ts → ciclo ·
-Ctrl+Shift+P → "ShielDepy: Ver Mapa do Sistema" → grafo e caos · no terminal:
-git switch correcao + npm run caos · "ShielDepy: Comparar Mapa com uma Branch" → main.
+Resumo: escudo na barra da esquerda → ${bold('◇ Ver grafo do sistema')} e ${bold('⚡ Rodar testes de caos')}
+(os erros aparecem na Lista de erros e o grafo final abre com o que quebrou) · no terminal do VS Code:
+git switch correcao e ⚡ de novo · "ShielDepy: Comparar Mapa com uma Branch" → main.
 
 ${dim('Deixe este terminal aberto: ele mantém o portal no ar. Ctrl+C encerra o portal.')}
 `);
@@ -600,10 +588,12 @@ async function main() {
   process.on('SIGTERM', stop);
   process.on('SIGHUP', stop);
   process.on('exit', () => stopTree(server));
-  // o histórico do portal (o banco é novo a cada execução): a correção aguenta e a main é barrada.
-  // A main fica por último porque é a branch aberta no VS Code, e o resultado dela é o que o plugin mostra.
-  if (run('git', ['status', '--porcelain'], { cwd: WORKSPACE }).stdout.trim()) {
-    warn('o sistema da demo tem mudanças não commitadas: rodando o caos só na branch atual');
+  // o histórico do portal (o banco é novo a cada execução): a correção aguenta e a main é barrada,
+  // como se o CI tivesse rodado. Volta para a branch em que estava.
+  if (args.has('--sem-historico')) {
+    ok('histórico do portal pulado (--sem-historico)');
+  } else if (run('git', ['status', '--porcelain'], { cwd: WORKSPACE }).stdout.trim()) {
+    warn('o sistema da demo tem mudanças não commitadas: o histórico do portal fica só com a branch atual');
     chaos(seed.ciToken, `branch ${currentBranch()}`);
   } else {
     const start = currentBranch();
@@ -612,6 +602,8 @@ async function main() {
       chaos(seed.ciToken, `branch ${branch}`);
     }
   }
+  // o VS Code abre sem resultado local: quem roda os testes, na apresentação, é o botão do plugin
+  rmSync(join(APP, '.shieldepy'), { recursive: true, force: true });
   step(6, TOTAL, 'VS Code');
   await openVsCode(seed);
   printSummary(seed);

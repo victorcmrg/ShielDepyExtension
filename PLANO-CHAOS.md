@@ -701,6 +701,26 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **`npm run demo:verificar`:** percorre o roteiro num VS Code de teste (o do E2E), sem janela, e encerra tudo no fim, inclusive o portal (`taskkill /T` no Windows; matar só o pai deixava o servidor órfão). Passou nos 7 passos: login automático, grafo 100% provado (17 chamadas), as 2 colisões, o ciclo, o mapa com 6 achados, a correção com 0 achados e o mapa atualizando sozinho, e a comparação mostrando só a correção.
   - **Incidente:** a máquina do usuário deu **tela azul** durante os testes. Eu tinha deixado vários VS Code (alguns presos, sem janela), Chrome headless, VS Codes de teste e o portal rodando ao mesmo tempo, e encerrado processos à força. Daí em diante: uma coisa pesada por vez, sempre encerrada no fim.
   - Suíte **326**, E2E **27/27**; o README da raiz virou a porta de entrada da demo.
+  - **Ajustes depois do primeiro teste do usuário:**
+    - a demo mora **fora do repositório** (`~/ShielDepy-demo` ou `DEMO_DIR`);
+    - abre numa **janela nova do VS Code já aberto** (`--extensionDevelopmentPath`, pelo CLI oficial `cli.js`). Uma instância com perfil separado não abria com a atualização do VS Code pendente;
+    - o token da demo vai em `shieldepy.demoToken`, no `.vscode/settings.json` do sistema da demo, aceito só com portal em localhost.
+- 2026-10-08: **A extensão no controle (pedido do usuário: "botão 1 para ver o grafo, botão 2 para rodar os testes e acusar os erros, com o grafo final").**
+  - **Botões:** no painel do escudo, "◇ Ver grafo do sistema" e "⚡ Rodar testes de caos" (que vira "Rodando os testes de caos…" e fica desabilitado enquanto roda). Os mesmos dois aparecem como ícones no título do painel (`view/title`). Textos nos 4 idiomas do i18n. Conferido em screenshot do CSS real.
+  - **`shieldepy.runChaos`** (`ChaosController`):
+    - roda o pipeline inteiro pela **CLI empacotada junto da extensão** (`dist/shieldepy-cli.mjs`, um segundo build do esbuild, em ESM para o `defaultWasmDir` achar `<extensão>/wasm`; o banner dá `require`, `__dirname` e `__filename`). O LangGraph fica fora do `extension.js`, que continua com ~636 KB;
+    - roda num processo à parte, com o Node do sistema (ou o do VS Code, com `ELECTRON_RUN_AS_NODE`), com progresso por etapa, cancelamento (`taskkill /T` no Windows) e o log na Saída → ShielDepy;
+    - escolhe o projeto pelo `shieldepy.chaos.config.ts` (com mais de um, pergunta).
+  - **Erros na linha certa:** `chaosToFindings` transforma cada teste que quebrou em achado (grupo novo `caos`, fonte "ShielDepy (caos)"), na operação atingida, lida da topologia que vem no `chaos-results.json`:
+    - corrida: a escrita na tabela;
+    - falha parcial: a gravação depois da API;
+    - rede: a chamada à API.
+
+    O teste que provou a falha e a rota vão como pontos relacionados. Um resultado que já esteja no disco (CLI, CI) também é publicado, e o observador do arquivo mantém tudo em dia.
+  - **O grafo final** abre sozinho no fim da rodada (o painel do mapa já lia o `chaos-results.json` desde a V2).
+  - **Bug de Windows achado e corrigido:** o VS Code entrega o caminho com o drive em minúscula (`c:\...`), e o Node resolve o `node_modules` com `C:\...`. Com isso, o Vitest carregava duas cópias de si mesmo e nenhum teste rodava ("Vitest failed to find the current suite"). A rodada usa o caminho real do disco (`realpathSync.native`), e a leitura do resultado continua com o caminho do VS Code, para não duplicar achados.
+  - **Demo:** abre **sem resultado de caos** (quem roda é o botão, na frente da banca). O histórico do portal continua sendo gerado (`--sem-historico` pula essa parte). O `ROTEIRO.md` foi reescrito em torno dos botões. O `demo:verificar` percorre o roteiro pelos comandos dos botões: os 6 passos passam, incluindo 6 falhas, a falha parcial como erro no Problems em `OrderRepository.ts:14`, a `correcao` com 0 falhas e os erros de caos sumindo.
+  - Suíte **329** (3 novos em `apps/vscode/test/chaos.test.ts`), E2E **27/27**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

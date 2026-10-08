@@ -10,7 +10,7 @@ export type FindingSeverity = 'error' | 'warning' | 'info';
  * - `colisao` : provado pelo motor de colisões (duas regras brigam por um campo)
  * - `ia`      : opinião do modelo; nunca tem a mesma força de prova dos outros dois
  */
-export type FindingSource = 'grafo' | 'colisao' | 'ia';
+export type FindingSource = 'grafo' | 'colisao' | 'ia' | 'caos';
 
 export interface RelatedLocation {
   file: string;
