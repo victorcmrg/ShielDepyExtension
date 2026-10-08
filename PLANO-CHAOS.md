@@ -11,13 +11,16 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 ## Progresso e fluxo de trabalho
 
-Este arquivo é atualizado a cada passo. Cada ponto importante gera um commit na branch do marco, e o marco termina com merge na `main`.
+Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança. Cada etapa tem sua branch. **O merge na `main` é feito pelo usuário** quando a etapa inteira estiver completa.
 
-| Marco | Branch | Status |
+- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente.
+- **E2 — Topologia** (tarefa 2), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
+
+| Tarefa | Branch | Status |
 |---|---|---|
 | 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído |
-| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | em andamento |
-| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | pendente |
+| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído |
+| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | em andamento |
 | 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter (gramáticas já no `tree-sitter-wasms`); PL/pgSQL precisa de gramática SQL à parte | a definir | pendente |
 | 2. Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`) | a definir | pendente |
 | 3. Fases 2–3: LangGraph + agentes | a definir | pendente |
@@ -33,6 +36,29 @@ Este arquivo é atualizado a cada passo. Cada ponto importante gera um commit na
   - O fallback por nome continua, mas a aresta sai marcada `heuristic: true`.
   - O receptor de `obj.m()` é lido da AST (sem regex).
   - Suíte: 166 → 180 testes, todos passando.
+- 2026-10-07: **1b concluído.**
+  - Resolução por **tipo do receptor**:
+    - `this.m()` e `super.m()`
+    - campos tipados, `= new X()` e `constructor(private repo: Repo)`
+    - `this.x = new X()` e cadeias como `this.deps.repo.save()`
+    - variável `new X()` e parâmetro tipado
+    - herança entre arquivos e `implements` (a interface liga às classes que a implementam)
+  - Instância exportada (`export const svc = new Svc()`) e objeto literal exportado são seguidos em outro arquivo.
+  - Tipos e bases de pacote (`pool: Pool`, `extends Repository`) viram chamada externa.
+  - Nova aresta `references`: handler passado como valor (`app.post('/x', auth, ctrl.create, ...)`).
+  - Callback anônimo no topo do arquivo vira símbolo (`app.post('/checkout')`), então as chamadas de dentro de um handler inline não se perdem mais.
+  - `references` não entra na detecção de ciclos.
+  - Sem adivinhar: receptor de tipo nativo ou global (`X[]`, `Map`, `console`, `JSON`), função guardada em campo (`this.log()`) e parâmetro que esconde um import não geram aresta falsa.
+  - **Medição no próprio ShielDepy:**
+
+    | | antes | depois |
+    |---|---|---|
+    | `packages/` | 91,8% resolvidas com prova, 7 sem resolução | **99,1%**, **0** |
+    | `apps/` | 92,4%, 50 sem resolução | **98,5%**, **0** |
+
+    O resto é heurístico marcado: variáveis cujo tipo vem do retorno de uma função.
+  - Suíte: 180 → 194 testes.
+  - Melhoria futura (não bloqueia a E1): inferir o tipo pelo retorno anotado (`const sim = model.fork()`).
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

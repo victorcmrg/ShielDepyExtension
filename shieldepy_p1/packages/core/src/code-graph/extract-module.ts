@@ -4,6 +4,7 @@
 // chamadas eram ligadas só pelo nome, e qualquer alias ou barrel quebrava a cadeia.
 // Função pura: não sabe nada de disco nem do grafo.
 
+import { constructedType, typeRef, type TypeRef } from './ast';
 import type { SyntaxNode } from './parser';
 
 /** Ligação local criada por um import. `imported` é o nome exportado, `default` ou `*` (namespace/require). */
@@ -27,6 +28,11 @@ export interface ModuleInfo {
   /** Nome exportado → nome local (`default` → nome do símbolo ou `default` quando anônimo). */
   exports: Map<string, string>;
   reexports: ReExport[];
+  /**
+   * Tipo das instâncias declaradas no topo do arquivo: `export const orderService = new OrderService()`
+   * → orderService: ['OrderService']. É o que liga `orderService.create()` em OUTRO arquivo ao método.
+   */
+  valueTypes: Map<string, TypeRef>;
 }
 
 /** Nome dado ao símbolo de `export default function () {}` / `export default () => {}`. */
@@ -216,5 +222,23 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
     return true;
   });
 
-  return { specs, imports, exports, reexports };
+  const valueTypes = new Map<string, TypeRef>();
+  for (const stmt of root.namedChildren) {
+    const inner = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') ?? stmt.childForFieldName('value') : stmt;
+    if (!inner) continue;
+    if (stmt.type === 'export_statement' && inner === stmt.childForFieldName('value')) {
+      const type = constructedType(inner); // export default new OrderService()
+      if (type) valueTypes.set('default', type);
+      continue;
+    }
+    if (inner.type !== 'lexical_declaration' && inner.type !== 'variable_declaration') continue;
+    for (const d of inner.namedChildren) {
+      const name = d.type === 'variable_declarator' ? d.childForFieldName('name') : undefined;
+      if (name?.type !== 'identifier') continue;
+      const type = typeRef(d.childForFieldName('type')) ?? constructedType(d.childForFieldName('value'));
+      if (type) valueTypes.set(name.text, type);
+    }
+  }
+
+  return { specs, imports, exports, reexports, valueTypes };
 }

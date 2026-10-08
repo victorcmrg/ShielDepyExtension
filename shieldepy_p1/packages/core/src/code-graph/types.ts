@@ -24,6 +24,13 @@ export interface SymbolNodeAttrs {
   endLine: number;
   /** Lista de parâmetros (texto literal, ex: "(a: string, b: number)") — grátis, vem do próprio parse. */
   signature?: string;
+  /** Método: classe ou objeto literal que o contém. */
+  container?: string;
+  /** Classe: tipo base (`extends`), interfaces (`implements`) e tipo de cada campo conhecido. */
+  extends?: string[];
+  implements?: string[];
+  fields?: Record<string, string[]>;
+  properties?: string[];
 }
 
 /** Dependência externa (`pg`, `@prisma/client`, `node:fs`) — id `pkg:<nome>`. */
@@ -34,7 +41,8 @@ export interface PackageNodeAttrs {
 
 export type NodeAttrs = FileNodeAttrs | SymbolNodeAttrs | PackageNodeAttrs;
 
-export type EdgeType = 'defines' | 'imports' | 'calls';
+/** `references`: função passada como valor (`app.post('/x', handler)`) — não é chamada, mas será executada. */
+export type EdgeType = 'defines' | 'imports' | 'calls' | 'references';
 
 export interface EdgeAttrs {
   type: EdgeType;

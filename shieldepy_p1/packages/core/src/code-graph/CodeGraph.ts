@@ -4,7 +4,7 @@ import type { Host } from '../host';
 import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
-import { extractCalls, extractSymbols, type RawCall } from './extract-ts';
+import { extractCalls, extractSymbols, type RawCall, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
@@ -40,6 +40,23 @@ type CallOutcome = keyof FileCoverage | 'unbound';
 interface CallResolution {
   outcome: CallOutcome;
   targets: string[];
+}
+
+const UNRESOLVED: CallResolution = { outcome: 'callsUnresolved', targets: [] };
+/** Receptor de tipo conhecido mas fora do projeto e sem pacote (`Map`, `URL`, `X[]`, interface sem classe): não se adivinha. */
+const NATIVE: CallResolution = { outcome: 'unbound', targets: [] };
+
+/** Classes que um nome de tipo representa, ou o pacote de onde o tipo vem. */
+interface ResolvedType {
+  classes: string[];
+  external?: string;
+}
+
+/** Caches de uma passada de religação (valem só enquanto o grafo não muda). */
+interface ResolutionContext {
+  bindings(fileId: string): Map<string, ImportBinding>;
+  legacy(name: string): string[];
+  implementers(iface: string): string[];
 }
 
 const EMPTY_COVERAGE: FileCoverage = { callsResolved: 0, callsHeuristic: 0, callsUnresolved: 0, callsExternal: 0 };
@@ -294,7 +311,15 @@ export class CodeGraph {
   }
 
   findCycleThrough(nodeId: string): string[] | null {
-    return findCycleThrough(this.graph, nodeId);
+    // Só `calls`: passar uma função como valor (`references`) não é um laço de execução.
+    return findCycleThrough(
+      {
+        hasNode: (id) => this.graph.hasNode(id),
+        outNeighbors: (id) =>
+          this.graph.outEdges(id).filter((e) => this.graph.getEdgeAttribute(e, 'type') === 'calls').map((e) => this.graph.target(e)),
+      },
+      nodeId
+    );
   }
 
   /**
@@ -398,6 +423,11 @@ export class CodeGraph {
           startLine: sym.startLine,
           endLine: sym.endLine,
           signature: sym.signature,
+          ...(sym.container !== undefined && { container: sym.container }),
+          ...(sym.extends !== undefined && { extends: sym.extends }),
+          ...(sym.implements !== undefined && { implements: sym.implements }),
+          ...(sym.fields !== undefined && { fields: sym.fields }),
+          ...(sym.properties !== undefined && { properties: sym.properties }),
         });
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
@@ -406,7 +436,7 @@ export class CodeGraph {
       this.moduleInfo.set(fileId, info);
       this.linkImports(fileId, fsPath, info.specs);
 
-      this.rawCalls.set(fileId, extractCalls(root, symbols));
+      this.rawCalls.set(fileId, extractCalls(root, symbols, fileId));
       this.relinkCalls(fileId);
       // Os símbolos deste arquivo acabaram de ser recriados (com ids novos se as linhas mudaram) —
       // quem importa este arquivo (direto ou via barrel) precisa religar as chamadas que apontavam pra cá.
@@ -550,9 +580,13 @@ export class CodeGraph {
   }
 
   /**
-   * (Re)cria as arestas `calls` de um arquivo a partir das chamadas guardadas por nome.
-   * Ordem de resolução: ligação de import (com alias, default, namespace, barrel, require) →
-   * símbolo do próprio arquivo → fallback por nome no arquivo + imports (marcado `heuristic`).
+   * (Re)cria as arestas `calls`/`references` de um arquivo a partir das chamadas guardadas.
+   * Ordem de resolução de uma chamada:
+   *   1. tipo do receptor (`this`, `super`, campo tipado, variável `new X()`, parâmetro tipado),
+   *      com herança e `implements`;
+   *   2. ligação de import (alias, default, namespace, barrel, require, instância exportada);
+   *   3. símbolo/objeto do próprio arquivo;
+   *   4. fallback por nome no arquivo + imports (aresta marcada `heuristic`).
    */
   private relinkCalls(fileId: string): void {
     const calls = this.rawCalls.get(fileId);
@@ -560,98 +594,298 @@ export class CodeGraph {
 
     // Arestas antigas saem antes: a resolução pode ter mudado sem este arquivo mudar (ex: barrel editado).
     const touchedPackages = new Set<string>();
-    for (const symId of this.ownedSymbols(fileId)) {
-      for (const e of this.graph.outEdges(symId)) {
-        if (this.graph.getEdgeAttribute(e, 'type') !== 'calls') continue;
+    for (const source of [fileId, ...this.ownedSymbols(fileId)]) {
+      for (const e of this.graph.outEdges(source)) {
+        const type = this.graph.getEdgeAttribute(e, 'type');
+        if (type !== 'calls' && type !== 'references') continue;
         const target = this.graph.target(e);
         if (this.isPackage(target)) touchedPackages.add(target);
         this.graph.dropEdge(e);
       }
     }
 
-    const bindings = new Map<string, ImportBinding>();
-    for (const b of this.moduleInfo.get(fileId)?.imports ?? []) bindings.set(b.local, b);
-    let legacyScope: Map<string, string[]> | undefined;
-    const legacy = (name: string) => {
-      legacyScope ??= this.symbolsByName([fileId, ...this.importTargets(fileId).flatMap((t) => this.exportClosure(t))]);
-      return legacyScope.get(name) ?? [];
-    };
-
+    const ctx = this.resolutionContext(fileId);
     const coverage = { ...EMPTY_COVERAGE };
-    const edges = new Map<string, { source: string; target: string; heuristic: boolean }>();
+    const edges = new Map<string, { source: string; target: string; type: 'calls' | 'references'; heuristic: boolean }>();
     for (const call of calls) {
       if (!this.graph.hasNode(call.caller)) continue;
-      const { outcome, targets } = this.resolveCall(fileId, call, bindings, legacy);
-      if (outcome !== 'unbound') coverage[outcome] += 1;
+      const isRef = call.kind === 'ref';
+      const { outcome, targets } = call.symbolId
+        ? { outcome: 'callsResolved' as const, targets: this.graph.hasNode(call.symbolId) ? [call.symbolId] : [] }
+        : this.resolveCall(fileId, call, ctx);
+      if (!isRef && outcome !== 'unbound') coverage[outcome] += 1;
+      // referência só entra com prova: `res.json(order)` não pode virar aresta pra uma função `order`
+      if (isRef && outcome === 'callsHeuristic') continue;
+      const type = isRef ? 'references' : 'calls';
       const heuristic = outcome === 'callsHeuristic';
       for (const target of targets) {
         if (target === call.caller) continue;
-        const key = `${call.caller}->calls->${target}`;
+        const key = `${call.caller}->${type}->${target}`;
         const prev = edges.get(key);
         // ligação provada vence a heurística quando as duas apontam pro mesmo alvo
-        if (!prev || (prev.heuristic && !heuristic)) edges.set(key, { source: call.caller, target, heuristic });
+        if (!prev || (prev.heuristic && !heuristic)) edges.set(key, { source: call.caller, target, type, heuristic });
       }
     }
     for (const [key, e] of edges) {
-      this.graph.mergeEdgeWithKey(key, e.source, e.target, e.heuristic ? { type: 'calls', heuristic: true } : { type: 'calls' });
+      this.graph.mergeEdgeWithKey(key, e.source, e.target, e.heuristic ? { type: e.type, heuristic: true } : { type: e.type });
     }
     this.dropOrphanPackages(touchedPackages);
     this.coverage.set(fileId, coverage);
   }
 
-  private resolveCall(
-    fileId: string,
-    call: RawCall,
-    bindings: Map<string, ImportBinding>,
-    legacy: (name: string) => string[]
-  ): CallResolution {
+  private resolutionContext(fileId: string): ResolutionContext {
+    const bindingCache = new Map<string, Map<string, ImportBinding>>();
+    let legacyScope: Map<string, string[]> | undefined;
+    let implementers: Map<string, string[]> | undefined;
+    return {
+      bindings: (file) => {
+        let map = bindingCache.get(file);
+        if (!map) {
+          map = new Map((this.moduleInfo.get(file)?.imports ?? []).map((b) => [b.local, b]));
+          bindingCache.set(file, map);
+        }
+        return map;
+      },
+      legacy: (name) => {
+        legacyScope ??= this.symbolsByName([fileId, ...this.importTargets(fileId).flatMap((t) => this.exportClosure(t))]);
+        return legacyScope.get(name) ?? [];
+      },
+      implementers: (iface) => {
+        if (!implementers) {
+          implementers = new Map();
+          this.graph.forEachNode((id, attrs) => {
+            if (attrs.kind !== 'class') return;
+            for (const name of attrs.implements ?? []) {
+              const list = implementers!.get(name);
+              if (list) list.push(id);
+              else implementers!.set(name, [id]);
+            }
+          });
+        }
+        return implementers.get(iface) ?? [];
+      },
+    };
+  }
+
+  private resolveCall(fileId: string, call: RawCall, ctx: ResolutionContext): CallResolution {
+    // `f()` com `f` variável local (parâmetro, callback) não é nenhum símbolo do projeto;
+    // `obj.m()` com `obj` local sem tipo ainda pode cair no fallback por nome.
+    if (call.shadowed) return call.object && !call.opaque ? this.guess(call, ctx) : NATIVE;
+
+    if (call.receiver) {
+      const byType = this.resolveMember(fileId, call.receiver.type, call.receiver.rest, call.name, ctx);
+      if (byType) return byType;
+    }
+
     const [root, ...rest] = call.object ?? [];
-    const binding = bindings.get(root ?? call.name);
+    if (root === 'this' || root === 'super') return this.guess(call, ctx);
+    const binding = ctx.bindings(fileId).get(root ?? call.name);
 
     if (binding) {
       const target = this.specTargets.get(fileId)?.get(binding.spec);
-      if (!target || target.kind === 'unresolved') return { outcome: 'callsUnresolved', targets: [] };
-      if (target.kind === 'package') {
-        const pkg = packageNodeId(target.name);
-        return { outcome: 'callsExternal', targets: this.graph.hasNode(pkg) ? [pkg] : [] };
-      }
+      if (!target || target.kind === 'unresolved') return UNRESOLVED;
+      if (target.kind === 'package') return this.external(target.name);
 
-      let ids: string[];
       if (!call.object) {
         // `b()` com `import { a as b }` / `import b from` / `const b = require()`
-        ids = this.resolveExport(target.id, binding.imported === '*' ? 'default' : binding.imported);
-      } else if (binding.imported === '*' && rest.length === 0) {
-        // `ns.fn()` com `import * as ns` / `const ns = require()`
-        ids = this.resolveExport(target.id, call.name);
-      } else {
-        // `service.create()` com `import { service }` — o método está no módulo de onde veio a ligação
-        const scope = this.symbolsByName(this.exportClosure(target.id));
-        const named = scope.get(call.name) ?? [];
-        const methods = named.filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'method');
-        ids = methods.length > 0 ? methods : named;
+        return this.found(this.resolveExport(target.id, binding.imported === '*' ? 'default' : binding.imported));
       }
-      return ids.length > 0 ? { outcome: 'callsResolved', targets: ids } : { outcome: 'callsUnresolved', targets: [] };
+      if (binding.imported === '*') {
+        // `ns.fn()` com `import * as ns` / `const ns = require()`; `ns.obj.m()` segue a instância exportada
+        if (rest.length === 0) return this.found(this.resolveExport(target.id, call.name));
+        return this.resolveMemberOfExport(target.id, rest[0]!, rest.slice(1), call.name, ctx);
+      }
+      // `orderService.create()` com `import { orderService }` — instância, objeto ou classe (estático)
+      return this.resolveMemberOfExport(target.id, binding.imported, rest, call.name, ctx);
     }
 
     if (!call.object) {
       const local = this.topLevelByName(fileId, call.name);
       if (local.length > 0) return { outcome: 'callsResolved', targets: local };
+    } else {
+      const member = this.resolveMemberOfLocal(fileId, root!, rest, call.name, ctx);
+      if (member) return member;
+      // Receptor não declarado no arquivo nem importado (variáveis locais chegam aqui como `shadowed`):
+      // é global do runtime (`console`, `JSON`, `process`) — não é código do projeto.
+      if (!this.declaresTopLevel(fileId, root!)) return NATIVE;
     }
+    return this.guess(call, ctx);
+  }
 
-    const guessed = legacy(call.name);
+  /** Fallback por nome (comportamento antigo): o arquivo + o que ele importa. */
+  private guess(call: RawCall, ctx: ResolutionContext): CallResolution {
+    const guessed = ctx.legacy(call.name);
     return guessed.length > 0 ? { outcome: 'callsHeuristic', targets: guessed } : { outcome: 'unbound', targets: [] };
   }
 
+  private found(ids: string[]): CallResolution {
+    return ids.length > 0 ? { outcome: 'callsResolved', targets: ids } : UNRESOLVED;
+  }
+
+  private external(pkgName: string): CallResolution {
+    const pkg = packageNodeId(pkgName);
+    return { outcome: 'callsExternal', targets: this.graph.hasNode(pkg) ? [pkg] : [] };
+  }
+
   /**
-   * Símbolo(s) que `fileId` exporta com o nome `exported`, seguindo re-exports, barrels
+   * `m` num valor do tipo `type`, depois de atravessar os campos `rest`
+   * (`this.deps.repo.save()`). `undefined` = o tipo não é do projeto nem de pacote conhecido
+   * (ex: `Map`, `Error`) — quem chamou tenta outro caminho.
+   */
+  private resolveMember(fileId: string, type: TypeRef, rest: string[], method: string, ctx: ResolutionContext): CallResolution | undefined {
+    const resolved = this.resolveType(fileId, type, ctx);
+    if (resolved.external) return this.external(resolved.external);
+    if (resolved.classes.length === 0) return NATIVE;
+    return this.membersOf(resolved.classes, rest, method, ctx);
+  }
+
+  private membersOf(classes: string[], rest: string[], method: string, ctx: ResolutionContext): CallResolution | undefined {
+    let current = classes;
+    for (const field of rest) {
+      const next = new Set<string>();
+      let external: string | undefined;
+      let typed = false;
+      for (const cls of current) {
+        const t = this.fieldType(cls, field, ctx, new Set());
+        typed ||= t !== undefined;
+        for (const c of t?.classes ?? []) next.add(c);
+        external ??= t?.external;
+      }
+      // campo com tipo declarado fora do projeto → nativo; campo sem tipo → quem chamou tenta o fallback
+      if (next.size === 0) return external ? this.external(external) : typed ? NATIVE : undefined;
+      current = [...next];
+    }
+
+    const ids = new Set<string>();
+    let external: string | undefined;
+    let unknownBase = false;
+    for (const cls of current) {
+      const m = this.methodsOf(cls, method, ctx, new Set());
+      for (const id of m.ids) ids.add(id);
+      external ??= m.external;
+      unknownBase ||= m.unknownBase;
+    }
+    if (ids.size > 0) return { outcome: 'callsResolved', targets: [...ids] };
+    if (external) return this.external(external);
+    // método herdado de uma base fora do projeto (`extends Error`) ou função guardada num campo — não é falha do mapa
+    return unknownBase ? NATIVE : UNRESOLVED;
+  }
+
+  /** Métodos `name` da classe, subindo pela cadeia de `extends`. */
+  private methodsOf(
+    classId: string,
+    name: string,
+    ctx: ResolutionContext,
+    seen: Set<string>
+  ): { ids: string[]; external?: string; unknownBase: boolean } {
+    const attrs = this.graph.hasNode(classId) ? this.graph.getNodeAttributes(classId) : undefined;
+    if (!attrs || !isSymbolNode(attrs) || seen.has(classId)) return { ids: [], unknownBase: false };
+    seen.add(classId);
+    const ids = this.ownedSymbols(attrs.file).filter((id) => {
+      const m = this.graph.getNodeAttributes(id);
+      return isSymbolNode(m) && m.kind === 'method' && m.container === attrs.name && m.name === name;
+    });
+    if (ids.length > 0) return { ids, unknownBase: false };
+    // `this.log()` com `log` propriedade (função guardada num campo): é valor, não método do projeto
+    if (attrs.properties?.includes(name)) return { ids: [], unknownBase: true };
+    if (!attrs.extends) return { ids, unknownBase: false };
+    const base = this.resolveType(attrs.file, attrs.extends, ctx);
+    if (base.external) return { ids: [], external: base.external, unknownBase: false };
+    if (base.classes.length === 0) return { ids: [], unknownBase: true };
+    const merged = { ids: [] as string[], external: undefined as string | undefined, unknownBase: false };
+    for (const b of base.classes) {
+      const r = this.methodsOf(b, name, ctx, seen);
+      merged.ids.push(...r.ids);
+      merged.external ??= r.external;
+      merged.unknownBase ||= r.unknownBase;
+    }
+    return merged;
+  }
+
+  /** Tipo do campo `field` da classe (ou de uma base). `undefined` = campo sem tipo conhecido. */
+  private fieldType(classId: string, field: string, ctx: ResolutionContext, seen: Set<string>): ResolvedType | undefined {
+    const attrs = this.graph.hasNode(classId) ? this.graph.getNodeAttributes(classId) : undefined;
+    if (!attrs || !isSymbolNode(attrs) || seen.has(classId)) return undefined;
+    seen.add(classId);
+    const declared = attrs.fields?.[field];
+    if (declared) return this.resolveType(attrs.file, declared, ctx);
+    if (!attrs.extends) return undefined;
+    for (const base of this.resolveType(attrs.file, attrs.extends, ctx).classes) {
+      const t = this.fieldType(base, field, ctx, seen);
+      if (t) return t;
+    }
+    return undefined;
+  }
+
+  /**
+   * Classe(s) que um nome de tipo representa no arquivo: import (inclusive `ns.Tipo`), classe
+   * local, ou — se for uma interface — as classes que a implementam.
+   */
+  private resolveType(fileId: string, type: TypeRef, ctx: ResolutionContext): ResolvedType {
+    const [head, ...tail] = type;
+    if (!head) return { classes: [] };
+    const binding = ctx.bindings(fileId).get(head);
+    if (binding) {
+      const target = this.specTargets.get(fileId)?.get(binding.spec);
+      if (target?.kind === 'package') return { classes: [], external: target.name };
+      if (target?.kind !== 'file') return { classes: [] };
+      const exported = binding.imported === '*' ? tail[0] : binding.imported;
+      if (!exported) return { classes: [] };
+      const classes = this.resolveExport(target.id, exported).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
+      return { classes: classes.length > 0 ? classes : ctx.implementers(exported) };
+    }
+    if (tail.length > 0) return { classes: [] };
+    const local = this.topLevelByName(fileId, head).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
+    return { classes: local.length > 0 ? local : ctx.implementers(head) };
+  }
+
+  /**
+   * `local.m()` onde `local` é um nome do topo de `fileId`: classe (método estático), objeto
+   * literal (`const repo = { save() {} }`) ou instância (`const svc = new Svc()`).
+   */
+  private resolveMemberOfLocal(fileId: string, local: string, rest: string[], method: string, ctx: ResolutionContext): CallResolution | undefined {
+    const classes = this.topLevelByName(fileId, local).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
+    if (classes.length > 0) return this.membersOf(classes, rest, method, ctx);
+    if (rest.length === 0) {
+      const members = this.ownedSymbols(fileId).filter((id) => {
+        const m = this.graph.getNodeAttributes(id);
+        return isSymbolNode(m) && m.container === local && m.name === method;
+      });
+      if (members.length > 0) return { outcome: 'callsResolved', targets: members };
+    }
+    const type = this.moduleInfo.get(fileId)?.valueTypes.get(local);
+    return type ? this.resolveMember(fileId, type, rest, method, ctx) : undefined;
+  }
+
+  /** `x.m()` com `x` importado de `fileId` (seguindo barrels até onde `x` é declarado). */
+  private resolveMemberOfExport(fileId: string, exported: string, rest: string[], method: string, ctx: ResolutionContext): CallResolution {
+    const loc = this.resolveExportLocal(fileId, exported, new Set());
+    if (!loc) return UNRESOLVED;
+    const member = this.resolveMemberOfLocal(loc.file, loc.local, rest, method, ctx);
+    if (member) return member;
+    // Valor de tipo nativo (`new Set()`, array, string): `.has()`/`.map()` não são código do projeto.
+    if (this.moduleInfo.get(loc.file)?.valueTypes.has(loc.local)) return { outcome: 'unbound', targets: [] };
+    // Valor sem tipo conhecido: o método está, no mínimo, no módulo de onde ele veio — se existir lá.
+    const scope = this.symbolsByName(this.exportClosure(fileId)).get(method) ?? [];
+    return scope.length > 0 ? { outcome: 'callsHeuristic', targets: scope } : { outcome: 'unbound', targets: [] };
+  }
+
+  /** Símbolo(s) que `fileId` exporta com o nome `exported`. */
+  private resolveExport(fileId: string, exported: string): string[] {
+    const loc = this.resolveExportLocal(fileId, exported, new Set());
+    return loc ? this.topLevelByName(loc.file, loc.local) : [];
+  }
+
+  /**
+   * Onde um export é DECLARADO: arquivo + nome local, seguindo re-exports, barrels
    * (`export * from`) e `export { x }` de algo importado. `seen` evita laço entre barrels.
    */
-  private resolveExport(fileId: string, exported: string, seen = new Set<string>()): string[] {
+  private resolveExportLocal(fileId: string, exported: string, seen: Set<string>): { file: string; local: string } | undefined {
     const key = `${fileId}|${exported}`;
-    if (seen.has(key)) return [];
+    if (seen.has(key)) return undefined;
     seen.add(key);
     const info = this.moduleInfo.get(fileId);
-    if (!info) return [];
+    if (!info) return undefined;
     const targetOf = (spec: string) => {
       const t = this.specTargets.get(fileId)?.get(spec);
       return t?.kind === 'file' ? t.id : undefined;
@@ -659,29 +893,41 @@ export class CodeGraph {
 
     const local = info.exports.get(exported);
     if (local !== undefined) {
-      const ids = this.topLevelByName(fileId, local);
-      if (ids.length > 0) return ids;
+      if (this.topLevelByName(fileId, local).length > 0 || info.valueTypes.has(local) || this.hasContainer(fileId, local)) {
+        return { file: fileId, local };
+      }
       const binding = info.imports.find((b) => b.local === local);
       const from = binding && targetOf(binding.spec);
-      if (binding && from) return this.resolveExport(from, binding.imported === '*' ? 'default' : binding.imported, seen);
-      return [];
+      if (binding && from) return this.resolveExportLocal(from, binding.imported === '*' ? 'default' : binding.imported, seen);
+      return { file: fileId, local };
     }
     for (const re of info.reexports) {
       if (re.exported !== exported || re.imported === '*') continue;
       const from = targetOf(re.spec);
-      if (from) return this.resolveExport(from, re.imported, seen);
+      if (from) return this.resolveExportLocal(from, re.imported, seen);
     }
     if (exported !== 'default') {
       for (const re of info.reexports) {
         if (re.exported !== '*') continue;
         const from = targetOf(re.spec);
-        const ids = from ? this.resolveExport(from, exported, seen) : [];
-        if (ids.length > 0) return ids;
+        const loc = from ? this.resolveExportLocal(from, exported, seen) : undefined;
+        if (loc) return loc;
       }
     }
     // Script/CommonJS sem export declarado: o que está no topo do arquivo é o que existe.
-    if (info.exports.size === 0 && info.reexports.length === 0) return this.topLevelByName(fileId, exported);
-    return [];
+    if (info.exports.size === 0 && info.reexports.length === 0) return { file: fileId, local: exported };
+    return undefined;
+  }
+
+  private declaresTopLevel(fileId: string, name: string): boolean {
+    return this.topLevelByName(fileId, name).length > 0 || this.hasContainer(fileId, name) || !!this.moduleInfo.get(fileId)?.valueTypes.has(name);
+  }
+
+  private hasContainer(fileId: string, name: string): boolean {
+    return this.ownedSymbols(fileId).some((id) => {
+      const attrs = this.graph.getNodeAttributes(id);
+      return isSymbolNode(attrs) && attrs.container === name;
+    });
   }
 
   /** O arquivo e todos os que ele re-exporta (barrels), sem repetição. */
