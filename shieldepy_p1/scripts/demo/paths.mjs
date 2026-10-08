@@ -3,8 +3,6 @@
 //   ShielDepy-demo/
 //     sistema-loja/      o sistema de exemplo que abre no VS Code (um repositório git)
 //     portal-data/       o banco do portal local
-//     vscode-perfil/     o perfil do VS Code da demo (não mexe no seu VS Code)
-//     vscode-extensoes/
 //     seed.json          tokens da extensão e do CI, criados a cada execução
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -17,5 +15,3 @@ export const WORKSPACE = join(DEMO, 'sistema-loja');
 export const APP = join(WORKSPACE, 'checkout');
 export const PORTAL_DATA = join(DEMO, 'portal-data');
 export const SEED_FILE = join(DEMO, 'seed.json');
-export const VSCODE_PROFILE = join(DEMO, 'vscode-perfil');
-export const VSCODE_EXTENSIONS = join(DEMO, 'vscode-extensoes');

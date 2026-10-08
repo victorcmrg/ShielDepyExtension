@@ -275,6 +275,12 @@
           "type": "string",
           "default": "http://localhost:3000",
           "description": "URL base do site da ShielDepy (login, confirmação de dispositivo e API de conta). Aponte para localhost durante o desenvolvimento; troque para a URL de produção quando o site estiver publicado."
+        },
+        "shieldepy.demoToken": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Uso interno da demo local (npm run demo): token do portal da demo. Só é aceito quando o webBaseUrl é localhost."
         }
       }
     }

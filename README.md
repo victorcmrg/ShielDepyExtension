@@ -34,11 +34,11 @@ Na primeira vez, ele instala e compila tudo (alguns minutos). Depois:
    e as branches `main` (com os defeitos) e `correcao`;
 2. sobe o **portal** em <http://localhost:3001> (login `dono@acme.test` / `Acme-Dono-2026`);
 3. roda os **testes de caos** nas duas branches e publica o resultado no portal;
-4. abre esse sistema numa **janela nova do VS Code com o plugin ativado**, já logado, num perfil separado (não mexe no seu VS Code), com o
+4. abre esse sistema numa **janela nova do seu VS Code com o plugin ativado** (a "[Extension Development Host]": nada é instalado no seu VS Code), já logado, com o
    **`ROTEIRO.md`** aberto: o passo a passo do que clicar em cada aba do plugin para ver o grafo, as
    colisões, o ciclo, o caos, a correção e o portal.
 
-Deixe o terminal aberto enquanto apresenta (ele mantém o portal no ar). **Ctrl+C** encerra.
+Se o VS Code perguntar se você confia nos autores da pasta, clique **"Sim, confio"**. Deixe o terminal aberto enquanto apresenta (ele mantém o portal no ar). **Ctrl+C** encerra.
 
 | Comando (em `shieldepy_p1/`) | O que faz |
 |---|---|

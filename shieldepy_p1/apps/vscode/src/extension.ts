@@ -56,10 +56,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   const auth = new AuthService(context.secrets, log);
   push(auth);
   await auth.ensureLoaded(context.extension.id);
-  // Demo local (`npm run demo`): o script cria um token no portal local e abre o VS Code com ele.
-  // Ainda passa pelo /api/me do servidor, como qualquer token; só poupa o login no navegador. O
-  // portal da demo é recriado a cada execução, então um token guardado de antes já não vale.
-  const demoToken = process.env.SHIELDEPY_DEMO_TOKEN;
+  // Demo local (`npm run demo`): o script cria um token no portal local e o entrega pelo
+  // .vscode/settings.json do sistema da demo (ou pela variável, no VS Code de teste). Ainda passa
+  // pelo /api/me do servidor, como qualquer token; só poupa o login no navegador. O portal da demo
+  // é recriado a cada execução, então um token guardado de antes já não vale.
+  const demoToken = process.env.SHIELDEPY_DEMO_TOKEN || config.demoToken();
   if (demoToken && (await context.secrets.get(SECRET_AUTH_TOKEN)) !== demoToken) await auth.signInWithToken(demoToken);
   // Só repositórios dos projetos da pessoa são analisados (o servidor decide pelo remote do .git).
   setPathGate((fsPath) => auth.isAllowedPath(fsPath));

@@ -10,16 +10,16 @@
 //   npm run demo:caos            roda o caos de novo no checkout da demo e publica no portal
 //
 // Nada é criado dentro do repositório: a demo mora em ~/ShielDepy-demo (ou em DEMO_DIR), com o
-// sistema, o banco do portal e o perfil do VS Code (ver paths.mjs). O sistema abre numa janela NOVA
-// do VS Code, com a extensão do repositório carregada (--extensionDevelopmentPath).
+// sistema e o banco do portal (ver paths.mjs). O sistema abre numa janela NOVA do seu VS Code, com a
+// extensão do repositório carregada (--extensionDevelopmentPath) e o login vindo do .vscode/settings.json dele.
 // Funciona no Windows (caminhos com acento e espaço), no Linux e no macOS. Precisa de Node >= 22.6,
 // git e o VS Code instalado. Ctrl+C no terminal encerra o portal (o VS Code da demo fica aberto).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { APP, DEMO, PORTAL_DATA, ROOT, SEED_FILE, VSCODE_EXTENSIONS, VSCODE_PROFILE, WORKSPACE } from './paths.mjs';
+import { APP, DEMO, PORTAL_DATA, ROOT, SEED_FILE, WORKSPACE } from './paths.mjs';
 
 const EXAMPLES = join(ROOT, 'examples');
 const PORT = Number(process.env.DEMO_PORT) || 3001;
@@ -173,13 +173,32 @@ function install() {
   ok('dependências do checkout (Vitest, MSW, PGlite)');
 }
 
+/** O arquivo mais recente de uma pasta (fora node_modules e dist). */
+function newestMtime(dir) {
+  let newest = 0;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue;
+    const p = join(dir, e.name);
+    newest = Math.max(newest, e.isDirectory() ? newestMtime(p) : statSync(p).mtimeMs);
+  }
+  return newest;
+}
+
+/** O build não existe, ou o código mudou depois dele (ex.: depois de um git pull). */
+function stale(output, sources) {
+  if (!existsSync(output)) return true;
+  const built = statSync(output).mtimeMs;
+  return sources.some((src) => existsSync(src) && (statSync(src).isDirectory() ? newestMtime(src) : statSync(src).mtimeMs) > built);
+}
+
 function build(force) {
-  if (force || !existsSync(join(ROOT, 'apps', 'vscode', 'dist', 'extension.js'))) {
+  const packages = ['core', 'agent', 'viewer', 'extractors'].map((p) => join(ROOT, 'packages', p, 'src'));
+  if (force || stale(join(ROOT, 'apps', 'vscode', 'dist', 'extension.js'), [join(ROOT, 'apps', 'vscode', 'src'), join(ROOT, 'apps', 'vscode', 'package.json'), ...packages])) {
     console.log(dim('  compilando a extensão...'));
     npm(['run', 'build', '-w', 'shieldepy']);
   }
   ok('extensão compilada (apps/vscode/dist)');
-  if (force || !existsSync(join(ROOT, 'apps', 'frontend', 'dist', 'app.html'))) {
+  if (force || stale(join(ROOT, 'apps', 'frontend', 'dist', 'app.html'), [join(ROOT, 'apps', 'frontend', 'src')])) {
     console.log(dim('  compilando o portal...'));
     npm(['run', 'build', '-w', '@shieldepy/frontend']);
   }
@@ -218,8 +237,13 @@ export function totalDoPeriodo(mes: number): number {
  */
 function prepareWorkspace() {
   if (existsSync(join(WORKSPACE, '.git'))) {
-    ok(`sistema da demo já existe: ${WORKSPACE}`);
-    return;
+    // uma demo de versão anterior (o ROTEIRO.md ainda no git dela) é recriada
+    const ignore = existsSync(join(WORKSPACE, '.gitignore')) ? readFileSync(join(WORKSPACE, '.gitignore'), 'utf8') : '';
+    if (ignore.includes('ROTEIRO.md')) {
+      ok(`sistema da demo já existe: ${WORKSPACE}`);
+      return;
+    }
+    warn('o sistema da demo é de uma versão anterior: recriando');
   }
   removeDemoDir(WORKSPACE);
   mkdirSync(WORKSPACE, { recursive: true });
@@ -234,13 +258,10 @@ function prepareWorkspace() {
   // `npm run caos` na raiz do sistema (o terminal do VS Code abre nela)
   const root = { name: 'sistema-loja', private: true, description: 'Sistema de exemplo da demo do ShielDepy.', scripts: { caos: `node "${SELF}" --caos` } };
   writeFileSync(join(WORKSPACE, 'package.json'), `${JSON.stringify(root, null, 2)}\n`);
-  writeFileSync(join(WORKSPACE, 'ROTEIRO.md'), roteiro());
-  writeFileSync(join(WORKSPACE, '.gitignore'), 'node_modules/\n.shieldepy/\n.vscode/\n');
+  // o ROTEIRO.md e o .vscode/ são regravados a cada execução (token novo, roteiro atualizado): fora do git
+  writeFileSync(join(WORKSPACE, '.gitignore'), 'node_modules/\n.shieldepy/\n.vscode/\nROTEIRO.md\n');
   // as dependências do checkout de exemplo, sem instalar de novo (junction no Windows, symlink no resto)
   symlinkSync(join(EXAMPLES, 'checkout-express', 'node_modules'), join(APP, 'node_modules'), isWin ? 'junction' : 'dir');
-  // o plugin fala com o portal local
-  mkdirSync(join(WORKSPACE, '.vscode'), { recursive: true });
-  writeFileSync(join(WORKSPACE, '.vscode', 'settings.json'), `${JSON.stringify({ 'shieldepy.webBaseUrl': PORTAL }, null, 2)}\n`);
 
   git(['init', '--quiet', '-b', 'main']);
   git(['remote', 'add', 'origin', DEMO_REMOTE]);
@@ -323,53 +344,47 @@ function chaos(ciToken, label) {
 }
 
 // ---------------------------------------------------------------- VS Code
+/**
+ * As configurações do sistema da demo (.vscode/settings.json, fora do git dele), gravadas a cada
+ * execução: o portal é recriado, e com ele o token. O plugin lê daqui o portal e o token.
+ */
+function writeWorkspaceSettings(seed) {
+  mkdirSync(join(WORKSPACE, '.vscode'), { recursive: true });
+  const settings = {
+    'shieldepy.webBaseUrl': PORTAL,
+    // só aceito pelo plugin porque o portal é localhost (ver config.demoToken na extensão)
+    'shieldepy.demoToken': seed.deviceToken,
+    // o ROTEIRO.md abre já formatado
+    'workbench.editorAssociations': { 'ROTEIRO.md': 'vscode.markdown.preview.editor' },
+    'git.openRepositoryInParentFolders': 'never',
+  };
+  writeFileSync(join(WORKSPACE, '.vscode', 'settings.json'), `${JSON.stringify(settings, null, 2)}\n`);
+  writeFileSync(join(WORKSPACE, 'ROTEIRO.md'), roteiro());
+}
+
+/**
+ * Abre o sistema numa janela NOVA do seu VS Code, com a extensão do repositório carregada
+ * (--extensionDevelopmentPath: a janela "[Extension Development Host]"). Usa a instância que já
+ * está aberta, como o `code .`. Uma instância separada (outro --user-data-dir) não abre quando o
+ * VS Code tem uma atualização pendente, então a demo não depende disso.
+ */
 async function openVsCode(seed) {
   const code = findVsCode();
-  const roteiro = join(WORKSPACE, 'ROTEIRO.md');
-  const launchArgs = [
-    WORKSPACE,
-    roteiro,
-    `--extensionDevelopmentPath=${join(ROOT, 'apps', 'vscode')}`,
-    `--user-data-dir=${VSCODE_PROFILE}`,
-    `--extensions-dir=${VSCODE_EXTENSIONS}`,
-    '--new-window',
-    '--skip-welcome',
-    '--skip-release-notes',
-    '--disable-workspace-trust',
-  ];
+  const launchArgs = [WORKSPACE, join(WORKSPACE, 'ROTEIRO.md'), `--extensionDevelopmentPath=${join(ROOT, 'apps', 'vscode')}`, '--new-window'];
   const manual = () => {
-    console.log(`\n  Para abrir à mão, num terminal NOVO (fora de qualquer VS Code), no PowerShell:`);
-    console.log(`  $env:SHIELDEPY_DEMO_TOKEN="${seed.deviceToken}"; code ${launchArgs.map((a) => `"${a}"`).join(' ')}`);
+    console.log('\n  Para abrir à mão (o login vem do .vscode/settings.json do sistema da demo):');
+    console.log(`  code ${launchArgs.map((a) => `"${a}"`).join(' ')}`);
   };
   if (!code || args.has('--sem-vscode')) {
     if (!code) warn('não achei o VS Code. Instale (https://code.visualstudio.com), marque "Adicionar ao PATH", ou indique o executável em VSCODE_BIN.');
     manual();
     return;
   }
-  mkdirSync(join(VSCODE_PROFILE, 'User'), { recursive: true });
-  // perfil só da demo: sem tela de boas-vindas, o ROTEIRO.md abre já formatado, e um pouco de zoom
-  // para o projetor
-  writeFileSync(
-    join(VSCODE_PROFILE, 'User', 'settings.json'),
-    `${JSON.stringify(
-      {
-        'security.workspace.trust.enabled': false,
-        'workbench.startupEditor': 'none',
-        'workbench.tips.enabled': false,
-        'workbench.editorAssociations': { 'ROTEIRO.md': 'vscode.markdown.preview.editor' },
-        'git.openRepositoryInParentFolders': 'never',
-        'extensions.ignoreRecommendations': true,
-        'window.zoomLevel': Number(process.env.DEMO_ZOOM ?? 0),
-      },
-      null,
-      2
-    )}\n`
-  );
   // Rodando de dentro de um VS Code (terminal integrado, extensão), o ambiente traz variáveis do
-  // Electron e do VS Code (ELECTRON_RUN_AS_NODE, VSCODE_ESM_ENTRYPOINT, VSCODE_PID, ...) que fazem o
-  // Code.exe novo subir como Node puro ou como host de extensão, sem janela. Saem todas.
+  // Electron e do VS Code (ELECTRON_RUN_AS_NODE, VSCODE_ESM_ENTRYPOINT, VSCODE_PID, ...) que
+  // atrapalham o CLI. Saem todas; o CLI recebe só as dele.
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VSCODE_|ELECTRON_|CHROME_CRASHPAD)/i.test(k)));
-  Object.assign(env, code.env, { SHIELDEPY_DEMO_TOKEN: seed.deviceToken });
+  Object.assign(env, code.env);
   const since = Date.now();
   console.log(dim(`  abrindo pelo ${code.label}...`));
   // o CLI do VS Code abre a janela e sai; o que ele disser vai para a tela (ajuda a diagnosticar)
@@ -382,19 +397,19 @@ async function openVsCode(seed) {
   }
   if (said) console.log(dim(`  ${said.split(/\r?\n/).join('\n  ')}`));
   // confirma pela outra ponta: o plugin, ao abrir, entra no portal com o token da demo
-  console.log(dim('  esperando o plugin entrar no portal (até 90 s)...'));
-  for (let i = 0; i < 90; i++) {
+  console.log(dim('  esperando o plugin entrar no portal (até 2 min; se o VS Code perguntar se você confia nos autores da pasta, clique "Sim, confio")...'));
+  for (let i = 0; i < 120; i++) {
     if (await pluginCheckedIn(seed, since)) {
-      ok('VS Code aberto, com o plugin ShielDepy ativo e logado, e o ROTEIRO.md (perfil separado: não mexe no seu VS Code)');
+      ok('janela nova do VS Code aberta, com o plugin ShielDepy ativo e logado, e o ROTEIRO.md');
       return;
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  warn('o VS Code foi chamado, mas o plugin não deu sinal em 90 s.');
-  console.log('  Possíveis causas:');
-  console.log('  - o VS Code tem uma atualização pendente: feche todas as janelas dele, abra de novo (ele termina a atualização) e rode npm run demo outra vez;');
-  console.log('  - uma janela da demo de antes ainda está aberta: feche-a e rode de novo;');
-  console.log('  - a janela abriu atrás das outras: procure "sistema-loja" na barra de tarefas.');
+  warn('o VS Code foi chamado, mas o plugin não deu sinal em 2 min.');
+  console.log('  Confira:');
+  console.log('  - abriu uma janela "[Extension Development Host] sistema-loja"? Se perguntou se você confia nos autores, clique "Sim, confio";');
+  console.log('  - a janela pode ter aberto atrás das outras: procure "sistema-loja" na barra de tarefas;');
+  console.log('  - no Windows, se nada abriu, feche todas as janelas do VS Code (para terminar a atualização pendente) e rode de novo.');
   manual();
 }
 
@@ -423,6 +438,10 @@ Branches: **main** (com os defeitos) e **correcao** (o checkout corrigido).
 ---
 
 ## 1. O plugin entrou sozinho
+
+Esta janela é a **[Extension Development Host]**: o VS Code com o plugin ShielDepy carregado direto
+do repositório. Se o VS Code perguntar se você confia nos autores da pasta, clique **"Sim, confio"**
+(sem isso, ele abre em modo restrito e o plugin não roda).
 
 1. Na **barra da esquerda**, clique no **ícone do escudo (ShielDepy)**.
 2. A aba **Lista de erros** abre já liberada. No topo aparece o **Protetor de código**, com o projeto
@@ -549,6 +568,10 @@ async function main() {
   }
 
   console.log(bold('\n🛡️  ShielDepy — preparando a demo'));
+  // outra demo aberta segura o banco do portal (e a porta): avisa antes de mexer em qualquer coisa
+  if (await portalUp()) {
+    fail(`já tem um portal rodando na porta ${PORT}, provavelmente outra "npm run demo" aberta.\n  Vá no terminal dela e aperte Ctrl+C (ou feche aquele terminal), e rode de novo.\n  Para rodar as duas ao mesmo tempo, use outra porta e outra pasta: DEMO_PORT=3002 DEMO_DIR=<pasta> npm run demo`);
+  }
   if (args.has('--do-zero')) {
     removeDemoDir(DEMO);
     ok(`pasta da demo apagada (${DEMO})`);
@@ -566,6 +589,7 @@ async function main() {
   prepareWorkspace();
   step(5, TOTAL, 'Portal local e testes de caos');
   const seed = seedPortal();
+  writeWorkspaceSettings(seed);
   const server = await startPortal();
   // o portal nunca fica órfão: sai junto com o script, seja por Ctrl+C, erro ou fim
   const stop = () => {

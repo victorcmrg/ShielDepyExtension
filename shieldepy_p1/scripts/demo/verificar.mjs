@@ -5,11 +5,11 @@
 // Use antes da apresentação. Leva uns 3 minutos (os testes de caos rodam 4 vezes).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ROOT, SEED_FILE, WORKSPACE } from './paths.mjs';
+import { ROOT, WORKSPACE } from './paths.mjs';
 
 const DEMO_SCRIPT = fileURLToPath(new URL('./demo.mjs', import.meta.url));
 const isWin = process.platform === 'win32';
@@ -42,12 +42,12 @@ try {
   const { runTests } = require('@vscode/test-electron');
   // rodando de dentro de um VS Code, estas variáveis fariam o VS Code de teste subir sem janela
   for (const k of Object.keys(process.env)) if (/^(VSCODE_|ELECTRON_|CHROME_CRASHPAD)/i.test(k)) delete process.env[k];
-  const seed = JSON.parse(readFileSync(SEED_FILE, 'utf8'));
   await runTests({
     extensionDevelopmentPath: join(ROOT, 'apps', 'vscode'),
     extensionTestsPath: fileURLToPath(new URL('./verificar-suite.cjs', import.meta.url)),
     launchArgs: [WORKSPACE, '--disable-extensions', '--skip-welcome', '--skip-release-notes'],
-    extensionTestsEnv: { ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', SHIELDEPY_DEMO_TOKEN: seed.deviceToken, DEMO_SCRIPT },
+    // sem SHIELDEPY_DEMO_TOKEN: o plugin tem que achar o token no .vscode/settings.json da demo, como na janela de verdade
+    extensionTestsEnv: { ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', DEMO_SCRIPT },
     // o VS Code de teste baixado pelo E2E fica em apps/vscode/.vscode-test (reaproveitado)
     cachePath: join(ROOT, 'apps', 'vscode', '.vscode-test'),
   });
