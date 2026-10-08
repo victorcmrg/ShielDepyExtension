@@ -5,3 +5,7 @@ dist/
 apps/vscode/wasm/
 .vscode-test/
 apps/web/data/
+
+# saídas geradas pelo shieldepy (mapa, topologia, testes de caos)
+mapa*.html
+.shieldepy/
