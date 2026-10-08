@@ -1,0 +1,150 @@
+{
+  "numFailedTests": 5,
+  "numPassedTests": 4,
+  "success": false,
+  "testResults": [
+    {
+      "name": "/proj/.shieldepy/chaos-tests/POST__checkout__http_5xx_intermittent__api.stripe.com.spec.ts",
+      "status": "failed",
+      "message": "",
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "POST /checkout__http_5xx_intermittent__api.stripe.com"
+          ],
+          "title": "controle: a mesma requisição, sem caos, funciona",
+          "status": "passed",
+          "failureMessages": [],
+          "duration": 266
+        },
+        {
+          "ancestorTitles": [
+            "POST /checkout__http_5xx_intermittent__api.stripe.com"
+          ],
+          "title": "caos: http_5xx_intermittent em api.stripe.com",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: statusIn: a rota não respondeu em 10007 ms: expected [ 502, 503, 504 ] to include undefined\n    at Proxy.<anonymous> (file:///C:/Users/andre/OneDrive/%C3%81rea%20de%20Trabalho/ShildDepyTCC/ShielDepyExtension/shieldepy_p1/examples/checkout-express/node_modules/@vitest/expect/dist/index.js:1196:17)"
+          ],
+          "duration": 10019
+        }
+      ]
+    },
+    {
+      "name": "/proj/.shieldepy/chaos-tests/POST__checkout__malformed_response__api.stripe.com.spec.ts",
+      "status": "failed",
+      "message": "",
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "POST /checkout__malformed_response__api.stripe.com"
+          ],
+          "title": "controle: a mesma requisição, sem caos, funciona",
+          "status": "passed",
+          "failureMessages": [],
+          "duration": 272
+        },
+        {
+          "ancestorTitles": [
+            "POST /checkout__malformed_response__api.stripe.com"
+          ],
+          "title": "caos: malformed_response em api.stripe.com",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: statusIn: a rota não respondeu em 10011 ms: expected [ 502 ] to include undefined\n    at Proxy.<anonymous> (file:///C:/Users/andre/OneDrive/%C3%81rea%20de%20Trabalho/ShildDepyTCC/ShielDepyExtension/shieldepy_p1/examples/checkout-express/node_modules/@vitest/expect/dist/index.js:1196:17)"
+          ],
+          "duration": 10027
+        }
+      ]
+    },
+    {
+      "name": "/proj/.shieldepy/chaos-tests/POST__checkout__race_condition__stock.spec.ts",
+      "status": "failed",
+      "message": "",
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "POST /checkout__race_condition__stock"
+          ],
+          "title": "controle: a mesma requisição, sem caos, funciona",
+          "status": "passed",
+          "failureMessages": [],
+          "duration": 264
+        },
+        {
+          "ancestorTitles": [
+            "POST /checkout__race_condition__stock"
+          ],
+          "title": "caos: 10 requisições simultâneas",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: stateCheck: stockNeverNegative: expected false to be true // Object.is equality\n    at stateCheck (C:\\Users\\andre\\OneDrive\\Área de Trabalho\\ShildDepyTCC\\ShielDepyExtension\\shieldepy_p1\\examples\\checkout-express\\.shieldepy\\chaos-tests\\POST__checkout__race_condition__stock.spec.ts:76:49)"
+          ],
+          "duration": 234
+        }
+      ]
+    },
+    {
+      "name": "/proj/.shieldepy/chaos-tests/POST__checkout__timeout__api.stripe.com.spec.ts",
+      "status": "failed",
+      "message": "",
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "POST /checkout__timeout__api.stripe.com"
+          ],
+          "title": "controle: a mesma requisição, sem caos, funciona",
+          "status": "passed",
+          "failureMessages": [],
+          "duration": 275
+        },
+        {
+          "ancestorTitles": [
+            "POST /checkout__timeout__api.stripe.com"
+          ],
+          "title": "caos: timeout em api.stripe.com",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: respondsWithin: o cliente ficou mais de 6000 ms sem resposta: expected true to be false // Object.is equality\n    at verify (C:\\Users\\andre\\OneDrive\\Área de Trabalho\\ShildDepyTCC\\ShielDepyExtension\\shieldepy_p1\\examples\\checkout-express\\.shieldepy\\chaos-tests\\POST__checkout__timeout__api.stripe.com.spec.ts:81:112)"
+          ],
+          "duration": 6037
+        }
+      ]
+    },
+    {
+      "name": "/proj/.shieldepy/chaos-tests/GET__orders__id__timeout__api.x.com.spec.ts",
+      "status": "failed",
+      "message": "",
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "GET /orders/:id__timeout__api.x.com"
+          ],
+          "title": "controle: a mesma requisição, sem caos, funciona",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: statusIn: esperado 2xx, veio 500: expected [ 200 ] to include 500\n    at x"
+          ],
+          "duration": 120
+        },
+        {
+          "ancestorTitles": [
+            "GET /orders/:id__timeout__api.x.com"
+          ],
+          "title": "caos: timeout em api.x.com",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: respondsWithin: x"
+          ],
+          "duration": 6000
+        }
+      ]
+    },
+    {
+      "name": "/proj/.shieldepy/chaos-tests/POST__pay__race_condition__orders.spec.ts",
+      "status": "failed",
+      "message": "Failed to load url ./naoexiste (resolved id: ./naoexiste) in /proj/x.spec.ts. Does the file exist?",
+      "assertionResults": []
+    }
+  ]
+}

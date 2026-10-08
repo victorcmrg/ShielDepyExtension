@@ -175,8 +175,8 @@ para o hash do mapa de onde saiu.
 
 ### Testes de caos gerados pela topologia
 
-`shieldepy chaos <pasta> --no-run` transforma a topologia em testes de caos para as rotas
-sensíveis. O pipeline é um grafo do LangGraph (`@shieldepy/agent/chaos`):
+`shieldepy chaos <pasta>` transforma a topologia em testes de caos para as rotas sensíveis, roda
+esses testes com o Vitest do projeto e serve de portão de PR. O pipeline é um grafo do LangGraph (`@shieldepy/agent/chaos`):
 
 1. **Threat Modeler** (IA, tier `deep`, ou o motor offline): recebe só a superfície de ataque, sem
    código, e propõe hipóteses do catálogo (`race_condition`, `timeout`, `http_5xx_intermittent`,
@@ -202,9 +202,32 @@ export default {
 
 No `examples/checkout-express`, os 4 testes de caos falham (corrida no estoque, Stripe sem
 timeout, e a rota pendurada com 5xx ou corpo inválido), enquanto os controles passam. No
-`examples/checkout-express-fixed`, tudo passa. O relatório do comando traz o custo da IA (tokens e US$)
-e o hash da topologia. Rodar os testes e bloquear o PR é a próxima etapa (E4); até lá:
-`npx vitest run --config .shieldepy/chaos-tests/vitest.config.ts` dentro do projeto.
+`examples/checkout-express-fixed`, tudo passa.
+
+**Execução e portão.** O comando roda os testes gerados e classifica cada hipótese:
+- **achado:** o controle passou e o caos falhou;
+- **aguentou:** os dois passaram;
+- **inválido:** o controle falhou ou o arquivo não carregou. Não conta no portão.
+
+A severidade sai do motor: corrida ou estado corrompido é Crítico; rota pendurada ou 500 é Alto; status inesperado é Médio. Os códigos de saída são:
+- **exit 1:** há achado com severidade `--fail-on` ou pior (sem `--fail-on`, qualquer achado);
+- **exit 2:** erro de ambiente (o Vitest não rodou, ou todos os testes saíram inválidos).
+
+O `--report chaos-report.md` grava o relatório em markdown para o resumo do CI e o comentário do PR. Ele traz:
+- a tabela de achados com a invariante violada;
+- as operações da rota com `arquivo:linha`;
+- o custo da IA e o hash da topologia;
+- um parágrafo explicativo, escrito pela IA ou, sem ela, pelo motor.
+
+O workflow deste repositório fica em `.github/workflows/shieldepy-chaos.yml`, e o guia para um repositório-alvo em [`docs/chaos-ci.md`](docs/chaos-ci.md). Use `--no-run` para só gerar os testes.
+
+**Visualizador com o resultado (V2).** `--html <arquivo>` no `chaos` e no `diff` grava o mapa interativo com o resultado por cima:
+- **caos:** rota com achado em vermelho (`✖`), aguentou em verde (`✓`), inválida tracejada, e a operação de I/O alvo com borda vermelha. A seção "Caos" traz os achados (invariante violada e arquivo do teste), que abrem o fluxo da rota;
+- **diff do PR:** símbolos novos, com corpo alterado e renomeados marcados, rotas tocadas com o motivo, e o filtro "só o que o PR mudou" (link `#mudancas`).
+
+O `chaos` também grava `.shieldepy/chaos-results.json` a cada execução. Na extensão, o painel **"Ver Mapa do Sistema"** lê esse arquivo e se atualiza sozinho quando a CLI roda de novo. **"ShielDepy: Comparar Mapa com uma Branch"** mostra o diff contra o merge-base com uma branch.
+
+**Só o que o PR tocou.** `--base <ref>` monta o mapa no merge-base com o ref (num `git worktree` temporário) e testa só as rotas sensíveis que o PR tocou: rota nova, cadeia de handlers, operações, tags, corpo de qualquer função no caminho ou código de topo de um arquivo do caminho. Mudança de config, dependência ou setup faz todas entrarem. Isso só funciona porque os ids de símbolo são estáveis (`arquivo#Contêiner.nome`, sem a linha) e cada símbolo tem um hash do corpo pela AST, que ignora comentários e espaço. `shieldepy diff <pasta> --base <ref>` mostra o diff de estrutura sozinho: símbolos novos, removidos, renomeados e com corpo alterado.
 
 ## Mapa do código
 
@@ -235,6 +258,13 @@ apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode
 | Catálogo de falhas, hipóteses, Threat Modeler, especialistas, templates e grafo LangGraph | `packages/agent/src/chaos/*` |
 | Tokens e custo de cada chamada à IA | `packages/agent/src/cost.ts` |
 | Comando `shieldepy chaos` | `apps/cli/src/chaos.ts` |
+| Rodar o Vitest do alvo e classificar controle × caos | `apps/cli/src/chaos-run.ts` |
+| Severidade dos achados e portão; relatório markdown do PR | `packages/agent/src/chaos/results.ts`, `report.ts` |
+| Workflow do GitHub Actions (e o modelo para repositórios-alvo) | `.github/workflows/shieldepy-chaos.yml`, `docs/` |
+| Id estável de símbolo e hash do corpo/topo pela AST | `packages/core/src/code-graph/extract-ts.ts` (`stableIds`), `fingerprint.ts` |
+| Diff entre mapas e rotas tocadas por um PR | `packages/core/src/map-diff.ts`, `topology/affected.ts`; base pelo git em `packages/core/src/git-base.ts` |
+| Resultado do caos em disco (`chaos-results.json`) | `packages/agent/src/chaos/results.ts` (`ChaosResults`) |
+| Caos e diff por cima do mapa (overlay do visualizador) | `packages/viewer/src/index.ts` (`ViewerOverlay`); painel da extensão em `apps/vscode/src/views/MapPanel.ts` |
 | Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
@@ -303,7 +333,10 @@ npm run cli -- graph   <pasta> [--json] [--out mapa.json]      # mapa do sistema
 npm run cli -- graph   <pasta> --html mapa.html              # visualizador interativo (offline)
 npm run cli -- topology <pasta> [--json] [--surface] [--out .shieldepy/topology-graph.json] [--html rotas.html]
                                                                # rotas, I/O em ordem e tags de risco
-npm run cli -- chaos   <pasta> --no-run [--offline] [--json]   # gera testes de caos em .shieldepy/chaos-tests/
+npm run cli -- diff    <pasta> --base origin/main [--json]     # o que mudou na estrutura do código desde o merge-base
+npm run cli -- chaos   <pasta> [--offline] [--fail-on alto] [--report chaos-report.md] [--base origin/main]
+                                                               # gera, roda os testes de caos e serve de portão
+                                                               # (--no-run: só gera em .shieldepy/chaos-tests/)
 npm run cli -- report  --pg postgres://user:pass@host/db       # triggers de um Postgres real
 ```
 

@@ -49,11 +49,11 @@ export interface AttackSurface {
   collisions: SurfaceCollision[];
 }
 
-/** `src/a.ts#decrement:10` → `decrement`. */
+/** `src/a.ts#StockRepository.decrement` → `StockRepository.decrement`; o `~2` de nome repetido sai. */
 const symbolName = (id: string) => {
   const name = id.slice(id.indexOf('#') + 1);
-  const colon = name.lastIndexOf(':');
-  return colon > 0 ? name.slice(0, colon) : name;
+  const tilde = name.lastIndexOf('~');
+  return tilde > 0 && /^\d+$/.test(name.slice(tilde + 1)) ? name.slice(0, tilde) : name;
 };
 
 export function attackSurface(topology: TopologyGraph): AttackSurface {

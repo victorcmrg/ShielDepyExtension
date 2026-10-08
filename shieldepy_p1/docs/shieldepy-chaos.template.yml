@@ -1,0 +1,112 @@
+# Modelo de workflow para um repositório-alvo (um app Express que você quer proteger com o ShielDepy).
+# Copie para .github/workflows/shieldepy-chaos.yml no SEU repositório. Guia: docs/chaos-ci.md.
+#
+# Pré-requisitos no repositório-alvo:
+#   - shieldepy.chaos.config.ts na raiz do app (createApp, setupFiles, reset, invariants, apis, requests);
+#   - vitest, supertest e msw nas devDependencies (os testes gerados rodam com o Vitest do projeto);
+#   - .shieldepy/ no .gitignore (os testes de caos são regerados a cada execução).
+
+name: ShielDepy chaos
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: shieldepy-chaos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # pasta do app dentro do repositório ('.' quando o app está na raiz)
+  APP_DIR: .
+  # Crítico | Alto | Médio | Baixo: achados desta severidade ou pior bloqueiam o PR
+  FAIL_ON: Alto
+  # versão do ShielDepy (branch, tag ou commit)
+  SHIELDEPY_REF: main
+
+jobs:
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPORT: ${{ github.workspace }}/chaos-report.md
+      MAP: ${{ github.workspace }}/chaos-map.html
+      # sem o secret, roda --offline (só o motor, custo zero)
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # --base precisa do histórico para achar o merge-base com a branch de destino
+          fetch-depth: 0
+
+      - name: Baixar o ShielDepy
+        uses: actions/checkout@v4
+        with:
+          repository: victorcmrg/ShielDepyExtension
+          ref: ${{ env.SHIELDEPY_REF }}
+          path: .shieldepy-tool
+
+      # fora do workspace: com APP_DIR=., o ShielDepy não pode entrar no mapa do app
+      - name: Tirar o ShielDepy da pasta do app
+        shell: bash
+        run: mv .shieldepy-tool "$RUNNER_TEMP/shieldepy"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar o ShielDepy
+        run: npm ci --prefix "$RUNNER_TEMP/shieldepy/shieldepy_p1"
+
+      - name: Instalar o app
+        run: npm ci --prefix "$APP_DIR"
+
+      - name: Rodar o caos
+        id: chaos
+        shell: bash
+        run: |
+          offline=""
+          if [ -z "$ANTHROPIC_API_KEY" ]; then offline="--offline"; fi
+          # em PR: só as rotas sensíveis que o PR tocou (sem rota tocada = verde, sem custo)
+          scope=""
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then scope="--base origin/$GITHUB_BASE_REF"; fi
+          set +e
+          node "$RUNNER_TEMP/shieldepy/shieldepy_p1/apps/cli/bin/shieldepy.js" chaos "$APP_DIR" --fail-on "$FAIL_ON" --report "$REPORT" --html "$MAP" $offline $scope
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Mapa com o resultado (artefato)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shieldepy-mapa
+          path: ${{ github.workspace }}/chaos-map.html
+          if-no-files-found: ignore
+
+      - name: Resumo do job
+        if: always()
+        shell: bash
+        run: if [ -f "$REPORT" ]; then cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Comentar no PR
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f "$REPORT" ] || exit 0
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$REPORT" --edit-last || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$REPORT"
+
+      - name: Portão
+        shell: bash
+        env:
+          CODE: ${{ steps.chaos.outputs.code }}
+        run: |
+          if [ "$CODE" = "1" ]; then echo "::error::ShielDepy: o código quebra sob falha injetada (ver o relatório)."; fi
+          if [ "$CODE" = "2" ]; then echo "::error::ShielDepy: erro de ambiente, nada foi provado (ver o log)."; fi
+          exit "$CODE"

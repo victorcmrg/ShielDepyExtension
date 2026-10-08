@@ -20,10 +20,13 @@ export * from './topology/routes';
 export * from './topology/io';
 export * from './topology/build';
 export * from './topology/surface';
+export * from './topology/affected';
 export * from './chaos-config';
 export * from './sql/classify';
 
 export * from './system-graph';
+export * from './map-diff';
+export * from './git-base';
 export * from './findings';
 export * from './host';
 export * from './paths';

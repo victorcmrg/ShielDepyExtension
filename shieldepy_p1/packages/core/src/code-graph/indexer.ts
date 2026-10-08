@@ -1,10 +1,40 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readdirSync, type Dirent } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { Host } from '../host';
 import { CodeGraph } from './CodeGraph';
 
-// `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa
-export const IGNORED_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.shieldepy']);
+// `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa;
+// `.vscode-test`: o VS Code que o @vscode/test-electron baixa para os testes E2E (milhares de arquivos JS)
+export const IGNORED_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.shieldepy', '.vscode-test']);
+
+/**
+ * Arquivos de uma pasta, recursivamente, como caminhos relativos ordenados. Não desce nas pastas
+ * ignoradas (`node_modules` de um projeto real tem dezenas de milhares de arquivos), e uma pasta
+ * que some no meio da varredura (artefato apagado por outro processo) é pulada em vez de derrubar
+ * tudo.
+ */
+export function walkSourceTree(root: string): string[] {
+  const out: string[] = [];
+  const visit = (rel: string) => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(path.join(root, rel), { withFileTypes: true });
+    } catch (err) {
+      if (rel && (err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw err;
+    }
+    for (const e of entries) {
+      const child = rel ? path.join(rel, e.name) : e.name;
+      if (e.isDirectory()) {
+        if (!IGNORED_DIRS.has(e.name)) visit(child);
+      } else if (e.isFile()) out.push(child);
+    }
+  };
+  visit('');
+  return out.sort();
+}
+
 const MAX_INDEX_FILE_BYTES = 2 * 1024 * 1024; // 2MB — evita travar em bundle/arquivo gerado gigante
 
 /**
@@ -34,13 +64,9 @@ export async function indexFiles(graph: CodeGraph, fsPaths: string[], host: Host
 /** Lista recursiva de arquivos suportados pelo grafo, ignorando node_modules/dist/out/.git/.shieldepy. */
 export async function listSourceFiles(root: string, limit = 2000): Promise<string[]> {
   const out: string[] = [];
-  const entries = await readdir(root, { recursive: true, withFileTypes: true });
-  for (const entry of entries) {
+  for (const rel of walkSourceTree(root)) {
     if (out.length >= limit) break;
-    if (!entry.isFile()) continue;
-    const full = path.join(entry.parentPath ?? (entry as { path?: string }).path ?? root, entry.name);
-    const rel = path.relative(root, full);
-    if (rel.split(path.sep).some((seg) => IGNORED_DIRS.has(seg))) continue;
+    const full = path.join(root, rel);
     if (CodeGraph.isSupported(full)) out.push(full);
   }
   return out;

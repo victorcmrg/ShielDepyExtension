@@ -177,6 +177,7 @@ export function buildTopology(graph: CodeGraph, system: SystemGraph, root: strin
       operations,
       tags: sensitivityTags(operations),
       collisions: touched.map((c) => c.key).sort(),
+      reach: [...visited].sort(),
       confidence: heuristic ? 'heuristic' : 'proven',
       ...(w.truncated && { truncated: true as const }),
     };

@@ -108,6 +108,11 @@ export interface TopologyRoute extends Route {
   tags: RouteTag[];
   /** Colisões entre regras reativas cujo handler está no caminho da rota. */
   collisions: string[];
+  /**
+   * Todo símbolo percorrido a partir dos handlers (ids estáveis, ordenados), não só os que fazem
+   * I/O: é o que diz se um PR tocou a rota (E5).
+   */
+  reach: string[];
   confidence: 'proven' | 'heuristic';
   /** O percurso parou no limite de profundidade ou de passos: pode faltar operação. */
   truncated?: true;

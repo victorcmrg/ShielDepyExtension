@@ -82,8 +82,8 @@ export function buildChaosGraph(deps: ChaosDeps = {}) {
         rejected: model.rejected,
         engine: model.engine,
         summary: model.summary,
-        completions: model.completion ? [model.completion] : [],
-        errors: model.error ? [`threat_modeler: ${model.error}`] : [],
+        completions: model.completions,
+        errors: model.errors.map((e) => `threat_modeler: ${e}`),
       };
     })
     .addNode('network', specialist)

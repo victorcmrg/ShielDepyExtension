@@ -90,6 +90,10 @@
         "title": "ShielDepy: Exportar Topologia (rotas e I/O)"
       },
       {
+        "command": "shieldepy.compareMap",
+        "title": "ShielDepy: Comparar Mapa com uma Branch"
+      },
+      {
         "command": "shieldepy.setApiKey",
         "title": "ShielDepy: Configurar Chave da IA"
       },

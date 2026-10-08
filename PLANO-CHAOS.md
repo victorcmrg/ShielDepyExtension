@@ -9,6 +9,36 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
+## Como retomar num chat novo (atualizado em 2026-10-08, início da E5)
+
+**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** e foi enviada pelo usuário (`origin/feat/chaos-gate`), mas ainda não foi mergeada. Depois do merge, falta só o **PR de teste no GitHub** (ver o registro da 4e). A **E5 (mapa incremental e custo)** está **pronta, menos a medição paga (5e)**, na branch `feat/mapa-incremental`, **criada a partir da `feat/chaos-gate`** (empilhada, porque a E4 ainda não está na `main`). Se a E4 entrar por *squash*, rebasear a E5 sobre a `main` antes de abrir o PR dela. Leia, nesta ordem:
+1. esta seção;
+2. a seção **"E5 — mapa incremental e custo"** (por que existe, desenho e tarefas 5a–5f);
+3. o fim do **Registro**, para os detalhes de cada fatia já feita.
+
+**Combinados com o usuário (seguir sem perguntar):**
+- Responder **em português**.
+- Trabalhar **fatia por fatia** (4a, 4b, ...): cada uma termina com testes passando, este plano atualizado (registro + ✅ na tarefa) e **um commit** no mesmo commit da mudança. Mensagem de commit em português, terminando com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Gastar com a API da IA (chamada paga) só com autorização explícita do usuário**, na hora de medir (tarefa 5e).
+- **Não fazer push nem abrir PR.** O usuário sobe a branch e faz o merge quando a etapa **inteira** estiver pronta. No fim, avisar e oferecer título e descrição do PR.
+- Escolhas técnicas que surgirem: decidir, registrar no plano o porquê e avisar no resumo. Só perguntar o que for realmente do usuário (ex.: gastar dinheiro com chamada paga à IA, mexer no GitHub).
+- **Nada de regex para ler código** (só Tree-sitter ou analisador léxico). Regex em texto da IA ou em caminho de arquivo pode.
+- O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
+
+**Como rodar (de `shieldepy_p1/`):**
+- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **307** depois da 5e, parte gratuita).
+- `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
+- `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
+- `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
+- Dentro de um exemplo (`examples/checkout-express` e `-fixed`, que precisam de `npm install` próprio): `npm test` roda o teste de fumaça. Sem esse `npm install`, os testes da CLI e do agent que rodam o Vitest e o `tsc` dos exemplos são pulados.
+- Atenção no Windows: os caminhos têm acento e espaço (`Área de Trabalho`), então use sempre aspas. Os arquivos do repositório estão em CRLF, e edições por script que procuram `\n` podem não casar; prefira o editor.
+
+**Ainda não feito, de propósito (não é bug):**
+- Os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram, porque falta medir com chamada paga.
+- `partial_failure` e `retry_storm` não têm teste (aparecem no relatório como "sem teste no MVP", sem bloquear).
+- O workflow da E4 nunca rodou no GitHub (depende do push), e nenhum secret `ANTHROPIC_API_KEY` foi configurado: no CI ele roda `--offline` até o usuário decidir pagar pela IA.
+- As observações do registro da 3a: 5 heurísticas e 2 sem alvo no `packages/` do próprio ShielDepy. (O `graph apps` lento foi resolvido na V2e: o `.vscode-test` agora é ignorado.)
+
 ## Progresso e fluxo de trabalho
 
 Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança. Cada etapa tem sua branch. **O merge na `main` é feito pelo usuário** quando a etapa inteira estiver completa.
@@ -17,7 +47,11 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **E2 — Topologia** (tarefas 2a–2f, ver a seção "Fase 1 / E2"), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
 - **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
 - **E2 completa e mergeada** (PR #3, `b4eeb7b`).
-- **E3 completa em 2026-10-08** na branch `feat/chaos-agentes`, commitada fatia a fatia e ainda não enviada: o usuário sobe a branch e faz o merge. A E4 começa depois, numa branch nova a partir da `main`.
+- **E3 completa e mergeada** (PR #4, `ccc11c2`).
+- **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
+- **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
+- **V2 completo** na branch `feat/visualizador-v2` (V2a–V2e), empilhada sobre a `feat/mapa-incremental`. Ordem de merge: E4 → E5 → V2. Ver "V2 — desenho e tarefas" na seção "Visualização do grafo".
+- **E5 — pronta, menos a medição paga** na branch `feat/mapa-incremental`: 5a–5d, 5f e a parte gratuita da 5e. Para medir: `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (estimativa abaixo de US$ 0,50).
 
 | Tarefa | Branch | Status |
 |---|---|---|
@@ -26,11 +60,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído, mergeado |
 | 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
-| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, aguardando push e merge do usuário |
-| V2. Visualizador de produto (extensão/portal, com topologia e resultados do caos) | a definir | pendente, depois da E2 |
-| 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, aguardando push e merge do usuário |
-| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` (criar a partir da `main` após o merge da E3) | próximo |
-| 5. E5: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente, depois da E2 (ver avaliação) |
+| 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
+| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído; falta o merge (depois da E4 e da E5) |
+| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend` | a definir | pendente (separado do V2 em 2026-10-08) |
+| 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
+| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
+| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | pronta, menos a medição paga (5e) |
+| 6. E6: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (era a E5; ver avaliação) |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -280,6 +316,216 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - O relatório traz o custo e o `topologyHash`.
   - Suíte: **267 testes**. E2E 24/24. A extensão continua com 612 KB.
   - **Estado final da E3:** pronta para o usuário subir a branch `feat/chaos-agentes` e fazer o merge.
+- 2026-10-08: **E3 mergeada** (PR #4, `ccc11c2`). Branch `feat/chaos-gate` criada a partir da `main`. O plano ganhou a seção "Como retomar num chat novo", e o contexto da E4 foi refinado com o formato do reporter JSON do Vitest, medido nos testes gerados (ver "E4 — contexto").
+- 2026-10-08: **E4 iniciada. 4a concluído (runner)**, em `apps/cli/src/chaos-run.ts`.
+  - **`classifyVitestReport(json, esperadas)`** → `TestResult { hypothesisId, status, message?, durationMs }`, pelo par controle × caos (o `describe` é o id da hipótese). Arquivo que não carregou vira `invalid` e o id sai do nome do arquivo (`specFileName`). Hipótese com teste gerado que não aparece no JSON também vira `invalid` ("não rodou"), para nunca sumir do relatório. A duração é a do teste de caos.
+  - **Mensagem limpa:** só a 1ª linha, sem `AssertionError:` e sem o `: expected ...` do Chai (`stateCheck: stockNeverNegative`, `statusIn: a rota não respondeu em 10007 ms`). É texto de saída de teste, não código, então aqui pode regex.
+  - **Decisão: sem `npx`.** O runner chama `node <alvo>/node_modules/vitest/vitest.mjs run --config .shieldepy/chaos-tests/vitest.config.ts --reporter=json --outputFile=<tmp>`. No Windows, o `npx` é um `.cmd`, que o Node 22 só executa com `shell: true`, e o caminho tem acento e espaço. Sem Vitest instalado no alvo, ou se ele sair sem gerar o JSON, é `ChaosRunError` (vai virar exit 2 na 4b), com o fim da saída do processo para diagnóstico. O JSON fica num diretório temporário, apagado no fim.
+  - **Testes:** fixture com o JSON real medido no `checkout-express` (encurtado), mais um controle que falhou e um arquivo que não carregou; processo injetado. E um teste de verdade, na CLI: gera offline e roda o Vitest dos dois exemplos. Vulnerável: 4 `failed`; corrigido: 3 `passed`; nenhum `invalid` (~17 s + ~6 s). Pulado sem o `npm install` nos exemplos.
+  - **Corrida entre arquivos de teste corrigida:** o teste de compilação do agent (3e) e os testes da CLI gravavam e apagavam o mesmo `examples/*/.shieldepy/chaos-tests` em processos paralelos. Com o Vitest rodando ali por ~20 s, um apagaria os arquivos do outro. O de compilação agora usa `.shieldepy/tsc-check/` (mesma profundidade, então os `../../` gerados valem), e a CLI apaga só `chaos-tests`.
+  - O comando `chaos` ainda exige `--no-run`: ligar o runner ao comando entra com o gate (4b), para não existir um "rodou e saiu 0" sem portão.
+  - Suíte: **274 testes**.
+- 2026-10-08: **4b concluído (portão).**
+  - **Severidade** (`agent/src/chaos/results.ts`, `chaosSeverity`), sempre do motor e nunca da IA:
+    - **Crítico:** `race_condition` e `partial_failure`, e qualquer achado que corrompa o estado (`stateCheck`, `maxSuccesses`), mesmo vindo de uma falha de rede (ex.: pedido gravado sem cobrança);
+    - **Alto:** a rota fica pendurada ou a falha vira 500 (`respondsWithin`, "não respondeu", `noUnhandledError`);
+    - **Médio:** a rota responde, mas com um status fora do esperado.
+  - `TestResult` passou para o `@shieldepy/agent/chaos` (o relatório da 4c também usa), com `chaosOutcomes` (resultado + hipótese + severidade, mais grave primeiro) e `gateHits`.
+  - **Comando:** `shieldepy chaos <pasta>` agora gera **e roda** (`--no-run` só gera). Saídas:
+    - **exit 1:** achado com severidade `--fail-on` ou pior. **Decisão:** sem `--fail-on`, qualquer achado bloqueia (é o que a aceitação pede: `chaos --offline` → exit 1);
+    - **exit 2:** o Vitest não rodou (`ChaosRunError`) ou **todos** os testes saíram inválidos. **Decisão:** inválido sozinho não bloqueia, mas se nada foi provado o CI não pode ficar verde em silêncio;
+    - **exit 0:** o resto, inclusive achados abaixo do `--fail-on`.
+  - O texto mostra cada resultado (`✖ Crítico race_condition POST /checkout stock`, a mensagem, o tempo, e "não conta:" nos inválidos). O `--json` ganha `results`, `gate { failOn, hits }` e `runError`.
+  - **Dois bugs achados no caminho:**
+    - **Varredura de pastas:** o `scanDir` dos extratores e o `listSourceFiles` usavam `readdir` recursivo e só filtravam `node_modules`/`.shieldepy` depois. Isso é lento num projeto real (o CI sempre tem `node_modules`) e quebrava com ENOENT quando outro processo apagava `.shieldepy/` no meio da varredura. Agora os dois usam `walkSourceTree` (core), que nem entra nas pastas ignoradas.
+    - **O mapa dependia da ordem de indexação.** Com a nova varredura (ordenada), o `GET /orders/:id` perdeu a aresta para `CheckoutService.find`. O motivo: `container.ts` exporta `new CheckoutService()`, e quando o `CheckoutService.ts` chegava depois, a religação subia até o `container.ts`, mas não até quem importa o container. Agora `forwardsImports` também vale para instância exportada (`valueTypes`) e objeto exportado com referências (`objectRefs`). Há um teste que indexa o exemplo em três ordens e exige o mesmo hash; sem a correção, ele falha.
+  - A aceitação de verdade (comando completo, Vitest real) já está na CLI: o vulnerável sai com **exit 1** e 4 achados, e o corrigido com **exit 0** e 3 aprovados.
+  - Suíte: **282 testes**.
+- 2026-10-08: **4c concluído (relatório markdown)**, em `agent/src/chaos/report.ts`.
+  - **`renderChaosReport`**, determinístico. Começa com a marca `<!-- shieldepy-chaos -->` (o workflow edita o último comentário) e traz:
+    - uma linha de status: bloqueado, passou, passou no portão com achados abaixo dele, nada provado (todos inválidos), erro de ambiente ou `--no-run`;
+    - a contagem (achados, aguentou, inválidos, sem teste);
+    - a tabela de achados: severidade, rota, falha injetada, alvo, invariante violada e tempo;
+    - para cada achado, um `<details>` com o porquê da hipótese, as operações da rota em ordem com `arquivo:linha` (as do alvo em negrito, "← alvo da falha") e o arquivo do teste;
+    - as listas "aguentou", "inválidos (não contam no portão)" e "sem teste no MVP (não bloqueiam)";
+    - um rodapé com o motor das hipóteses, o custo da IA e o `topologyHash`.
+  - **Parágrafo:** `explainChaosOutcomes` só chama a IA com provider **e** achado. Usa o tier `fast` e manda só fatos: achados, invariante e operações com `arquivo:linha`, sem código. A resposta é `{"paragraph"}`, validada (vazia ou com bloco de código é descartada). Sem IA, ou se falhar, sai um parágrafo do motor ("requisições simultâneas em POST /checkout corrompem stock (stateCheck: stockNeverNegative); ..."). A chamada entra no custo mesmo quando é descartada.
+  - **CLI:** `--report <arquivo.md>`. O relatório é gravado também quando o ambiente falhou, para o resumo do CI dizer por quê.
+  - Conferido no `checkout-express` de verdade (exit 1, 4 achados, 2 hipóteses `partial_failure` sem teste). As operações saem como lista (`- `); sem isso, o GitHub juntava as linhas num parágrafo só.
+  - Suíte: **288 testes**.
+- 2026-10-08: **4d concluído (GitHub Actions + template).**
+  - **`.github/workflows/shieldepy-chaos.yml`** (raiz do repositório). Roda em PR e push na `main` que toquem `shieldepy_p1/**`, e à mão. Usa Node 22, cache do npm e `npm ci` no ShielDepy e no alvo.
+  - **Decisão, por causa do exemplo vulnerável:** o `checkout-express` quebra de propósito, então usá-lo como portão deixaria todo PR vermelho. Por isso há uma matriz com dois papéis:
+    - **`chaos-gate`:** roda no `checkout-express-fixed` com `--fail-on Alto`, publica o relatório no `$GITHUB_STEP_SUMMARY` e comenta no PR (`gh pr comment --edit-last || gh pr comment`, com `continue-on-error`, porque PR de fork não tem permissão de escrita). **É o portão:** um PR que reintroduza a corrida ou tire o timeout do Stripe no corrigido fica vermelho. É assim que se faz o "PR de teste com check vermelho" da 4e;
+    - **`self-test`:** o vulnerável **tem** que sair com 1, e o relatório tem que trazer a corrida em `stock` e o timeout do Stripe. Se o detector ficar cego, o CI fica vermelho.
+  - **Job `check`:** `npm run check` com os dois exemplos instalados. É o que faz rodar no CI os testes que localmente são pulados sem `npm install` (a compilação da 3e e o Vitest de verdade da 4a/4b), como pedia a pendência 1.
+  - **IA:** com o secret `ANTHROPIC_API_KEY`, usa a IA; sem ele, `--offline`. **Não configurei secret nenhum**: ligar a IA paga no CI é decisão do usuário.
+  - O código de saída do `shieldepy` é capturado (`node apps/cli/bin/shieldepy.js`, sem `npm run`, que pode trocar o código). O relatório é publicado antes, e só no fim o passo "Portão" sai com esse código, com `::error::` dizendo se foi achado (1) ou ambiente (2).
+  - **Simulado localmente** com o mesmo bash dos passos: no `chaos-gate`, o corrigido sai 0; no `self-test`, o vulnerável sai 1, com a corrida e o timeout encontrados no relatório. O YAML foi validado com `js-yaml`, e os lockfiles têm os binários de Linux (rollup/esbuild). **Não rodou no GitHub:** isso depende do push.
+  - **Template para repositórios-alvo:** `shieldepy_p1/docs/shieldepy-chaos.template.yml`, com o guia `docs/chaos-ci.md` (contrato, dependências, `env` do topo, códigos de saída, severidade, IA e custo, limites). Como o ShielDepy não está no npm, o template faz o checkout dele e o **move para `$RUNNER_TEMP`**: com `APP_DIR: .`, ele ficaria dentro do app e entraria no mapa.
+  - README: execução, portão, `--report`, o workflow e os arquivos novos no mapa do código.
+- 2026-10-08: **4e concluído (aceitação), e com ele a E4.**
+  - **`shieldepy chaos examples/checkout-express --offline` → exit 1**, com 4 achados: `race_condition stock` (Crítico, `stateCheck: stockNeverNegative`), `timeout api.stripe.com` (Alto, 6 s sem resposta), e `http_5xx` e `malformed_response` (Alto, a rota fica pendurada). O relatório aponta a corrida e o timeout com as operações e o `arquivo:linha`.
+  - **O mesmo no `checkout-express-fixed` → exit 0**, com 3 testes aguentando. Os dois casos estão fixados na suíte (Vitest de verdade, pulados sem `npm install` nos exemplos) e no job `self-test` do CI.
+  - **PR de teste, simulado localmente:** tirar o `signal: AbortSignal.timeout(...)` do `StripeGateway` do `-fixed` faz o motor ver `no-timeout` e gerar a hipótese de timeout. O teste quebra (`respondsWithin`, 6 s), e `--fail-on Alto` sai com **exit 1** e o relatório "Bloqueado: 1 achado". O arquivo foi restaurado.
+  - **Roteiro do PR de teste no GitHub (falta fazer, depende do push):** depois do merge da E4, criar uma branch a partir da `main` que só remova a linha `signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),` de `shieldepy_p1/examples/checkout-express-fixed/src/gateways/StripeGateway.ts` e abrir o PR. Esperado: o job `chaos-gate` vermelho ("o código quebra sob falha injetada"), o `self-test` e o `check` verdes, e um comentário no PR com o relatório (tabela com `🟠 Alto` · `timeout` · `api.stripe.com`). Depois, fechar o PR sem merge.
+  - **Mensagem do portão:** sem `--fail-on`, diz só "N achado(s) de caos", em vez de "severidade Baixo ou pior". O relatório faz igual.
+  - **Conferido no fim:** typecheck limpo, **288 testes**, **E2E 24/24** num VS Code real (o core mudou na 4b: varredura e religação), extensão com **612 KB** (o caos continua fora do bundle).
+  - **Estado final da E4:** pronta para o usuário subir a branch `feat/chaos-gate` e fazer o merge.
+- 2026-10-08: **E5 iniciada** (mapa incremental e custo), na branch `feat/mapa-incremental`, empilhada sobre a `feat/chaos-gate` (a E4 foi enviada, mas ainda não mergeada). A antiga E5 (outras linguagens) virou E6. Ver a seção "E5".
+- 2026-10-08: **5a concluído (ids estáveis).**
+  - O id de símbolo passou de `arquivo#nome:linha` para **`arquivo#Contêiner.nome`** (ex.: `src/services/CheckoutService.ts#CheckoutService.checkout`). Nome repetido no mesmo arquivo ganha `~2`, `~3` pela ordem; um repetido novo no fim não renumera os de antes.
+  - **Decisão: o contêiner entra no id.** Dois `save` em classes diferentes do mesmo arquivo não dependem do sufixo de ordem, que é a parte menos estável.
+  - O id nasce num lugar só (`extract-ts.ts`, `stableIds`), atribuído depois da varredura. A linha continua em `startLine`, que é o que o visualizador e a extensão já usavam.
+  - O `in` das operações na superfície passou a sair qualificado (`StripeGateway.charge` em vez de `charge`): informa melhor a IA e o relatório.
+  - **Correção ao plano:** o `contentHash` do mapa **muda** quando as linhas se deslocam, e deve mudar, porque o mapa guarda `startLine` e `arquivo:linha`. O que não muda são os ids e as arestas, e é sobre eles que o diff da 5c trabalha. O teste confere isso: comentário e linhas em branco acima de tudo mantêm os mesmos nós e arestas.
+  - Cobertura do `packages/` igual (1468 resolvidas, 7 heurísticas, 2 sem alvo, 0 imports quebrados), com 1 símbolo a mais: antes, dois símbolos de mesmo nome na mesma linha caíam no mesmo id. Agora há 21 ids com `~n` no `packages/`.
+  - Suíte: **291 testes**.
+- 2026-10-08: **5b concluído (hash do corpo e do código de topo)**, em `code-graph/fingerprint.ts`.
+  - **`bodyHash`** (16 hex de um SHA-256) das folhas da AST do símbolo, em ordem: tipo + texto, sem comentários. Pontuação e operadores entram (`x + 1` ≠ `x - 1`). O **nome do próprio símbolo fica de fora**, então renomear sem mexer no corpo mantém o hash. Quando o nó hasheado é o próprio símbolo (método, classe), o nó `name` é pulado; em `const f = () => {}`, o hash é da função.
+  - **`topHash`** no nó de arquivo TS/JS: as folhas **fora** de todos os símbolos (imports, constantes, montagem, `export const svc = new Svc(...)`). Mudar o corpo de uma função não mexe nele.
+  - Calculados no mesmo parse do `updateFile`, sem segundo parse. Os dois vão para o `SystemGraph` (`bodyHash` nos símbolos e `topHash` nos arquivos).
+  - O hash da classe inclui os métodos, então mudar um método muda a classe também. O diff vai olhar os métodos; a classe só serve de contexto.
+  - **Custo medido:** no pior caso (duas varreduras completas por arquivo), 169 ms de 1,9 s para indexar 99 arquivos do `packages/`, cerca de 9%. Numa edição na extensão, 1 a 2 ms.
+  - Testes: comentário, espaço e linhas acima não mudam nada; `x + 1` → `x - 1` muda só aquele método (e a classe); renomear mantém o hash; o topo muda com import e com constante exportada, e não com o corpo.
+  - Suíte: **295 testes**.
+- 2026-10-08: **5c concluído (diff entre mapas)**.
+  - **`diffSystemGraphs(base, head)`** (`core/src/map-diff.ts`): operação de conjunto sobre os ids estáveis. Devolve símbolos `added/removed/changed` (mesmo id, `bodyHash` diferente) e `renamed`, arquivos `added/removed/topChanged`, arestas `added/removed` e `empty`.
+  - **Renomeação:** sumiu um símbolo e apareceu outro no **mesmo arquivo**, do mesmo tipo e com o mesmo corpo, pareados na ordem dos ids. Mover para outro arquivo continua sendo remoção mais adição (decisão: mover muda imports e quem chama, e tratar como mudança é o lado seguro). As arestas do lado base são remapeadas pela renomeação antes de comparar, então renomear não gera ruído; só aparece a chamada que ficou órfã.
+  - **Base pelo git** (`apps/cli/src/git-base.ts`):
+    - o commit base é o **merge-base** entre o ref e o HEAD, como num PR;
+    - a pasta é montada naquele commit num `git worktree --detach` temporário, apagado no fim;
+    - os dois mapas são construídos **pelo mesmo motor** (o código atual), então mudar o motor entre os commits não vira diff;
+    - pasta que não existia na base dá mapa vazio;
+    - `changedFiles` junta o `git diff --name-only` (inclusive o não commitado) e os arquivos novos não rastreados. É o que a 5d usa para a regra conservadora (config/deps);
+    - ref inexistente ou pasta fora de um repositório git → `GitBaseError` → exit 2.
+  - **CLI:** `shieldepy diff <pasta> --base <ref> [--json]`.
+  - **Testes** (cópia do `checkout-express` num repositório git temporário):
+    - comentário e linhas em branco: o git vê mudança, o mapa não (`empty`);
+    - `currency: 'brl'` → `'usd'`: só `StripeGateway.charge` (e a classe) em `changed`, sem aresta nova;
+    - `findById` → `getById`: `renamed`, com a chamada órfã de `CheckoutService.find` nas arestas removidas;
+    - montagem no `container.ts`: `topChanged`; arquivo novo: `files.added` e o símbolo novo;
+    - ref inexistente e pasta sem git: exit 2.
+  - Suíte: **300 testes**.
+- 2026-10-08: **5d concluído (caos só no que o PR tocou).**
+  - **Topologia:** cada rota ganhou `reach`, com todo símbolo percorrido a partir dos handlers (ids estáveis, ordenados). Não vai para a superfície nem para a IA.
+  - **`affectedRoutes(base, head, diff, changedFiles, setupFiles)`** (`core/src/topology/affected.ts`). Uma rota de agora entra, com o motivo escrito, se:
+    - é nova;
+    - a cadeia de handlers mudou;
+    - as operações ou as tags mudaram;
+    - um símbolo do alcance mudou, é novo ou foi renomeado (alcance de agora) ou sumiu (alcance de antes);
+    - o código de topo mudou no arquivo de registro da rota ou num arquivo do alcance.
+  - **Mudança global → todas as rotas:** `shieldepy.chaos.config.ts`, um `setupFiles`, `package.json`, lockfiles, `.npmrc`, `tsconfig*.json` e `vite/vitest.config`. Decisão conservadora: na dúvida, a rota entra.
+  - **`shieldepy chaos --base <ref>`:**
+    - monta a topologia da base (worktree da 5c) e filtra a superfície **antes** da IA. Rotas e colisões de fora não custam token nem teste;
+    - sem rota sensível tocada, o pipeline roda com a superfície vazia (sem chamada à IA, sem teste) e sai **0**;
+    - o texto, o `--json` (`scope`) e o relatório mostram o escopo: base e merge-base, cada rota tocada com o motivo, as não tocadas, e "todas, porque mudou X";
+    - o relatório tem um status próprio: "Nenhuma rota sensível tocada por este PR".
+  - **Furo achado e fechado:** os testes gerados ficam em `.shieldepy/chaos-tests/`, com um `vitest.config.ts`. Num repositório que não ignore `.shieldepy/`, ele apareceria como arquivo novo e dispararia "todas as rotas". A lista do git agora descarta as pastas que o mapa ignora (`IGNORED_DIRS`).
+  - **Aceitação, testada numa cópia do `checkout-express` em git temporário:**
+    - só comentário → nenhuma rota tocada, nenhum teste, exit 0;
+    - corpo do `StripeGateway.charge` → só `POST /checkout` ("código no caminho mudou: …StripeGateway.charge"), e `GET /orders/:id` fica de fora;
+    - corpo do `OrderRepository.findById` → só `GET /orders/:id`, que não tem falha testável, então nenhum teste;
+    - `package.json` → todas, com o motivo.
+  - Suíte: **306 testes**.
+- 2026-10-08: **5f concluído (CI com `--base`)**, feita antes da 5e (que depende de autorização para a chamada paga).
+  - **Template para repositórios-alvo:** `fetch-depth: 0` e, em PR, `--base origin/$GITHUB_BASE_REF`. Em push e execução manual, o mapa inteiro.
+  - **Neste repositório (decisão):** o que muda nos PRs costuma ser o próprio **motor**. Com `--base` sempre ligado, um PR só no motor não testaria nada no portão. Por isso o `chaos-gate` usa `--base origin/<destino>` só quando `git diff --quiet origin/<destino>...HEAD -- packages apps` (o PR não toca o motor); senão, roda completo. O `self-test` continua sempre completo.
+  - O roteiro do PR de teste da 4e continua valendo: tirar o timeout do `-fixed` só mexe no exemplo, então o portão usa `--base`, o `POST /checkout` entra (o corpo de `StripeGateway.charge` mudou) e o teste de timeout quebra.
+  - Simulado localmente: esta branch mexe no motor (portão completo). `chaos -fixed --base HEAD` sai 0, com "Nenhuma rota sensível tocada por este PR" no relatório. YAML validado.
+  - Docs: seção "Só o que o PR tocou (`--base`)" no `docs/chaos-ci.md`; o README ganhou o `diff`, o `--base` e os arquivos novos no mapa do código.
+- 2026-10-08: **5e, parte gratuita.** A medição paga não foi feita: não há `ANTHROPIC_API_KEY` neste ambiente, e gastar exige autorização do usuário.
+  - **Risco achado no provider:** o Sonnet 5.5 (e o Opus 5.5) raciocinam por padrão, e esse raciocínio também consome o `max_tokens`. Com 4000 no Threat Modeler e 800 nos especialistas, a resposta pode sair cortada no meio do JSON, e antes isso aparecia como "JSON inválido". Agora o provider da Anthropic lança "resposta cortada no limite de N tokens (stop_reason: max_tokens) — modelo" **quando a resposta é JSON**. Texto livre (o chat da extensão) cortado continua sendo entregue. A medição vai dizer se é preciso subir o `maxTokens` ou baixar o esforço no tier `deep`.
+  - **`cacheSystem`:** mantido e documentado no `provider.ts`. Abaixo do mínimo ele não faz nada (sem erro e sem custo); hoje só o Threat Modeler no Sonnet 5.5 cacheia, e só entre execuções com menos de 5 min de intervalo. Não vale encher o prompt para chegar aos 4096 do Haiku.
+  - **Medição pronta para o usuário rodar:** `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (`scripts/measure-chaos-cost.ts`, incluído no typecheck).
+    - Roda o `chaos` completo (gera, roda os testes e escreve o relatório com o parágrafo da IA) nos dois exemplos, com o `deep` no Haiku 4.5 e no Sonnet 5.5, e o `fast` sempre no Haiku 4.5.
+    - Imprime uma tabela (hipóteses e quantas vieram da IA, descartadas, erros, chamadas, tokens, cache, US$, segundos) e grava o JSON em `.shieldepy/`.
+    - Sem `--sim-gastar` ou sem a chave, recusa e sai 2.
+    - **Estimativa:** abaixo de US$ 0,50 no total (4 execuções; cada uma faz de 1 a 6 chamadas pequenas).
+  - **Decisão adiada até a medição:** o padrão do `deep` e a separação entre o tier do caos e o tier do chat.
+- 2026-10-08: **Conferência final da E5.**
+  - O E2E acusou 1 falha: o cenário "Ver Mapa do Sistema" procurava as arestas pelos ids antigos (`CheckoutController.ts#create`). Atualizado para os ids estáveis (`#CheckoutController.create` etc.). Depois disso, **E2E 24/24** num VS Code real.
+  - **307 testes** unitários, typecheck limpo, extensão com **613 KB** (+1 KB, do hash).
+  - **Estado:** pronta para subir e mergear quando o usuário quiser. A medição paga da 5e pode entrar depois, num commit próprio, sem bloquear o merge. A branch está empilhada sobre a `feat/chaos-gate`: mergear a E4 primeiro.
+- 2026-10-08: **Estimativa de custo (sem chamada paga) e relatório `RELATORIO-CUSTO-IA.md` na raiz.**
+  - **Método:** `npm run estimate:chaos` (`scripts/estimate-chaos-cost.ts`) roda o pipeline real nos dois exemplos com um provider que grava cada requisição real e devolve respostas válidas de tamanho realista. Tokens a 3,5 caracteres por token (faixa de 2,8 a 4,2); raciocínio do Sonnet/Opus de 0 a 3.000 tokens por chamada.
+  - **Resultado:** o vulnerável faz 6 chamadas (~7,3k tokens de entrada / ~1k de saída) e custa **~US$ 0,012 só com Haiku** e **~US$ 0,026 com o Threat Modeler no Sonnet 5.5**. O corrigido faz 4 chamadas (~US$ 0,008 / 0,022). A saída real é ~6× menor que a estimativa antiga do plano.
+  - **Escala:** 20 rotas sensíveis custam ~US$ 0,10 a 0,14; 100 rotas, ~US$ 0,48 a 0,66 por execução completa. Com `--base`, ~US$ 0,18 a 0,39 por mês para 100 PRs.
+  - **Achado:** o `max_tokens: 4000` do Threat Modeler estoura a partir de ~7 rotas de escrita. Virou a tarefa **5g**.
+  - **Recomendação do relatório:** manter tudo no Haiku até a medição real; corrigir os lotes; decidir o Sonnet no Threat Modeler pela qualidade (a diferença de custo é de ~US$ 0,014 por execução); não usar o Sonnet nos especialistas.
+  - A medição real continua pendente: `npm run measure:chaos -- --sim-gastar`.
+- 2026-10-08: **V2 iniciado** (branch `feat/visualizador-v2`, empilhada sobre a `feat/mapa-incremental`). O portal virou o **V3**: precisa que o CI envie os resultados (endpoint autenticado e armazenamento), o que é uma etapa à parte.
+- 2026-10-08: **V2a concluído (resultado do caos persistido).**
+  - **`ChaosResults`** (`agent/src/chaos/results.ts`, com `buildChaosResults`): projeto, `topologyHash`, motor, se rodou, erro de ambiente, portão (`failOn`, `hits`), escopo do PR, cada resultado com severidade, mensagem e **arquivo do teste**, e as hipóteses sem teste com o motivo ("precisa de falha injetada no banco", "não executado (--no-run)" etc.). O `ChaosScope` mudou do `report.ts` para o `results.ts`.
+  - O `chaos` grava **sempre** o `.shieldepy/chaos-results.json` (também com `--no-run`, com `ran: false`).
+  - **`--html <arquivo>`** no `chaos` e no `diff`: o visualizador com a topologia e o overlay. No `chaos --base`, o diff do PR vai junto. No `diff`, as rotas tocadas (`affectedRoutes`) também vão, e a saída de texto lista cada rota tocada com o motivo.
+  - **Visualizador:** `renderGraphHtml(..., overlay?)`, com `ViewerOverlay { chaos?, diff? }` embutido como `OVERLAY`. Os tipos são **mínimos e próprios** do visualizador (estruturalmente iguais aos do agent), para ele não depender do pacote de agentes, que puxa o LangGraph. Sem overlay, nada muda.
+  - Suíte: **308 testes**.
+- 2026-10-08: **V2b concluído (caos no visualizador).**
+  - **Seção "Caos" no topo da barra lateral** (com um resultado aberto, ela é o assunto principal). Traz:
+    - o banner: bloqueado, aguentou, nenhuma rota tocada, não executado (`--no-run`) ou erro de ambiente;
+    - um aviso quando o resultado é de **outra versão do mapa** (`topologyHash` diferente);
+    - os chips de contagem, neutros quando zero, e o escopo do PR;
+    - os **achados como cartões** (severidade, rota, falha, alvo, tempo, invariante violada e arquivo do teste). Clicar abre o fluxo da rota; no webview, há também "Abrir teste" (mensagem `openTest`, tratada na V2d);
+    - as listas "Aguentou", "Inválidos" e "Sem teste nesta execução", e a legenda.
+  - **No grafo:** rota com achado em vermelho (borda grossa) e com `✖` no rótulo; aguentou com borda verde e `✓`; inválido com borda tracejada. A operação de I/O alvo de um achado ganha borda vermelha, e isso vale também no modo fluxo. A lista de rotas mostra o mesmo ícone.
+  - **Conferido em screenshots no Chrome headless:** o vulnerável mostra "Bloqueado: 4 achado(s)", a rota `✖ POST /checkout` e o Stripe e as operações em `stock` marcados; o corrigido mostra "O código aguentou todas as falhas injetadas" e `✓ POST /checkout`. Os ajustes que os screenshots pediram: o caminho do teste vazava do cartão, e o vermelho da rota quebrada se confundia com o rosa normal das rotas (daí o `✖`/`✓` no rótulo).
+  - O script do visualizador continua compilando (teste da CLI); sem overlay, nada muda.
+- 2026-10-08: **V2c concluído (diff do PR no visualizador).**
+  - **No grafo:**
+    - símbolo novo: borda verde;
+    - corpo alterado: âmbar;
+    - renomeado: azul tracejada (o painel de detalhes mostra "renomeado de");
+    - arquivo novo ou com o código de topo alterado: a caixa ganha borda;
+    - **rota tocada pelo PR:** borda dupla âmbar, com o motivo nos detalhes. As rotas tocadas vêm do `diff` (`affectedRoutes`) ou, num `chaos --base`, do escopo.
+  - **Seção "Mudanças do PR"** (logo depois da "Caos"): base e merge-base, chips de novos, alterados, renomeados e removidos, e listas clicáveis. Rota tocada abre o fluxo; símbolo dá foco. Os removidos aparecem só como texto, porque não estão mais no mapa.
+  - **Filtro "só o que o PR mudou (e os vizinhos)":** só aparece com diff. Mostra os nós mudados, os vizinhos diretos e as rotas tocadas. O link `#mudancas` já abre filtrado (útil no artefato do CI).
+  - **Conferido no Chrome headless**, com `currency: 'brl'` → `'usd'` no `StripeGateway`: o `charge` e a classe em âmbar, o `POST /checkout` como tocado, e, filtrado, só `charge`, `StripeGateway`, `checkout`, `api_call api.stripe.com` e a rota com os handlers. Ajuste pedido pelo screenshot: ids longos quebram linha nos botões.
+  - Teste: `diff --html` embute o diff e as rotas tocadas, e o script compila.
+  - Suíte: **308 testes**.
+- 2026-10-08: **V2d concluído (extensão).**
+  - **`git-base` foi da CLI para o core** (`packages/core/src/git-base.ts`; só Node, sem rede), porque a CLI e a extensão usam.
+  - **Painel do mapa:**
+    - lê o `.shieldepy/chaos-results.json` do workspace: o da raiz, se houver; senão, o mais recente, e o painel mostra de qual projeto ele é;
+    - um `FileSystemWatcher` atualiza o painel aberto quando a CLI grava um resultado novo;
+    - "Abrir teste" abre o arquivo do teste, resolvido a partir da pasta do projeto, sem sair da raiz do workspace.
+  - **Decisão: desatualização por data na extensão.** A extensão monta o mapa a partir da raiz do workspace, e a CLI a partir da pasta do projeto, então o `topologyHash` nunca bate lá. O resultado é marcado como desatualizado quando algum arquivo do mapa dentro do projeto foi alterado depois dele. O visualizador ganhou `ViewerChaos.stale`; sem ele, vale o hash (CLI).
+  - **Comando "ShielDepy: Comparar Mapa com uma Branch"** (`shieldepy.compareMap`): pede o ref (padrão `origin/main`), monta o mapa do merge-base num worktree temporário, indexado à parte, e mostra o diff e as rotas tocadas no painel, com um resumo numa notificação. O diff fica no painel até ele fechar.
+  - **Limite anotado:** o mapa atual vem da extensão (com o teto e as exclusões dela), e o da base é indexado inteiro. Num repositório acima do teto, ou com arquivos fora do git que a extensão indexa, o diff pode mostrar "novos" que não são do PR.
+  - **E2E: 27/27.** O `run.mjs` agora cria um repositório git de verdade, com o mesmo remote e a mesma branch, porque o worktree precisa de um commit. Três cenários novos:
+    - um resultado gravado aparece no painel (não desatualizado);
+    - um resultado regravado atualiza o painel aberto sozinho;
+    - "Comparar com HEAD" depois de mudar o `StripeGateway.charge` → `changed`, com `POST /checkout` tocada e `GET /orders/:id` de fora, e o caos continua no painel.
+  - Extensão com **636 KB** (era 613; entraram o diff e o `git-base`). Suíte unitária: **308**.
+- 2026-10-08: **V2e concluído (escala), e com ele o V2.**
+  - **Medição** (Chrome headless, tempo até o layout terminar, com um script injetado logo depois do visualizador):
+
+    | Grafo | Nós | Arestas | Layout pronto |
+    |---|---|---|---|
+    | `checkout-express` | 68 | 113 | 0,4 s |
+    | `apps/` (real) | 3.526 | 14.848 | 6,9 s |
+    | sintético | 2.200 | 5.899 | 3,0 s |
+    | sintético | 5.500 | 14.744 | 7,3 s |
+    | sintético | 11.000 | 29.482 | 8,2 s |
+    | sintético | 22.000 | 58.959 | 7,8 s |
+
+    Acima de 6 mil elementos o visualizador já usa o layout de rascunho, então o tempo **estabiliza em ~8 s até 22 mil nós**.
+  - **Decisão: não trocar de biblioteca agora.** O Sigma.js (WebGL) aguentaria mais, mas não tem nós compostos (o agrupamento por arquivo) e exigiria reescrever o visualizador. O ELK não é necessário: os fluxos de rota são pequenos e o `breadthfirst` dá conta. Nesse tamanho, o problema é de **leitura**, não de velocidade. **Gatilho para reavaliar:** mapas acima de ~50 mil nós ou travamento na interação.
+  - **O que entrou:** em mapa grande (mais de 3 mil nós) com diff, o visualizador já abre filtrado em "só o que o PR mudou".
+  - **Observação antiga resolvida:** o `.vscode-test` (o VS Code baixado pelo E2E) entrou no `IGNORED_DIRS`. O `graph apps` sai em ~19 s, com 3.526 nós; antes, varria milhares de arquivos JS do VS Code.
+  - **CI:** o portão grava o mapa (`--html`) e o anexa como artefato do job (`shieldepy-mapa`), no workflow e no template. O guia diz como abrir, inclusive com `#mudancas`.
+  - README: seção do visualizador com o resultado e os arquivos novos no mapa do código.
+  - **Estado final do V2:** 308 testes unitários, E2E 27/27, extensão com 636 KB. Pronto para o merge, depois da E4 e da E5.
+- 2026-10-08: **5g concluído (lotes no Threat Modeler)**, feito na `feat/visualizador-v2`, que é a ponta da pilha (E4 → E5 → V2): mexer na `feat/mapa-incremental` exigiria rebasear o V2 inteiro. Entra junto com o merge do V2.
+  - **`surfaceBatches`:** lotes de **5 rotas** (`ROUTES_PER_BATCH`), cada um só com as colisões que tocam as suas rotas.
+  - **Execução:** um Threat Modeler por lote, em paralelo, no máximo 4 ao mesmo tempo (um `pool` simples, por causa do limite de requisições da API).
+  - **`max_tokens`** = 2.000 + 1.000 por rota (7.000 num lote de 5), com folga para o raciocínio do Sonnet/Opus 5.5.
+  - **Junção:** os lotes não se sobrepõem, então as hipóteses da IA são concatenadas e passam pelo `mergeHypotheses` com a lista-base, que nunca encolhe. Os descartes e os erros dizem o lote ("lote 2/3: …"). Um lote que falha não derruba os outros, e `engine` é o provider se pelo menos um lote respondeu.
+  - **Interface:** o `ThreatModel` passou de `completion`/`error` para `completions`/`errors` (uma chamada por lote). O grafo LangGraph foi ajustado.
+  - **Cache:** não serializei o primeiro lote para aquecer o cache. O ganho seria de ~US$ 0,001 por lote no Sonnet, e não paga a latência.
+  - **Testes:** 12 rotas → 3 chamadas (5, 5, 2), `max_tokens` 7.000/7.000/4.000, a colisão só no lote da rota dela e as 12 hipóteses da IA entram. O lote 2 falhando → o erro diz "lote 2/3", os lotes 1 e 3 mantêm a contribuição da IA e a base fica inteira.
+  - **`RELATORIO-CUSTO-IA.md` atualizado:** o achado aparece como corrigido, e a escala e o custo mensal incluem o prompt de sistema e o raciocínio repetidos por lote. 100 rotas: ~US$ 0,49 só com Haiku e ~US$ 0,87 com o Threat Modeler no Sonnet.
+  - Suíte: **310 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -303,6 +549,38 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 - **Diff entre dois mapas** (hash do PR × `main`): o que o PR adicionou ou mudou na cadeia.
 - **Escala:** para repositórios de 10k+ nós, avaliar o **Sigma.js** (WebGL, usa o `graphology` que o core já usa), e para fluxos em camadas o **ELK** (`elkjs`). O contrato `SystemGraph` não muda.
 - **Na extensão:** respeitar a CSP do webview já existente (scripts com nonce, sem inline) e empacotar as bibliotecas no `esbuild`.
+
+### V2 — desenho e tarefas (escrito em 2026-10-08, antes de começar)
+
+> Branch `feat/visualizador-v2`, empilhada sobre a `feat/mapa-incremental` (E5), porque usa o diff de mapas e o escopo do PR. O V1 e a E2 já entregam rotas e operações de I/O como nós (CLI `--html` e painel "Ver Mapa do Sistema"). O V2 põe por cima disso o **resultado do caos** e o **diff do PR**.
+
+**Decisão de escopo: o portal fica para o V3.** O `apps/frontend` hoje é a gestão de projetos, repositórios e equipes, com login e SQLite. Mostrar resultados lá exige o CI **enviar** os resultados (endpoint autenticado com o token de dispositivo, armazenamento por repositório e commit, página nova). O V2 cobre a CLI, cujo HTML autocontido também serve de artefato do CI, e a extensão.
+
+**Contrato:** `ViewerOverlay { chaos?: ChaosResults; diff?: { base, commit, diff: MapDiff } }`, um parâmetro novo e opcional do `renderGraphHtml`. Sem overlay, o visualizador continua igual ao V1.
+
+**Tarefas:**
+- **V2a. Resultado do caos persistido.** ✅ Concluída em 2026-10-08. O `chaos` grava sempre `.shieldepy/chaos-results.json` (`ChaosResults`): `topologyHash`, escopo, resultados com severidade e mensagem, hipóteses sem teste, portão e custo. Com `--html <arquivo>`, grava também o visualizador com a topologia e o resultado.
+- **V2b. Caos no visualizador.** ✅ Concluída em 2026-10-08.
+  - Rota com achado em vermelho (com a severidade), aguentou em verde, inválido tracejado, fora do escopo ou sem teste neutra.
+  - Lista lateral "Caos": achados com falha, alvo, invariante violada e arquivo do teste. Clicar abre o fluxo da rota, com a operação-alvo destacada.
+  - Legenda.
+  - Aviso quando o resultado é de outra versão do mapa (`topologyHash` diferente).
+- **V2c. Diff no visualizador.** ✅ Concluída em 2026-10-08.
+  - Nós `added` / `changed` / `renamed` marcados.
+  - Lista lateral "Mudanças" (inclui os removidos, que não estão no mapa atual) e as rotas tocadas, com o motivo.
+  - Filtro "só o que o PR mudou": nós mudados, vizinhos diretos e rotas tocadas.
+  - CLI: `diff --html` e `chaos --base --html`.
+- **V2d. Extensão.** ✅ Concluída em 2026-10-08.
+  - O `git-base` vai para o core (só Node).
+  - O painel do mapa lê o `.shieldepy/chaos-results.json` e atualiza quando ele muda.
+  - Comando novo "ShielDepy: Comparar mapa com uma branch" (padrão: `origin/main`), que mostra o diff no painel.
+  - Cenários E2E.
+- **V2e. Escala.** ✅ Concluída em 2026-10-08 (medido; sem troca de biblioteca). Medir o visualizador com o grafo grande (`apps/`) e registrar a avaliação do Sigma.js e do ELK. Só trocar de biblioteca se a medição pedir.
+
+**Aceitação do V2:**
+- `chaos examples/checkout-express --offline --html` → `POST /checkout` em vermelho, com os 4 achados na lista. No `-fixed`, em verde.
+- `diff --base` com o corpo do `StripeGateway.charge` mudado → o método marcado como `changed` e o `POST /checkout` como rota tocada.
+- Na extensão, rodar o `chaos` pela CLI atualiza o painel aberto sem recarregar.
 
 ---
 
@@ -453,7 +731,7 @@ Hoje o mapa completo (símbolos, imports, chamadas resolvidas por tipo, pacotes)
 
 Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 
-**Recomendação:** fazer **depois da E2 em TS**, quando o pipeline estiver provado de ponta a ponta. Ordem sugerida: Java/Spring (melhor retorno; stack comum em empresas) → C#/ASP.NET → Python. Fica como **E5 — outras linguagens**.
+**Recomendação:** fazer **depois da E2 em TS**, quando o pipeline estiver provado de ponta a ponta. Ordem sugerida: Java/Spring (melhor retorno; stack comum em empresas) → C#/ASP.NET → Python. Fica como **E6 — outras linguagens** (era a E5; renumerada em 2026-10-08).
 
 ## Custo estimado da IA (E3), preços conferidos em 2026-10-08
 
@@ -597,15 +875,91 @@ A escrita de cache custa 1,25× a entrada (TTL de 5 min). O prefixo mínimo cach
 4. **Relatório markdown** (`--report chaos-report.md`) para o `$GITHUB_STEP_SUMMARY` e o comentário do PR: rota, falha injetada, invariante violada, `arquivo:linha` das operações, custo e `topologyHash`. Parágrafo opcional da IA (com fallback offline), no estilo de `explainCollisions`.
 5. **Hipóteses sem teste** (`partial_failure`, `retry_storm`) aparecem no relatório como "não testadas no MVP", **sem** bloquear.
 
+### Formato do resultado (medido em 2026-10-08 nos testes gerados do `checkout-express`)
+
+`npx vitest run --config .shieldepy/chaos-tests/vitest.config.ts --reporter=json --outputFile=<arquivo>` (no diretório do projeto) sai com **exit 1** quando algum teste falha. O JSON tem:
+- no topo: `success`, `numFailedTests`, `numPassedTests` e `testResults[]`;
+- por arquivo (`testResults[i]`): `name` (caminho), `status` e `message` (erro de carga do arquivo, ex.: não compilou) e `assertionResults[]`;
+- por teste (`assertionResults[j]`): `ancestorTitles[0]` = **id da hipótese** (o `describe` do template), `title` = `CONTROL_TEST_NAME` ou `caos: ...`, `status` (`passed`/`failed`), `failureMessages[0]` (a 1ª linha é a mensagem da asserção, ex.: `AssertionError: stateCheck: stockNeverNegative: ...`) e `duration`.
+
+Classificação por hipótese:
+- **controle falhou** → `invalid`;
+- **controle passou e caos falhou** → `failed`, com a mensagem limpa (sem o `AssertionError:` e sem o `expected ...`);
+- **os dois passaram** → `passed`;
+- **arquivo não carregou** (sem `assertionResults`, com `message`) → `invalid` com a mensagem.
+
+Medido no vulnerável:
+
+| hipótese | controle | caos | mensagem | duração do caos |
+|---|---|---|---|---|
+| `race_condition__stock` | passed | failed | `stateCheck: stockNeverNegative` | ~0,2 s |
+| `timeout__api.stripe.com` | passed | failed | `respondsWithin: o cliente ficou mais de 6000 ms sem resposta` | ~6 s |
+| `http_5xx_intermittent__api.stripe.com` | passed | failed | `statusIn: a rota não respondeu em ~10000 ms` | ~10 s |
+| `malformed_response__api.stripe.com` | passed | failed | `statusIn: a rota não respondeu em ~10000 ms` | ~10 s |
+
 ### Tarefas da E4
-- **4a. Runner** (`apps/cli/src/chaos/run.ts`): `spawn` do Vitest com o reporter JSON, parse, `TestResult { hypothesisId, status: passed|failed|invalid, message, durationMs }`. O processo é injetado para testar sem rodar o Vitest.
-- **4b. Gate:** severidade por falha, `--fail-on`, exit 1 com achado válido e exit 2 com erro de ambiente.
-- **4c. Relatório markdown** (determinístico + parágrafo opcional da IA).
-- **4d. GitHub Actions** (`.github/workflows/shieldepy-chaos.yml`): Node 22, `npm ci` no ShielDepy e no alvo, `shieldepy chaos --report --fail-on Alto`, `$GITHUB_STEP_SUMMARY` e comentário no PR (`gh pr comment --edit-last || gh pr comment`), `ANTHROPIC_API_KEY` por secret e `--offline` sem ela. Também um template em `docs/` para repositórios-alvo.
-- **4e. Aceitação:**
+- **4a. Runner** ✅ Concluída em 2026-10-08 (Vitest do alvo chamado pelo `node`, sem `npx`; ver o registro). (`apps/cli/src/chaos-run.ts`; a CLI já tem `apps/cli/src/chaos.ts`, então nada de pasta `chaos/` com o mesmo nome): `spawn` do Vitest com o reporter JSON e `--outputFile` num arquivo temporário (não o stdout, que mistura logs do app), parse e `TestResult { hypothesisId, status: passed|failed|invalid, message, durationMs }`, com a classificação acima. O processo é injetado para testar sem rodar o Vitest; o teste usa um JSON de exemplo no formato medido.
+- **4b. Gate:** ✅ Concluída em 2026-10-08 (sem `--fail-on`, qualquer achado bloqueia; todos inválidos = exit 2; ver o registro). severidade por falha, `--fail-on`, exit 1 com achado válido e exit 2 com erro de ambiente.
+- **4c. Relatório markdown** ✅ Concluída em 2026-10-08 (`--report`; ver o registro). (determinístico + parágrafo opcional da IA).
+- **4d. GitHub Actions** ✅ Concluída em 2026-10-08 (portão no exemplo corrigido + self-test no vulnerável + job de testes; ver o registro). (`.github/workflows/shieldepy-chaos.yml`): Node 22, `npm ci` no ShielDepy e no alvo, `shieldepy chaos --report --fail-on Alto`, `$GITHUB_STEP_SUMMARY` e comentário no PR (`gh pr comment --edit-last || gh pr comment`), `ANTHROPIC_API_KEY` por secret e `--offline` sem ela. Também um template em `docs/` para repositórios-alvo.
+- **4e. Aceitação:** ✅ Concluída em 2026-10-08 nos dois primeiros itens. O terceiro depende do push (roteiro no registro).
   - `shieldepy chaos examples/checkout-express --offline` → exit 1, com o relatório apontando a corrida e o timeout;
   - o mesmo em `checkout-express-fixed` → exit 0;
   - um PR de teste no GitHub com check vermelho e comentário.
+
+## E5 — mapa incremental e custo (escrito em 2026-10-08, antes de começar)
+
+> Branch `feat/mapa-incremental`, empilhada sobre a `feat/chaos-gate` (E4). Vem de uma revisão de quatro propostas de custo (roteamento de modelos, sanitização de logs, cache de prompt e Batch API) e de uma nota sobre diff de grafos. Esta seção registra o que foi conferido e o que entra.
+
+### O que foi conferido (na referência oficial de preços e no código)
+1. **Roteamento de modelos.** A ideia vale, e o mecanismo já existe (tiers `fast`/`deep` e `SHIELDEPY_DEEP_MODEL`).
+   - Correções: "Haiku 5.5" não existe (o atual é o **Haiku 4.5**, a US$ 1/5), e não há tarifa especial abaixo de 100k tokens.
+   - O Sonnet 5.5 (US$ 2/10) custa o **dobro** do Haiku, não 5×. A economia de "mais de 80%" não fecha: no máximo 50% por token, e menos no total, porque o Threat Modeler ficaria no Sonnet.
+   - São 6 **falhas** no catálogo e 2 especialistas no MVP, não 6 agentes.
+   - Não há "ameaça humana": as falhas injetadas são de infraestrutura, e quem executa é o Vitest com o MSW. A IA só preenche specs.
+   - Pendente desde a E3: o `deep` também serve ao chat e à revisão da extensão. Trocar o padrão para o Sonnet 5.5 só depois de medir (5e).
+2. **Sanitização de logs:** já está feita, e de forma mais rígida (4a/4c). A IA nunca recebe log nem stack trace, só a invariante violada (1ª linha, limpa) e as operações com `arquivo:linha`.
+3. **Cache de prompt.**
+   - Leitura a 0,1× (o "até 90%" está certo); escrita a 1,25× (TTL de 5 min) ou 2× (1 h).
+   - **Achado:** o `cacheSystem` está ligado no Threat Modeler (~600 tokens de sistema) e nos especialistas (~300), mas o mínimo cacheável é de **4096 tokens no Haiku 4.5** (512 no Sonnet 5.5). Hoje **o cache nunca é ativado**, sem erro e sem custo.
+   - No Sonnet 5.5, o Threat Modeler passaria do mínimo, mas ele é chamado uma vez por execução.
+   - Encher o prompt (ex.: ISO 27002) só para cachear aumentaria o custo.
+4. **Batch API:** 50% sobre todos os tokens (acumula com o cache). Costuma terminar em menos de 1 h, com até 24 h. **Não serve para o portão do PR**, porque o PR espera e o pipeline tem 3 rodadas em sequência. Serve para uma rodada noturna do repositório inteiro (fica para depois).
+5. **Diff de grafos.**
+   - **Achado:** o id de símbolo inclui a linha (`src/services/CheckoutService.ts#checkout:23`, de `extract-ts.ts`). Inserir uma linha acima muda o id, e um diff entre versões sairia todo ruidoso.
+   - Precisa de identidade estável, de detecção de renomeação (hash do corpo) e de diff como **operação de conjunto** sobre chaves estáveis (sem isomorfismo de grafo).
+   - Precisão em JS dinâmico: a política já existe (o que não se prova sai `heuristic` e é contado).
+
+### Desenho
+- **Id estável de símbolo:** `arquivo#contêiner.nome`, sem a linha. A linha continua como atributo (para "abrir código" e `arquivo:linha`). Nomes repetidos no mesmo arquivo (callbacks inline iguais, sobrecargas) recebem um sufixo de ordem (`~2`, `~3`) pela ordem no arquivo.
+- **Hash do corpo:** cada símbolo guarda um hash dos tokens da AST do corpo (sem comentários e espaços), e cada arquivo guarda o hash do seu código de topo (fora de símbolos). Mudou só o corpo → `changed`. Sumiu um nome e apareceu outro com o mesmo hash no mesmo arquivo → `renamed`.
+- **Diff** (`diffSystemGraphs(base, head)`): símbolos `added/removed/renamed/changed`, arestas adicionadas e removidas, e arquivos com o código de topo alterado. Tudo por conjunto de chaves.
+- **Rotas afetadas** (`affectedRoutes(baseTopo, headTopo, diff)`): a rota entra se
+  - é nova ou mudou a cadeia de handlers;
+  - suas operações ou tags mudaram;
+  - algum símbolo do seu **alcance** (todo símbolo percorrido a partir dos handlers, não só os que fazem I/O) mudou, sumiu ou foi renomeado;
+  - o código de topo de um arquivo desse alcance mudou (ex.: a montagem no `container.ts`).
+  - **Conservador:** mudou o `shieldepy.chaos.config.ts`, um `setupFiles`, `package.json`, lockfile ou `tsconfig` → todas as rotas.
+  - Para isso, a topologia passa a guardar o `reach` de cada rota (ids estáveis, ordenados).
+- **Mapa base:** `--base <ref git>` monta o mapa da mesma pasta naquele ref, num `git worktree` temporário (só leitura de código; não precisa de `npm install`).
+
+### Tarefas
+- **5a. Ids estáveis.** ✅ Concluída em 2026-10-08. Id sem linha, com sufixo de ordem nos repetidos, e a linha como atributo. Migrar quem lê a linha do id (`surface.ts`, visualizador, extensão). Teste: inserir linhas no topo de um arquivo não muda nenhum id nem aresta (o `contentHash` muda, e deve mudar: o mapa guarda `startLine`).
+- **5b. Hash do corpo e do topo do arquivo** ✅ Concluída em 2026-10-08, no mesmo parse (sem segundo parse). Teste: comentário e espaço não mudam o hash; mudar uma expressão muda.
+- **5c. Diff.** ✅ Concluída em 2026-10-08. `diffSystemGraphs` e a CLI `shieldepy diff <pasta> --base <ref>` (texto e `--json`). Teste: renomear, mudar corpo, mudar topo e adicionar ou remover rota no `checkout-express` (em cópia temporária).
+- **5d. Caos só no que o PR tocou.** ✅ Concluída em 2026-10-08. `reach` na topologia, `affectedRoutes` e `shieldepy chaos --base <ref>`: a superfície vai para a IA e para os testes só com as rotas afetadas. Nenhuma afetada → exit 0 e um relatório "nenhuma rota sensível tocada". A regra conservadora vale para config/deps. O relatório diz o que foi filtrado e por quê.
+- **5e. Custo real.** Parte gratuita ✅ concluída em 2026-10-08. **Falta a medição paga**, que depende do usuário (ver o registro).
+  - Medir com chamada paga (**só com autorização do usuário**): Threat Modeler no Sonnet 5.5 e no Haiku 4.5, especialistas no Haiku 4.5, nos dois exemplos. Registrar tokens, US$ e a qualidade das hipóteses.
+  - Decidir o padrão do `deep` com esse dado. Separar o tier do caos do tier do chat, se for preciso.
+  - Tirar ou documentar o `cacheSystem` onde o prompt fica abaixo do mínimo.
+- **5g. Lotes no Threat Modeler.** ✅ Concluída em 2026-10-08, na branch `feat/visualizador-v2` (a ponta da pilha; ver o registro). Achado na estimativa de custo. Dividir a superfície em lotes de ~5 rotas, um Threat Modeler por lote em paralelo, com `max_tokens` proporcional ao lote. Hoje a saída estoura os 4000 tokens a partir de ~7 rotas de escrita (~5 com o raciocínio do Sonnet), e a IA perde a contribuição. O motor segue, sem perder teste.
+- **5f. CI.** ✅ Concluída em 2026-10-08 (no repositório do ShielDepy, `--base` só quando o PR não mexe no motor; ver o registro). O workflow passa `--base` no PR (`fetch-depth: 0`, base = `origin/${{ github.base_ref }}`). O `self-test` continua com o mapa inteiro. Docs e template atualizados.
+
+### Aceitação da E5
+- Inserir linhas ou comentários num arquivo do `checkout-express` → diff vazio e nenhuma rota afetada → `chaos --base` sai 0 sem rodar teste.
+- Mudar o corpo do `StripeGateway.charge` → só `POST /checkout` afetada; `GET /orders/:id` fica de fora.
+- Renomear um método sem mudar o corpo → aparece como `renamed`, não como remoção mais adição.
+- A medição de custo fica registrada no plano (se o usuário autorizar a chamada paga).
 
 ## Fase 2 — LangGraph + Threat Modeler (`packages/agent/src/chaos/`)
 
@@ -640,7 +994,8 @@ I/O (escrever arquivos, rodar processo) é injetado nos nós via interface `Chao
 `shieldepy_p1/examples/checkout-express/`: `POST /checkout` que faz `SELECT stock` (pg; nos testes, PGlite em memória) → `fetch('https://api.stripe.com/v1/charges')` → `UPDATE stock`/`INSERT orders` **sem lock** (race proposital) e sem timeout no fetch. Inclui `shieldepy.chaos.config.ts` com os invariantes `stockNeverNegative` e `atMostOneOrder` e as requisições válidas. A variante `checkout-express-fixed` (reserva atômica antes de cobrar, com compensação, e `AbortSignal.timeout`) deve passar. *(Atualizado na 3a: PGlite no lugar do `pg-mem`, e reserva atômica no lugar de `FOR UPDATE`.)*
 
 ## Arquivos críticos
-- Novo: `packages/core/src/topology/*`, `packages/core/src/sql/lexer.ts` (movido de extractors), `packages/agent/src/chaos/*`, `apps/cli/src/chaos/run.ts`, `.github/workflows/shieldepy-chaos.yml`, `examples/checkout-express*`.
+- Já existem (E2/E3): `packages/core/src/topology/*`, `packages/core/src/sql/*`, `packages/core/src/chaos-config.ts`, `packages/agent/src/chaos/*`, `packages/agent/src/cost.ts`, `apps/cli/src/chaos.ts`, `examples/checkout-express*`.
+- Novos na E4: `apps/cli/src/chaos-run.ts` (runner), o relatório markdown, `.github/workflows/shieldepy-chaos.yml` e o template em `docs/`.
 - Alterar: [main.ts](shieldepy_p1/apps/cli/src/main.ts) (comandos `topology`/`chaos`, USAGE), `packages/core/src/index.ts`, `packages/agent/src/index.ts`, `packages/agent/package.json`, [WorkspaceModel.ts](shieldepy_p1/apps/vscode/src/workspace/WorkspaceModel.ts) (registrar extratores no `onParsed`) + comando de export na extensão, `shieldepy_p1/README.md` (seção nova + limites).
 - Reusar: `CodeGraph.onParsed`, `getEnclosingSymbol`, `indexFiles`/`listSourceFiles`, `buildGraph`/`findCollisions`, `parseRules` (padrão de validação), `providerFromEnv`, `severityRank`, `gate()` da CLI.
 
@@ -652,8 +1007,8 @@ I/O (escrever arquivos, rodar processo) é injetado nos nós via interface `Chao
    - Só depois disso começa a Fase 2.
 1. `npm test` — testes Vitest novos:
    - `core/test/topology/*`: extratores de rota/I/O sobre fixtures inline (fetch, axios, pg SQL, prisma), BFS por chamadas, tags, filtro, hash estável (duas execuções = mesmo JSON). ✅ E2: `routes.test.ts`, `io.test.ts` e `build.test.ts`.
-   - `agent/test/chaos/*`: validação de hipóteses (descarta rota inexistente/falha fora do catálogo), templates geram código que compila (`tsc --noEmit` em snapshot), grafo LangGraph com `LLMProvider` fake e `ChaosIo` fake percorre todos os estados.
+   - `agent/test/chaos/*`: validação de hipóteses (descarta rota inexistente/falha fora do catálogo), templates geram código que compila (`tsc --noEmit` em snapshot), grafo LangGraph com `LLMProvider` fake e `ChaosIo` fake percorre todos os estados. ✅ E3: `threat-modeler.test.ts`, `specialists.test.ts` e `templates.test.ts` (que compila contra os exemplos de verdade).
    - `cli/test`: `topology` em `examples/checkout-express` gera `POST /checkout` com `db_read→api_call→db_write` e tags `read-then-write`, `write-after-api-call`. ✅ E2.
 2. `npm run typecheck`.
-3. E2E manual: `npm run cli -- chaos examples/checkout-express --offline` → exit 1, relatório aponta race (estoque negativo) e timeout no Stripe; mesmo comando em `checkout-express-fixed` → exit 0. Repetir com `ANTHROPIC_API_KEY`.
-4. Abrir PR de teste no GitHub com o exemplo vulnerável e confirmar check vermelho + comentário no PR.
+3. E2E manual: `npm run cli -- chaos examples/checkout-express --offline` → exit 1, relatório aponta race (estoque negativo) e timeout no Stripe; mesmo comando em `checkout-express-fixed` → exit 0. ✅ E4 (também coberto pela suíte). Repetir com `ANTHROPIC_API_KEY`: pendente, porque é uma chamada paga.
+4. Abrir PR de teste no GitHub com o exemplo vulnerável e confirmar check vermelho + comentário no PR. Pendente (depende do push). Roteiro no registro da 4e: o PR tira o timeout do `checkout-express-fixed`.

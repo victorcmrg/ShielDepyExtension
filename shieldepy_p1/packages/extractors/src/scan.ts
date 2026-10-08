@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { IGNORED_DIRS, toFileId } from '@shieldepy/core';
+import { toFileId, walkSourceTree } from '@shieldepy/core';
 import type { Registry } from './registry';
 import type { ServiceRule } from './types';
 
@@ -17,10 +17,8 @@ export function serviceFromFileName(name: string): string {
  */
 export function scanDir(root: string, registry: Registry): ServiceRule[] {
   const out: ServiceRule[] = [];
-  const entries = readdirSync(root, { recursive: true }) as string[];
-  for (const rel of entries.sort()) {
+  for (const rel of walkSourceTree(root)) {
     const segments = rel.split(/[\\/]/);
-    if (segments.some((s) => IGNORED_DIRS.has(s))) continue;
     const extractor = registry.forPath(rel);
     if (!extractor) continue;
     const full = path.join(root, rel);

@@ -2,6 +2,7 @@
 // `suite.cjs` DENTRO dele, num workspace temporário com os exemplos de colisão e um ciclo.
 // Uso: npm run test:e2e -w shieldepy   (precisa de `npm run build` antes)
 
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -27,11 +28,14 @@ cpSync(join(here, '..', '..', '..', 'examples', 'checkout-express'), join(worksp
 writeFileSync(join(workspace, 'a.ts'), "import { b } from './b';\nexport function a() { b(); }\n");
 writeFileSync(join(workspace, 'b.ts'), "import { a } from './a';\nexport function b() { a(); }\n");
 
-// Um .git mínimo: a extensão identifica o repositório pelo remote (e manda a branch do HEAD).
+// Um repositório git de verdade: a extensão identifica o repositório pelo remote (e manda a
+// branch do HEAD), e o "Comparar mapa com uma branch" (V2d) precisa de um commit para o worktree.
 const E2E_REMOTE = 'https://github.com/e2e/pedidos.git';
-mkdirSync(join(workspace, '.git'), { recursive: true });
-writeFileSync(join(workspace, '.git', 'config'), `[core]\n\tbare = false\n[remote "origin"]\n\turl = ${E2E_REMOTE}\n`);
-writeFileSync(join(workspace, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+const git = (...args) => execFileSync('git', ['-c', 'user.email=e2e@e2e', '-c', 'user.name=e2e', '-c', 'core.autocrlf=false', ...args], { cwd: workspace, stdio: 'pipe' });
+git('init', '--quiet', '-b', 'main');
+git('remote', 'add', 'origin', E2E_REMOTE);
+git('add', '-A');
+git('commit', '--quiet', '-m', 'base do E2E');
 
 // Servidor de conta falso: a extensão só funciona com acesso liberado pelo /api/me E com o
 // repositório num projeto (/api/repos/check). A suíte liga e desliga os dois via /__e2e/*.

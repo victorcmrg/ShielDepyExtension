@@ -19,7 +19,9 @@
     "web": "npm run build -w @shieldepy/frontend && npm start -w @shieldepy/frontend",
     "web:dev": "npm run dev -w @shieldepy/frontend",
     "build:vscode": "npm run build -w shieldepy",
-    "package:vscode": "npm run package -w shieldepy"
+    "package:vscode": "npm run package -w shieldepy",
+    "measure:chaos": "node --import tsx scripts/measure-chaos-cost.ts",
+    "estimate:chaos": "node --import tsx scripts/estimate-chaos-cost.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

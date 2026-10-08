@@ -25,7 +25,7 @@ async function surfaceOf(example: string): Promise<AttackSurface> {
 }
 
 /** Provider falso que responde `text` e registra o pedido (com tokens, como a Anthropic). */
-function fakeProvider(text: string | (() => never)) {
+function fakeProvider(text: string | ((req: Parameters<LLMProvider['complete']>[0]) => string)) {
   const calls: Array<Parameters<LLMProvider['complete']>[0]> = [];
   const provider: LLMProvider = {
     name: 'anthropic',
@@ -34,8 +34,8 @@ function fakeProvider(text: string | (() => never)) {
     },
     completeWithUsage: vi.fn(async (req) => {
       calls.push(req);
-      if (typeof text === 'function') text();
-      return { text: text as string, model: 'claude-opus-5-5', usage: { inputTokens: 3000, outputTokens: 800 } };
+      const out = typeof text === 'function' ? text(req) : text;
+      return { text: out, model: 'claude-opus-5-5', usage: { inputTokens: 3000, outputTokens: 800 } };
     }),
   };
   return { provider, calls };
@@ -130,7 +130,8 @@ describe('E3/3c — Threat Modeler', () => {
     expect(model.hypotheses.find((h) => h.failure === 'race_condition')).toMatchObject({ source: 'motor' });
     expect(model.hypotheses).toHaveLength(baselineHypotheses(vulnerable).length + 1);
     expect(model).toMatchObject({ engine: 'anthropic', summary: 'O checkout vende o mesmo item duas vezes.', rejected: [{ index: 2 }] });
-    expect(model.completion?.usage).toEqual({ inputTokens: 3000, outputTokens: 800 });
+    expect(model.completions.map((c) => c.usage)).toEqual([{ inputTokens: 3000, outputTokens: 800 }]);
+    expect(model.errors).toEqual([]);
 
     const req = calls[0]!;
     expect(req).toMatchObject({ tier: 'deep', json: true, cacheSystem: true });
@@ -143,17 +144,66 @@ describe('E3/3c — Threat Modeler', () => {
 
   it('resposta inválida ou IA fora do ar: fica a lista-base, com o motivo registrado', async () => {
     const bad = await modelThreats(vulnerable, { provider: fakeProvider('desculpe, não consigo').provider });
-    expect(bad).toMatchObject({ engine: 'offline', error: 'resposta da IA não é JSON válido' });
+    expect(bad).toMatchObject({ engine: 'offline', errors: ['resposta da IA não é JSON válido'] });
     expect(bad.hypotheses).toEqual(baselineHypotheses(vulnerable));
-    expect(bad.completion).toBeDefined(); // a chamada custou, mesmo descartada
+    expect(bad.completions).toHaveLength(1); // a chamada custou, mesmo descartada
 
     const down = await modelThreats(vulnerable, { provider: fakeProvider(() => { throw new Error('529 overloaded'); }).provider });
-    expect(down).toMatchObject({ engine: 'offline', error: '529 overloaded' });
+    expect(down).toMatchObject({ engine: 'offline', errors: ['529 overloaded'] });
     expect(down.hypotheses).toEqual(baselineHypotheses(vulnerable));
   });
 
   it('sem provider: offline, sem chamada', async () => {
-    expect(await modelThreats(vulnerable)).toEqual({ hypotheses: baselineHypotheses(vulnerable), rejected: [], engine: 'offline' });
+    expect(await modelThreats(vulnerable)).toEqual({ hypotheses: baselineHypotheses(vulnerable), rejected: [], engine: 'offline', completions: [], errors: [] });
+  });
+});
+
+describe('E5/5g — Threat Modeler em lotes', () => {
+  // 12 rotas como o POST /checkout (lê, chama o Stripe, grava): numa chamada só, a resposta estouraria o max_tokens
+  // montada dentro de cada teste: a superfície do exemplo só existe depois do beforeAll
+  const bigSurface = () => {
+    const checkout = vulnerable.routes.find((r) => r.id === 'POST /checkout')!;
+    return {
+      ...vulnerable,
+      routes: Array.from({ length: 12 }, (_, i) => ({ ...checkout, id: `POST /checkout${i}`, path: `/checkout${i}` })),
+      collisions: [{ key: 'c1', bucket: 'order::created', type: 'write-write', field: 'total', routes: ['POST /checkout7'] }],
+    } as typeof vulnerable;
+  };
+
+  it('lotes de 5 rotas, cada um com as suas colisões e max_tokens proporcional; as hipóteses da IA de todos os lotes entram', async () => {
+    const { provider, calls } = fakeProvider((req) => {
+      const routes = JSON.parse(req.messages[0]!.content.slice(req.messages[0]!.content.indexOf('{'))).routes as { id: string }[];
+      return JSON.stringify({ summary: `lote com ${routes.length}`, hypotheses: routes.map((r) => ({ routeId: r.id, failure: 'retry_storm', target: 'api.stripe.com', rationale: 'sem retry' })) });
+    });
+    const big = bigSurface();
+    const model = await modelThreats(big, { provider });
+    expect(calls).toHaveLength(3);
+    const sent = calls.map((c) => JSON.parse(c.messages[0]!.content.slice(c.messages[0]!.content.indexOf('{'))));
+    expect(sent.map((x) => x.routes.length)).toEqual([5, 5, 2]);
+    expect(calls.map((c) => c.maxTokens)).toEqual([7000, 7000, 4000]);
+    // a colisão só vai no lote da rota que ela toca
+    expect(sent.map((x) => x.collisions.length)).toEqual([0, 1, 0]);
+    expect(model.hypotheses.filter((h) => h.failure === 'retry_storm')).toHaveLength(12);
+    expect(model).toMatchObject({ engine: 'anthropic', errors: [], summary: 'lote com 5 lote com 5 lote com 2' });
+    expect(model.completions).toHaveLength(3);
+  });
+
+  it('um lote que falha não derruba os outros: as rotas dele ficam com a lista-base, e o erro diz qual lote', async () => {
+    let n = 0;
+    const { provider } = fakeProvider((req) => {
+      n++;
+      const routes = JSON.parse(req.messages[0]!.content.slice(req.messages[0]!.content.indexOf('{'))).routes as { id: string }[];
+      if (routes.some((r) => r.id === 'POST /checkout5')) throw new Error('529 overloaded');
+      return JSON.stringify({ hypotheses: routes.map((r) => ({ routeId: r.id, failure: 'retry_storm', target: 'api.stripe.com' })) });
+    });
+    const big = bigSurface();
+    const model = await modelThreats(big, { provider });
+    expect(n).toBe(3);
+    expect(model.errors).toEqual(['lote 2/3: 529 overloaded']);
+    expect(model.engine).toBe('anthropic');
+    // lotes 1 e 3 (7 rotas) ganharam a hipótese da IA; o 2 ficou só com a base, que nunca encolhe
+    expect(model.hypotheses.filter((h) => h.failure === 'retry_storm')).toHaveLength(7);
+    expect(model.hypotheses.filter((h) => h.source !== 'ia')).toHaveLength(baselineHypotheses(big).length);
   });
 });
 

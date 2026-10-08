@@ -4,6 +4,7 @@ import type { Host } from '../host';
 import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
+import { topLevelHash } from './fingerprint';
 import { extractCalls, extractSymbols, type CallDesc, type RawArg, type RawCall, type Scope, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
@@ -504,9 +505,8 @@ export class CodeGraph {
     try {
       const root = tree.rootNode;
       const implementedBefore = this.implementedNames(fileId);
-      this.resetFileNode(fileId, { kind: 'file', path: fsPath });
-
       const symbols = extractSymbols(root, fileId);
+      this.resetFileNode(fileId, { kind: 'file', path: fsPath, topHash: topLevelHash(root, symbols) });
       for (const sym of symbols) {
         this.graph.mergeNode(sym.id, {
           kind: sym.kind,
@@ -515,6 +515,7 @@ export class CodeGraph {
           startLine: sym.startLine,
           endLine: sym.endLine,
           signature: sym.signature,
+          bodyHash: sym.bodyHash,
           ...(sym.container !== undefined && { container: sym.container }),
           ...(sym.extends !== undefined && { extends: sym.extends }),
           ...(sym.implements !== undefined && { implements: sym.implements }),
@@ -1219,13 +1220,21 @@ export class CodeGraph {
     }
   }
 
-  /** O arquivo repassa algo que importou (`export * from`, `export { x } from`, `export { importado }`)? */
+  /**
+   * O arquivo repassa algo que depende de outro arquivo? `export * from`, `export { x } from`,
+   * `export { importado }`, e também uma instância exportada (`export const svc = new Svc()`, com
+   * `Svc` vindo de outro arquivo) ou um objeto exportado que aponta para nomes (`export default
+   * { createApp }`): quem importa a instância resolve `svc.m()` pela classe, então tem que religar
+   * quando a classe chega. Sem isso, o mapa dependia da ordem de indexação.
+   */
   private forwardsImports(fileId: string): boolean {
     const info = this.moduleInfo.get(fileId);
     if (!info) return false;
     if (info.reexports.length > 0) return true;
     const imported = new Set(info.imports.map((b) => b.local));
-    return [...info.exports.values()].some((local) => imported.has(local));
+    const exported = new Set(info.exports.values());
+    if ([...exported].some((local) => imported.has(local) || info.valueTypes.has(local))) return true;
+    return [...info.objectRefs.keys()].some((path) => exported.has(path.split('.', 1)[0]!));
   }
 
   private importTargets(fileId: string): string[] {

@@ -5,6 +5,7 @@
 import { constructedType, FUNCTION_VALUE_TYPES, memberChain, typeRef, walk, type TypeRef } from './ast';
 import { DEFAULT_EXPORT_NAME, propertyKey } from './extract-module';
 import type { SyntaxNode } from './parser';
+import { bodyHash } from './fingerprint';
 import type { CallArg, SymbolKind } from './types';
 
 export type { TypeRef } from './ast';
@@ -17,6 +18,8 @@ export interface SymbolInfo {
   endLine: number;
   /** Lista de parâmetros (texto literal, ex: "(a: string, b: number)"). */
   signature?: string;
+  /** Hash do corpo pela AST (sem comentários, espaço e o próprio nome): o diff entre mapas (E5) vê se ele mudou. */
+  bodyHash: string;
   /** Offsets de caractere — atribuir chamada por linha não separa duas arrow functions na mesma linha. */
   startIndex: number;
   endIndex: number;
@@ -403,12 +406,14 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
   const push = (node: SyntaxNode, kind: SymbolKind, name: string, fn: SyntaxNode, extra: Partial<SymbolInfo> = {}) => {
     const paramsNode = fn.childForFieldName('parameters') ?? fn.childForFieldName('parameter');
     const info: SymbolInfo = {
-      id: `${fileId}#${name}:${node.startPosition.row}`,
+      id: '', // atribuído no fim: ver `stableIds`
       kind,
       name,
       startLine: node.startPosition.row,
       endLine: node.endPosition.row,
       signature: paramsNode?.text,
+      // o nó hasheado é a função; quando ela é o próprio nó do símbolo (método, classe), o nome sai
+      bodyHash: bodyHash(fn, fn.startIndex === node.startIndex && fn.type === node.type ? node.childForFieldName('name') : undefined),
       startIndex: node.startIndex,
       endIndex: node.endIndex,
     };
@@ -469,7 +474,24 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
     }
   });
 
+  stableIds(results, fileId);
   return results;
+}
+
+/**
+ * Id estável: `arquivo#Contêiner.nome`, sem a linha — inserir linhas acima de uma função não pode
+ * mudar a identidade dela (o diff entre dois mapas dependeria disso). Nomes repetidos no mesmo
+ * arquivo (callbacks inline iguais, `const f` em funções diferentes) ganham `~2`, `~3` pela
+ * ordem no arquivo. A linha continua em `startLine`.
+ */
+function stableIds(symbols: SymbolInfo[], fileId: string): void {
+  const seen = new Map<string, number>();
+  for (const s of [...symbols].sort((a, b) => a.startIndex - b.startIndex)) {
+    const base = `${fileId}#${s.container ? `${s.container}.${s.name}` : s.name}`;
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    s.id = n === 1 ? base : `${base}~${n}`;
+  }
 }
 
 /**

@@ -19,6 +19,7 @@ import { explainCollisions, explainOffline, providerFromEnv, severityRank, type 
 import { printCollisions, printCycles, printReport, printSystemGraph, printTopology } from './print';
 import { renderGraphHtml } from '@shieldepy/viewer';
 import { runChaosCommand } from './chaos';
+import { runDiffCommand } from './diff';
 
 export interface Io {
   out: (line: string) => void;
@@ -37,10 +38,20 @@ const USAGE = `uso:
   shieldepy topology <pasta> [--json] [--surface] [--out <arquivo>] [--html <arquivo>]
                                                      rotas Express, operações de I/O em ordem e tags de risco
                                                      (--surface: só o recorte que vai para a IA)
-  shieldepy chaos   <pasta> --no-run [--offline] [--json]
+  shieldepy diff    <pasta> --base <ref> [--json] [--html <arquivo>]
+                                                     o que mudou na estrutura do código desde o merge-base com <ref>
+                                                     (símbolos novos/removidos/renomeados/com corpo alterado, topo dos arquivos, arestas)
+  shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--report <arquivo.md>] [--base <ref>] [--html <arquivo>] [--no-run] [--json]
                                                      gera testes de caos para as rotas sensíveis em
-                                                     .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts);
-                                                     --offline: só o motor, sem IA (custo zero)
+                                                     .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts),
+                                                     roda com o Vitest do projeto e serve de portão:
+                                                     exit 1 = achado (--fail-on; padrão: qualquer um),
+                                                     exit 2 = o ambiente não deixou provar nada;
+                                                     --offline: só o motor, sem IA (custo zero);
+                                                     --report: relatório markdown (resumo do CI / comentário do PR);
+                                                     --base: só as rotas que o PR tocou desde o merge-base com <ref>;
+                                                     --html: mapa com o resultado (e o diff do PR) por cima;
+                                                     --no-run: só gera os testes
 
   report  = só o motor (determinístico, sem rede)
   explain = motor + IA (ANTHROPIC_API_KEY ou GEMINI_API_KEY); sem chave, explicador offline
@@ -54,6 +65,8 @@ interface Args {
   failOn?: Severity;
   out?: string;
   html?: string;
+  report?: string;
+  base?: string;
   surface: boolean;
   noRun: boolean;
   offline: boolean;
@@ -70,10 +83,10 @@ export function parseArgs(argv: string[]): Args {
     else if (a === '--surface') args.surface = true;
     else if (a === '--no-run') args.noRun = true;
     else if (a === '--offline') args.offline = true;
-    else if (a === '--out' || a.startsWith('--out=') || a === '--html' || a.startsWith('--html=')) {
-      const flag = a.startsWith('--out') ? 'out' : 'html';
+    else if (['--out', '--html', '--report', '--base'].some((f) => a === f || a.startsWith(`${f}=`))) {
+      const flag = a.startsWith('--out') ? 'out' : a.startsWith('--html') ? 'html' : a.startsWith('--base') ? 'base' : 'report';
       const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
-      if (!value) throw new Error(`--${flag} precisa de um caminho de arquivo`);
+      if (!value) throw new Error(flag === 'base' ? '--base precisa de um ref do git (ex.: origin/main)' : `--${flag} precisa de um caminho de arquivo`);
       args[flag] = value;
     }
     else if (a === '--fail-on' || a.startsWith('--fail-on=')) {
@@ -183,9 +196,14 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
         else printTopology(topology, args.target, io.out);
         return 0;
       }
+      case 'diff': {
+        if (!args.target) throw new Error('informe a pasta');
+        if (!args.base) throw new Error('informe o ref base: --base origin/main');
+        return await runDiffCommand({ target: args.target, base: args.base, json: args.json, html: args.html }, io, registryWithTreeSitter);
+      }
       case 'chaos': {
         if (!args.target) throw new Error('informe a pasta do projeto');
-        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline }, io, registryWithTreeSitter);
+        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report, base: args.base, html: args.html }, io, registryWithTreeSitter);
       }
       default:
         io.err(USAGE);

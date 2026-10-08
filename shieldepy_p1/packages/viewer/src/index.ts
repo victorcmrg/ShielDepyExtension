@@ -2,12 +2,12 @@
 //   - `inline`: HTML autocontido, bibliotecas e dados embutidos — a CLI grava e abre offline;
 //   - `webview`: a extensão do VS Code serve as bibliotecas como recursos do webview, com CSP
 //     por nonce (nada inline sem nonce), e ganha o botão "Abrir código" (postMessage → editor).
-// É a ferramenta de CONFERÊNCIA do mapeamento (E1). O visualizador "de produto" (topologia e
-// resultados do caos) vem depois — ver PLANO-CHAOS.md.
+// Nasceu como ferramenta de CONFERÊNCIA do mapeamento (E1); a E2 pôs rotas e operações de I/O
+// como nós, e o V2 põe por cima o resultado do caos e o diff do PR (`ViewerOverlay`).
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import type { SystemGraph, TopologyGraph } from '@shieldepy/core';
+import type { MapDiff, SystemGraph, TopologyGraph } from '@shieldepy/core';
 import libraries from '../libraries.json' with { type: 'json' };
 
 /**
@@ -36,6 +36,41 @@ export type ViewerMode =
       cspSource: string;
     };
 
+/**
+ * Resultado do caos (o `.shieldepy/chaos-results.json` da CLI), no formato mínimo que o
+ * visualizador lê. É estruturalmente o `ChaosResults` do `@shieldepy/agent/chaos`, declarado
+ * aqui para o visualizador não depender do pacote de agentes (que puxa o LangGraph).
+ */
+export interface ViewerChaos {
+  project: string;
+  topologyHash: string;
+  /**
+   * Resultado desatualizado, decidido por quem chama. A extensão monta o mapa a partir da raiz do
+   * workspace, e a CLI a partir da pasta do projeto, então o hash não serve lá: ela compara a data do
+   * resultado com a do código. Sem isto, vale a comparação de `topologyHash` (CLI).
+   */
+  stale?: boolean;
+  ran: boolean;
+  runError?: string;
+  failOn: string;
+  hits: number;
+  scope?: { base: string; commit: string; all?: string; tested: string[]; affected: { id: string; why: string[] }[]; untouched: string[] };
+  outcomes: { hypothesisId: string; routeId: string; failure: string; target: string; status: 'passed' | 'failed' | 'invalid'; severity?: string; message?: string; durationMs: number; testFile: string }[];
+  untested: { id: string; routeId: string; failure: string; target: string; reason: string }[];
+}
+
+/** O que vai por cima do mapa (V2): o resultado do caos e o diff do PR. */
+export interface ViewerOverlay {
+  chaos?: ViewerChaos;
+  diff?: {
+    base: string;
+    commit: string;
+    diff: MapDiff;
+    /** Rotas tocadas pelo PR, com o motivo (sem o caos, vem do `affectedRoutes`). */
+    routes?: { all?: string; affected: { id: string; why: string[] }[]; untouched: string[] };
+  };
+}
+
 /** JSON seguro dentro de <script>: `<` vira `<` (no JSON, `<` só aparece dentro de strings). */
 function embedJson(value: unknown): string {
   return JSON.stringify(value).split('<').join('\u003c');
@@ -49,7 +84,13 @@ function escapeHtml(text: string): string {
  * Com `topology`, o mapa ganha as rotas e as operações de I/O como nós (rota → handlers → ... →
  * `db_write stock`) e uma lista de rotas que abre o fluxo de cada uma.
  */
-export function renderGraphHtml(system: SystemGraph, label: string, mode: ViewerMode = { kind: 'inline' }, topology?: TopologyGraph): string {
+export function renderGraphHtml(
+  system: SystemGraph,
+  label: string,
+  mode: ViewerMode = { kind: 'inline' },
+  topology?: TopologyGraph,
+  overlay: ViewerOverlay = {}
+): string {
   const nonce = mode.kind === 'webview' ? ` nonce="${mode.nonce}"` : '';
   const csp =
     mode.kind === 'webview'
@@ -79,12 +120,15 @@ ${csp}
     <h1>Mapa do sistema</h1>
     <p class="muted" id="label">${escapeHtml(label)}</p>
   </header>
+  <section id="chaos" hidden></section>
+  <section id="diff" hidden></section>
   <section id="coverage"></section>
   <section>
     <input id="search" type="search" placeholder="Buscar símbolo ou arquivo (Enter)" autocomplete="off">
   </section>
   <section class="filters">
     <h2>Mostrar</h2>
+    ${overlay.diff ? '<label><input type="checkbox" data-filter="changed"> só o que o PR mudou (e os vizinhos)</label>' : ''}
     ${topology ? '<label><input type="checkbox" data-filter="routes" checked> <span class="sw route"></span> rotas e operações de I/O</label>' : ''}
     <label><input type="checkbox" data-filter="calls" checked> <span class="sw calls"></span> chamadas</label>
     <label><input type="checkbox" data-filter="references" checked> <span class="sw references"></span> referências (handler passado como valor)</label>
@@ -105,7 +149,7 @@ ${csp}
   <div id="cy" aria-label="Grafo do sistema"></div>
 </main>
 ${libraries}
-<script${nonce}>const SYSTEM = ${embedJson(system)}; const TOPOLOGY = ${embedJson(topology ?? null)};</script>
+<script${nonce}>const SYSTEM = ${embedJson(system)}; const TOPOLOGY = ${embedJson(topology ?? null)}; const OVERLAY = ${embedJson(overlay)};</script>
 <script${nonce}>${APP}</script>
 </body>
 </html>
@@ -118,6 +162,7 @@ const STYLE = `
   --file: #eef2f7; --file-border: #c9d3e0; --fn: #2f6fdf; --method: #7a4fd1; --class: #0f8a6a;
   --pkg: #b5651d; --calls: #4a5568; --refs: #2f6fdf; --imports: #b9bcc4; --heur: #e0861a;
   --hl: #e5484d; --accent: #2f6fdf; --route: #c2255c; --db: #0b7285; --api: #d9480f;
+  --bad: #d92d20; --ok: #12854a; --warn: #b54708; --bad-bg: #fdecea; --ok-bg: #e7f6ec; --warn-bg: #fef4e6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -125,6 +170,7 @@ const STYLE = `
     --file: #22262e; --file-border: #3a4150; --fn: #6aa0ff; --method: #b294ff; --class: #3fcf9f;
     --pkg: #e3a15c; --calls: #a0a7b4; --refs: #6aa0ff; --imports: #4a4e57; --heur: #f0a040;
     --hl: #ff6b6f; --accent: #6aa0ff; --route: #f06595; --db: #3bc9db; --api: #ff922b;
+    --bad: #ff6b6b; --ok: #4ad685; --warn: #f5a524; --bad-bg: #3a1d1d; --ok-bg: #16301f; --warn-bg: #3a2a12;
   }
 }
 * { box-sizing: border-box; }
@@ -159,8 +205,24 @@ dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
 button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
 button:hover { border-color: var(--accent); }
 .row { display: flex; gap: 6px; flex-wrap: wrap; }
-.weak-item { text-align: left; display: block; width: 100%; }
+.weak-item { text-align: left; display: block; width: 100%; word-break: break-all; white-space: normal; }
 code { font-size: 12px; }
+.banner { padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+.banner.bad { background: var(--bad-bg); color: var(--bad); }
+.banner.ok { background: var(--ok-bg); color: var(--ok); }
+.banner.warn { background: var(--warn-bg); color: var(--warn); }
+.finding { text-align: left; display: block; width: 100%; border-left: 4px solid var(--bad); }
+.finding small, .finding code { display: block; color: var(--muted); }
+.finding code { word-break: break-all; white-space: normal; }
+.finding .sev { font-weight: 700; color: var(--bad); }
+.finding.alto { border-left-color: var(--warn); }
+.finding.alto .sev { color: var(--warn); }
+.chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; margin-right: 4px; }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.muted { background: var(--line); color: var(--muted); }
+ul.plain { list-style: none; padding: 0; margin: 4px 0 0; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
 @media (max-width: 720px) { body { flex-direction: column; } #side { width: 100%; max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--line); } }
 `;
 
@@ -172,7 +234,7 @@ const APP = String.raw`
   const fileOf = (n) => (n.kind === 'file' ? n.id : n.file);
   // dentro do webview do VS Code: o botão "Abrir código" fala com a extensão
   const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : undefined;
-  const state = { group: true, filters: { routes: true, calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
+  const state = { group: true, filters: { changed: false, routes: true, calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
 
   // ---- topologia (opcional): rota → handlers e símbolo → operação de I/O
   const routeId = (r) => 'route:' + r.id;
@@ -191,6 +253,54 @@ const APP = String.raw`
         topo.edges.push({ source: o.symbol, target: ioId(o), type: 'io' });
       }
     }
+  }
+
+  // ---- caos (V2): status de cada rota e alvos dos achados
+  const CHAOS = OVERLAY.chaos || null;
+  const routeChaos = new Map();
+  const failedTargets = new Set();
+  if (CHAOS) {
+    const rank = { failed: 3, invalid: 2, passed: 1 };
+    for (const o of CHAOS.outcomes) {
+      const cur = routeChaos.get(o.routeId);
+      if (!cur || rank[o.status] > rank[cur.status] || (o.status === 'failed' && o.severity === 'Crítico')) routeChaos.set(o.routeId, { status: o.status, severity: o.severity });
+      if (o.status === 'failed') failedTargets.add(o.target);
+    }
+  }
+  // ---- diff do PR (V2): o que mudou desde a base, e as rotas que isso tocou
+  const DIFF = OVERLAY.diff || null;
+  const diffSets = { added: new Set(), changed: new Set(), renamedFrom: new Map(), topChanged: new Set(), filesAdded: new Set() };
+  const touchedRoutes = new Map();
+  if (DIFF) {
+    const d = DIFF.diff;
+    d.symbols.added.forEach((id) => diffSets.added.add(id));
+    d.symbols.changed.forEach((id) => diffSets.changed.add(id));
+    d.symbols.renamed.forEach((r) => diffSets.renamedFrom.set(r.to, r.from));
+    d.files.topChanged.forEach((id) => diffSets.topChanged.add(id));
+    d.files.added.forEach((id) => diffSets.filesAdded.add(id));
+  }
+  const routesInfo = (DIFF && DIFF.routes) || (CHAOS && CHAOS.scope) || null;
+  if (routesInfo) for (const a of routesInfo.affected) touchedRoutes.set(a.id, a.why);
+  function diffKind(n) {
+    if (n.kind === 'route') return touchedRoutes.has(n.name) ? 'route' : '';
+    if (n.kind === 'file') return diffSets.filesAdded.has(n.id) ? 'added' : diffSets.topChanged.has(n.id) ? 'top' : '';
+    if (diffSets.added.has(n.id)) return 'added';
+    if (diffSets.renamedFrom.has(n.id)) return 'renamed';
+    if (diffSets.changed.has(n.id)) return 'changed';
+    return '';
+  }
+
+  /** Classes extras de um nó: status do caos na rota, alvo de achado, e o que o PR mudou. */
+  function overlayClasses(n) {
+    const c = [];
+    const dk = DIFF || routesInfo ? diffKind(n) : '';
+    if (dk) c.push('diff-' + dk);
+    if (n.kind === 'route') {
+      const st = routeChaos.get(n.name);
+      if (st) c.push('chaos-' + st.status);
+    }
+    if ((n.kind === 'io-db' || n.kind === 'io-api') && failedTargets.has(n.op.target)) c.push('chaos-target');
+    return c;
   }
 
   // ---- painel de cobertura
@@ -224,7 +334,23 @@ const APP = String.raw`
     const edges = SYSTEM.edges
       .concat(withTopo ? topo.edges : [])
       .filter((e) => e.type !== 'defines' && (f[e.type] || e.type === 'route' || e.type === 'io') && present.has(e.source) && present.has(e.target));
-    const linked = new Set(edges.flatMap((e) => [e.source, e.target]));
+    let linked = new Set(edges.flatMap((e) => [e.source, e.target]));
+    if (f.changed && DIFF) {
+      const core = new Set(candidates.filter((n) => diffKind(n) !== '').map((n) => n.id));
+      const keep = new Set(core);
+      for (const e of edges) {
+        if (core.has(e.source)) keep.add(e.target);
+        if (core.has(e.target)) keep.add(e.source);
+      }
+      const kept = candidates.filter((n) => keep.has(n.id) || (n.kind === 'file' && candidates.some((m) => m.file === n.id && keep.has(m.id))));
+      candidates.length = 0;
+      candidates.push(...kept);
+      const still = new Set(kept.map((n) => n.id));
+      const kEdges = edges.filter((e) => still.has(e.source) && still.has(e.target));
+      edges.length = 0;
+      edges.push(...kEdges);
+      linked = new Set(edges.flatMap((e) => [e.source, e.target]).concat([...core]));
+    }
 
     // símbolo sem nenhuma aresta visível só polui a leitura do fluxo (a menos que pedido)
     const nodes = candidates.filter((n) => n.kind === 'file' || f.isolated || linked.has(n.id));
@@ -233,9 +359,11 @@ const APP = String.raw`
     for (const n of nodes) {
       // arquivo vira caixa só se tiver símbolo dentro ou aresta própria (ex.: references do topo)
       if (n.kind === 'file' && (!state.group || (!usedFiles.has(n.id) && !linked.has(n.id)))) continue;
-      const data = { id: n.id, label: n.kind === 'file' ? n.id : n.name, kind: n.kind, raw: n };
+      const st = n.kind === 'route' ? routeChaos.get(n.name) : undefined;
+      const mark = st ? (st.status === 'failed' ? '✖ ' : st.status === 'passed' ? '✓ ' : '? ') : '';
+      const data = { id: n.id, label: n.kind === 'file' ? n.id : mark + n.name, kind: n.kind, raw: n };
       if (state.group && n.file) data.parent = n.file;
-      out.push({ data, classes: 'k-' + n.kind });
+      out.push({ data, classes: ['k-' + n.kind].concat(overlayClasses(n)).join(' ') });
     }
     const shown = new Set(out.map((e) => e.data.id));
     const edgeIds = new Set();
@@ -265,6 +393,16 @@ const APP = String.raw`
     { selector: '.k-io-api', style: { 'background-color': css('--api'), shape: 'hexagon', width: 22, height: 20, 'font-weight': 600 } },
     { selector: '.e-route', style: { width: 2, 'line-color': css('--route'), 'target-arrow-color': css('--route') } },
     { selector: '.e-io', style: { width: 2, 'line-color': css('--db'), 'target-arrow-color': css('--db') } },
+    { selector: '.chaos-failed', style: { 'border-width': 4, 'border-color': css('--bad'), 'background-color': css('--bad') } },
+    { selector: '.chaos-passed', style: { 'border-width': 3, 'border-color': css('--ok') } },
+    { selector: '.chaos-invalid', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--muted') } },
+    { selector: '.chaos-target', style: { 'border-width': 4, 'border-color': css('--bad') } },
+    { selector: '.diff-added', style: { 'border-width': 3, 'border-color': css('--ok') } },
+    { selector: '.diff-changed', style: { 'border-width': 3, 'border-color': css('--warn') } },
+    { selector: '.diff-renamed', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--accent') } },
+    { selector: ':parent.diff-top', style: { 'border-width': 2, 'border-color': css('--warn') } },
+    { selector: ':parent.diff-added', style: { 'border-width': 2, 'border-color': css('--ok') } },
+    { selector: '.diff-route', style: { 'border-width': 3, 'border-style': 'double', 'border-color': css('--warn') } },
     { selector: '.faded', style: { opacity: 0.08 } },
     { selector: '.hl', style: { opacity: 1, 'z-index': 10 } },
     { selector: 'edge.hl', style: { width: 2.4 } },
@@ -345,6 +483,8 @@ const APP = String.raw`
       if (raw.op.timeout) rows.push(['timeout', raw.op.timeout]);
       if (raw.op.lock) rows.push(['trava', 'FOR UPDATE']);
     }
+    if (diffSets.renamedFrom.has(raw.id)) rows.push(['renomeado de', diffSets.renamedFrom.get(raw.id)]);
+    if (raw.kind === 'route' && touchedRoutes.has(raw.name)) rows.push(['tocada pelo PR', touchedRoutes.get(raw.name).join('; ')]);
     if (raw.file) rows.push(['arquivo', raw.file]);
     if (raw.startLine !== undefined) rows.push(['linhas', (raw.startLine + 1) + '–' + (raw.endLine + 1)]);
     if (raw.container) rows.push(['contêiner', raw.container]);
@@ -422,7 +562,8 @@ const APP = String.raw`
     for (const r of TOPOLOGY.routes) {
       const b = document.createElement('button');
       b.className = 'route-item';
-      b.textContent = r.id;
+      const st = routeChaos.get(r.id);
+      b.textContent = (st ? (st.status === 'failed' ? '✖ ' : st.status === 'passed' ? '✓ ' : '? ') : '') + r.id;
       const tags = document.createElement('small');
       tags.textContent = r.operations.length + ' operação(ões)' + (r.tags.length ? ' · ' + r.tags.map((t) => t.tag).join(', ') : '');
       b.appendChild(tags);
@@ -435,9 +576,114 @@ const APP = String.raw`
     }
   }
 
+  // ---- seção "Caos" (V2): o resultado do último shieldepy chaos sobre o mapa
+  function openRoute(id, title) {
+    if (!state.filters.routes) { state.filters.routes = true; const box = document.querySelector('[data-filter=routes]'); if (box) box.checked = true; build(); }
+    const node = cy.getElementById(routeId({ id }));
+    if (!node.empty()) showFlow(chain(node, 'down'), node, title || id);
+  }
+  if (CHAOS) {
+    const sec = document.getElementById('chaos');
+    sec.hidden = false;
+    const failed = CHAOS.outcomes.filter((o) => o.status === 'failed');
+    const passed = CHAOS.outcomes.filter((o) => o.status === 'passed');
+    const invalid = CHAOS.outcomes.filter((o) => o.status === 'invalid');
+    let html = '<h2>Caos</h2>';
+    const stale = typeof CHAOS.stale === 'boolean' ? CHAOS.stale : !!TOPOLOGY && CHAOS.topologyHash !== TOPOLOGY.contentHash;
+    html += '<p class="muted small">Projeto: ' + escape(CHAOS.project) + '</p>';
+    if (stale) html += '<div class="banner warn">Este resultado é de outra versão do mapa. Rode o <code>shieldepy chaos</code> de novo.</div>';
+    if (CHAOS.runError) html += '<div class="banner warn">Os testes não rodaram (erro de ambiente): ' + escape(CHAOS.runError.split('\n')[0]) + '</div>';
+    else if (!CHAOS.ran) html += '<div class="banner warn">Testes gerados, mas não executados (<code>--no-run</code>).</div>';
+    else if (CHAOS.hits > 0) html += '<div class="banner bad"><b>Bloqueado:</b> ' + CHAOS.hits + ' achado(s)' + (CHAOS.failOn === 'Baixo' ? '' : ' com severidade ' + escape(CHAOS.failOn) + ' ou pior') + '.</div>';
+    else if (CHAOS.scope && CHAOS.scope.tested.length === 0) html += '<div class="banner ok">Nenhuma rota sensível tocada pelo PR.</div>';
+    else html += '<div class="banner ok">O código aguentou ' + (failed.length ? 'o portão (' + failed.length + ' achado(s) abaixo dele)' : 'todas as falhas injetadas') + '.</div>';
+    html += '<p class="small"><span class="chip ' + (failed.length ? 'bad' : 'muted') + '">' + failed.length + ' achado(s)</span><span class="chip ' + (passed.length ? 'ok' : 'muted') + '">' + passed.length + ' aguentou</span><span class="chip muted">' + invalid.length + ' inválido(s)</span><span class="chip muted">' + CHAOS.untested.length + ' sem teste</span></p>';
+    if (CHAOS.scope) html += '<p class="muted small">Escopo: ' + (CHAOS.scope.all ? 'todas as rotas (' + escape(CHAOS.scope.all) + ')' : CHAOS.scope.tested.length + ' rota(s) tocada(s) desde ' + escape(CHAOS.scope.base)) + '</p>';
+    sec.innerHTML = html;
+    for (const o of failed) {
+      const b = document.createElement('button');
+      b.className = 'finding' + (o.severity === 'Crítico' ? '' : ' alto');
+      b.innerHTML = '<span class="sev">' + escape(o.severity || '') + '</span> ' + escape(o.routeId) + '<small>' + escape(o.failure) + ' em ' + escape(o.target) + ' · ' + (o.durationMs / 1000).toFixed(1) + ' s</small><small>' + escape(o.message || '') + '</small><code>' + escape(o.testFile) + '</code>';
+      b.onclick = () => openRoute(o.routeId, o.routeId + ' · ' + o.failure + ' em ' + o.target);
+      sec.appendChild(b);
+      if (vscodeApi) {
+        const t = document.createElement('button');
+        t.textContent = 'Abrir teste';
+        t.onclick = () => vscodeApi.postMessage({ type: 'openTest', file: o.testFile });
+        sec.appendChild(t);
+      }
+    }
+    const list = (title, items) => {
+      if (items.length === 0) return;
+      const h = document.createElement('p');
+      h.className = 'muted small';
+      h.textContent = title;
+      const ul = document.createElement('ul');
+      ul.className = 'plain';
+      for (const text of items) { const li = document.createElement('li'); li.textContent = text; ul.appendChild(li); }
+      sec.appendChild(h);
+      sec.appendChild(ul);
+    };
+    list('Aguentou', passed.map((o) => '✓ ' + o.routeId + ' · ' + o.failure + ' em ' + o.target));
+    list('Inválidos (não contam no portão)', invalid.map((o) => '? ' + o.routeId + ' · ' + o.failure + ': ' + (o.message || '')));
+    list('Sem teste nesta execução', CHAOS.untested.map((u) => '○ ' + u.routeId + ' · ' + u.failure + ' em ' + u.target + ': ' + u.reason));
+    const legend = document.createElement('p');
+    legend.className = 'muted small';
+    legend.innerHTML = '<span class="chip bad">rota</span> quebrou · <span class="chip ok">rota</span> aguentou · <span class="chip muted">tracejada</span> inválida · operação de I/O com borda vermelha = alvo de um achado';
+    sec.appendChild(legend);
+  }
+
+  // ---- seção "Mudanças do PR" (V2)
+  if (DIFF) {
+    const d = DIFF.diff;
+    const sec = document.getElementById('diff');
+    sec.hidden = false;
+    let html = '<h2>Mudanças do PR</h2><p class="muted small">desde ' + escape(DIFF.base) + ' (base ' + escape(DIFF.commit.slice(0, 10)) + ')</p>';
+    if (d.empty) html += '<div class="banner ok">Nenhuma mudança de estrutura: só comentário, espaço ou linhas deslocadas.</div>';
+    html += '<p class="small"><span class="chip ' + (d.symbols.added.length ? 'ok' : 'muted') + '">' + d.symbols.added.length + ' novo(s)</span><span class="chip ' + (d.symbols.changed.length ? 'warn' : 'muted') + '">' + d.symbols.changed.length + ' alterado(s)</span><span class="chip muted">' + d.symbols.renamed.length + ' renomeado(s)</span><span class="chip muted">' + d.symbols.removed.length + ' removido(s)</span></p>';
+    sec.innerHTML = html;
+    const jump = (id) => {
+      if (!focus(id)) { state.filters.changed = false; const box = document.querySelector('[data-filter=changed]'); if (box) box.checked = false; build(); focus(id); }
+    };
+    const group = (title, items) => {
+      if (items.length === 0) return;
+      const h = document.createElement('p');
+      h.className = 'muted small';
+      h.textContent = title + ' (' + items.length + ')';
+      sec.appendChild(h);
+      for (const it of items.slice(0, 30)) {
+        const b = document.createElement(it.id ? 'button' : 'div');
+        b.className = it.id ? 'weak-item' : 'small';
+        b.textContent = it.text;
+        if (it.id) b.onclick = () => (it.route ? openRoute(it.id, it.id + ' · tocada pelo PR') : jump(it.id));
+        sec.appendChild(b);
+      }
+      if (items.length > 30) { const more = document.createElement('p'); more.className = 'muted small'; more.textContent = '… e mais ' + (items.length - 30); sec.appendChild(more); }
+    };
+    if (routesInfo) group(routesInfo.all ? 'Rotas tocadas: todas (' + routesInfo.all + ')' : 'Rotas tocadas', routesInfo.all ? [] : routesInfo.affected.map((a) => ({ id: a.id, route: true, text: a.id + ' — ' + a.why.join('; ') })));
+    group('Corpo alterado', d.symbols.changed.map((id) => ({ id, text: id })));
+    group('Novos', d.symbols.added.map((id) => ({ id, text: id })));
+    group('Renomeados', d.symbols.renamed.map((r) => ({ id: r.to, text: r.from + ' → ' + r.to })));
+    group('Código de topo alterado', d.files.topChanged.map((id) => ({ id, text: id })));
+    group('Arquivos novos', d.files.added.map((id) => ({ id, text: id })));
+    group('Removidos (não estão mais no mapa)', d.symbols.removed.concat(d.files.removed).map((id) => ({ text: '− ' + id })));
+    const legend = document.createElement('p');
+    legend.className = 'muted small';
+    legend.innerHTML = '<span class="chip ok">verde</span> novo · <span class="chip warn">âmbar</span> corpo alterado · <span class="chip muted">azul tracejado</span> renomeado · rota com borda dupla âmbar = tocada pelo PR';
+    sec.appendChild(legend);
+  }
+
+  // #mudancas abre direto no filtro "só o que o PR mudou" (link do artefato do CI). Em mapa grande
+  // (V2e: acima de ~3 mil nós o layout leva vários segundos e o todo não se lê), o diff já abre filtrado.
+  if (DIFF && (location.hash === '#mudancas' || (SYSTEM.nodes.length > 3000 && !DIFF.diff.empty))) {
+    state.filters.changed = true;
+    const box = document.querySelector('[data-filter=changed]');
+    if (box) box.checked = true;
+  }
+
   build();
 
-  // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota
+  // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota; #mudancas filtra o diff
   const hash = decodeURIComponent(location.hash.slice(1));
   const [mode, target] = [hash.slice(0, hash.indexOf('=')), hash.slice(hash.indexOf('=') + 1)];
   if (mode === 'rota' && TOPOLOGY) {

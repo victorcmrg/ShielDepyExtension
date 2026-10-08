@@ -83,16 +83,16 @@ describe('E2/2d — topologia', () => {
     const checkout = t.routes.find((r) => r.id === 'POST /checkout')!;
     expect(checkout.handlers.map((h) => h.label)).toEqual(['express.json()', 'validateCheckout', 'checkoutController.create']);
     expect(checkout.operations.map((o) => `${o.order} ${o.kind} ${o.target} ${o.through.at(-1)}`)).toEqual([
-      '1 db_read stock src/repositories/StockRepository.ts#available:5',
-      '2 api_call api.stripe.com src/gateways/StripeGateway.ts#charge:6',
-      '3 db_write stock src/repositories/StockRepository.ts#decrement:10',
-      '4 db_write orders src/repositories/OrderRepository.ts#insert:12',
+      '1 db_read stock src/repositories/StockRepository.ts#StockRepository.available',
+      '2 api_call api.stripe.com src/gateways/StripeGateway.ts#StripeGateway.charge',
+      '3 db_write stock src/repositories/StockRepository.ts#StockRepository.decrement',
+      '4 db_write orders src/repositories/OrderRepository.ts#OrderRepository.insert',
     ]);
     expect(checkout.operations[1]).toMatchObject({ via: 'fetch', timeout: 'no', file: 'src/gateways/StripeGateway.ts', line: 7 });
     expect(checkout.operations[1]!.through).toEqual([
-      'src/controllers/CheckoutController.ts#create:7',
-      'src/services/CheckoutService.ts#checkout:23',
-      'src/gateways/StripeGateway.ts#charge:6',
+      'src/controllers/CheckoutController.ts#CheckoutController.create',
+      'src/services/CheckoutService.ts#CheckoutService.checkout',
+      'src/gateways/StripeGateway.ts#StripeGateway.charge',
     ]);
     expect(tagNames(checkout)).toEqual([
       'external-io(api.stripe.com)',
@@ -114,7 +114,7 @@ describe('E2/2d — topologia', () => {
     await indexFiles(graph, await listSourceFiles(dir), silentHost);
     const t = buildTopology(graph, buildSystemGraph(graph, [], dir), dir);
     const checkout = t.routes.find((r) => r.id === 'POST /checkout')!;
-    expect(checkout.operations.map((o) => `${o.kind} ${o.target} ${o.through.at(-1)!.split('#')[1]!.split(':')[0]}`)).toEqual([
+    expect(checkout.operations.map((o) => `${o.kind} ${o.target} ${o.through.at(-1)!.split('#')[1]!.split('.').at(-1)}`)).toEqual([
       'db_write stock reserve',
       'api_call api.stripe.com charge',
       'db_write stock release',
