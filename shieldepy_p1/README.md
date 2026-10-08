@@ -227,6 +227,8 @@ O workflow deste repositório fica em `.github/workflows/shieldepy-chaos.yml`, e
 
 O `chaos` também grava `.shieldepy/chaos-results.json` a cada execução. Na extensão, o painel **"Ver Mapa do Sistema"** lê esse arquivo e se atualiza sozinho quando a CLI roda de novo. **"ShielDepy: Comparar Mapa com uma Branch"** mostra o diff contra o merge-base com uma branch.
 
+**Portal (V3).** `shieldepy publish <pasta> --portal <url>` (token de CI do projeto em `SHIELDEPY_PORTAL_TOKEN`) manda o resultado para o portal (`apps/frontend`). Lá, a página do projeto mostra o caos no CI de cada repositório, com o histórico. A página de cada execução mostra cada rota como uma linha do tempo das operações de I/O, com o ponto onde a falha injetada quebrou o código, a invariante violada e o teste. O token é criado pelo dono na página do projeto e só publica nos repositórios dele. O guia está em [`docs/chaos-ci.md`](docs/chaos-ci.md).
+
 **Só o que o PR tocou.** `--base <ref>` monta o mapa no merge-base com o ref (num `git worktree` temporário) e testa só as rotas sensíveis que o PR tocou: rota nova, cadeia de handlers, operações, tags, corpo de qualquer função no caminho ou código de topo de um arquivo do caminho. Mudança de config, dependência ou setup faz todas entrarem. Isso só funciona porque os ids de símbolo são estáveis (`arquivo#Contêiner.nome`, sem a linha) e cada símbolo tem um hash do corpo pela AST, que ignora comentários e espaço. `shieldepy diff <pasta> --base <ref>` mostra o diff de estrutura sozinho: símbolos novos, removidos, renomeados e com corpo alterado.
 
 ## Mapa do código
@@ -263,7 +265,9 @@ apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode
 | Workflow do GitHub Actions (e o modelo para repositórios-alvo) | `.github/workflows/shieldepy-chaos.yml`, `docs/` |
 | Id estável de símbolo e hash do corpo/topo pela AST | `packages/core/src/code-graph/extract-ts.ts` (`stableIds`), `fingerprint.ts` |
 | Diff entre mapas e rotas tocadas por um PR | `packages/core/src/map-diff.ts`, `topology/affected.ts`; base pelo git em `packages/core/src/git-base.ts` |
-| Resultado do caos em disco (`chaos-results.json`) | `packages/agent/src/chaos/results.ts` (`ChaosResults`) |
+| Resultado do caos em disco (`chaos-results.json`) e o que vai para o portal (`ChaosRunUpload`) | `packages/agent/src/chaos/results.ts`; o envio em `apps/cli/src/publish.ts` |
+| Portal: execuções do CI (tokens, banco, rotas) | `apps/frontend/server/auth/chaosRuns.ts`, rotas em `projectRoutes.ts` |
+| Portal: o caos na página do projeto e a página da execução | `apps/frontend/src/portal/chaos/*`, `pages/Run.tsx`; estilos no fim de `src/styles/portal.css` |
 | Caos e diff por cima do mapa (overlay do visualizador) | `packages/viewer/src/index.ts` (`ViewerOverlay`); painel da extensão em `apps/vscode/src/views/MapPanel.ts` |
 | Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
@@ -334,6 +338,7 @@ npm run cli -- graph   <pasta> --html mapa.html              # visualizador inte
 npm run cli -- topology <pasta> [--json] [--surface] [--out .shieldepy/topology-graph.json] [--html rotas.html]
                                                                # rotas, I/O em ordem e tags de risco
 npm run cli -- diff    <pasta> --base origin/main [--json]     # o que mudou na estrutura do código desde o merge-base
+npm run cli -- publish <pasta> --portal https://… [--append-link chaos-report.md]   # manda o resultado do caos ao portal
 npm run cli -- chaos   <pasta> [--offline] [--fail-on alto] [--report chaos-report.md] [--base origin/main]
                                                                # gera, roda os testes de caos e serve de portão
                                                                # (--no-run: só gera em .shieldepy/chaos-tests/)

@@ -71,6 +71,16 @@ Comentário, espaço e linhas deslocadas não contam. Mudança em `shieldepy.cha
 
 O checkout precisa do histórico (`fetch-depth: 0`, como no template). Para ver só o diff, sem rodar nada: `shieldepy diff . --base origin/main`.
 
+## Portal: o histórico de cada repositório
+
+Com o portal do ShielDepy, cada execução do CI fica guardada e aparece na página do projeto: o status de cada repositório, o histórico das últimas execuções e, para cada execução, cada rota como uma linha do tempo das operações, com o ponto onde a falha injetada quebrou o código.
+
+1. No portal, abra o projeto e, em **Integração com o CI**, crie um token. Ele aparece uma vez só: copie.
+2. No GitHub, guarde o token como o secret `SHIELDEPY_PORTAL_TOKEN` e o endereço do portal como a variável `SHIELDEPY_PORTAL_URL` (Settings → Secrets and variables → Actions).
+3. Pronto: o passo "Publicar no portal" do template manda cada resultado e põe o link da execução no comentário do PR.
+
+O que vai para o portal: o resultado do caos e a superfície de ataque (rotas, operações de I/O, tabelas, hosts e `arquivo:linha`), mais o commit, a branch, o PR e o link do job. **Nenhum código-fonte.** O token só publica nos repositórios do próprio projeto, e o portal guarda as últimas 100 execuções de cada repositório. Se o portal estiver fora do ar, o passo falha sozinho e não muda o portão.
+
 ## Códigos de saída
 
 | Código | Significa | No PR |
