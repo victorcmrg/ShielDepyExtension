@@ -111,23 +111,51 @@ function checkPrereqs() {
   ok('git');
 }
 
-/** O executável do VS Code (sem o `code.cmd`, que no Windows exige shell). */
+/**
+ * Como abrir o VS Code do mesmo jeito que o comando `code` abre. No Windows, o `code.cmd` faz
+ * `ELECTRON_RUN_AS_NODE=1 "Code.exe" "<versão>\resources\app\out\cli.js" <args>`: é esse CLI que
+ * cria a janela (ou repassa para uma instância aberta). Abrir o `Code.exe` direto, sem ele, pode
+ * travar sem janela (por exemplo, com uma atualização do VS Code pendente). O `code.cmd` não é
+ * chamado pelo cmd.exe porque o cmd estraga caminhos com acento ("Área de Trabalho").
+ * No Linux e no macOS, o `code` é um script com shebang e roda direto.
+ */
 function findVsCode() {
-  if (process.env.VSCODE_BIN) return existsSync(process.env.VSCODE_BIN) ? process.env.VSCODE_BIN : undefined;
-  const candidates = [];
-  const which = spawnSync(isWin ? 'where' : 'which', ['code'], { encoding: 'utf8' });
-  for (const line of (which.stdout ?? '').split(/\r?\n/).filter(Boolean)) {
-    // .../Microsoft VS Code/bin/code(.cmd) → .../Microsoft VS Code/Code.exe
-    candidates.push(isWin ? join(dirname(line), '..', 'Code.exe') : line);
+  if (process.env.VSCODE_BIN) return existsSync(process.env.VSCODE_BIN) ? { cmd: process.env.VSCODE_BIN, pre: [], env: {}, label: process.env.VSCODE_BIN } : undefined;
+  const found = spawnSync(isWin ? 'where' : 'which', ['code'], { encoding: 'utf8' });
+  const onPath = (found.stdout ?? '').split(/\r?\n/).filter(Boolean);
+  if (!isWin) {
+    const mac = '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code';
+    const cmd = [...onPath, mac, '/usr/bin/code', '/snap/bin/code'].find((p) => existsSync(p));
+    return cmd ? { cmd, pre: [], env: {}, label: cmd } : undefined;
   }
-  if (isWin) {
-    candidates.push(join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Microsoft VS Code', 'Code.exe'), 'C:\\Program Files\\Microsoft VS Code\\Code.exe');
-  } else if (process.platform === 'darwin') {
-    candidates.push('/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code');
-  } else {
-    candidates.push('/usr/bin/code', '/snap/bin/code');
+  const cmds = [
+    ...onPath.filter((p) => p.toLowerCase().endsWith('code.cmd')),
+    join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
+  ].filter((p) => existsSync(p));
+  for (const codeCmd of cmds) {
+    const exe = join(dirname(codeCmd), '..', 'Code.exe');
+    // a pasta da versão está escrita no code.cmd ("%~dp0..\<versão>\resources\app\out\cli.js")
+    const text = readFileSync(codeCmd, 'utf8');
+    const at = text.indexOf('\\resources\\app\\out\\cli.js');
+    const from = text.lastIndexOf('..\\', at);
+    const version = at > 0 && from >= 0 ? text.slice(from + 3, at) : '';
+    const cli = version ? join(dirname(codeCmd), '..', version, 'resources', 'app', 'out', 'cli.js') : join(dirname(codeCmd), '..', 'resources', 'app', 'out', 'cli.js');
+    if (existsSync(exe) && existsSync(cli)) return { cmd: exe, pre: [cli], env: { ELECTRON_RUN_AS_NODE: '1' }, label: codeCmd };
   }
-  return candidates.find((p) => existsSync(p));
+  return undefined;
+}
+
+/** O VS Code da demo já usou o token (o plugin abriu e entrou no portal)? */
+async function pluginCheckedIn(seed, since) {
+  try {
+    const r = await fetch(`${PORTAL}/api/account`, { headers: { cookie: seed.ownerCookie } });
+    if (!r.ok) return false;
+    const { devices = [] } = await r.json();
+    return devices.some((d) => d.label === 'VS Code da demo' && (d.lastUsedAt ?? 0) > since);
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------- instalação e build
@@ -295,7 +323,7 @@ function chaos(ciToken, label) {
 }
 
 // ---------------------------------------------------------------- VS Code
-function openVsCode(seed) {
+async function openVsCode(seed) {
   const code = findVsCode();
   const roteiro = join(WORKSPACE, 'ROTEIRO.md');
   const launchArgs = [
@@ -309,10 +337,13 @@ function openVsCode(seed) {
     '--skip-release-notes',
     '--disable-workspace-trust',
   ];
+  const manual = () => {
+    console.log(`\n  Para abrir à mão, num terminal NOVO (fora de qualquer VS Code), no PowerShell:`);
+    console.log(`  $env:SHIELDEPY_DEMO_TOKEN="${seed.deviceToken}"; code ${launchArgs.map((a) => `"${a}"`).join(' ')}`);
+  };
   if (!code || args.has('--sem-vscode')) {
-    if (!code) warn('não achei o VS Code. Instale (https://code.visualstudio.com) ou indique o executável em VSCODE_BIN.');
-    console.log(`  Para abrir à mão, com a variável de ambiente SHIELDEPY_DEMO_TOKEN=${seed.deviceToken}:`);
-    console.log(`  "${code ?? 'code'}" ${launchArgs.map((a) => `"${a}"`).join(' ')}`);
+    if (!code) warn('não achei o VS Code. Instale (https://code.visualstudio.com), marque "Adicionar ao PATH", ou indique o executável em VSCODE_BIN.');
+    manual();
     return;
   }
   mkdirSync(join(VSCODE_PROFILE, 'User'), { recursive: true });
@@ -338,11 +369,33 @@ function openVsCode(seed) {
   // Electron e do VS Code (ELECTRON_RUN_AS_NODE, VSCODE_ESM_ENTRYPOINT, VSCODE_PID, ...) que fazem o
   // Code.exe novo subir como Node puro ou como host de extensão, sem janela. Saem todas.
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VSCODE_|ELECTRON_|CHROME_CRASHPAD)/i.test(k)));
-  env.SHIELDEPY_DEMO_TOKEN = seed.deviceToken;
-  const child = spawn(code, launchArgs, { env, detached: true, stdio: 'ignore' });
-  child.on('error', (err) => warn(`não consegui abrir o VS Code: ${err.message}`));
-  child.unref();
-  ok('VS Code aberto com o plugin ShielDepy e o ROTEIRO.md (perfil separado: não mexe no seu VS Code)');
+  Object.assign(env, code.env, { SHIELDEPY_DEMO_TOKEN: seed.deviceToken });
+  const since = Date.now();
+  console.log(dim(`  abrindo pelo ${code.label}...`));
+  // o CLI do VS Code abre a janela e sai; o que ele disser vai para a tela (ajuda a diagnosticar)
+  const cli = spawnSync(code.cmd, [...code.pre, ...launchArgs], { env, encoding: 'utf8', timeout: 60_000, windowsHide: true });
+  const said = `${cli.stdout ?? ''}${cli.stderr ?? ''}`.trim();
+  if (cli.error || (cli.status !== 0 && cli.status !== null)) {
+    warn(`o VS Code não abriu (${cli.error?.message ?? `código ${cli.status}`})${said ? `:\n${said}` : ''}`);
+    manual();
+    return;
+  }
+  if (said) console.log(dim(`  ${said.split(/\r?\n/).join('\n  ')}`));
+  // confirma pela outra ponta: o plugin, ao abrir, entra no portal com o token da demo
+  console.log(dim('  esperando o plugin entrar no portal (até 90 s)...'));
+  for (let i = 0; i < 90; i++) {
+    if (await pluginCheckedIn(seed, since)) {
+      ok('VS Code aberto, com o plugin ShielDepy ativo e logado, e o ROTEIRO.md (perfil separado: não mexe no seu VS Code)');
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  warn('o VS Code foi chamado, mas o plugin não deu sinal em 90 s.');
+  console.log('  Possíveis causas:');
+  console.log('  - o VS Code tem uma atualização pendente: feche todas as janelas dele, abra de novo (ele termina a atualização) e rode npm run demo outra vez;');
+  console.log('  - uma janela da demo de antes ainda está aberta: feche-a e rode de novo;');
+  console.log('  - a janela abriu atrás das outras: procure "sistema-loja" na barra de tarefas.');
+  manual();
 }
 
 // ---------------------------------------------------------------- roteiro
@@ -536,7 +589,7 @@ async function main() {
     }
   }
   step(6, TOTAL, 'VS Code');
-  openVsCode(seed);
+  await openVsCode(seed);
   printSummary(seed);
   // mantém o portal no ar até o Ctrl+C
   await new Promise(() => {});

@@ -7,6 +7,7 @@ import { createCiToken } from '../../apps/frontend/server/auth/chaosRuns';
 import { db } from '../../apps/frontend/server/auth/db';
 import { createDeviceToken } from '../../apps/frontend/server/auth/deviceTokens';
 import { addProjectMember, addRepo, createProject } from '../../apps/frontend/server/auth/projects';
+import { createWebSession } from '../../apps/frontend/server/auth/session';
 import { DEMO_ACCOUNTS } from '../../apps/frontend/server/auth/seedDemo';
 
 const [remote, out] = process.argv.slice(2);
@@ -21,6 +22,8 @@ for (const a of DEMO_ACCOUNTS) if (a.role === 'member') addProjectMember(project
 
 const deviceToken = createDeviceToken(user.id, 'VS Code da demo');
 const ciToken = createCiToken(project.id, 'demo local', owner.email).token;
+// sessão web do dono: o script confere por ela (/api/account) se o VS Code da demo já usou o token
+const ownerCookie = createWebSession(user.id).setCookie.split(';')[0];
 
-writeFileSync(out, JSON.stringify({ projectId: project.id, deviceToken, ciToken, owner: { email: owner.email, password: owner.password } }, null, 2));
+writeFileSync(out, JSON.stringify({ projectId: project.id, deviceToken, ciToken, ownerCookie, owner: { email: owner.email, password: owner.password } }, null, 2));
 console.log(`Projeto "Sistema da loja (demo do TCC)" criado (id ${project.id}) com o repositório ${remote}.`);
