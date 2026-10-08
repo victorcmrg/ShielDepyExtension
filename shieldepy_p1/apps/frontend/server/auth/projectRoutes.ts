@@ -22,6 +22,7 @@ import {
   updateProject,
 } from './projects';
 import type { AuthUser } from './session';
+import { createCiToken, getRun, insertRun, listCiTokens, parseUpload, projectForCiToken, repoHistory, repoInProject, revokeCiToken, UploadError } from './chaosRuns';
 
 type Handler = (req: IncomingMessage, res: ServerResponse, params: string[]) => void | Promise<void>;
 
@@ -240,6 +241,83 @@ async function repoCheck(req: IncomingMessage, res: ServerResponse): Promise<voi
   sendJson(res, 200, { repos: checkRepos(u.companyId, u.email, getRole(u.email) === 'owner', repos) });
 }
 
+// --- caos no CI (V3) --------------------------------------------------------------------
+
+/** Endereço público do portal, para o link que volta ao CI. */
+function publicBase(req: IncomingMessage): string {
+  const configured = process.env.PUBLIC_URL ?? process.env.OAUTH_REDIRECT_BASE;
+  if (configured) return configured.replace(/\/+$/, '');
+  return 'http://' + (req.headers.host ?? 'localhost:3000');
+}
+
+function listCiTokensRoute(req: IncomingMessage, res: ServerResponse, id: number): void {
+  const u = owner(req);
+  projectFor(u, id);
+  sendJson(res, 200, { tokens: listCiTokens(id) });
+}
+
+async function createCiTokenRoute(req: IncomingMessage, res: ServerResponse, id: number): Promise<void> {
+  const u = owner(req);
+  projectFor(u, id);
+  const body = await json<{ label?: string }>(req);
+  const label = cleanText(body.label, 60, 'o nome', false) || 'GitHub Actions';
+  sendJson(res, 200, createCiToken(id, label, u.email));
+}
+
+function revokeCiTokenRoute(req: IncomingMessage, res: ServerResponse, id: number, tokenId: number): void {
+  const u = owner(req);
+  projectFor(u, id);
+  if (!revokeCiToken(id, tokenId)) throw new HttpError(404, 'token não encontrado');
+  sendJson(res, 200, { ok: true });
+}
+
+/** O CI publica uma execução (Authorization: Bearer sdci_…). Só em repositórios do projeto do token. */
+async function publishRunRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const auth = req.headers.authorization ?? '';
+  const projectId = auth.startsWith('Bearer ') ? projectForCiToken(auth.slice(7).trim()) : null;
+  if (!projectId) throw new HttpError(401, 'token de CI inválido ou revogado');
+  const project = getProject(projectId);
+  if (!project) throw new HttpError(401, 'token de CI inválido ou revogado');
+  if (getCompanyPermissions(project.companyId).accessEnabled === false) throw new HttpError(403, 'o acesso desta empresa está suspenso');
+  let upload;
+  try {
+    upload = parseUpload(await json<unknown>(req));
+  } catch (err) {
+    if (err instanceof UploadError) throw new HttpError(400, err.message);
+    throw err;
+  }
+  const repoId = repoInProject(projectId, upload.remote);
+  if (!repoId) throw new HttpError(403, `este repositório não está no projeto "${project.name}" — conecte o remote na página do projeto`);
+  const runId = insertRun(repoId, upload);
+  sendJson(res, 200, { id: runId, url: `${publicBase(req)}/projects/${projectId}/runs/${runId}` });
+}
+
+/** Visão do caos no projeto: a última execução e o histórico curto de cada repositório. */
+function projectChaosRoute(req: IncomingMessage, res: ServerResponse, id: number): void {
+  const u = user(req);
+  projectFor(u, id);
+  const repos = listRepos(id).map((repo) => {
+    const history = repoHistory(repo.id);
+    return { repo: { id: repo.id, label: repo.label, remote: repo.remote }, latest: history[0] ?? null, history };
+  });
+  sendJson(res, 200, { repos, canManage: getRole(u.email) === 'owner' });
+}
+
+function runDetailRoute(req: IncomingMessage, res: ServerResponse, id: number, runId: number): void {
+  const u = user(req);
+  const project = projectFor(u, id);
+  const run = getRun(id, runId);
+  if (!run) throw new HttpError(404, 'execução não encontrada');
+  const repo = listRepos(id).find((r) => r.id === run.summary.repoId);
+  sendJson(res, 200, {
+    project: { id: project.id, name: project.name },
+    repo: repo ? { id: repo.id, label: repo.label, remote: repo.remote } : null,
+    run: run.summary,
+    results: run.results,
+    history: repoHistory(run.summary.repoId),
+  });
+}
+
 const n = (s: string | undefined) => Number(s);
 
 export const PROJECT_ROUTES: Array<[string, RegExp, Handler]> = [
@@ -257,4 +335,10 @@ export const PROJECT_ROUTES: Array<[string, RegExp, Handler]> = [
   ['PATCH', /^\/api\/team\/([^/]+)$/, (req, res, p) => teamSetRole(req, res, p[0]!)],
   ['DELETE', /^\/api\/team\/([^/]+)$/, (req, res, p) => teamRemove(req, res, p[0]!)],
   ['POST', /^\/api\/repos\/check$/, (req, res) => repoCheck(req, res)],
+  ['GET', /^\/api\/projects\/(\d+)\/ci-tokens$/, (req, res, p) => listCiTokensRoute(req, res, n(p[0]))],
+  ['POST', /^\/api\/projects\/(\d+)\/ci-tokens$/, (req, res, p) => createCiTokenRoute(req, res, n(p[0]))],
+  ['DELETE', /^\/api\/projects\/(\d+)\/ci-tokens\/(\d+)$/, (req, res, p) => revokeCiTokenRoute(req, res, n(p[0]), n(p[1]))],
+  ['POST', /^\/api\/ci\/chaos-runs$/, (req, res) => publishRunRoute(req, res)],
+  ['GET', /^\/api\/projects\/(\d+)\/chaos$/, (req, res, p) => projectChaosRoute(req, res, n(p[0]))],
+  ['GET', /^\/api\/projects\/(\d+)\/chaos\/runs\/(\d+)$/, (req, res, p) => runDetailRoute(req, res, n(p[0]), n(p[1]))],
 ];

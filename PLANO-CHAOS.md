@@ -538,6 +538,25 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Erro de configuração, portal fora do ar ou recusa → exit 2 com o motivo. No CI, o passo é separado do portão.
   - Testes: o payload completo num repositório git temporário com um portal falso, os erros (sem token, sem portal, sem resultado, 403, rede) e o contexto do CI em PR e em push.
   - Suíte: **313 testes**.
+- 2026-10-08: **V3b concluído (servidor do portal).**
+  - **Banco:** tabelas `project_ci_tokens` (só o hash, `sdci_…`, revogável) e `chaos_runs` (resumo em colunas mais o resultado em JSON), com índice por repositório e data (`server/auth/chaosRuns.ts`).
+  - **Status de uma execução numa palavra** (a cor no portal): `blocked`, `passed`, `below_gate`, `nothing` (nenhuma rota tocada), `not_run`, `error`, `invalid`.
+  - **Rotas:**
+    - o dono lista, cria e revoga tokens (`/api/projects/:id/ci-tokens`);
+    - o CI publica (`POST /api/ci/chaos-runs`, `Authorization: Bearer sdci_…`) só em repositório do projeto do token, com o remote comparado normalizado (https, ssh e `.git` dão o mesmo). A resposta traz o link (`PUBLIC_URL` → `OAUTH_REDIRECT_BASE` → `Host`);
+    - a visão do projeto (`/api/projects/:id/chaos`: a última execução e as 24 mais recentes de cada repositório) e a execução completa (`/api/projects/:id/chaos/runs/:runId`).
+  - **Segurança:**
+    - o payload é validado (versão, remote, commit, forma do resultado);
+    - **links que não são http(s) são descartados**, porque viram `<a href>` no portal (nada de `javascript:`);
+    - empresa suspensa não publica;
+    - outra empresa recebe 404;
+    - o token de um projeto não publica em outro.
+  - **Retenção:** as últimas 100 execuções por repositório, aplicada a cada inserção.
+  - **Dois ajustes no servidor:**
+    - `SHIELDEPY_DATA_DIR` permite pôr o banco em outra pasta (os testes usam uma temporária);
+    - o `node:sqlite` passou a ser carregado com `createRequire`. O Vite (Vitest) não conhecia esse módulo nativo e tentava resolver um pacote `sqlite`; por isso nenhum teste tocava no banco até agora.
+  - **Testes** (`apps/frontend/test/chaos-runs.test.ts`, com sessões e HTTP de verdade): tokens só pelo dono, valor único e fora da lista; publicação com remote escrito de outro jeito; 401, 403 (repositório fora do projeto, token de outro projeto) e 400; link `javascript:` descartado; token revogado; visão do projeto `blocked`; execução completa; 404 para outra empresa; retenção de 100.
+  - Suíte: **321 testes**.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -610,7 +629,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Página da execução** (`/projects/:id/runs/:runId`): status em destaque, métricas, o escopo do PR e **cada rota como uma linha do tempo das operações** (`lê stock → chama api.stripe.com → grava stock → grava orders`). O alvo de cada falha fica marcado na operação, com a severidade, a invariante violada e o arquivo do teste. Também traz as tags, as hipóteses sem teste e o histórico do repositório.
 - **Workflow e template:** um passo "Publicar no portal" quando há `SHIELDEPY_PORTAL_TOKEN` (secret) e `SHIELDEPY_PORTAL_URL` (variável).
 
-**Tarefas:** **V3a** contrato + CLI `publish` ✅ · **V3b** servidor (banco, tokens, rotas, testes) · **V3c** portal: página do projeto e tokens · **V3d** portal: página da execução (a linha do tempo) · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs.
+**Tarefas:** **V3a** contrato + CLI `publish` ✅ · **V3b** servidor (banco, tokens, rotas, testes) ✅ · **V3c** portal: página do projeto e tokens · **V3d** portal: página da execução (a linha do tempo) · **V3e** CI e template, conferência visual (screenshots com sessão real) e docs.
 
 **Aceitação:** o `chaos` no vulnerável seguido do `publish` para um portal local → o projeto mostra o repositório **bloqueado**, e a página da execução mostra o `POST /checkout` com os 4 achados nas operações certas. Um token de outro projeto, ou um remote fora do projeto → 403.
 
