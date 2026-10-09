@@ -2,7 +2,6 @@ body { padding: 14px 12px 16px; }
 /* Coluna que ocupa a altura toda: a lista (ou a área vazia) cresce e o resumo fica no fim. */
 #main { display: flex; flex-direction: column; min-height: calc(100vh - 30px); }
 /* Tela de bloqueio no meio da altura toda do painel (descontado o padding do body). */
-#lock { min-height: calc(100vh - 30px); justify-content: center; }
 
 /* --- Cabeçalho: estado da proteção ---------------------------------------------------------- */
 .guard-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--sd-muted); }
@@ -15,6 +14,9 @@ body { padding: 14px 12px 16px; }
 .analyzing.visible { height: 18px; opacity: 1; margin-top: 8px; }
 .analyzing .morph-shape { width: 10px; height: 10px; }
 .notice { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--sd-yellow) 12%, transparent); font-size: 11.5px; }
+.ai-notice-title { font-weight: 600; }
+.ai-notice-actions { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.ai-notice-actions .text-btn { font-size: 11.5px; }
 
 
 /* --- Formas nas listas ---------------------------------------------------------------------- */

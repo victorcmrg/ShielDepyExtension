@@ -54,10 +54,10 @@ export class AiService implements vscode.Disposable {
   async provider(): Promise<LLMProvider | undefined> {
     // Checado em TODA chamada (não só quando `cached` está vazio) — hasAiAccess() já
     // tem cache curto próprio (AuthService), então isso não vira uma chamada de rede a
-    // cada uso; é o que garante que revogar `aiEnabled` (ou deslogar) surte efeito em
-    // segundos, mesmo com o provider já resolvido e guardado em `this.cached`.
+    // cada uso; é o que garante que revogar `aiEnabled` surte efeito em segundos, mesmo
+    // com o provider já resolvido e guardado em `this.cached`. Sem conta, decide a chave.
     if (!(await this.auth.hasAiAccess())) {
-      this.log('[AiService] sem login ou sem permissão de IA da empresa — modo offline.');
+      this.log(`[AiService] IA desligada pela empresa (${this.auth.companyAiBlock()}) — modo offline.`);
       return undefined;
     }
     if (this.cached) return this.cached.provider;

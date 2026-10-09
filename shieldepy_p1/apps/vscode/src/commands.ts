@@ -43,28 +43,6 @@ export async function login(auth: AuthService): Promise<void> {
   }
 }
 
-/**
- * Porteiro dos comandos: confirma no servidor (não só no cache) antes de rodar algo que usa o
- * workspace/IA. Bloqueado → explica o porquê e oferece a saída certa pro estado.
- */
-export async function requireAccess(auth: AuthService): Promise<boolean> {
-  const state = await auth.refresh();
-  if (state === 'active') return true;
-  if (state === 'loggedOut') {
-    const choice = await vscode.window.showWarningMessage(t('nNeedLogin'), t('signIn'));
-    if (choice) void vscode.commands.executeCommand(CMD.login);
-  } else {
-    const company = auth.getCachedMe()?.companyName ?? t('yourCompany');
-    const dashboard = state === 'repoBlocked' ? t('openProjects') : t('openDashboard');
-    const again = t('checkAgain');
-    const message = state === 'repoBlocked' ? t('nRepoBlocked') : t('nSuspended', { company });
-    const choice = await vscode.window.showWarningMessage(message, dashboard, again);
-    if (choice === dashboard) void auth.openDashboard();
-    else if (choice === again) void vscode.commands.executeCommand(CMD.refreshAccess);
-  }
-  return false;
-}
-
 /** "Rechecar acesso": força o /api/me (e a checagem do repositório) e diz o resultado. */
 export async function refreshAccess(auth: AuthService): Promise<void> {
   const state = await auth.refresh();

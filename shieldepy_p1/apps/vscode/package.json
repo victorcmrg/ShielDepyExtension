@@ -52,8 +52,7 @@
         {
           "id": "shieldepy.chat",
           "name": "Chat",
-          "type": "webview",
-          "when": "shieldepy.unlocked"
+          "type": "webview"
         }
       ],
       "shieldepy-settings": [

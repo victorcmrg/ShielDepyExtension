@@ -19,6 +19,7 @@
   let lastGroups = [];
   let lastSystemDisabled = false;
   let severityFilter = null;
+  let loggedIn = false;
   let company = '';
   let projectName = '';
   const counts = { error: 0, warning: 0, info: 0 };
@@ -49,9 +50,8 @@
     return shape;
   }
 
-  // --- bloqueio (sem login / empresa suspensa) --------------------------------------------
-  const LOCKS = {
-    loggedOut: { title: T('lockOutTitle'), text: T('lockOutText'), action: T('signIn'), message: 'login' },
+  // --- aviso da IA da empresa (a análise local nunca trava; R1 do plano) ------------------
+  const AI_BLOCKS = {
     suspended: {
       title: T('lockSuspendedTitle'),
       text: T('lockSuspendedText'),
@@ -77,39 +77,43 @@
       secondary: T('openProjects'),
       secondaryMessage: 'openDashboard',
     },
+    aiDisabled: {
+      title: T('lockAiOffTitle'),
+      text: T('lockAiOffText'),
+      action: T('checkAgain'),
+      message: 'refreshAccess',
+      secondary: T('openDashboard'),
+      secondaryMessage: 'openDashboard',
+    },
   };
 
-  function setAccess(state, companyName, remote, project) {
-    company = companyName || '';
-    projectName = project || '';
+  function setAccess(msg) {
+    loggedIn = Boolean(msg.loggedIn);
+    company = msg.company || '';
+    projectName = msg.project || '';
     renderHeader();
-    const lock = LOCKS[state === 'repoBlocked' && !remote ? 'noGit' : state];
-    $('lock').hidden = !lock;
-    $('main').hidden = Boolean(lock);
-    if (!lock) return;
-    $('lock').className = 'lock ' + state;
-    $('lockTitle').textContent = lock.title;
-    $('lockText').textContent = lock.text.replace('{company}', company || T('yourCompany')).replace('{remote}', remote || '');
-    const action = $('lockAction');
-    action.textContent = lock.action;
+    const block = AI_BLOCKS[msg.block === 'repoBlocked' && !msg.remote ? 'noGit' : msg.block];
+    $('aiNotice').hidden = !block;
+    if (!block) return;
+    $('aiNoticeTitle').textContent = block.title;
+    $('aiNoticeText').textContent = ' ' + block.text.replace('{company}', company || T('yourCompany')).replace('{remote}', msg.remote || '');
+    const action = $('aiNoticeAction');
+    action.textContent = block.action;
     action.disabled = false;
     action.onclick = () => {
       action.disabled = true;
-      vscode.postMessage({ type: lock.message });
+      vscode.postMessage({ type: block.message });
       setTimeout(() => (action.disabled = false), 2500);
     };
-    const secondary = $('lockSecondary');
-    secondary.hidden = !lock.secondary;
-    if (lock.secondary) {
-      secondary.textContent = lock.secondary;
-      secondary.onclick = () => vscode.postMessage({ type: lock.secondaryMessage });
-    }
+    const secondary = $('aiNoticeSecondary');
+    secondary.textContent = block.secondary;
+    secondary.onclick = () => vscode.postMessage({ type: block.secondaryMessage });
   }
 
   function renderHeader() {
     $('status').textContent = lastSystemDisabled ? T('guardPaused') : T('guardTitle');
-    // Empresa e o projeto do repositório aberto — deixa claro "em nome de quê" a extensão está ligada.
-    $('statusSub').textContent = [company, projectName && T('projectLabel', { name: projectName })].filter(Boolean).join(' / ');
+    // Em nome de quê a extensão está ligada: empresa e projeto, ou o modo local (sem conta).
+    $('statusSub').textContent = loggedIn ? [company, projectName && T('projectLabel', { name: projectName })].filter(Boolean).join(' / ') : T('localMode');
   }
 
   // --- ladrilhos: contagem + filtro -------------------------------------------------------
@@ -289,7 +293,7 @@
 
   window.addEventListener('message', (event) => {
     const msg = event.data || {};
-    if (msg.type === 'access') setAccess(msg.state, msg.company, msg.remote, msg.project);
+    if (msg.type === 'access') setAccess(msg);
     else if (msg.type === 'findingsByFile') {
       setCounts(msg.counts);
       renderGroups(msg.groups, msg.systemDisabled);

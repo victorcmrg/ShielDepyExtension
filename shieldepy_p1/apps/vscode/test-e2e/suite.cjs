@@ -63,14 +63,16 @@ exports.run = async function run() {
   const setCompanyAccess = (enabled) =>
     fetch(`${process.env.SHIELDEPY_E2E_ACCOUNT_URL}/__e2e/access`, { method: 'POST', body: JSON.stringify({ enabled }) });
 
-  await check('sem login, nada é analisado (colisões ficam de fora)', async () => {
-    await sleep(4000); // tempo de sobra pra indexação inicial terminar
-    assert(ours(pricing).length === 0 && ours(tax).length === 0, 'achados publicados sem login');
+  await check('sem login (modo local), as colisões já aparecem', async () => {
+    assert(api.aiBlock() === null, `sem conta não há política de empresa: ${api.aiBlock()}`);
+    await waitFor('colisão em pricing sem login', () => ours(pricing, COLISAO).some((x) => x.message.includes('Escrita dupla')));
   });
 
-  await check('login com acesso liberado ativa a extensão', async () => {
+  await check('login com acesso liberado: a política de IA da empresa passa a valer', async () => {
     const state = await api.signInWithToken(process.env.SHIELDEPY_E2E_TOKEN);
     assert(state === 'active', `estado inesperado: ${state}`);
+    // o servidor falso não libera a IA (aiEnabled: false)
+    assert(api.aiBlock() === 'aiDisabled', `bloqueio de IA inesperado: ${api.aiBlock()}`);
   });
 
   await check('a extensão identifica o repositório pelo .git (remote + branch) ao liberar', async () => {
@@ -156,46 +158,51 @@ exports.run = async function run() {
   });
 
   let auditBefore = 0;
-  await check('empresa suspensa: rechecar acesso limpa todos os achados', async () => {
+  await check('empresa suspensa: só a IA desliga; ciclos e colisões continuam', async () => {
     assert(ours(file('a.ts')).length > 0, 'pré-condição: ciclo ainda deveria estar publicado');
     auditBefore = ours(audit, COLISAO).length;
     assert(auditBefore > 0, 'pré-condição: audit deveria ter colisões');
     await setCompanyAccess(false);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('achados sumirem', () => ours(file('a.ts')).length === 0 && ours(audit).length === 0, 10000);
+    await waitFor('IA desligada pela suspensão', () => api.aiBlock() === 'suspended', 10000);
+    await sleep(2000);
+    assert(ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 'o ciclo sumiu com a suspensão');
+    assert(ours(audit, COLISAO).length === auditBefore, 'as colisões sumiram com a suspensão');
   });
 
-  await check('suspenso: editar um arquivo não gera análise nova', async () => {
+  await check('suspenso: editar um arquivo ainda gera análise local', async () => {
     const doc = await vscode.workspace.openTextDocument(file('b.ts'));
     await vscode.window.showTextDocument(doc);
     const edit = new vscode.WorkspaceEdit();
     edit.insert(doc.uri, new vscode.Position(doc.lineCount, 0), '// edição durante a suspensão\n');
     await vscode.workspace.applyEdit(edit);
     await doc.save();
-    await sleep(3000);
-    assert(ours(file('b.ts')).length === 0 && ours(file('a.ts')).length === 0, 'analisou com a empresa suspensa');
+    await waitFor('ciclo em b.ts', () => ours(file('b.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
   });
 
-  await check('acesso liberado de novo: achados voltam sozinhos', async () => {
+  await check('acesso liberado de novo: a política volta a ser a da empresa', async () => {
     await setCompanyAccess(true);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('ciclo voltar', () => ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
-    await waitFor('colisões de audit voltarem', () => ours(audit, COLISAO).length === auditBefore, 15000);
+    await waitFor('bloqueio voltar a ser o da IA não liberada', () => api.aiBlock() === 'aiDisabled', 10000);
+    assert(ours(audit, COLISAO).length === auditBefore, 'colisões de audit mudaram');
   });
 
   const setRepoAllowed = (allowed) =>
     fetch(`${process.env.SHIELDEPY_E2E_ACCOUNT_URL}/__e2e/repo`, { method: 'POST', body: JSON.stringify({ allowed }) });
 
-  await check('repositório tirado do projeto: a extensão trava e limpa os achados', async () => {
+  await check('repositório tirado do projeto: só a IA desliga; os achados locais ficam', async () => {
     await setRepoAllowed(false);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('achados sumirem', () => ours(file('a.ts')).length === 0 && ours(audit).length === 0, 10000);
+    await waitFor('IA desligada pelo repositório', () => api.aiBlock() === 'repoBlocked', 10000);
+    await sleep(2000);
+    assert(ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 'o ciclo sumiu');
+    assert(ours(audit, COLISAO).length === auditBefore, 'as colisões sumiram');
   });
 
-  await check('repositório conectado de novo: volta sozinho', async () => {
+  await check('repositório conectado de novo: a política volta a ser a da empresa', async () => {
     await setRepoAllowed(true);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('ciclo voltar', () => ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
+    await waitFor('bloqueio voltar a ser o da IA não liberada', () => api.aiBlock() === 'aiDisabled', 10000);
   });
 
   // --- mapa do sistema (E1 dentro do editor) ---------------------------------------------

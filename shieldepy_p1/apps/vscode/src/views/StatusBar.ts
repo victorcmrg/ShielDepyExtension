@@ -37,26 +37,16 @@ export class StatusBar implements vscode.Disposable {
       this.item.hide();
       return;
     }
-    const state = this.auth.accessState();
     this.item.backgroundColor = undefined;
+    this.item.command = CMD.focusPanel;
+    // A conta não trava nada (modo local): ela só aparece na dica, e a IA da empresa desligada também.
+    const me = this.auth.getCachedMe();
+    const who = me ? me.companyName : t('sbLocalTip');
+    const aiOff = this.auth.companyAiBlock() ? `\n${t('sbAiOff')}` : '';
 
-    if (state === 'loggedOut') {
-      this.item.text = `$(lock) ${t('sbSignIn')}`;
-      this.item.tooltip = t('sbSignInTip');
-      this.item.command = CMD.login;
-    } else if (state === 'suspended') {
-      this.item.text = `$(circle-slash) ${t('sbSuspended')}`;
-      this.item.tooltip = t('sbSuspendedTip', { company: this.auth.getCachedMe()?.companyName ?? t('yourCompany') });
-      this.item.command = CMD.refreshAccess;
-      this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-    } else if (state === 'repoBlocked') {
-      this.item.text = `$(lock) ${t('sbRepoBlocked')}`;
-      this.item.tooltip = t('sbRepoBlockedTip');
-      this.item.command = CMD.refreshAccess;
-    } else if (!config.analysisEnabled()) {
+    if (!config.analysisEnabled()) {
       this.item.text = `$(shield) ${t('sbPaused')}`;
-      this.item.tooltip = t('sbPausedTip');
-      this.item.command = CMD.focusPanel;
+      this.item.tooltip = `${who}\n${t('sbPausedTip')}`;
     } else {
       const editor = vscode.window.activeTextEditor;
       const busy = Boolean(editor && this.analyzing.isAnalyzing(editor.document.uri));
@@ -68,8 +58,7 @@ export class StatusBar implements vscode.Disposable {
           ? '$(shield) ShielDepy $(check)'
           : `$(shield) $(error) ${error}  $(warning) ${warning}  $(info) ${info}`;
       const trigger = config.analysisTrigger() === 'onSave' ? t('sbTriggerOnSave') : t('sbTriggerOnType');
-      this.item.tooltip = `${this.auth.getCachedMe()?.companyName ?? 'ShielDepy'}\n${t('sbActiveTip', { trigger, n: total })}`;
-      this.item.command = CMD.focusPanel;
+      this.item.tooltip = `${who}\n${t('sbActiveTip', { trigger, n: total })}${aiOff}`;
       if (error > 0) this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     }
     this.item.show();

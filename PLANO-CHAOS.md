@@ -9,12 +9,20 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-08, início da E5)
+## Como retomar num chat novo (atualizado em 2026-10-09, início da etapa R)
 
-**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** e foi enviada pelo usuário (`origin/feat/chaos-gate`), mas ainda não foi mergeada. Depois do merge, falta só o **PR de teste no GitHub** (ver o registro da 4e). A **E5 (mapa incremental e custo)** está **pronta, menos a medição paga (5e)**, na branch `feat/mapa-incremental`, **criada a partir da `feat/chaos-gate`** (empilhada, porque a E4 ainda não está na `main`). Se a E4 entrar por *squash*, rebasear a E5 sobre a `main` antes de abrir o PR dela. Leia, nesta ordem:
+**Onde estamos:** E1–E5, V1–V3 estão **todas mergeadas na `main`** (`297c964`, PRs #1–#7). A etapa atual é a **R — jornada do usuário e release da extensão**, na branch `feat/jornada-release` (criada a partir da `main`). Leia, nesta ordem:
 1. esta seção;
-2. a seção **"E5 — mapa incremental e custo"** (por que existe, desenho e tarefas 5a–5f);
+2. a seção **"R — jornada do usuário e release"** (decisões do usuário e tarefas R1–R4);
 3. o fim do **Registro**, para os detalhes de cada fatia já feita.
+
+**Decisões de 2026-10-09 (do usuário):**
+- **Só JS/TS por enquanto.** Python talvez depois; Java e C# saem do roadmap (a E6 vira "Python, talvez").
+- **Modo local grátis:** sem conta, a extensão faz tudo o que é determinístico (ciclos, colisões, mapa, topologia, caos offline). A conta só traz o portal, a equipe e a política de IA da empresa.
+- **O portal ainda não está publicado.** O release não pode depender dele.
+- **Release:** primeiro `.vsix` nas GitHub Releases; o Marketplace fica para quando estabilizar.
+
+**Pendências antigas que continuam valendo:** o PR de teste do workflow no GitHub (o `shieldepy-chaos.yml` nunca rodou no Actions) e a medição paga da 5e.
 
 **Combinados com o usuário (seguir sem perguntar):**
 - Responder **em português**.
@@ -62,12 +70,13 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
-| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído; falta o merge (depois da E4 e da E5) |
-| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend`, tarefas V3a–V3e | `feat/portal-v3` | concluído; falta o merge (depois da E4, E5 e V2) |
+| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado (PR #6) |
+| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend`, tarefas V3a–V3e | `feat/portal-v3` | concluído, mergeado (PR #7) |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
-| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
-| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | pronta, menos a medição paga (5e) |
-| 6. E6: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (era a E5; ver avaliação) |
+| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído, mergeado (junto do PR #6); falta o PR de teste no GitHub |
+| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | mergeado (junto do PR #6); falta a medição paga (5e) |
+| R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | em andamento |
+| 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -588,8 +597,41 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Docs:** a seção "Portal: o histórico de cada repositório" no `docs/chaos-ci.md` (criar o token, guardar no GitHub, o que vai para o portal, retenção) e o README (o `publish`, o portal e os arquivos novos no mapa do código).
   - **Estado final do V3:** 321 testes unitários (28 do portal, 8 deles do V3b), extensão com 636 KB (sem mudança: o V3 não toca nela). As páginas foram conferidas em screenshots nos temas claro e escuro e no celular. O servidor e o banco temporários da conferência foram desligados e apagados.
   - **Para usar de verdade:** subir o portal com `PUBLIC_URL` (ou `OAUTH_REDIRECT_BASE`) apontando para o endereço público, criar o token na página do projeto e configurar o secret e a variável no GitHub.
+- 2026-10-09: **R1 concluída (modo local).**
+  - **Portão:** o motor só depende de `shieldepy.backgroundAnalysis.enabled`. Saíram o `setPathGate`/`isAllowedPath` (filtro por pasta liberada), o `requireAccess` dos comandos e o contexto `shieldepy.unlocked` (o chat fica sempre na barra lateral).
+  - **A conta só decide a IA:** `AuthService.companyAiBlock()` devolve `suspended`, `repoBlocked`, `aiDisabled` ou `null`. Sem conta é sempre `null` e vale a chave do usuário; `hasAiAccess()` virou "a empresa não bloqueia".
+  - **Telas:** o painel perdeu a tela de bloqueio de página inteira. No lugar, um aviso discreto acima dos ladrilhos, só quando a empresa desliga a IA, com "Verificar de novo" e o painel web. O cabeçalho diz "Modo local" sem conta. O chat trava só com bloqueio da empresa (texto por motivo). A barra de status nunca mostra "Entrar": a dica diz modo local ou empresa, e avisa a IA desligada.
+  - **Textos** nos 4 idiomas: 14 chaves de "entre para usar" saíram, 5 entraram (`localMode`, `sbLocalTip`, `sbAiOff`, `lockAiOffTitle`, `lockAiOffText`) e as de bloqueio foram reescritas como "a análise local continua; a IA…".
+  - **Ao mudar a conta**, os arquivos abertos são reanalisados (os riscos da IA aparecem ou somem); nada mais é limpo.
+  - **E2E 29/29** (era 24): os cenários de suspensão e de repositório agora provam que ciclos e colisões **ficam** e que só o bloqueio da IA muda (`aiBlock()` na API de teste). Unitários: 317 (sem mudança). Extensão: 631 KB.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
+
+---
+
+## R — jornada do usuário e release (escrito em 2026-10-09, antes de começar)
+
+### Por que existe
+Conferido no código da `main` (`297c964`), o caminho de quem instala a extensão hoje:
+1. **Tudo trava sem conta.** `AuthService.accessState()` é o portão da extensão inteira: sem login e sem o repositório cadastrado num projeto do portal, nem os ciclos e colisões (locais, sem IA) aparecem. O painel mostra só a tela de bloqueio, e o chat some da barra lateral.
+2. **O portal não existe fora do localhost.** `shieldepy.webBaseUrl` tem padrão `http://localhost:3000`, então quem instala o `.vsix` clica em "Entrar" e o navegador abre uma página que não existe.
+3. **O caos só roda pela CLI.** A extensão mostra o resultado no mapa (V2d), mas não tem como rodar.
+4. **Não há "primeiros passos".** Nenhum walkthrough. O usuário cai no painel e tem que descobrir sozinho a ordem: chave da IA, mapa, caos.
+5. **Falta o básico do pacote:** ícone PNG (o Marketplace não aceita SVG), README e CHANGELOG da extensão, `repository`.
+
+### Desenho
+- **Conta × recursos.** O que é local não depende de conta: indexação, ciclos, colisões, mapa, topologia, comparar com branch e caos offline. A conta passa a valer só para o que é da empresa:
+  - **Sem login:** modo local. A IA funciona com a chave do próprio usuário (o dinheiro é dele).
+  - **Com login:** vale a política da empresa sobre a IA (`aiEnabled`), e só nos repositórios liberados (`repoBlocked`/`suspended` desligam **a IA**, não o motor). O portal registra o uso como hoje.
+  - Motivo: travar o motor de quem entrou com conta, enquanto quem não entrou usa tudo, não faria sentido. A empresa controla o que custa ou o que sai da máquina (a IA), não a análise local.
+- **Primeiros passos:** `contributes.walkthroughs` com 4 passos (abrir um projeto JS/TS e ver os achados, ver o mapa, testar o caos, IA opcional), aberto uma vez na primeira ativação. Status bar e painel sem a tela de "Entrar".
+- **Caos no editor:** comando "ShielDepy: Testar Caos" reaproveitando o `runChaosCommand` da CLI num bundle separado (`dist/chaos.js`), carregado só quando o comando roda, para o LangGraph não entrar no bundle principal.
+
+### Tarefas
+- **R1. Modo local.** ✅ Concluída em 2026-10-09 (ver o registro). Portão do motor sem conta; IA: chave própria sem conta, política da empresa com conta; chat sempre visível; painel sem tela de bloqueio (aviso discreto quando a empresa desliga a IA); status bar sem "Entrar"; a conta vai para "Configurações" como opcional. E2E ajustado.
+- **R2. Primeiros passos.** Walkthrough, aberto uma vez; estado vazio do painel com os próximos passos ("Ver mapa", "Testar caos").
+- **R3. Caos no editor.** Comando, bundle separado, saída no canal do ShielDepy, resultado no mapa e o relatório aberto no fim.
+- **R4. Pacote.** Ícone PNG, README/CHANGELOG da extensão, `repository`, `vsce package` limpo, tamanho conferido e instrução de instalar pelo `.vsix`.
 
 ---
 
