@@ -1,5 +1,7 @@
 // Identificadores que aparecem em mais de um lugar (package.json, registro, webviews).
 
+import { IGNORED_DIRS } from '@shieldepy/core';
+
 export const VIEW_PANEL = 'shieldepy.panel';
 export const VIEW_CHAT = 'shieldepy.chat';
 export const VIEW_SETTINGS = 'shieldepy.settings';
@@ -40,5 +42,7 @@ export const INLINE_LANGUAGES = ['typescript', 'typescriptreact', 'javascript', 
 /** tsconfig/jsconfig (inclusive `tsconfig.base.json`): mudou → o grafo refaz a resolução de imports. */
 export const MODULE_CONFIG_GLOB = '**/{tsconfig,jsconfig}*.json';
 export const FILE_GLOB = '**/*.{ts,tsx,js,jsx,mjs,cjs,html,htm,css,java,py,cs}';
-export const EXCLUDE_GLOB = '**/{node_modules,dist,out,.git,bin,obj,.venv,venv,__pycache__,.shieldepy}/**';
+/** Pastas fora da análise: as mesmas da CLI (`IGNORED_DIRS` do core) + as das outras linguagens. */
+export const IGNORED_FOLDERS = [...IGNORED_DIRS, 'bin', 'obj', '.venv', 'venv', '__pycache__'];
+export const EXCLUDE_GLOB = `**/{${IGNORED_FOLDERS.join(',')}}/**`;
 export const MAX_ANALYZABLE_BYTES = 2 * 1024 * 1024;

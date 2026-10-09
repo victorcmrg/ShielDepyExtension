@@ -21,8 +21,9 @@ export async function verifyProposedFix(model: WorkspaceModel, fsPath: string, p
   const issues: string[] = [];
   const facts: string[] = [];
   for (const cycle of sim.graph.cyclesInFile(id)) {
-    const text = `ciclo de chamadas: ${cycle.labels.join(' → ')}`;
-    issues.push(text);
+    const text = `${cycle.recursion ? 'recursão' : 'ciclo de chamadas'}: ${cycle.labels.join(' → ')}`;
+    // recursão no mesmo arquivo é fato, não barra a correção (Q3 do plano)
+    if (!cycle.recursion) issues.push(text);
     facts.push(text);
   }
   for (const c of sim.collisionsInvolving(id)) {

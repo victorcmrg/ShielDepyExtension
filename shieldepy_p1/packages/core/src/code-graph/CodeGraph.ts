@@ -5,6 +5,7 @@ import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
 import { topLevelHash } from './fingerprint';
+import { looksGenerated } from './generated';
 import { extractCalls, extractSymbols, type CallDesc, type RawArg, type RawCall, type Scope, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
@@ -233,6 +234,11 @@ export class CodeGraph {
    */
   updateFile(fsPath: string, text: string): void {
     if (!CodeGraph.isSupported(fsPath)) return;
+    // Minificado ou saída de bundler: fora do mapa (e sai, se já estava — o build pode ter sobrescrito).
+    if (looksGenerated(fsPath, text)) {
+      if (this.graph.hasNode(toFileId(fsPath))) this.removeFile(fsPath);
+      return;
+    }
     try {
       const ext = extOf(fsPath);
       if (ext === '.css') {
@@ -279,7 +285,8 @@ export class CodeGraph {
 
   hasEdge(source: string, target: string, type: EdgeAttrs['type']): boolean {
     if (!this.graph.hasNode(source) || !this.graph.hasNode(target)) return false;
-    return this.graph.edges(source, target).some((e) => this.graph.getEdgeAttribute(e, 'type') === type);
+    // `edges(a, b)` do graphology ignora a direção; `outEdges(a, b)` é só de `a` para `b`.
+    return this.graph.outEdges(source, target).some((e) => this.graph.getEdgeAttribute(e, 'type') === type);
   }
 
   /**
@@ -403,12 +410,16 @@ export class CodeGraph {
   }
 
   findCycleThrough(nodeId: string): string[] | null {
-    // Só `calls`: passar uma função como valor (`references`) não é um laço de execução.
+    // Só `calls` provadas: passar uma função como valor (`references`) não é um laço de execução, e um
+    // ciclo que só fecha por uma ligação por nome (`heuristic`) é palpite, não prova (Q2 do plano).
     return findCycleThrough(
       {
         hasNode: (id) => this.graph.hasNode(id),
         outNeighbors: (id) =>
-          this.graph.outEdges(id).filter((e) => this.graph.getEdgeAttribute(e, 'type') === 'calls').map((e) => this.graph.target(e)),
+          this.graph
+            .outEdges(id)
+            .filter((e) => this.graph.getEdgeAttribute(e, 'type') === 'calls' && !this.graph.getEdgeAttribute(e, 'heuristic'))
+            .map((e) => this.graph.target(e)),
       },
       nodeId
     );
@@ -433,6 +444,11 @@ export class CodeGraph {
         endLine: attrs.endLine,
         path: cycle,
         labels: cycle.map((id) => this.getLabel(id)),
+        // todas as funções no mesmo arquivo: recursão (em geral de propósito), não acoplamento entre módulos
+        recursion: cycle.every((id) => {
+          const a = this.graph.getNodeAttributes(id);
+          return isSymbolNode(a) && a.file === attrs.file;
+        }),
       });
     }
     return result;
@@ -786,7 +802,18 @@ export class CodeGraph {
     }
 
     const [root, ...rest] = call.object ?? [];
-    if (root === 'this' || root === 'super') return this.guess(call, ctx);
+    if (root === 'this' || root === 'super') {
+      // `this.campo.m()` com o campo sem tipo: `m` é do objeto guardado no campo, nunca da própria
+      // classe (`this.diagnostics.set()` não é o `set()` de quem a guarda — Q2 do plano).
+      if (rest.length > 0 && call.receiver && !('call' in call.receiver)) {
+        const own = new Set(this.resolveType(fileId, call.receiver.type, ctx).classes);
+        return this.guess(call, ctx, (id) => {
+          const owner = this.containerId(id);
+          return !owner || !own.has(owner);
+        });
+      }
+      return this.guess(call, ctx);
+    }
     const binding = ctx.bindings(fileId).get(root ?? call.name);
 
     if (binding) {
@@ -917,9 +944,15 @@ export class CodeGraph {
   }
 
   /** Fallback por nome (comportamento antigo): o arquivo + o que ele importa. */
-  private guess(call: CallDesc, ctx: ResolutionContext): CallResolution {
-    const guessed = ctx.legacy(call.name);
+  private guess(call: CallDesc, ctx: ResolutionContext, keep: (id: string) => boolean = () => true): CallResolution {
+    const guessed = ctx.legacy(call.name).filter(keep);
     return guessed.length > 0 ? { outcome: 'callsHeuristic', targets: guessed } : { outcome: 'unbound', targets: [] };
+  }
+
+  /** Classe dona de um método (`a.ts#Svc.save` → `a.ts#Svc`); funções soltas não têm. */
+  private containerId(symbolId: string): string | undefined {
+    const attrs = this.graph.hasNode(symbolId) ? this.graph.getNodeAttributes(symbolId) : undefined;
+    return attrs && isSymbolNode(attrs) && attrs.container ? `${attrs.file}#${attrs.container}` : undefined;
   }
 
   private found(ids: string[]): CallResolution {

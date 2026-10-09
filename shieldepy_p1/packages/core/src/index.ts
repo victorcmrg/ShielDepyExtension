@@ -12,6 +12,7 @@ export * from './code-graph/resolve-import';
 export * from './code-graph/extract-module';
 export { parseCss, parseHtml, resolveWebRef } from './code-graph/extract-web';
 export * from './code-graph/indexer';
+export * from './code-graph/generated';
 
 export { tokenize as tokenizeSql, type Token as SqlToken } from './sql/lexer';
 

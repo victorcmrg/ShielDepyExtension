@@ -11,7 +11,12 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 ## Como retomar num chat novo (atualizado em 2026-10-09, início da etapa R)
 
-**Onde estamos:** E1–E5, V1–V3 estão **todas mergeadas na `main`** (`297c964`, PRs #1–#7). A etapa atual é a **R — jornada do usuário e release da extensão**, na branch `feat/jornada-release` (criada a partir da `main`). Leia, nesta ordem:
+**Onde estamos:** E1–E5, V1–V3 estão **todas mergeadas na `main`** (`297c964`, PRs #1–#7). As branches em andamento formam uma pilha:
+- a **R** (jornada do usuário e release) está completa na `feat/jornada-release`, falta o merge;
+- a **Q** (qualidade no projeto real) está completa na `feat/qualidade-mapa`, **empilhada sobre a `feat/jornada-release`**;
+- a próxima é a **F** (rotas e I/O do resto de JS/TS, além do Express); ver a seção "F".
+
+**Ordem de merge: R → Q**, por merge comum. O release fica para depois da Q. Leia, nesta ordem:
 1. esta seção;
 2. a seção **"R — jornada do usuário e release"** (decisões do usuário e tarefas R1–R4);
 3. o fim do **Registro**, para os detalhes de cada fatia já feita.
@@ -78,6 +83,8 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído, mergeado (junto do PR #6); falta o PR de teste no GitHub |
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | mergeado (junto do PR #6); falta a medição paga (5e) |
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
+| Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
+| F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F… | a definir | próxima; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
 ### Registro
@@ -682,6 +689,71 @@ Conferido no código da `main` (`297c964`), o caminho de quem instala a extensã
 - **R2. Primeiros passos.** ✅ Concluída em 2026-10-09 (ver o registro). Walkthrough, aberto uma vez; estado vazio do painel com os próximos passos ("Ver mapa", "Testar caos").
 - **R3. Caos no editor.** ✅ Concluída em 2026-10-09 (ver o registro). Comando, bundle separado, saída no canal do ShielDepy, resultado no mapa e o relatório aberto no fim.
 - **R4. Pacote.** ✅ Concluída em 2026-10-09 (ver o registro). Ícone PNG, README/CHANGELOG da extensão, `repository`, `vsce package` limpo, tamanho conferido e instrução de instalar pelo `.vsix`.
+
+---
+
+## Q — qualidade no projeto real (2026-10-09)
+
+**Por que existe.** O usuário perguntou se a extensão já funcionava em projetos reais. Até então ela só tinha sido testada nos exemplos feitos sob medida. Rodar o motor no próprio ShielDepy (`shieldepy graph|cycles|report|topology` em `packages/` e `apps/`) mostrou três problemas que queimariam a confiança no primeiro uso:
+1. **Minificados no mapa.** A extensão indexava `apps/vscode/media/vendor/cytoscape.min.js` e afins. A cobertura de `apps` caía para 57% (2.821 ligações por nome, 2.795 delas do vendor) e apareciam **320 "ciclos"** sem sentido.
+2. **Ciclo falso.** Em `FindingsManager.ts` surgia `set → publish → set`: o `this.diagnostics.set(...)`, um campo vindo de `vscode.languages.createDiagnosticCollection()` e por isso sem tipo, caía no palpite por nome e achava o `set()` da própria classe. Ciclo "provado" apoiado numa ligação por palpite.
+3. **Recursão como aviso.** Os 4 ciclos de `packages/` são recursão mútua de propósito no resolvedor (`resolveCall → resolveReturnMember → resolveCall`). Num projeto grande, todo parser ou algoritmo recursivo viraria aviso.
+
+O usuário decidiu: corrigir o 1 e o 2, e **rebaixar a recursão** ("esse projeto é pequeno e já deu errado, imagina os gigantescos").
+
+**Tarefas (todas ✅, branch `feat/qualidade-mapa`):**
+- **Q1. Código gerado fora do mapa.**
+  - `looksGenerated(caminho, texto)` (core) pega pelo nome (`*.min.js`, `*.bundle.js`, `*.chunk.js`) ou pela forma do texto: mais da metade dele em linhas com mais de 1.000 caracteres, ou média acima de 200 por linha. Uma linha longa sozinha, como base64 ou um SVG num `.tsx`, **não** tira um arquivo escrito à mão do mapa.
+  - Fica no `CodeGraph.updateFile`, então vale para a CLI e para a extensão. Um arquivo já indexado que vira minificado sai do mapa.
+  - `IGNORED_DIRS` ganhou `vendor`, `bower_components`, `build`, `coverage`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.cache` e `.output`. A extensão monta o `EXCLUDE_GLOB` e o filtro de pastas a partir dessa mesma lista, para nunca mais divergirem.
+- **Q2. Ciclo só com prova.**
+  - `findCycleThrough` ignora as arestas `heuristic`.
+  - Na causa: em `this.campo.m()` com o campo sem tipo, o palpite por nome não considera mais os métodos da própria classe, porque `m` é do objeto guardado no campo.
+  - **Bug antigo achado no caminho:** o `CodeGraph.hasEdge(a, b)` usava `graph.edges(a, b)`, que no graphology **ignora a direção**. Os testes que negavam uma ligação podiam passar por engano. Agora usa `outEdges(a, b)`, e os 330 testes seguem passando.
+- **Q3. Recursão leve.**
+  - `SymbolCycle.recursion` diz se todas as funções da cadeia estão no mesmo arquivo.
+  - Na extensão, a recursão vira achado **leve** ("Recursão entre funções deste arquivo…", com "confira a condição de parada"). Ciclo entre arquivos continua aviso.
+  - A verificação de correção da IA não barra mais por recursão.
+  - Na CLI, o `cycles` separa "entre arquivos" (o que o `--fail-on` barra e o que sai no `--json`) de "recursão no mesmo arquivo" (só informa).
+
+**Antes e depois, no próprio ShielDepy:**
+
+| | Antes | Depois |
+|---|---|---|
+| `apps`: cobertura provada | 57,0% | 98,8% |
+| `apps`: ligações por palpite | 2.821 | 24 |
+| `apps`: ciclos | 320 | 0 |
+| `packages`: avisos de ciclo | 4 | 0, com as 4 recursões como informação |
+
+Testes: 330 unitários (+5 em `packages/core/test/real-project.test.ts`) e E2E 33/33.
+
+**Ainda não validado:** um projeto real de terceiros, grande. O próprio ShielDepy não usa Express com pg ou Prisma, então o caos não se aplica a ele: o portal é `node:http` com `node:sqlite`, e a topologia dá 0 rotas. É isso que a F resolve.
+
+## F — rotas e I/O do resto de JS/TS (escrito em 2026-10-09, antes de começar)
+
+**Decisão do usuário:** cobrir o resto de JS/TS, não só o Express.
+
+**O que já serve:** os testes gerados usam o `supertest`, que aceita qualquer servidor HTTP do Node:
+- Express e Koa (`app.callback()`);
+- Fastify (`app.server`, depois de `ready()`);
+- Nest (`app.getHttpServer()`);
+- `node:http` puro.
+
+O `createApp` do contrato só precisa devolver um desses. O formato da topologia não muda.
+
+**O que falta:** reconhecer as **rotas** e o **I/O** de cada biblioteca (`packages/core/src/topology/routes.ts` e `io.ts`), sem regex, pela AST.
+
+| Fatia | O que | Estimativa |
+|---|---|---|
+| F1 | Fastify (`app.get/post`, `app.route({...})`, `register` com prefixo) | 1–2 dias |
+| F2 | Koa + `@koa/router`, Hono | 1–2 dias |
+| F3 | `node:http` puro (`createServer` + `if (req.method === ... && req.url === ...)`): cobre o próprio portal | 2–3 dias |
+| F4 | NestJS (`@Controller` + `@Get/@Post`, injeção pelo construtor, que o grafo já segue) | 3–4 dias |
+| F5 | Next.js (`app/**/route.ts` com `export async function POST`, `pages/api/**`) | 2–3 dias |
+| F6 | Banco: TypeORM, Sequelize, Mongoose, Drizzle, Knex, mysql2, better-sqlite3/`node:sqlite`, driver do MongoDB (leitura, escrita e transação) | 1–2 dias cada |
+| F7 | APIs: got, undici, ky, node-fetch e SDKs comuns (Stripe…), como `api_call` com o host | 0,5–1 dia cada |
+
+**Ordem sugerida:** F3 (prova no próprio ShielDepy) → F1 → F6 com SQLite e Mongoose → F4 → F5 → o resto. Cada fatia tem um exemplo pequeno em `examples/` e o teste de aceitação "topologia com as operações em ordem", como o `checkout-express` na E2.
 
 ---
 

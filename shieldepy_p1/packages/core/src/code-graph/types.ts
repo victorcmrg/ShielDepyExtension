@@ -107,6 +107,11 @@ export interface SymbolCycle {
   path: string[];
   /** Rótulos legíveis da cadeia (ex: ["login", "refreshToken", "login"]). */
   labels: string[];
+  /**
+   * Todas as funções da cadeia estão no mesmo arquivo: recursão (mútua), quase sempre de propósito
+   * (um resolvedor, um parser). Vira achado leve; ciclo entre arquivos continua aviso (Q3 do plano).
+   */
+  recursion: boolean;
 }
 
 /**

@@ -165,16 +165,19 @@ export class BackgroundAnalyzer implements vscode.Disposable {
 
     for (const cycle of this.model.graph.cyclesInFile(key)) {
       const chain = cycle.labels.join(' → ');
-      provenFacts.push(`ciclo de chamadas: ${chain}`);
+      provenFacts.push(`${cycle.recursion ? 'recursão' : 'ciclo de chamadas'}: ${chain}`);
       findings.push({
         // As outras funções do ciclo: o hover e o balão mostram o código delas ("o que isto afeta").
         related: this.cycleParticipants(cycle.symbolId, cycle.path),
         file: key,
         startLine: cycle.startLine,
         endLine: cycle.endLine,
-        severity: 'warning',
-        message: `Ciclo de chamadas detectado envolvendo "${cycle.name}".`,
-        impact: `Cadeia do ciclo: ${chain} — uma mudança aqui pode re-disparar este mesmo símbolo (efeito cascata / loop infinito entre componentes).`,
+        // Recursão no mesmo arquivo é quase sempre de propósito (parser, resolvedor): leve (Q3 do plano).
+        severity: cycle.recursion ? 'info' : 'warning',
+        message: cycle.recursion ? `Recursão entre funções deste arquivo envolvendo "${cycle.name}".` : `Ciclo de chamadas detectado envolvendo "${cycle.name}".`,
+        impact: cycle.recursion
+          ? `Cadeia: ${chain} — em geral é de propósito; confira se toda volta tem uma condição de parada.`
+          : `Cadeia do ciclo: ${chain} — uma mudança aqui pode re-disparar este mesmo símbolo (efeito cascata / loop infinito entre componentes).`,
         source: 'grafo',
         confidence: 100,
         key: `ciclo:${cycle.name}`,

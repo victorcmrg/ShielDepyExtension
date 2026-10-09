@@ -158,9 +158,11 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
         if (!args.target) throw new Error('informe a pasta');
         const graph = await CodeGraph.create(defaultWasmDir(), silentHost);
         await indexFiles(graph, await listSourceFiles(args.target), silentHost);
-        const cycles = graph.allCycles().map((c) => c.labels);
+        // entre arquivos é acoplamento (barra com --fail-on); no mesmo arquivo é recursão, só informa
+        const all = graph.allCycles();
+        const cycles = all.filter((c) => !c.recursion).map((c) => c.labels);
         if (args.json) io.out(JSON.stringify(cycles, null, 2));
-        else printCycles(cycles, graph.stats, io.out);
+        else printCycles(cycles, all.filter((c) => c.recursion).map((c) => c.labels), graph.stats, io.out);
         return args.failOn && cycles.length > 0 ? 1 : 0;
       }
       case 'graph': {

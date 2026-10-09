@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { config } from '../config';
-import { EXCLUDE_GLOB, FILE_GLOB, GRAPH_LANGUAGES, MAX_ANALYZABLE_BYTES, RULE_ONLY_LANGUAGES } from '../constants';
+import { EXCLUDE_GLOB, FILE_GLOB, GRAPH_LANGUAGES, IGNORED_FOLDERS, MAX_ANALYZABLE_BYTES, RULE_ONLY_LANGUAGES } from '../constants';
 import type { WorkspaceModel } from './WorkspaceModel';
 
-const IGNORED_SEGMENT = /[\\/](node_modules|dist|out|\.git|bin|obj|\.venv|venv|__pycache__)[\\/]/;
+const IGNORED = new Set(IGNORED_FOLDERS);
+const inIgnoredFolder = (fsPath: string) => fsPath.split(/[\\/]/).some((segment) => IGNORED.has(segment));
 
 /** Casa com algum glob de `shieldepy.analysis.exclude`? (mesmo motor de glob do VS Code) */
 export function isUserExcluded(doc: vscode.TextDocument): boolean {
@@ -18,7 +19,7 @@ export function isUserExcluded(doc: vscode.TextDocument): boolean {
 export function isAnalyzable(doc: vscode.TextDocument): boolean {
   if (doc.uri.scheme !== 'file' || doc.isUntitled) return false;
   if (!GRAPH_LANGUAGES.includes(doc.languageId) && !RULE_ONLY_LANGUAGES.includes(doc.languageId)) return false;
-  if (IGNORED_SEGMENT.test(doc.uri.fsPath)) return false;
+  if (inIgnoredFolder(doc.uri.fsPath)) return false;
   if (isUserExcluded(doc)) return false;
   return doc.getText().length <= MAX_ANALYZABLE_BYTES;
 }
