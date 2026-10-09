@@ -165,6 +165,8 @@
     const msg = event.data || {};
     if (msg.type !== 'sync') return;
     setAccount(msg.me, msg.access, msg.project);
+    // Sem portal configurado não há conta: o cartão some (modo local).
+    $('accountCard').hidden = !msg.portal;
     $('systemToggle').checked = Boolean(msg.systemEnabled);
     $('inlineToggle').checked = msg.inlineEnabled !== false;
     $('statusBarToggle').checked = msg.statusBar !== false;

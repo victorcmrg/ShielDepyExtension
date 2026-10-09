@@ -9,12 +9,25 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-08, início da E5)
+## Como retomar num chat novo (atualizado em 2026-10-09, início da etapa R)
 
-**Onde estamos:** E1, V1, E2 e E3 estão mergeadas na `main` (`ccc11c2`). A **E4 está completa** e foi enviada pelo usuário (`origin/feat/chaos-gate`), mas ainda não foi mergeada. Depois do merge, falta só o **PR de teste no GitHub** (ver o registro da 4e). A **E5 (mapa incremental e custo)** está **pronta, menos a medição paga (5e)**, na branch `feat/mapa-incremental`, **criada a partir da `feat/chaos-gate`** (empilhada, porque a E4 ainda não está na `main`). Se a E4 entrar por *squash*, rebasear a E5 sobre a `main` antes de abrir o PR dela. Leia, nesta ordem:
+**Onde estamos:** E1–E5, V1–V3 estão **todas mergeadas na `main`** (`297c964`, PRs #1–#7). As branches em andamento formam uma pilha:
+- a **R** (jornada do usuário e release) está completa na `feat/jornada-release`, falta o merge;
+- a **Q** (qualidade no projeto real) está completa na `feat/qualidade-mapa`, **empilhada sobre a `feat/jornada-release`**;
+- a próxima é a **F** (rotas e I/O do resto de JS/TS, além do Express); ver a seção "F".
+
+**Ordem de merge: R → Q**, por merge comum. O release fica para depois da Q. Leia, nesta ordem:
 1. esta seção;
-2. a seção **"E5 — mapa incremental e custo"** (por que existe, desenho e tarefas 5a–5f);
+2. a seção **"R — jornada do usuário e release"** (decisões do usuário e tarefas R1–R4);
 3. o fim do **Registro**, para os detalhes de cada fatia já feita.
+
+**Decisões de 2026-10-09 (do usuário):**
+- **Só JS/TS por enquanto.** Python talvez depois; Java e C# saem do roadmap (a E6 vira "Python, talvez").
+- **Modo local grátis:** sem conta, a extensão faz tudo o que é determinístico (ciclos, colisões, mapa, topologia, caos offline). A conta só traz o portal, a equipe e a política de IA da empresa.
+- **O portal ainda não está publicado.** O release não pode depender dele.
+- **Release:** primeiro `.vsix` nas GitHub Releases; o Marketplace fica para quando estabilizar.
+
+**Pendências antigas que continuam valendo:** o PR de teste do workflow no GitHub (o `shieldepy-chaos.yml` nunca rodou no Actions) e a medição paga da 5e.
 
 **Combinados com o usuário (seguir sem perguntar):**
 - Responder **em português**.
@@ -26,9 +39,11 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **307** depois da 5e, parte gratuita).
-- `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
-- `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
+- `npm run check`: typecheck + testes unitários (**325** no fim da etapa R, nenhum pulado quando os exemplos têm `npm install`).
+- `npm run build:vscode`: dois arquivos. `dist/extension.js` tem ~640 KB; se crescer muito, algo puxou o LangGraph para dentro dele. O `dist/chaos.js` (~1,9 MB) é o pipeline de caos, carregado só pelo "Testar Caos".
+- `npm run test:e2e -w shieldepy`: E2E num VS Code real (**33/33**, leva alguns minutos). O cenário do caos de verdade só roda com `npm install` em `examples/checkout-express`.
+- `npm run package:vscode`: gera o `.vsix`. Para conferir o pacote, instale-o num `--extensions-dir` temporário e rode `SHIELDEPY_E2E_EXTENSION=<pasta instalada> node apps/vscode/test-e2e/run.mjs`.
+- **Portal em desenvolvimento:** a extensão vem sem portal (`shieldepy.webBaseUrl` vazio, modo local). Para testar o login com o `npm run web`, ponha `"shieldepy.webBaseUrl": "http://localhost:3000"` nas settings.
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
 - Dentro de um exemplo (`examples/checkout-express` e `-fixed`, que precisam de `npm install` próprio): `npm test` roda o teste de fumaça. Sem esse `npm install`, os testes da CLI e do agent que rodam o Vitest e o `tsc` dos exemplos são pulados.
 - Atenção no Windows: os caminhos têm acento e espaço (`Área de Trabalho`), então use sempre aspas. Os arquivos do repositório estão em CRLF, e edições por script que procuram `\n` podem não casar; prefira o editor.
@@ -62,12 +77,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
-| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído; falta o merge (depois da E4 e da E5) |
-| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend`, tarefas V3a–V3e | `feat/portal-v3` | concluído; falta o merge (depois da E4, E5 e V2) |
+| V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado (PR #6) |
+| V3. Portal: resultados do caos enviados pelo CI e mostrados no `apps/frontend`, tarefas V3a–V3e | `feat/portal-v3` | concluído, mergeado (PR #7) |
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
-| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído; falta o merge e o PR de teste no GitHub |
-| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | pronta, menos a medição paga (5e) |
-| 6. E6: grafo de chamadas para Java/C#/Python (frontend por linguagem + rotas/I/O por framework) | a definir | pendente (era a E5; ver avaliação) |
+| 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído, mergeado (junto do PR #6); falta o PR de teste no GitHub |
+| 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | mergeado (junto do PR #6); falta a medição paga (5e) |
+| R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
+| Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
+| F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F… | a definir | próxima; 3 a 5 semanas no total |
+| 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -588,8 +606,154 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Docs:** a seção "Portal: o histórico de cada repositório" no `docs/chaos-ci.md` (criar o token, guardar no GitHub, o que vai para o portal, retenção) e o README (o `publish`, o portal e os arquivos novos no mapa do código).
   - **Estado final do V3:** 321 testes unitários (28 do portal, 8 deles do V3b), extensão com 636 KB (sem mudança: o V3 não toca nela). As páginas foram conferidas em screenshots nos temas claro e escuro e no celular. O servidor e o banco temporários da conferência foram desligados e apagados.
   - **Para usar de verdade:** subir o portal com `PUBLIC_URL` (ou `OAUTH_REDIRECT_BASE`) apontando para o endereço público, criar o token na página do projeto e configurar o secret e a variável no GitHub.
+- 2026-10-09: **R1 concluída (modo local).**
+  - **Portão:** o motor só depende de `shieldepy.backgroundAnalysis.enabled`. Saíram o `setPathGate`/`isAllowedPath` (filtro por pasta liberada), o `requireAccess` dos comandos e o contexto `shieldepy.unlocked` (o chat fica sempre na barra lateral).
+  - **A conta só decide a IA:** `AuthService.companyAiBlock()` devolve `suspended`, `repoBlocked`, `aiDisabled` ou `null`. Sem conta é sempre `null` e vale a chave do usuário; `hasAiAccess()` virou "a empresa não bloqueia".
+  - **Telas:** o painel perdeu a tela de bloqueio de página inteira. No lugar, um aviso discreto acima dos ladrilhos, só quando a empresa desliga a IA, com "Verificar de novo" e o painel web. O cabeçalho diz "Modo local" sem conta. O chat trava só com bloqueio da empresa (texto por motivo). A barra de status nunca mostra "Entrar": a dica diz modo local ou empresa, e avisa a IA desligada.
+  - **Textos** nos 4 idiomas: 14 chaves de "entre para usar" saíram, 5 entraram (`localMode`, `sbLocalTip`, `sbAiOff`, `lockAiOffTitle`, `lockAiOffText`) e as de bloqueio foram reescritas como "a análise local continua; a IA…".
+  - **Ao mudar a conta**, os arquivos abertos são reanalisados (os riscos da IA aparecem ou somem); nada mais é limpo.
+  - **E2E 27/27** (os mesmos 27 de antes, reescritos; o commit da R1 diz "29/29" por engano de contagem): os cenários de suspensão e de repositório agora provam que ciclos e colisões **ficam** e que só o bloqueio da IA muda (`aiBlock()` na API de teste). Unitários: 317 (sem mudança). Extensão: 631 KB.
+- 2026-10-09: **R3 concluída (caos no editor).** Feita antes da R2, porque o walkthrough da R2 tem o passo "Testar caos".
+  - **O contrato deixou de ser o maior atrito.** Antes, sem `shieldepy.chaos.config.ts` a CLI só imprimia um modelo genérico. Agora `chaosConfigScaffold(surface)` (core) gera o contrato a partir do mapa:
+    - uma requisição por rota sensível, com `:id` virando `1`;
+    - uma resposta saudável por host externo;
+    - `createApp` que lança um erro claro, para o arquivo compilar como está.
+  - **Marcas:** o que só o projeto sabe sai com `TODO(shieldepy)`, uma linha por pendência, e `chaosConfigPending()` conta. As invariantes ficam como exemplo opcional. A CLI ganhou `shieldepy chaos <pasta> --init`, que não sobrescreve um contrato existente.
+  - **Comando "ShielDepy: Testar Caos"** (`src/chaos/ChaosCommand.ts`), na ordem em que a pessoa precisa:
+    1. o projeto: a pasta com `package.json` mais próxima de cada rota sensível do mapa (com mais de um, uma lista);
+    2. sem contrato: oferece criá-lo e abre o arquivo;
+    3. contrato com pendências: avisa ("N pendências"), com "Abrir o contrato" ou "Rodar mesmo assim";
+    4. falta `vitest`, `supertest` ou `msw`: mostra o comando (npm, pnpm ou yarn, pelo lockfile) e oferece rodar num terminal;
+    5. escopo: "Só o que mudou desde origin/main" (o primeiro de `origin/main`, `origin/master`, `main` ou `master` que existir) ou "Todas as rotas sensíveis";
+    6. motor ou IA: só pergunta se a IA estiver disponível (chave e política da empresa); a chave vai pelo ambiente que a CLI lê (`AiService.cliEnv()`);
+    7. roda num pseudoterminal "ShielDepy: caos", com a mesma saída da CLI;
+    8. no fim, um aviso por código de saída, com "Ver no mapa" (o painel V2d já pega o resultado) e "Abrir relatório" (`.shieldepy/chaos-report.md`).
+  - **Bundle separado:** o pipeline (LangGraph, SDKs) virou `dist/chaos.js` (1,9 MB), carregado por `require` só quando o comando roda. A extensão passou de 631 para 641 KB. A CLI aceita `wasmDir` (`ChaosArgs` e `buildMapOf`), porque no bundle CJS o `defaultWasmDir()` não existe.
+  - **Armadilha encontrada:** o runner do Vitest usa `process.execPath`, que dentro do VS Code é o executável do editor. O `spawnProcess` passa `ELECTRON_RUN_AS_NODE=1` quando `process.versions.electron` existe; na CLI nada muda.
+  - **Testes:**
+    - unitários: 325, nenhum pulado (os exemplos agora têm `npm install`). Novos: 3 do contrato gerado (sintaxe, ida e volta pelo leitor de AST, o pipeline sem reclamar de rota ou API faltando), o `--init` na CLI e o aviso que sugere o `--init`;
+    - **E2E 31/31** (27 + 4; o commit da R3 diz "33/33" por engano de contagem). Novos: o projeto é achado, os pacotes faltando, o contrato criado no editor e **o caos rodando de verdade dentro do VS Code** no `checkout-express` (exit 1, corrida e timeout provados). Este último só roda quando o exemplo tem `npm install`.
+- 2026-10-09: **R2 concluída (primeiros passos).**
+  - **Walkthrough** "Primeiros passos com o ShielDepy" (`contributes.walkthroughs`, id `start`), com 4 passos. Cada um tem um botão de comando, um texto em `media/walkthrough/*.md` e se marca como feito sozinho:
+    1. a lista de erros (`onView`);
+    2. o mapa;
+    3. Testar Caos;
+    4. a chave da IA, opcional.
+  - Ele abre **uma vez** na primeira ativação (`globalState`; nunca no modo de teste). Depois, pelo comando novo **"ShielDepy: Primeiros Passos"**.
+  - **Painel sem achados** virou ponto de partida: "Nenhum problema provado até agora. Próximos passos:" com Ver o mapa, Testar caos nas rotas e Primeiros passos. Com um filtro de severidade ligado, continua só "Nada aqui ainda". São 4 chaves novas nos 4 idiomas.
+  - **E2E 32/32:** o walkthrough tem 4 passos, cada mídia existe no pacote, cada passo tem botão e o comando abre. A lista de comandos registrados passou a incluir `runChaos` e `gettingStarted`.
+- 2026-10-09: **R4 concluída (pacote). Com ela, a etapa R está completa.**
+  - **Ícone:** `media/icon.png`, 256×256 com fundo transparente. É o `logo-mark.svg` do portal (o escudo verde com o foguete), renderizado pelo Chrome headless.
+  - **Manifesto:** `icon`, `repository`, `homepage` e `bugs`; README e CHANGELOG da extensão em `apps/vscode/` (o README é a página da extensão, com instalação pelo `.vsix`, o que ela faz, privacidade e configurações). O `.vscodeignore` passou a excluir o `.vscode-test/**` explicitamente.
+  - **Portal opcional de verdade:** `shieldepy.webBaseUrl` tem padrão **vazio** (era `http://localhost:3000`, que quebraria o "Entrar" de quem instala o pacote). Sem portal:
+    - sem conta e sem chamada de rede (`fetchMe`);
+    - o cartão da conta some das configurações;
+    - os 4 comandos de conta somem da paleta (contexto `shieldepy.portal`);
+    - o `login()` explica o motivo.
+  - **Em desenvolvimento:** `"shieldepy.webBaseUrl": "http://localhost:3000"` nas settings (o E2E já faz isso pelo `.vscode/settings.json` do workspace).
+  - **Pacote:** `npm run package:vscode` gera `apps/vscode/shieldepy-0.1.0.vsix` (37 arquivos, 1,77 MB). O script usa `--skip-license`: a licença é decisão do usuário (sem `LICENSE`, vale "todos os direitos reservados").
+  - **Provado:**
+    - o `.vsix` instala limpo num VS Code isolado (`--extensions-dir` temporário);
+    - **o E2E inteiro passou contra a extensão instalada do `.vsix`** (`SHIELDEPY_E2E_EXTENSION=<pasta> node test-e2e/run.mjs`), não só contra a pasta de desenvolvimento;
+    - E2E **33/33** (+1: sem portal, a conta some e as colisões ficam).
+  - **Para publicar o release (o usuário decide e faz):**
+    1. `npm run package:vscode`;
+    2. `gh release create v0.1.0 shieldepy_p1/apps/vscode/shieldepy-0.1.0.vsix --title "ShielDepy 0.1.0" --notes-file shieldepy_p1/apps/vscode/CHANGELOG.md`.
+
+    Se o repositório for privado, só quem tem acesso a ele baixa. O Marketplace fica para depois: ele precisa de um publisher `shieldepy` criado em marketplace.visualstudio.com e de um token do Azure DevOps.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
+
+---
+
+## R — jornada do usuário e release (escrito em 2026-10-09, antes de começar)
+
+### Por que existe
+Conferido no código da `main` (`297c964`), o caminho de quem instala a extensão hoje:
+1. **Tudo trava sem conta.** `AuthService.accessState()` é o portão da extensão inteira: sem login e sem o repositório cadastrado num projeto do portal, nem os ciclos e colisões (locais, sem IA) aparecem. O painel mostra só a tela de bloqueio, e o chat some da barra lateral.
+2. **O portal não existe fora do localhost.** `shieldepy.webBaseUrl` tem padrão `http://localhost:3000`, então quem instala o `.vsix` clica em "Entrar" e o navegador abre uma página que não existe.
+3. **O caos só roda pela CLI.** A extensão mostra o resultado no mapa (V2d), mas não tem como rodar.
+4. **Não há "primeiros passos".** Nenhum walkthrough. O usuário cai no painel e tem que descobrir sozinho a ordem: chave da IA, mapa, caos.
+5. **Falta o básico do pacote:** ícone PNG (o Marketplace não aceita SVG), README e CHANGELOG da extensão, `repository`.
+
+### Desenho
+- **Conta × recursos.** O que é local não depende de conta: indexação, ciclos, colisões, mapa, topologia, comparar com branch e caos offline. A conta passa a valer só para o que é da empresa:
+  - **Sem login:** modo local. A IA funciona com a chave do próprio usuário (o dinheiro é dele).
+  - **Com login:** vale a política da empresa sobre a IA (`aiEnabled`), e só nos repositórios liberados (`repoBlocked`/`suspended` desligam **a IA**, não o motor). O portal registra o uso como hoje.
+  - Motivo: travar o motor de quem entrou com conta, enquanto quem não entrou usa tudo, não faria sentido. A empresa controla o que custa ou o que sai da máquina (a IA), não a análise local.
+- **Primeiros passos:** `contributes.walkthroughs` com 4 passos (abrir um projeto JS/TS e ver os achados, ver o mapa, testar o caos, IA opcional), aberto uma vez na primeira ativação. Status bar e painel sem a tela de "Entrar".
+- **Caos no editor:** comando "ShielDepy: Testar Caos" reaproveitando o `runChaosCommand` da CLI num bundle separado (`dist/chaos.js`), carregado só quando o comando roda, para o LangGraph não entrar no bundle principal.
+
+### Tarefas
+- **R1. Modo local.** ✅ Concluída em 2026-10-09 (ver o registro). Portão do motor sem conta; IA: chave própria sem conta, política da empresa com conta; chat sempre visível; painel sem tela de bloqueio (aviso discreto quando a empresa desliga a IA); status bar sem "Entrar"; a conta vai para "Configurações" como opcional. E2E ajustado.
+- **R2. Primeiros passos.** ✅ Concluída em 2026-10-09 (ver o registro). Walkthrough, aberto uma vez; estado vazio do painel com os próximos passos ("Ver mapa", "Testar caos").
+- **R3. Caos no editor.** ✅ Concluída em 2026-10-09 (ver o registro). Comando, bundle separado, saída no canal do ShielDepy, resultado no mapa e o relatório aberto no fim.
+- **R4. Pacote.** ✅ Concluída em 2026-10-09 (ver o registro). Ícone PNG, README/CHANGELOG da extensão, `repository`, `vsce package` limpo, tamanho conferido e instrução de instalar pelo `.vsix`.
+
+---
+
+## Q — qualidade no projeto real (2026-10-09)
+
+**Por que existe.** O usuário perguntou se a extensão já funcionava em projetos reais. Até então ela só tinha sido testada nos exemplos feitos sob medida. Rodar o motor no próprio ShielDepy (`shieldepy graph|cycles|report|topology` em `packages/` e `apps/`) mostrou três problemas que queimariam a confiança no primeiro uso:
+1. **Minificados no mapa.** A extensão indexava `apps/vscode/media/vendor/cytoscape.min.js` e afins. A cobertura de `apps` caía para 57% (2.821 ligações por nome, 2.795 delas do vendor) e apareciam **320 "ciclos"** sem sentido.
+2. **Ciclo falso.** Em `FindingsManager.ts` surgia `set → publish → set`: o `this.diagnostics.set(...)`, um campo vindo de `vscode.languages.createDiagnosticCollection()` e por isso sem tipo, caía no palpite por nome e achava o `set()` da própria classe. Ciclo "provado" apoiado numa ligação por palpite.
+3. **Recursão como aviso.** Os 4 ciclos de `packages/` são recursão mútua de propósito no resolvedor (`resolveCall → resolveReturnMember → resolveCall`). Num projeto grande, todo parser ou algoritmo recursivo viraria aviso.
+
+O usuário decidiu: corrigir o 1 e o 2, e **rebaixar a recursão** ("esse projeto é pequeno e já deu errado, imagina os gigantescos").
+
+**Tarefas (todas ✅, branch `feat/qualidade-mapa`):**
+- **Q1. Código gerado fora do mapa.**
+  - `looksGenerated(caminho, texto)` (core) pega pelo nome (`*.min.js`, `*.bundle.js`, `*.chunk.js`) ou pela forma do texto: mais da metade dele em linhas com mais de 1.000 caracteres, ou média acima de 200 por linha. Uma linha longa sozinha, como base64 ou um SVG num `.tsx`, **não** tira um arquivo escrito à mão do mapa.
+  - Fica no `CodeGraph.updateFile`, então vale para a CLI e para a extensão. Um arquivo já indexado que vira minificado sai do mapa.
+  - `IGNORED_DIRS` ganhou `vendor`, `bower_components`, `build`, `coverage`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.cache` e `.output`. A extensão monta o `EXCLUDE_GLOB` e o filtro de pastas a partir dessa mesma lista, para nunca mais divergirem.
+- **Q2. Ciclo só com prova.**
+  - `findCycleThrough` ignora as arestas `heuristic`.
+  - Na causa: em `this.campo.m()` com o campo sem tipo, o palpite por nome não considera mais os métodos da própria classe, porque `m` é do objeto guardado no campo.
+  - **Bug antigo achado no caminho:** o `CodeGraph.hasEdge(a, b)` usava `graph.edges(a, b)`, que no graphology **ignora a direção**. Os testes que negavam uma ligação podiam passar por engano. Agora usa `outEdges(a, b)`, e os 330 testes seguem passando.
+- **Q3. Recursão leve.**
+  - `SymbolCycle.recursion` diz se todas as funções da cadeia estão no mesmo arquivo.
+  - Na extensão, a recursão vira achado **leve** ("Recursão entre funções deste arquivo…", com "confira a condição de parada"). Ciclo entre arquivos continua aviso.
+  - A verificação de correção da IA não barra mais por recursão.
+  - Na CLI, o `cycles` separa "entre arquivos" (o que o `--fail-on` barra e o que sai no `--json`) de "recursão no mesmo arquivo" (só informa).
+
+**Antes e depois, no próprio ShielDepy:**
+
+| | Antes | Depois |
+|---|---|---|
+| `apps`: cobertura provada | 57,0% | 98,8% |
+| `apps`: ligações por palpite | 2.821 | 24 |
+| `apps`: ciclos | 320 | 0 |
+| `packages`: avisos de ciclo | 4 | 0, com as 4 recursões como informação |
+
+Testes: 330 unitários (+5 em `packages/core/test/real-project.test.ts`) e E2E 33/33.
+
+**Ainda não validado:** um projeto real de terceiros, grande. O próprio ShielDepy não usa Express com pg ou Prisma, então o caos não se aplica a ele: o portal é `node:http` com `node:sqlite`, e a topologia dá 0 rotas. É isso que a F resolve.
+
+## F — rotas e I/O do resto de JS/TS (escrito em 2026-10-09, antes de começar)
+
+**Decisão do usuário:** cobrir o resto de JS/TS, não só o Express.
+
+**O que já serve:** os testes gerados usam o `supertest`, que aceita qualquer servidor HTTP do Node:
+- Express e Koa (`app.callback()`);
+- Fastify (`app.server`, depois de `ready()`);
+- Nest (`app.getHttpServer()`);
+- `node:http` puro.
+
+O `createApp` do contrato só precisa devolver um desses. O formato da topologia não muda.
+
+**O que falta:** reconhecer as **rotas** e o **I/O** de cada biblioteca (`packages/core/src/topology/routes.ts` e `io.ts`), sem regex, pela AST.
+
+| Fatia | O que | Estimativa |
+|---|---|---|
+| F1 | Fastify (`app.get/post`, `app.route({...})`, `register` com prefixo) | 1–2 dias |
+| F2 | Koa + `@koa/router`, Hono | 1–2 dias |
+| F3 | `node:http` puro (`createServer` + `if (req.method === ... && req.url === ...)`): cobre o próprio portal | 2–3 dias |
+| F4 | NestJS (`@Controller` + `@Get/@Post`, injeção pelo construtor, que o grafo já segue) | 3–4 dias |
+| F5 | Next.js (`app/**/route.ts` com `export async function POST`, `pages/api/**`) | 2–3 dias |
+| F6 | Banco: TypeORM, Sequelize, Mongoose, Drizzle, Knex, mysql2, better-sqlite3/`node:sqlite`, driver do MongoDB (leitura, escrita e transação) | 1–2 dias cada |
+| F7 | APIs: got, undici, ky, node-fetch e SDKs comuns (Stripe…), como `api_call` com o host | 0,5–1 dia cada |
+
+**Ordem sugerida:** F3 (prova no próprio ShielDepy) → F1 → F6 com SQLite e Mongoose → F4 → F5 → o resto. Cada fatia tem um exemplo pequeno em `examples/` e o teste de aceitação "topologia com as operações em ordem", como o `checkout-express` na E2.
 
 ---
 

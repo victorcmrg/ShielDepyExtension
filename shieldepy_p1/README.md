@@ -187,7 +187,7 @@ esses testes com o Vitest do projeto e serve de portão de PR. O pipeline é um 
 3. **Templates**: cada spec vira um `.spec.ts` (Vitest + supertest + MSW) com um bloco de
    **controle** (a mesma requisição, sem caos) e o de **caos**.
 
-O projeto declara o contrato em `shieldepy.chaos.config.ts`, que o ShielDepy lê pela AST, sem executar:
+O projeto declara o contrato em `shieldepy.chaos.config.ts`, que o ShielDepy lê pela AST, sem executar. O inicial sai do próprio mapa, com as rotas sensíveis e as APIs preenchidas: `shieldepy chaos <pasta> --init` (ou o comando **ShielDepy: Testar Caos** na extensão). O que só o projeto sabe vem marcado com `TODO(shieldepy)`, uma marca por pendência:
 
 ```ts
 export default {

@@ -5,8 +5,27 @@ import type { Host } from '../host';
 import { CodeGraph } from './CodeGraph';
 
 // `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa;
-// `.vscode-test`: o VS Code que o @vscode/test-electron baixa para os testes E2E (milhares de arquivos JS)
-export const IGNORED_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.shieldepy', '.vscode-test']);
+// `.vscode-test`: o VS Code que o @vscode/test-electron baixa para os testes E2E (milhares de arquivos JS);
+// `vendor`/`bower_components`: bibliotecas de terceiros copiadas; `build`, `coverage`, `.next`, `.nuxt`,
+// `.svelte-kit`, `.turbo`, `.cache`, `.output`: saídas de build e de ferramenta (Q1 do plano).
+export const IGNORED_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'out',
+  '.git',
+  '.shieldepy',
+  '.vscode-test',
+  'vendor',
+  'bower_components',
+  'build',
+  'coverage',
+  '.next',
+  '.nuxt',
+  '.svelte-kit',
+  '.turbo',
+  '.cache',
+  '.output',
+]);
 
 /**
  * Arquivos de uma pasta, recursivamente, como caminhos relativos ordenados. Não desce nas pastas

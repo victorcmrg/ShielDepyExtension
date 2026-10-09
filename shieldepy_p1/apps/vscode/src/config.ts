@@ -39,8 +39,12 @@ export const config = {
   languageName(): string {
     return languageName(this.languageCode());
   },
+  /** Endereço do portal da conta. Vazio (o padrão) = sem portal: modo local, sem login. */
   webBaseUrl(): string {
-    return this.raw.get<string>('webBaseUrl', 'http://localhost:3000');
+    return this.raw.get<string>('webBaseUrl', '').trim();
+  },
+  hasPortal(): boolean {
+    return this.webBaseUrl() !== '';
   },
   /** Quando a análise automática roda: a cada pausa na digitação, ou só ao salvar/abrir. */
   analysisTrigger(): AnalysisTrigger {

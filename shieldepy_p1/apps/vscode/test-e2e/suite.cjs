@@ -51,9 +51,21 @@ exports.run = async function run() {
 
   await check('comandos registrados', async () => {
     const all = await vscode.commands.getCommands(true);
-    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard', 'shieldepy.showMap', 'shieldepy.exportTopology']) {
+    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard', 'shieldepy.showMap', 'shieldepy.exportTopology', 'shieldepy.runChaos', 'shieldepy.gettingStarted']) {
       assert(all.includes(c), `faltando ${c}`);
     }
+  });
+
+  await check('R2: os primeiros passos estão registrados (4 passos, mídia no pacote) e o comando abre', async () => {
+    const ext = vscode.extensions.getExtension('shieldepy.shieldepy');
+    const walkthrough = (ext.packageJSON.contributes.walkthroughs || []).find((w) => w.id === 'start');
+    assert(walkthrough && walkthrough.steps.length === 4, 'walkthrough "start" com 4 passos');
+    for (const step of walkthrough.steps) {
+      assert(require('fs').existsSync(path.join(ext.extensionPath, step.media.markdown)), `mídia ausente: ${step.media.markdown}`);
+      assert(/\(command:shieldepy\.[\w.]+\)/.test(step.description), `passo ${step.id} sem botão de comando`);
+    }
+    await vscode.commands.executeCommand('shieldepy.gettingStarted');
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
 
   const pricing = file('services/pricing/handlers.ts');
@@ -63,14 +75,16 @@ exports.run = async function run() {
   const setCompanyAccess = (enabled) =>
     fetch(`${process.env.SHIELDEPY_E2E_ACCOUNT_URL}/__e2e/access`, { method: 'POST', body: JSON.stringify({ enabled }) });
 
-  await check('sem login, nada é analisado (colisões ficam de fora)', async () => {
-    await sleep(4000); // tempo de sobra pra indexação inicial terminar
-    assert(ours(pricing).length === 0 && ours(tax).length === 0, 'achados publicados sem login');
+  await check('sem login (modo local), as colisões já aparecem', async () => {
+    assert(api.aiBlock() === null, `sem conta não há política de empresa: ${api.aiBlock()}`);
+    await waitFor('colisão em pricing sem login', () => ours(pricing, COLISAO).some((x) => x.message.includes('Escrita dupla')));
   });
 
-  await check('login com acesso liberado ativa a extensão', async () => {
+  await check('login com acesso liberado: a política de IA da empresa passa a valer', async () => {
     const state = await api.signInWithToken(process.env.SHIELDEPY_E2E_TOKEN);
     assert(state === 'active', `estado inesperado: ${state}`);
+    // o servidor falso não libera a IA (aiEnabled: false)
+    assert(api.aiBlock() === 'aiDisabled', `bloqueio de IA inesperado: ${api.aiBlock()}`);
   });
 
   await check('a extensão identifica o repositório pelo .git (remote + branch) ao liberar', async () => {
@@ -156,46 +170,64 @@ exports.run = async function run() {
   });
 
   let auditBefore = 0;
-  await check('empresa suspensa: rechecar acesso limpa todos os achados', async () => {
+  await check('empresa suspensa: só a IA desliga; ciclos e colisões continuam', async () => {
     assert(ours(file('a.ts')).length > 0, 'pré-condição: ciclo ainda deveria estar publicado');
     auditBefore = ours(audit, COLISAO).length;
     assert(auditBefore > 0, 'pré-condição: audit deveria ter colisões');
     await setCompanyAccess(false);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('achados sumirem', () => ours(file('a.ts')).length === 0 && ours(audit).length === 0, 10000);
+    await waitFor('IA desligada pela suspensão', () => api.aiBlock() === 'suspended', 10000);
+    await sleep(2000);
+    assert(ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 'o ciclo sumiu com a suspensão');
+    assert(ours(audit, COLISAO).length === auditBefore, 'as colisões sumiram com a suspensão');
   });
 
-  await check('suspenso: editar um arquivo não gera análise nova', async () => {
+  await check('suspenso: editar um arquivo ainda gera análise local', async () => {
     const doc = await vscode.workspace.openTextDocument(file('b.ts'));
     await vscode.window.showTextDocument(doc);
     const edit = new vscode.WorkspaceEdit();
     edit.insert(doc.uri, new vscode.Position(doc.lineCount, 0), '// edição durante a suspensão\n');
     await vscode.workspace.applyEdit(edit);
     await doc.save();
-    await sleep(3000);
-    assert(ours(file('b.ts')).length === 0 && ours(file('a.ts')).length === 0, 'analisou com a empresa suspensa');
+    await waitFor('ciclo em b.ts', () => ours(file('b.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
   });
 
-  await check('acesso liberado de novo: achados voltam sozinhos', async () => {
+  await check('acesso liberado de novo: a política volta a ser a da empresa', async () => {
     await setCompanyAccess(true);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('ciclo voltar', () => ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
-    await waitFor('colisões de audit voltarem', () => ours(audit, COLISAO).length === auditBefore, 15000);
+    await waitFor('bloqueio voltar a ser o da IA não liberada', () => api.aiBlock() === 'aiDisabled', 10000);
+    assert(ours(audit, COLISAO).length === auditBefore, 'colisões de audit mudaram');
   });
 
   const setRepoAllowed = (allowed) =>
     fetch(`${process.env.SHIELDEPY_E2E_ACCOUNT_URL}/__e2e/repo`, { method: 'POST', body: JSON.stringify({ allowed }) });
 
-  await check('repositório tirado do projeto: a extensão trava e limpa os achados', async () => {
+  await check('repositório tirado do projeto: só a IA desliga; os achados locais ficam', async () => {
     await setRepoAllowed(false);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('achados sumirem', () => ours(file('a.ts')).length === 0 && ours(audit).length === 0, 10000);
+    await waitFor('IA desligada pelo repositório', () => api.aiBlock() === 'repoBlocked', 10000);
+    await sleep(2000);
+    assert(ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 'o ciclo sumiu');
+    assert(ours(audit, COLISAO).length === auditBefore, 'as colisões sumiram');
   });
 
-  await check('repositório conectado de novo: volta sozinho', async () => {
+  await check('repositório conectado de novo: a política volta a ser a da empresa', async () => {
     await setRepoAllowed(true);
     await vscode.commands.executeCommand('shieldepy.refreshAccess');
-    await waitFor('ciclo voltar', () => ours(file('a.ts'), 'ShielDepy (grafo)').some((x) => x.message.includes('Ciclo')), 15000);
+    await waitFor('bloqueio voltar a ser o da IA não liberada', () => api.aiBlock() === 'aiDisabled', 10000);
+  });
+
+  await check('R4: sem portal configurado (o padrão do pacote), a conta some e fica o modo local', async () => {
+    const cfg = vscode.workspace.getConfiguration('shieldepy');
+    const url = cfg.get('webBaseUrl');
+    await cfg.update('webBaseUrl', '', vscode.ConfigurationTarget.Workspace);
+    try {
+      await waitFor('modo local sem portal', () => api.aiBlock() === null, 10000);
+      assert(ours(audit, COLISAO).length === auditBefore, 'as colisões mudaram sem o portal');
+    } finally {
+      await cfg.update('webBaseUrl', url, vscode.ConfigurationTarget.Workspace);
+      await waitFor('a conta voltar com o portal', () => api.aiBlock() === 'aiDisabled', 10000);
+    }
   });
 
   // --- mapa do sistema (E1 dentro do editor) ---------------------------------------------
@@ -308,6 +340,56 @@ exports.run = async function run() {
       await vscode.workspace.fs.delete(resultsFile);
     }
   });
+
+  // --- "Testar Caos" no editor (R3) -----------------------------------------------------
+  const checkoutRoot = path.join(root, 'checkout');
+
+  await check('R3: "Testar Caos" acha o checkout (rotas sensíveis no mapa, contrato pronto)', async () => {
+    const all = await vscode.commands.getCommands(true);
+    assert(all.includes('shieldepy.runChaos'), 'comando shieldepy.runChaos não registrado');
+    const found = api.chaos.projects().find((p) => p.root === checkoutRoot);
+    assert(found, `projetos: ${JSON.stringify(api.chaos.projects())}`);
+    assert(found.routes >= 1 && found.hasContract, `checkout: ${JSON.stringify(found)}`);
+  });
+
+  await check('R3: sem node_modules, aponta os pacotes que os testes de caos usam', async () => {
+    const missing = api.chaos.missingPackages(checkoutRoot);
+    assert(missing.join(',') === 'vitest,supertest,msw', `faltando: ${missing}`);
+  });
+
+  await check('R3: sem contrato, cria um a partir do mapa (o bundle do caos carrega no editor)', async () => {
+    const contract = file('checkout/shieldepy.chaos.config.ts');
+    const original = await vscode.workspace.fs.readFile(contract);
+    await vscode.workspace.fs.delete(contract);
+    try {
+      assert(api.chaos.projects().find((p) => p.root === checkoutRoot)?.hasContract === false, 'ainda vê o contrato apagado');
+      assert((await api.chaos.createContract(checkoutRoot)) === true, 'createContract falhou (veja o canal ShielDepy)');
+      const text = Buffer.from(await vscode.workspace.fs.readFile(contract)).toString('utf8');
+      assert(text.includes("'POST /checkout': { path: '/checkout', body: {} }"), `contrato:\n${text}`);
+      assert(text.includes("'api.stripe.com'") && text.includes('TODO(shieldepy)'), 'faltou a API ou as marcas de pendência');
+    } finally {
+      await vscode.workspace.fs.writeFile(contract, original);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
+  });
+
+  // Prova real (só quando o exemplo tem `npm install`): o caos roda no editor, com o Vitest do
+  // projeto no Node do VS Code (ELECTRON_RUN_AS_NODE), e barra a corrida e o timeout do Stripe.
+  const example = path.join(__dirname, '..', '..', '..', 'examples', 'checkout-express');
+  if (require('fs').existsSync(path.join(example, 'node_modules', 'vitest'))) {
+    await check('R3: o caos roda de verdade no editor e prova a corrida e o timeout (exit 1)', async () => {
+      try {
+        const code = await api.chaos.execute(example, { offline: true });
+        assert(code === 1, `código ${code}`);
+        const results = JSON.parse(require('fs').readFileSync(path.join(example, '.shieldepy', 'chaos-results.json'), 'utf8'));
+        const failed = results.outcomes.filter((o) => o.status === 'failed').map((o) => o.failure);
+        assert(failed.includes('race_condition') && failed.includes('timeout'), `falhas: ${failed}`);
+        assert(require('fs').existsSync(path.join(example, '.shieldepy', 'chaos-report.md')), 'sem o relatório');
+      } finally {
+        require('fs').rmSync(path.join(example, '.shieldepy'), { recursive: true, force: true });
+      }
+    });
+  } else console.log('  (pulado: R3 com o caos de verdade — rode npm install em examples/checkout-express)');
 
   const tsconfig = file('checkout/tsconfig.json');
   const tsconfigOriginal = Buffer.from(await vscode.workspace.fs.readFile(tsconfig)).toString('utf8');

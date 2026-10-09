@@ -138,10 +138,11 @@
     return box;
   }
 
-  // --- bloqueio (sem login / empresa suspensa) --------------------------------------------
+  // --- bloqueio: só quando a empresa desliga a IA (sem conta, vale a chave do usuário) ------
+  const BLOCK_TEXT = { suspended: 'lockSuspendedText', repoBlocked: 'lockRepoText', noGit: 'lockNoGitText', aiDisabled: 'lockAiOffText' };
   let locked = false;
-  function setAccess(state, company) {
-    locked = state !== 'active';
+  function setAccess(block, company, remote) {
+    locked = Boolean(block);
     $('lock').hidden = !locked;
     for (const id of ['messages', 'inputRow']) $(id).hidden = locked;
     if (locked) {
@@ -151,16 +152,16 @@
     } else renderAttachments();
     syncComposer();
     if (!locked) return;
-    const suspended = state === 'suspended';
-    $('lock').className = 'lock ' + state;
-    $('lockTitle').textContent = suspended ? T('chatSuspendedTitle') : T('chatOutTitle');
-    $('lockText').textContent = suspended ? T('chatSuspendedText', { company: company || T('yourCompany') }) : T('chatOutText');
+    const kind = block === 'repoBlocked' && !remote ? 'noGit' : block;
+    $('lock').className = 'lock ' + (block === 'suspended' ? 'suspended' : 'blocked');
+    $('lockTitle').textContent = T('chatSuspendedTitle');
+    $('lockText').textContent = T(BLOCK_TEXT[kind] || 'lockAiOffText', { company: company || T('yourCompany'), remote: remote || '' });
     const action = $('lockAction');
-    action.textContent = suspended ? T('checkAgain') : T('signIn');
+    action.textContent = T('checkAgain');
     action.disabled = false;
     action.onclick = () => {
       action.disabled = true;
-      vscode.postMessage({ type: suspended ? 'refreshAccess' : 'login' });
+      vscode.postMessage({ type: 'refreshAccess' });
       setTimeout(() => (action.disabled = false), 2500);
     };
   }
@@ -245,7 +246,7 @@
         addTurn(msg.turn, true);
         break;
       case 'access':
-        setAccess(msg.state, msg.company);
+        setAccess(msg.block, msg.company, msg.remote);
         break;
       case 'attach':
         if (!attachments.some((a) => a.id === msg.finding.id)) attachments.push(msg.finding);

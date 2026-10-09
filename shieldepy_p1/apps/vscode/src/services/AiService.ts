@@ -54,10 +54,10 @@ export class AiService implements vscode.Disposable {
   async provider(): Promise<LLMProvider | undefined> {
     // Checado em TODA chamada (não só quando `cached` está vazio) — hasAiAccess() já
     // tem cache curto próprio (AuthService), então isso não vira uma chamada de rede a
-    // cada uso; é o que garante que revogar `aiEnabled` (ou deslogar) surte efeito em
-    // segundos, mesmo com o provider já resolvido e guardado em `this.cached`.
+    // cada uso; é o que garante que revogar `aiEnabled` surte efeito em segundos, mesmo
+    // com o provider já resolvido e guardado em `this.cached`. Sem conta, decide a chave.
     if (!(await this.auth.hasAiAccess())) {
-      this.log('[AiService] sem login ou sem permissão de IA da empresa — modo offline.');
+      this.log(`[AiService] IA desligada pela empresa (${this.auth.companyAiBlock()}) — modo offline.`);
       return undefined;
     }
     if (this.cached) return this.cached.provider;
@@ -90,6 +90,24 @@ export class AiService implements vscode.Disposable {
   /** Executa uma chamada de IA respeitando o limite de concorrência. */
   run<T>(fn: () => Promise<T>): Promise<T> {
     return this.limiter.run(fn);
+  }
+
+  /**
+   * A mesma IA que a extensão usaria, no formato de ambiente da CLI (`providerFromEnv`): o caos roda
+   * o pipeline da CLI. Sem acesso à IA (empresa bloqueou, `offline`, nenhuma chave), sai sem chave.
+   */
+  async cliEnv(): Promise<NodeJS.ProcessEnv> {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    delete env.ANTHROPIC_API_KEY;
+    delete env.GEMINI_API_KEY;
+    const choice = config.aiProvider();
+    if (choice === 'offline' || !(await this.auth.hasAiAccess())) return env;
+    const models = config.models();
+    const anthropicKey = (await this.secrets.get(SECRET_ANTHROPIC)) || process.env.ANTHROPIC_API_KEY;
+    const geminiKey = (await this.secrets.get(SECRET_GEMINI)) || process.env.GEMINI_API_KEY;
+    if (choice !== 'gemini' && anthropicKey) Object.assign(env, { ANTHROPIC_API_KEY: anthropicKey, SHIELDEPY_FAST_MODEL: models.fast, SHIELDEPY_DEEP_MODEL: models.deep });
+    if (choice !== 'anthropic' && geminiKey) Object.assign(env, { GEMINI_API_KEY: geminiKey, GEMINI_MODEL: models.gemini });
+    return env;
   }
 
   async setKey(which: 'anthropic' | 'gemini', key: string): Promise<void> {

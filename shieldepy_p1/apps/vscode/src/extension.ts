@@ -9,8 +9,9 @@ import { CollisionPublisher } from './analysis/CollisionPublisher';
 import { FindingsCache } from './analysis/FindingsCache';
 import { FindingsManager } from './analysis/FindingsManager';
 import { ScanAnimator } from './analysis/ScanAnimator';
+import { ChaosCommand, type ChaosRunOptions } from './chaos/ChaosCommand';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
-import { explainWorkspaceCollisions, exportTopology, login, logout, refreshAccess, requireAccess, reviewImpact, setApiKey } from './commands';
+import { explainWorkspaceCollisions, exportTopology, login, logout, refreshAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
 import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
 import { InlineSuggestionProvider } from './inline/InlineSuggestionProvider';
@@ -22,15 +23,19 @@ import { StatusBar } from './views/StatusBar';
 import { ConflictBalloon, openLocation } from './views/ConflictBalloon';
 import { ExplorerDecorations } from './views/ExplorerDecorations';
 import { MapPanel } from './views/MapPanel';
-import { indexWorkspace, isAnalyzable, reindexFromDisk, setPathGate, warnIfTruncated, type IndexReport } from './workspace/files';
+import { indexWorkspace, isAnalyzable, reindexFromDisk, warnIfTruncated, type IndexReport } from './workspace/files';
 import { WorkspaceModel } from './workspace/WorkspaceModel';
 
 let model: WorkspaceModel | undefined;
+
+const WALKTHROUGH_SHOWN = 'shieldepy.walkthroughShown';
 
 /** Raiz de composição: cria os serviços, liga eventos e registra views/comandos. Nenhuma regra de negócio aqui. */
 /** API exposta só no Extension Host de teste (E2E). */
 interface TestApi {
   signInWithToken(token: string): Promise<unknown>;
+  /** Por que a empresa desliga a IA agora (null = não desliga). */
+  aiBlock(): string | null;
   decorationFor(fsPath: string): { badge?: string; tooltip?: string; color?: string; propagate?: boolean } | undefined;
   /** Estatísticas do grafo em memória (cobertura, imports quebrados). */
   graphStats(): unknown;
@@ -44,6 +49,13 @@ interface TestApi {
   compareMap(ref: string): Promise<unknown>;
   /** Reindexa o workspace inteiro e devolve o relatório (teto, parcial). */
   reindex(): Promise<IndexReport>;
+  /** "Testar Caos" sem as caixas de diálogo (R3). */
+  chaos: {
+    projects(): unknown;
+    missingPackages(root: string): string[];
+    createContract(root: string): Promise<boolean>;
+    execute(root: string, options: ChaosRunOptions): Promise<number | undefined>;
+  };
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<TestApi | undefined> {
@@ -55,13 +67,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   const auth = new AuthService(context.secrets, log);
   push(auth);
+  // A conta é opcional (modo local): ela só decide a IA da empresa, nunca o motor. Sem portal
+  // configurado, os comandos de conta nem aparecem na paleta.
   await auth.ensureLoaded(context.extension.id);
-  // Só repositórios dos projetos da pessoa são analisados (o servidor decide pelo remote do .git).
-  setPathGate((fsPath) => auth.isAllowedPath(fsPath));
-  // Sem acesso, o Chat some da barra lateral: a tela de bloqueio aparece uma vez só, no painel.
-  const syncUnlocked = () => vscode.commands.executeCommand('setContext', 'shieldepy.unlocked', auth.canUse());
-  void syncUnlocked();
-  push(auth.onDidChangeAuth(() => void syncUnlocked()));
+  const syncPortal = () => vscode.commands.executeCommand('setContext', 'shieldepy.portal', config.hasPortal());
+  void syncPortal();
+  push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('shieldepy.webBaseUrl')) void syncPortal();
+    })
+  );
 
   // vscode://<publisher>.<name>/callback — recebe o retorno do navegador depois de
   // "Confiar" no /device-confirm (ver AuthService.completeLogin). A authority vem
@@ -104,8 +119,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   await cache.load();
   push({ dispose: () => void cache.dispose() });
 
-  // Gate único: sistema ligado nas settings E conta com acesso liberado pela empresa.
-  const isActive = () => config.analysisEnabled() && auth.canUse();
+  // Gate do motor: só a configuração. A conta não trava a análise local (R1 do plano).
+  const isActive = () => config.analysisEnabled();
 
   const findings = new FindingsManager(cache, context.extensionUri);
   const ai = new AiService(context.secrets, log, auth);
@@ -119,27 +134,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   void context.workspaceState.update('shieldepy.pins', undefined); // resto do antigo "tirar da lista"
   push(findings, ai, analyzing, animator, analyzer, collisions, statusBar, balloon, explorer, vscode.window.registerFileDecorationProvider(explorer));
 
-  // Acesso caiu (logout, token revogado, empresa suspensa): para tudo e limpa o que estava na tela.
-  // Voltou: republica as colisões e reanalisa os arquivos abertos.
+  // A conta mudou (entrou, saiu, empresa suspensa, IA liberada): o motor segue, mas a IA pode ter
+  // ligado ou desligado. Reanalisa os abertos para os riscos da IA aparecerem ou sumirem.
   const reanalyzeOpen = () => {
     for (const doc of vscode.workspace.textDocuments) analyzer.runNow(doc);
   };
-  push(
-    auth.onDidChangeAuth((state) => {
-      if (state === 'active') {
-        collisions.publish();
-        reanalyzeOpen();
-      } else {
-        analyzer.cancelAll();
-        findings.clearAll();
-      }
-    })
-  );
+  push(auth.onDidChangeAuth(() => reanalyzeOpen()));
 
   // --- views ----------------------------------------------------------------------------
   const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
   const mapPanel = new MapPanel(context.extensionUri, workspace, path.join(context.extensionPath, 'wasm'));
   push(mapPanel);
+  const chaosCommand = new ChaosCommand(context.extensionPath, workspace, ai, log);
+  push(chaosCommand);
   let exported: TopologyGraph | undefined;
   push(
     // retainContextWhenHidden: trocar de aba não descarta o rascunho não enviado do chat.
@@ -149,11 +156,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   );
 
   // --- comandos -------------------------------------------------------------------------
-  /** Comando que usa o workspace/IA: só roda com acesso confirmado no servidor. */
-  const guarded = <A extends unknown[]>(fn: (...args: A) => unknown) =>
-    async (...args: A) => {
-      if (await requireAccess(auth)) await fn(...args);
-    };
   push(
     vscode.commands.registerCommand(CMD.setApiKey, () => setApiKey(ai)),
     vscode.commands.registerCommand(CMD.openDashboard, () => auth.openDashboard()),
@@ -161,50 +163,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     vscode.commands.registerCommand(CMD.openLocation, (file: unknown, line: unknown) => {
       if (typeof file === 'string') return openLocation(file, Number(line));
     }),
-    vscode.commands.registerCommand(CMD.scanWorkspace, guarded(() => chat.runFullScan())),
-    vscode.commands.registerCommand(CMD.showMap, guarded(() => mapPanel.show())),
-    vscode.commands.registerCommand(
-      CMD.compareMap,
-      guarded(async (given?: unknown) => {
-        const ref =
-          typeof given === 'string'
-            ? given
-            : await vscode.window.showInputBox({
-                title: 'ShielDepy: comparar o mapa com…',
-                prompt: 'Branch, tag ou commit. A comparação é com o merge-base, como num PR.',
-                value: 'origin/main',
-              });
-        if (!ref) return;
-        try {
-          const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `ShielDepy: montando o mapa de ${ref}…` }, () => mapPanel.compare(ref));
-          const d = result?.diff;
-          if (d) {
-            const touched = result.routes?.all ? 'todas as rotas' : `${result.routes?.affected.length ?? 0} rota(s) tocada(s)`;
-            void vscode.window.showInformationMessage(
-              d.empty
-                ? `ShielDepy: nenhuma mudança de estrutura desde ${ref}.`
-                : `ShielDepy: desde ${ref}, ${d.symbols.changed.length} alterado(s), ${d.symbols.added.length} novo(s), ${d.symbols.renamed.length} renomeado(s), ${d.symbols.removed.length} removido(s); ${touched}.`
-            );
-          }
-        } catch (err) {
-          void vscode.window.showErrorMessage(`ShielDepy: não deu para comparar com ${ref}: ${err instanceof Error ? err.message : err}`);
+    vscode.commands.registerCommand(CMD.scanWorkspace, () => chat.runFullScan()),
+    vscode.commands.registerCommand(CMD.showMap, () => mapPanel.show()),
+    vscode.commands.registerCommand(CMD.runChaos, () => chaosCommand.run()),
+    vscode.commands.registerCommand(CMD.gettingStarted, () =>
+      vscode.commands.executeCommand('workbench.action.openWalkthrough', `${context.extension.id}#start`, false)
+    ),
+    vscode.commands.registerCommand(CMD.compareMap, async (given?: unknown) => {
+      const ref =
+        typeof given === 'string'
+          ? given
+          : await vscode.window.showInputBox({
+              title: 'ShielDepy: comparar o mapa com…',
+              prompt: 'Branch, tag ou commit. A comparação é com o merge-base, como num PR.',
+              value: 'origin/main',
+            });
+      if (!ref) return;
+      try {
+        const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `ShielDepy: montando o mapa de ${ref}…` }, () => mapPanel.compare(ref));
+        const d = result?.diff;
+        if (d) {
+          const touched = result.routes?.all ? 'todas as rotas' : `${result.routes?.affected.length ?? 0} rota(s) tocada(s)`;
+          void vscode.window.showInformationMessage(
+            d.empty
+              ? `ShielDepy: nenhuma mudança de estrutura desde ${ref}.`
+              : `ShielDepy: desde ${ref}, ${d.symbols.changed.length} alterado(s), ${d.symbols.added.length} novo(s), ${d.symbols.renamed.length} renomeado(s), ${d.symbols.removed.length} removido(s); ${touched}.`
+          );
         }
-      })
-    ),
-    vscode.commands.registerCommand(
-      CMD.exportTopology,
-      guarded(async () => {
-        exported = (await exportTopology(workspace, () => mapPanel.show())) ?? exported;
-      })
-    ),
-    vscode.commands.registerCommand(CMD.attachFinding, guarded((finding: FindingAttachment) => chat.attachFinding(finding))),
+      } catch (err) {
+        void vscode.window.showErrorMessage(`ShielDepy: não deu para comparar com ${ref}: ${err instanceof Error ? err.message : err}`);
+      }
+    }),
+    vscode.commands.registerCommand(CMD.exportTopology, async () => {
+      exported = (await exportTopology(workspace, () => mapPanel.show())) ?? exported;
+    }),
+    vscode.commands.registerCommand(CMD.attachFinding, (finding: FindingAttachment) => chat.attachFinding(finding)),
     vscode.commands.registerCommand(CMD.toggleInline, async () => {
       const next = !config.inlineEnabled();
       await config.update('inlineSuggestions.enabled', next);
       vscode.window.setStatusBarMessage(`ShielDepy: sugestões inline ${next ? 'ativadas' : 'desativadas'}`, 3000);
     }),
-    vscode.commands.registerCommand(CMD.reviewImpact, guarded(() => reviewImpact(workspace, ai))),
-    vscode.commands.registerCommand(CMD.explainCollisions, guarded(() => explainWorkspaceCollisions(workspace, ai, log))),
+    vscode.commands.registerCommand(CMD.reviewImpact, () => reviewImpact(workspace, ai)),
+    vscode.commands.registerCommand(CMD.explainCollisions, () => explainWorkspaceCollisions(workspace, ai, log)),
     vscode.languages.registerInlineCompletionItemProvider(
       INLINE_LANGUAGES.map((language) => ({ language, scheme: 'file' })),
       new InlineSuggestionProvider(workspace, ai, log)
@@ -287,16 +287,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   log(`ShielDepy ativo — grafo ${graph.isReady ? 'com' : 'SEM'} Tree-sitter, agente ${AGENT_NAME}.`);
 
+  // Primeira vez nesta máquina: abre os primeiros passos (uma vez só; depois, pelo comando ou pelo painel).
+  if (context.extensionMode !== vscode.ExtensionMode.Test && !context.globalState.get<boolean>(WALKTHROUGH_SHOWN)) {
+    void context.globalState.update(WALKTHROUGH_SHOWN, true);
+    void vscode.commands.executeCommand(CMD.gettingStarted);
+  }
+
   // Só no Extension Host de teste: o E2E entra com um token do servidor falso, sem abrir navegador.
   if (context.extensionMode !== vscode.ExtensionMode.Test) return undefined;
   return {
     signInWithToken: (token) => auth.signInWithToken(token),
+    aiBlock: () => auth.companyAiBlock(),
     graphStats: () => workspace.graph.stats,
     lastMap: () => mapPanel.last,
     lastTopology: () => exported ?? mapPanel.lastTopology,
     lastOverlay: () => mapPanel.lastOverlay,
     compareMap: (ref) => mapPanel.compare(ref),
     reindex: () => indexWorkspace(workspace, log),
+    chaos: {
+      projects: () => chaosCommand.projects(),
+      missingPackages: (root) => chaosCommand.missingPackages(root),
+      createContract: (root) => chaosCommand.createContract(root),
+      execute: (root, options) => chaosCommand.execute(root, options),
+    },
     decorationFor: (fsPath) => {
       const d = explorer.provideFileDecoration(vscode.Uri.file(fsPath));
       return d && { badge: d.badge, tooltip: d.tooltip, color: d.color?.id, propagate: d.propagate };

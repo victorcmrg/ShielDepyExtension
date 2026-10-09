@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import * as vscode from 'vscode';
 import type { FindingSeverity } from '@shieldepy/core';
 import { config } from '../config';
@@ -62,6 +61,15 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
           case 'openSettings':
             await vscode.commands.executeCommand(CMD.focusSettings);
             break;
+          case 'showMap':
+            await vscode.commands.executeCommand(CMD.showMap);
+            break;
+          case 'runChaos':
+            await vscode.commands.executeCommand(CMD.runChaos);
+            break;
+          case 'walkthrough':
+            await vscode.commands.executeCommand(CMD.gettingStarted);
+            break;
           case 'openRelated':
             await vscode.commands.executeCommand(CMD.openLocation, String(message.file), Number(message.line));
             break;
@@ -93,18 +101,16 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
       asset: 'panel',
       initial: { graphReady: this.model.graph.isReady, t: strings() },
       body: `
-  <div id="lock" class="lock" hidden>
-    ${mascot(this.extensionUri)}
-    <h2 class="lock-title" id="lockTitle"></h2>
-    <p class="lock-text" id="lockText"></p>
-    <button id="lockAction" class="pill-btn"></button>
-    <button id="lockSecondary" class="text-btn" hidden></button>
-  </div>
   <main id="main">
     <header class="guard">
       <div class="guard-title" id="status">${escapeHtml(t('guardTitle'))}</div>
       <div class="guard-sub" id="statusSub"></div>
     </header>
+    <div class="notice ai-notice" id="aiNotice" hidden>
+      <strong class="ai-notice-title" id="aiNoticeTitle"></strong>
+      <span id="aiNoticeText"></span>
+      <span class="ai-notice-actions"><button id="aiNoticeAction" class="text-btn"></button><button id="aiNoticeSecondary" class="text-btn"></button></span>
+    </div>
     <div class="analyzing" id="analyzingRow"><span class="morph-shape"></span><span id="analyzingText"></span></div>
     <p class="notice" id="graphNotice" hidden>${escapeHtml(t('graphNotice'))}</p>
     <div class="tiles" id="stats" role="group" aria-label="${escapeHtml(t('filterGroup'))}">
@@ -127,9 +133,11 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
     const folders = this.auth.folderAccess();
     this.post({
       type: 'access',
-      state: this.auth.accessState(),
+      loggedIn: this.auth.isLoggedIn(),
+      // Por que a empresa desliga a IA aqui (null = não desliga). O motor roda de qualquer jeito.
+      block: this.auth.companyAiBlock(),
       company: this.auth.getCachedMe()?.companyName ?? null,
-      // Bloqueado: qual remote falta liberar (null = a pasta nem tem .git com remote).
+      // IA desligada pelo repositório: qual remote falta liberar (null = a pasta nem tem .git com remote).
       remote: folders.find((f) => !f.allowed && f.remote)?.remote ?? null,
       // Liberado: por qual projeto.
       project: folders.find((f) => f.allowed)?.project?.name ?? null,
@@ -160,7 +168,7 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
   /** Uma "gaveta" por arquivo, mais problemática primeiro. Sistema desligado = lista vazia. */
   private refreshFindings(): void {
     void this.refreshSummary();
-    if (!config.analysisEnabled() || !this.auth.canUse()) {
+    if (!config.analysisEnabled()) {
       this.post({ type: 'findingsByFile', groups: [], systemDisabled: !config.analysisEnabled(), counts: { error: 0, warning: 0, info: 0 } });
       return;
     }
@@ -201,19 +209,6 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
 }
 
 const RANK: Record<FindingSeverity, number> = { info: 0, warning: 1, error: 2 };
-
-/**
- * Mascote "pensando" do site, inline (não <img>) pra o CSS recolorir braços e pernas conforme o
- * tema. O arquivo já vem sem o <script> de animação — a CSP do webview não deixaria rodar mesmo.
- * Sem o arquivo, cai no escudo simples.
- */
-function mascot(extensionUri: vscode.Uri): string {
-  try {
-    return `<div class="lock-mascot">${readFileSync(vscode.Uri.joinPath(extensionUri, 'media', 'mascot-thinking.svg').fsPath, 'utf8')}</div>`;
-  } catch {
-    return '<span class="lock-mark" aria-hidden="true"></span>';
-  }
-}
 
 async function revealLine(fileId: string, line: number): Promise<void> {
   const editor = await vscode.window.showTextDocument(vscode.Uri.file(fileId), { preserveFocus: false });

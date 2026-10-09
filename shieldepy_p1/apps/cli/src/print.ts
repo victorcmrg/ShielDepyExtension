@@ -55,14 +55,17 @@ export function printReport(report: DiagnosisReport, label: string, out: Out): v
   out('');
 }
 
-export function printCycles(cycles: string[][], stats: { nodes: number; edges: number }, out: Out): void {
+export function printCycles(cycles: string[][], recursion: string[][], stats: { nodes: number; edges: number }, out: Out): void {
   out(`\n🗺️  grafo estrutural: ${stats.nodes} nó(s), ${stats.edges} aresta(s)`);
-  if (cycles.length === 0) {
-    out('✅ nenhum ciclo de chamadas.\n');
-    return;
+  if (cycles.length === 0) out('✅ nenhum ciclo de chamadas entre arquivos.');
+  else {
+    out(`⚠️  ${cycles.length} ciclo(s) de chamadas entre arquivos:\n`);
+    for (const c of cycles) out(`  ${c.join(' → ')}`);
   }
-  out(`⚠️  ${cycles.length} ciclo(s) de chamadas:\n`);
-  for (const c of cycles) out(`  ${c.join(' → ')}`);
+  if (recursion.length > 0) {
+    out(`\nℹ️  ${recursion.length} recursão(ões) no mesmo arquivo (em geral de propósito; confira a condição de parada):\n`);
+    for (const c of recursion) out(`  ${c.join(' → ')}`);
+  }
   out('');
 }
 

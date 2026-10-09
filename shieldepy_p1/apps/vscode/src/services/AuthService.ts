@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { hostname } from 'node:os';
-import * as path from 'node:path';
 import { config } from '../config';
 import { SECRET_AUTH_TOKEN } from '../constants';
 import { findRepos, type WorkspaceRepo } from '../workspace/gitRemotes';
@@ -16,14 +15,18 @@ export interface AuthMe {
 }
 
 /**
- * O que a extensão pode fazer agora:
- *   loggedOut   — ninguém entrou (ou o token foi revogado): tudo travado
- *   suspended   — entrou, mas a empresa está com o acesso suspenso: tudo travado
+ * Estado da conta. O motor (ciclos, colisões, mapa, caos offline) roda em qualquer estado: a conta
+ * só decide a IA da empresa (ver `companyAiBlock`).
+ *   loggedOut   — modo local: ninguém entrou; a IA usa a chave do próprio usuário
+ *   suspended   — entrou, mas a empresa está com o acesso suspenso: IA desligada
  *   repoBlocked — conta ok, mas nenhum repositório aberto está num projeto da pessoa
- *                 (o servidor reconhece o repositório pelo remote do .git)
- *   active      — pode usar, nos repositórios liberados; a IA ainda depende de `aiEnabled`
+ *                 (o servidor reconhece o repositório pelo remote do .git): IA desligada
+ *   active      — conta e repositório liberados; a IA ainda depende de `aiEnabled`
  */
 export type AccessState = 'loggedOut' | 'suspended' | 'repoBlocked' | 'active';
+
+/** Por que a empresa desliga a IA aqui. */
+export type CompanyAiBlock = 'suspended' | 'repoBlocked' | 'aiDisabled';
 
 /** Resultado da checagem de uma pasta aberta: liberada (e por qual projeto) ou não, e por quê. */
 export interface FolderAccess extends WorkspaceRepo {
@@ -47,8 +50,8 @@ interface PendingLogin {
  * do site; o navegador confirma e redireciona pra vscode://<publisher>.<name>/callback, que o
  * registerUriHandler em extension.ts encaminha pra completeLogin(). O token fica no Secret Storage.
  *
- * `accessState()` é o gate da extensão INTEIRA (análise, colisões, chat, comandos);
- * `hasAiAccess()` é o gate só da IA, consultado por AiService.provider().
+ * A conta é opcional (modo local, R1 do plano): `companyAiBlock()` diz se a política da empresa
+ * desliga a IA, e `hasAiAccess()` é o gate da IA consultado por AiService.provider().
  */
 export class AuthService implements vscode.Disposable {
   private readonly onDidChangeAuthEmitter = new vscode.EventEmitter<AccessState>();
@@ -80,7 +83,11 @@ export class AuthService implements vscode.Disposable {
         if (e.key === SECRET_AUTH_TOKEN) void this.refresh();
       }),
       // Abriu/fechou pasta no workspace: o repositório (e a liberação) pode ter mudado.
-      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh())
+      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh()),
+      // Portal configurado ou removido: a conta aparece ou some.
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('shieldepy.webBaseUrl')) void this.refresh();
+      })
     );
   }
 
@@ -115,24 +122,21 @@ export class AuthService implements vscode.Disposable {
     return this.folders?.some((f) => f.allowed) ? 'active' : 'repoBlocked';
   }
 
-  /** Síncrono — pra checar em todo evento de edição sem esperar rede (usa o último /api/me). */
-  canUse(): boolean {
-    return this.accessState() === 'active';
+  /**
+   * Síncrono (usa o último /api/me). Sem conta não há política de empresa: null, e quem decide a IA
+   * é a chave do usuário. Com conta, a empresa manda: suspensa, repositório fora dos projetos ou
+   * IA não liberada desligam a IA — nunca o motor.
+   */
+  companyAiBlock(): CompanyAiBlock | null {
+    const state = this.accessState();
+    if (state === 'loggedOut') return null;
+    if (state === 'suspended' || state === 'repoBlocked') return state;
+    return this.cachedMe?.permissions.aiEnabled ? null : 'aiDisabled';
   }
 
-  /** As pastas abertas e se cada uma está liberada — a tela de bloqueio mostra qual repositório falta. */
+  /** As pastas abertas e se cada uma está liberada — o aviso do painel mostra qual repositório falta. */
   folderAccess(): FolderAccess[] {
     return this.folders ?? [];
-  }
-
-  /** O arquivo está numa pasta liberada? (multi-root: só as pastas dos projetos da pessoa são analisadas) */
-  isAllowedPath(fsPath: string): boolean {
-    if (this.cachedMe?.isAdmin) return true;
-    return (this.folders ?? []).some((f) => {
-      if (!f.allowed) return false;
-      const rel = path.relative(f.folder, fsPath);
-      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-    });
   }
 
   /**
@@ -170,6 +174,7 @@ export class AuthService implements vscode.Disposable {
 
   /** Abre o navegador no /device-confirm; a promise resolve quando completeLogin() confirmar. */
   async login(): Promise<void> {
+    if (!config.hasPortal()) throw new Error('nenhum portal configurado (shieldepy.webBaseUrl). Sem conta, a extensão funciona em modo local.');
     if (this.pendingLogin) {
       clearTimeout(this.pendingLogin.timer);
       this.pendingLogin.reject(new Error('um novo login foi iniciado'));
@@ -192,6 +197,7 @@ export class AuthService implements vscode.Disposable {
 
   /** Painel web: os projetos da pessoa (é lá que o dono conecta repositórios e equipe). */
   async openDashboard(): Promise<void> {
+    if (!config.hasPortal()) return;
     await vscode.env.openExternal(vscode.Uri.parse(`${this.webBaseUrl()}/projects`));
   }
 
@@ -264,7 +270,8 @@ export class AuthService implements vscode.Disposable {
     }
 
     const token = await this.secrets.get(SECRET_AUTH_TOKEN);
-    if (!token) {
+    // Sem portal não há conta: modo local (o token, se houver, fica guardado para quando voltar).
+    if (!token || !config.hasPortal()) {
       this.cachedMe = null;
       this.cacheLoaded = true;
       this.cachedAt = Date.now();
@@ -292,10 +299,10 @@ export class AuthService implements vscode.Disposable {
     return this.cachedMe;
   }
 
-  /** true = acesso ativo e a empresa liberou `aiEnabled`. Consultado só por AiService.provider(). */
+  /** true = a empresa não desliga a IA (ou não há conta). Consultado só por AiService.provider(). */
   async hasAiAccess(): Promise<boolean> {
-    const me = await this.fetchMe();
-    return Boolean(me && me.permissions.aiEnabled && this.accessState() === 'active');
+    await this.fetchMe();
+    return this.companyAiBlock() === null;
   }
 
   async logout(): Promise<void> {

@@ -45,8 +45,10 @@ const watchMarkersPlugin = {
 copyWasm();
 copyViewerLibraries();
 
+// Dois arquivos: a extensão e o pipeline de caos (LangGraph, SDKs de IA), carregado só quando
+// a pessoa roda "Testar Caos" — o bundle principal continua leve.
 const ctx = await esbuild.context({
-  entryPoints: [join(here, 'src', 'extension.ts')],
+  entryPoints: { extension: join(here, 'src', 'extension.ts'), chaos: join(here, 'src', 'chaos', 'run-chaos.ts') },
   bundle: true,
   format: 'cjs',
   minify: production,
@@ -54,7 +56,7 @@ const ctx = await esbuild.context({
   platform: 'node',
   target: 'node18',
   external: ['vscode'],
-  outfile: join(here, 'dist', 'extension.js'),
+  outdir: join(here, 'dist'),
   logLevel: 'info',
   plugins: [watchMarkersPlugin],
 });

@@ -86,8 +86,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private readonly log: (message: string) => void
   ) {}
 
+  /** O chat só trava quando a empresa desliga a IA; sem conta, vale a chave do usuário (modo local). */
   private postAccess(): void {
-    this.post({ type: 'access', state: this.auth.accessState(), company: this.auth.getCachedMe()?.companyName ?? null });
+    this.post({
+      type: 'access',
+      block: this.auth.companyAiBlock(),
+      company: this.auth.getCachedMe()?.companyName ?? null,
+      remote: this.auth.folderAccess().find((f) => !f.allowed && f.remote)?.remote ?? null,
+    });
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -99,8 +105,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (e.affectsConfiguration('shieldepy.language')) this.render(webviewView);
     });
 
-    const authListener = this.auth.onDidChangeAuth((state) => {
-      if (state !== 'active') this.inFlight?.abort();
+    const authListener = this.auth.onDidChangeAuth(() => {
+      if (this.auth.companyAiBlock()) this.inFlight?.abort();
       this.postAccess();
     });
     webviewView.webview.onDidReceiveMessage(async (message) => {
@@ -108,9 +114,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'ready':
           this.post({ type: 'history', turns: this.turns.map(toView) });
           this.postAccess();
-          break;
-        case 'login':
-          void vscode.commands.executeCommand(CMD.login);
           break;
         case 'refreshAccess':
           void vscode.commands.executeCommand(CMD.refreshAccess);
@@ -223,7 +226,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const trimmed = text.trim();
     if (!trimmed && attachments.length === 0) return;
     // O webview já trava a caixa, mas a extensão é quem decide — confirma no servidor.
-    if ((await this.auth.refresh()) !== 'active') {
+    await this.auth.refresh();
+    if (this.auth.companyAiBlock()) {
       this.postAccess();
       return;
     }

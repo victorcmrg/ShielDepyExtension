@@ -4,8 +4,17 @@
 
 import { propertyKey } from './code-graph/extract-module';
 import type { SyntaxNode } from './code-graph/parser';
+import type { AttackSurface } from './topology/surface';
 
 export const CHAOS_CONFIG_FILE = 'shieldepy.chaos.config.ts';
+
+/** Marca o que só o projeto sabe preencher no contrato gerado (`chaosConfigScaffold`): uma linha por pendência. */
+export const CHAOS_CONFIG_TODO = 'TODO(shieldepy)';
+
+/** Pendências que ainda restam no contrato: linhas com a marca. */
+export function chaosConfigPending(source: string): number {
+  return source.split('\n').filter((line) => line.includes(CHAOS_CONFIG_TODO)).length;
+}
 
 export interface ChaosConfigFacts {
   /** `createApp()` declarado (sem ele não há o que testar). */
@@ -93,4 +102,72 @@ export function readChaosConfig(root: SyntaxNode): ChaosConfigFacts | undefined 
     apis: namesOf('apis'),
     setupFiles,
   };
+}
+
+/** String TS entre aspas simples. */
+const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+
+/** `/orders/:id` → `/orders/1`: um valor de exemplo no lugar de cada parâmetro do Express. */
+const samplePath = (routePath: string) =>
+  routePath
+    .split('/')
+    .map((segment) => (segment.startsWith(':') ? '1' : segment === '*' ? 'x' : segment))
+    .join('/');
+
+const WITH_BODY = new Set(['POST', 'PUT', 'PATCH']);
+
+/**
+ * O contrato inicial (`shieldepy.chaos.config.ts`) a partir do mapa: uma requisição por rota
+ * sensível e uma resposta saudável por API externa que elas chamam. O que o mapa não sabe (subir o
+ * app, zerar o estado, as invariantes, corpos válidos) sai marcado com `CHAOS_CONFIG_TODO`. O
+ * arquivo compila como está: `createApp` lança um erro claro até ser preenchido.
+ */
+export function chaosConfigScaffold(surface: AttackSurface): string {
+  const hosts = [...new Set(surface.routes.flatMap((r) => r.operations.filter((o) => o.kind === 'api_call' && o.target !== 'dynamic').map((o) => o.target)))].sort();
+  const routes = [...surface.routes].sort((a, b) => a.id.localeCompare(b.id));
+  const T = CHAOS_CONFIG_TODO;
+
+  const apis = hosts.length
+    ? hosts.map((h) => `    ${quoted(h)}: () => ({}), // ${T}: a resposta de sucesso desta API`)
+    : ['    // nenhuma API externa nas rotas sensíveis'];
+  const requests = routes.length
+    ? routes.map((r) => {
+        const sample = samplePath(r.path);
+        const fields = [`path: ${quoted(sample)}`, ...(WITH_BODY.has(r.method) ? ['body: {}'] : [])];
+        const todo = WITH_BODY.has(r.method) ? `${T}: um corpo válido` : sample !== r.path ? `${T}: confira o parâmetro` : 'pronta';
+        return `    ${quoted(r.id)}: { ${fields.join(', ')} }, // ${todo} (${r.at})`;
+      })
+    : ['    // nenhuma rota sensível no mapa: não há o que testar ainda'];
+
+  return [
+    '// Contrato do projeto com o ShielDepy, gerado a partir do mapa do código.',
+    '// Os testes de caos saem da topologia, mas só o projeto sabe: como subir o app sem abrir porta,',
+    '// como zerar o estado, o que nunca pode acontecer e como é uma requisição válida de cada rota.',
+    '// Complete as linhas marcadas abaixo (uma marca por pendência) e rode "ShielDepy: Testar Caos"',
+    '// (ou `shieldepy chaos .`). As invariantes são opcionais, mas são elas que provam corrida e estado.',
+    '',
+    'export default {',
+    '  /** Monta o app SEM abrir porta (os testes usam supertest): importe e chame a fábrica do seu app. */',
+    '  createApp: (): never => {',
+    `    throw new Error('${T}: preencha createApp no ${CHAOS_CONFIG_FILE}');`,
+    '  },',
+    '  /** Carregados antes de cada teste gerado (ex.: trocar o banco por um em memória). */',
+    '  setupFiles: [],',
+    '  /** Estado limpo antes de cada teste. */',
+    `  async reset(): Promise<void> {}, // ${T}: zere o banco ou o estado em memória (ou apague esta marca se não há estado)`,
+    '  /** O que nunca pode acontecer: cada função devolve true quando está tudo certo. */',
+    '  invariants: {',
+    '    // ex.: async estoqueNuncaNegativo() { return (await menorEstoque()) >= 0; },',
+    '  },',
+    '  /** Resposta saudável de cada API externa que as rotas sensíveis chamam. */',
+    '  apis: {',
+    ...apis,
+    '  },',
+    '  /** Uma requisição válida por rota sensível (o id é o da topologia). */',
+    '  requests: {',
+    ...requests,
+    '  },',
+    '};',
+    '',
+  ].join('\n');
 }

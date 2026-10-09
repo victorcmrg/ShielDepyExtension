@@ -2,7 +2,6 @@ body { padding: 14px 12px 16px; }
 /* Coluna que ocupa a altura toda: a lista (ou a área vazia) cresce e o resumo fica no fim. */
 #main { display: flex; flex-direction: column; min-height: calc(100vh - 30px); }
 /* Tela de bloqueio no meio da altura toda do painel (descontado o padding do body). */
-#lock { min-height: calc(100vh - 30px); justify-content: center; }
 
 /* --- Cabeçalho: estado da proteção ---------------------------------------------------------- */
 .guard-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--sd-muted); }
@@ -15,6 +14,9 @@ body { padding: 14px 12px 16px; }
 .analyzing.visible { height: 18px; opacity: 1; margin-top: 8px; }
 .analyzing .morph-shape { width: 10px; height: 10px; }
 .notice { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--sd-yellow) 12%, transparent); font-size: 11.5px; }
+.ai-notice-title { font-weight: 600; }
+.ai-notice-actions { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.ai-notice-actions .text-btn { font-size: 11.5px; }
 
 
 /* --- Formas nas listas ---------------------------------------------------------------------- */
@@ -57,6 +59,7 @@ body { padding: 14px 12px 16px; }
 .files { border-radius: var(--sd-radius); background: var(--sd-fill); overflow: hidden; }
 .files.is-empty { flex: 1; min-height: 120px; display: grid; place-items: center; padding: 16px; text-align: center; }
 .files.is-empty > .empty { font-size: 12.5px; }
+.next-steps { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 10px; }
 .file + .file { border-top: 1px solid var(--sd-hairline); }
 .file-row {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px 9px 10px; border: none; background: none;
