@@ -77,13 +77,25 @@ export interface RawCall {
   args?: RawArg[];
   /** Onde a raiz do receptor (ou o nome chamado) é declarada: topo do arquivo ou dentro do chamador. */
   scope?: Scope;
+  /** `require('x')` com o especificador literal: o valor é o módulo `x` (`require('express').Router()`). */
+  spec?: string;
+  /**
+   * Receptor que é o resultado de uma cadeia (`Router().use(a).use(b)`): quem guarda a cadeia
+   * inteira (`const api = ...` → `api`; `export default ...` → `default`) ou, solta, a posição
+   * da chamada que a começa (`@linha:coluna`). Dá ao valor sem nome a mesma identidade que um
+   * nome teria — sem isso o roteador montado assim não existia.
+   */
+  chainRoot?: { name: string; scope?: Scope };
 }
 
 /** `module`: declarado no topo do arquivo; `local`: parâmetro ou variável de uma função. */
 export type Scope = 'module' | 'local';
 
 /** Argumento como sai do parse; o `name` o CodeGraph resolve depois (vira `CallArg`). */
-export type RawArg = Exclude<CallArg, { kind: 'name' }> | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope };
+export type RawArg =
+  | Exclude<CallArg, { kind: 'name' | 'call' }>
+  | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope }
+  | { kind: 'call'; callee: string[]; spec?: string };
 
 const FUNCTION_SCOPE_TYPES = new Set([
   'function_declaration',
@@ -168,6 +180,13 @@ export function classFields(cls: SyntaxNode): { fields: Record<string, TypeRef>;
 function isRequire(node: SyntaxNode): boolean {
   const fn = node.type === 'call_expression' ? node.childForFieldName('function') : undefined;
   return fn?.type === 'identifier' && fn.text === 'require';
+}
+
+/** `require('x')` → 'x' (só com o especificador literal). */
+function requireSpecOf(node: SyntaxNode): string | undefined {
+  if (!isRequire(node)) return undefined;
+  const first = node.childForFieldName('arguments')?.namedChildren[0];
+  return first?.type === 'string' ? unquote(first.text) : undefined;
 }
 
 const OPAQUE_VALUE_TYPES = new Set(['array', 'string', 'template_string', 'number', 'true', 'false', 'regex']);
@@ -271,7 +290,9 @@ function describeCall(node: SyntaxNode): CallDesc | undefined {
   const fn = node.childForFieldName(node.type === 'call_expression' ? 'function' : 'constructor');
   if (fn?.type === 'identifier') {
     const local = localType(node, fn.text);
-    return { name: fn.text, ...(local !== undefined && (local === null || !Array.isArray(local)) ? { shadowed: true } : {}) };
+    if (local !== undefined && (local === null || !Array.isArray(local))) return { name: fn.text, shadowed: true };
+    const spec = requireSpecOf(node);
+    return { name: fn.text, ...(spec !== undefined && { spec }) };
   }
   if (fn?.type !== 'member_expression') return undefined;
   const name = fn.childForFieldName('property')?.text;
@@ -325,22 +346,36 @@ function unquote(raw: string): string {
   return out;
 }
 
+/** Texto literal: string inteira, ou o começo de um template até a 1ª substituição. */
+function describeText(node: SyntaxNode): { kind: 'string'; value: string } | { kind: 'template'; prefix: string } | undefined {
+  if (node.type === 'string') return { kind: 'string', value: unquote(node.text) };
+  if (node.type !== 'template_string') return undefined;
+  const sub = node.namedChildren.find((c) => c.type === 'template_substitution');
+  if (!sub) return { kind: 'string', value: unquote(node.text) };
+  return { kind: 'template', prefix: unquote(node.text.slice(0, sub.startIndex - node.startIndex) + '`') };
+}
+
 /** O que dá pra saber de um argumento sem executar nada. */
 function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg {
-  if (arg.type === 'string') return { kind: 'string', value: unquote(arg.text) };
-  if (arg.type === 'template_string') {
-    const sub = arg.namedChildren.find((c) => c.type === 'template_substitution');
-    if (!sub) return { kind: 'string', value: unquote(arg.text) };
-    return { kind: 'template', prefix: unquote(arg.text.slice(0, sub.startIndex - arg.startIndex) + '`') };
-  }
+  const text = describeText(arg);
+  if (text) return text;
   if (arg.type === 'object') {
-    const keys = arg.namedChildren.map((p) => {
-      if (p.type === 'shorthand_property_identifier') return p.text;
-      if (p.type === 'spread_element') return '...';
-      const key = p.childForFieldName('key') ?? p.childForFieldName('name');
-      return key?.type === 'string' ? unquote(key.text) : key?.text ?? '';
-    });
-    return { kind: 'object', keys: keys.filter((k) => k !== '') };
+    const keys: string[] = [];
+    const texts: Record<string, { kind: 'string'; value: string } | { kind: 'template'; prefix: string }> = {};
+    for (const p of arg.namedChildren) {
+      if (p.type === 'shorthand_property_identifier') keys.push(p.text);
+      else if (p.type === 'spread_element') keys.push('...');
+      else {
+        const keyNode = p.childForFieldName('key') ?? p.childForFieldName('name');
+        const key = keyNode?.type === 'string' ? unquote(keyNode.text) : keyNode?.text ?? '';
+        if (key === '') continue;
+        keys.push(key);
+        const value = p.type === 'pair' ? p.childForFieldName('value') : undefined;
+        const t = value ? describeText(value) : undefined;
+        if (t) texts[key] = t;
+      }
+    }
+    return { kind: 'object', keys, ...(Object.keys(texts).length > 0 && { texts }) };
   }
   if (FUNCTION_VALUE_TYPES.has(arg.type)) {
     const symbolId = symbolAt.get(arg.startIndex)?.id;
@@ -348,7 +383,8 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
   }
   if (arg.type === 'call_expression') {
     const callee = memberChain(arg.childForFieldName('function'));
-    if (callee) return { kind: 'call', callee };
+    const spec = requireSpecOf(arg);
+    if (callee) return { kind: 'call', callee, ...(spec !== undefined && { spec }) };
   }
   const chain = memberChain(arg);
   if (!chain || chain[0] === 'super' || (chain.length === 1 && chain[0] === 'this')) return { kind: 'other' };
@@ -494,6 +530,31 @@ function stableIds(symbols: SymbolInfo[], fileId: string): void {
   }
 }
 
+/** Quem guarda a cadeia de chamadas de que `node` faz parte (ver `RawCall.chainRoot`). */
+function chainRootOf(node: SyntaxNode): RawCall['chainRoot'] {
+  // a chamada que começa a cadeia: `Router()` em `Router().use(a).use(b)`
+  let root = node;
+  for (;;) {
+    const fn = root.childForFieldName('function');
+    const inner = fn?.type === 'member_expression' ? unwrap(fn.childForFieldName('object')) : undefined;
+    if (inner?.type !== 'call_expression' && inner?.type !== 'new_expression') break;
+    root = inner;
+  }
+  // o fim da cadeia: sobe enquanto o valor for o receptor de mais uma chamada
+  let top = node;
+  while (top.parent?.type === 'member_expression' && top.parent.parent?.type === 'call_expression') top = top.parent.parent;
+  const holder = top.parent;
+  if (holder?.type === 'variable_declarator' && holder.childForFieldName('value')?.startIndex === top.startIndex) {
+    const name = holder.childForFieldName('name');
+    if (name?.type === 'identifier') {
+      const scope = declarationScope(top, name.text);
+      return { name: name.text, ...(scope && { scope }) };
+    }
+  }
+  if (holder?.type === 'export_statement' && holder.children.some((c) => c.type === 'default')) return { name: DEFAULT_EXPORT_NAME, scope: 'module' };
+  return { name: `@${root.startPosition.row}:${root.startPosition.column}`, scope: 'module' };
+}
+
 /**
  * Chamadas, cada uma atribuída ao símbolo MAIS INTERNO que a contém (método, não a classe), com o
  * tipo do receptor quando o arquivo deixa saber, a posição e os argumentos estáticos. Chamada no
@@ -521,9 +582,11 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
       const root = desc.object?.[0] ?? desc.name;
       const scope = root === 'this' || root === 'super' ? undefined : declarationScope(node, root);
       const args = node.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment') ?? [];
+      const chainRoot = !desc.object && desc.receiver && 'call' in desc.receiver ? chainRootOf(node) : undefined;
       results.push({
         caller,
         ...desc,
+        ...(chainRoot && { chainRoot }),
         line: node.startPosition.row,
         column: node.startPosition.column,
         end: node.endIndex,

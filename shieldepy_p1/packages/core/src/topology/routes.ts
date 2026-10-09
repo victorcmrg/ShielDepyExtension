@@ -88,7 +88,8 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   const sites: Array<{ file: string; site: CallSite; router: string }> = [];
   for (const file of graph.files()) {
     for (const site of graph.callSitesIn(file)) {
-      if (!isExpress(site) || !site.object) continue;
+      // receptor nomeado (`router.post`) ou cadeia sem nome (`Router().use(a).use(b)`, que tem `receiverOrigin`)
+      if (!isExpress(site) || (!site.object && !site.receiverOrigin)) continue;
       const router = valueKey(site.receiverOrigin, site.object, site.caller, file);
       if (router) sites.push({ file, site, router });
     }
@@ -116,7 +117,9 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
     } else if (site.name === 'use') {
       const prefix = first?.kind === 'string' ? first.value : '';
       for (const arg of first?.kind === 'string' ? rest : site.args) {
-        const child = arg.kind === 'name' ? valueKey(arg.origin, arg.chain, site.caller, file) : undefined;
+        // `use('/x', router)` ou `use('/x', require('./routes/x'))`
+        const child =
+          arg.kind === 'name' ? valueKey(arg.origin, arg.chain, site.caller, file) : arg.kind === 'call' ? valueKey(arg.origin, undefined, site.caller, file) : undefined;
         if (child && routers.has(child)) {
           mounts.push({ ...pos, parent: router, child, prefix });
           continue;

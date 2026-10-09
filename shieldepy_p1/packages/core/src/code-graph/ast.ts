@@ -42,9 +42,17 @@ export function typeRef(node: SyntaxNode | null | undefined): TypeRef | undefine
   }
 }
 
-/** `new X()` → X. */
+/**
+ * `new X()` → X. Também o singleton de desenvolvimento `global.prisma || new PrismaClient()`
+ * (e `??`): o valor, quando não veio do cache, é o construído.
+ */
 export function constructedType(value: SyntaxNode | null | undefined): TypeRef | undefined {
-  if (value?.type === 'await_expression') return constructedType(value.namedChildren[0]);
+  if (value?.type === 'await_expression' || value?.type === 'parenthesized_expression') return constructedType(value.namedChildren[0]);
+  if (value?.type === 'binary_expression') {
+    const op = value.childForFieldName('operator')?.type;
+    if (op !== '||' && op !== '??') return undefined;
+    return constructedType(value.childForFieldName('right')) ?? constructedType(value.childForFieldName('left'));
+  }
   if (value?.type !== 'new_expression') return undefined;
   return typeRef(value.childForFieldName('constructor'));
 }

@@ -90,17 +90,72 @@ export function parseJsonc(text: string): unknown {
 }
 
 /**
+ * Pastas de saída dos `generator` de um `schema.prisma` (`output = "../src/generated/prisma"`),
+ * relativas ao próprio schema. Lido por um analisador léxico mínimo (palavras, strings, `{`, `}`,
+ * `=`, comentários `//`), nunca por regex.
+ */
+export function prismaGeneratorOutputs(schema: string): string[] {
+  const tokens: string[] = [];
+  for (let i = 0; i < schema.length; ) {
+    const ch = schema[i]!;
+    if (ch === '/' && schema[i + 1] === '/') {
+      while (i < schema.length && schema[i] !== '\n') i++;
+    } else if (ch === '"') {
+      let j = i + 1;
+      let value = '';
+      while (j < schema.length && schema[j] !== '"') {
+        if (schema[j] === '\\') j++;
+        value += schema[j] ?? '';
+        j++;
+      }
+      tokens.push(`"${value}`);
+      i = j + 1;
+    } else if (ch === '{' || ch === '}' || ch === '=') {
+      tokens.push(ch);
+      i++;
+    } else if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      i++;
+    } else {
+      let j = i;
+      while (j < schema.length && !' \t\n\r{}="'.includes(schema[j]!)) j++;
+      tokens.push(schema.slice(i, j));
+      i = j;
+    }
+  }
+  const outputs: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== 'generator' || tokens[i + 2] !== '{') continue;
+    let depth = 0;
+    for (let j = i + 2; j < tokens.length; j++) {
+      if (tokens[j] === '{') depth++;
+      else if (tokens[j] === '}' && --depth === 0) break;
+      else if (depth === 1 && tokens[j] === 'output' && tokens[j + 1] === '=' && tokens[j + 2]?.startsWith('"')) outputs.push(tokens[j + 2]!.slice(1));
+    }
+  }
+  return outputs;
+}
+
+const PRISMA_SCHEMAS = ['schema.prisma', path.join('prisma', 'schema.prisma')];
+
+/**
  * Resolvedor de módulos com cache: relativos, `paths`/`baseUrl` do tsconfig (o mais próximo
  * subindo a árvore, seguindo `extends` relativo) e, por exclusão, pacotes.
  */
 export class ModuleResolver {
   private readonly configByDir = new Map<string, PathsConfig | null>();
+  private readonly prismaByDir = new Map<string, string[]>();
 
   constructor(private readonly fs: ResolverFs) {}
 
   resolve(fromFile: string, spec: string): ModuleTarget {
     const exists = (p: string) => this.fs.isFile(p);
     if (spec.startsWith('.') || path.isAbsolute(spec)) {
+      // Prisma 7 (`provider = "prisma-client"`): o cliente é gerado dentro do projeto, mas é o
+      // `@prisma/client` — o banco tem que aparecer como banco, gerado ou não.
+      const base = path.resolve(path.dirname(fromFile), spec);
+      if (this.prismaOutputsFor(path.dirname(fromFile)).some((out) => base === out || base.startsWith(out + path.sep))) {
+        return { kind: 'package', name: '@prisma/client' };
+      }
       const file = spec.startsWith('.') ? resolveImport(fromFile, spec, exists) : resolveFile(spec, exists);
       return file ? { kind: 'file', path: file } : { kind: 'unresolved' };
     }
@@ -127,9 +182,27 @@ export class ModuleResolver {
     return { kind: 'package', name: packageName(spec) };
   }
 
-  /** Esquece os tsconfig lidos (ex: o arquivo de configuração mudou). */
+  /** Esquece os tsconfig e schemas do Prisma lidos (ex: o arquivo de configuração mudou). */
   invalidate(): void {
     this.configByDir.clear();
+    this.prismaByDir.clear();
+  }
+
+  /** Saídas do Prisma do schema mais próximo subindo a árvore, até a pasta do `package.json`. */
+  private prismaOutputsFor(dir: string): string[] {
+    const cached = this.prismaByDir.get(dir);
+    if (cached) return cached;
+    let result: string[] = [];
+    const schema = PRISMA_SCHEMAS.map((f) => path.join(dir, f)).find((f) => this.fs.isFile(f));
+    if (schema) {
+      const text = this.fs.readFile?.(schema);
+      result = text ? prismaGeneratorOutputs(text).map((out) => path.resolve(path.dirname(schema), out)) : [];
+    } else if (!this.fs.isFile(path.join(dir, 'package.json'))) {
+      const parent = path.dirname(dir);
+      if (parent !== dir) result = this.prismaOutputsFor(parent);
+    }
+    this.prismaByDir.set(dir, result);
+    return result;
   }
 
   private configFor(dir: string): PathsConfig | null {
