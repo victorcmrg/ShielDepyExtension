@@ -59,6 +59,7 @@ body { padding: 14px 12px 16px; }
 .files { border-radius: var(--sd-radius); background: var(--sd-fill); overflow: hidden; }
 .files.is-empty { flex: 1; min-height: 120px; display: grid; place-items: center; padding: 16px; text-align: center; }
 .files.is-empty > .empty { font-size: 12.5px; }
+.next-steps { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 10px; }
 .file + .file { border-top: 1px solid var(--sd-hairline); }
 .file-row {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px 9px 10px; border: none; background: none;

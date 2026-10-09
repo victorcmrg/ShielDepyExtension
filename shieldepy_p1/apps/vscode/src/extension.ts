@@ -28,6 +28,8 @@ import { WorkspaceModel } from './workspace/WorkspaceModel';
 
 let model: WorkspaceModel | undefined;
 
+const WALKTHROUGH_SHOWN = 'shieldepy.walkthroughShown';
+
 /** Raiz de composição: cria os serviços, liga eventos e registra views/comandos. Nenhuma regra de negócio aqui. */
 /** API exposta só no Extension Host de teste (E2E). */
 interface TestApi {
@@ -156,6 +158,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     vscode.commands.registerCommand(CMD.scanWorkspace, () => chat.runFullScan()),
     vscode.commands.registerCommand(CMD.showMap, () => mapPanel.show()),
     vscode.commands.registerCommand(CMD.runChaos, () => chaosCommand.run()),
+    vscode.commands.registerCommand(CMD.gettingStarted, () =>
+      vscode.commands.executeCommand('workbench.action.openWalkthrough', `${context.extension.id}#start`, false)
+    ),
     vscode.commands.registerCommand(CMD.compareMap, async (given?: unknown) => {
       const ref =
         typeof given === 'string'
@@ -273,6 +278,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     .catch((err) => log(`[ShielDepy] indexação inicial falhou: ${err}`));
 
   log(`ShielDepy ativo — grafo ${graph.isReady ? 'com' : 'SEM'} Tree-sitter, agente ${AGENT_NAME}.`);
+
+  // Primeira vez nesta máquina: abre os primeiros passos (uma vez só; depois, pelo comando ou pelo painel).
+  if (context.extensionMode !== vscode.ExtensionMode.Test && !context.globalState.get<boolean>(WALKTHROUGH_SHOWN)) {
+    void context.globalState.update(WALKTHROUGH_SHOWN, true);
+    void vscode.commands.executeCommand(CMD.gettingStarted);
+  }
 
   // Só no Extension Host de teste: o E2E entra com um token do servidor falso, sem abrir navegador.
   if (context.extensionMode !== vscode.ExtensionMode.Test) return undefined;

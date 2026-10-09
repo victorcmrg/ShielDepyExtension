@@ -241,9 +241,20 @@
       .map((g) => ({ ...g, items: severityFilter ? g.items.filter((i) => i.severity === severityFilter) : g.items }))
       .filter((g) => g.items.length > 0);
     if (visible.length === 0) {
-      // Uma área vazia só, com uma frase no meio — o resumo fica no fim dela.
+      // Uma área vazia só, com uma frase no meio — o resumo fica no fim dela. Sem filtro, a
+      // lista vazia vira o ponto de partida: o mapa, o caos e os primeiros passos.
       findingsEl.classList.add('is-empty');
-      findingsEl.appendChild(el('div', 'empty', T('emptyState')));
+      const empty = el('div', 'empty', severityFilter ? T('emptyState') : T('emptyNext'));
+      if (!severityFilter) {
+        const actions = el('div', 'next-steps');
+        for (const [key, type] of [['actionShowMap', 'showMap'], ['actionRunChaos', 'runChaos'], ['actionWalkthrough', 'walkthrough']]) {
+          const btn = el('button', 'text-btn', T(key));
+          btn.addEventListener('click', () => vscode.postMessage({ type }));
+          actions.appendChild(btn);
+        }
+        empty.appendChild(actions);
+      }
+      findingsEl.appendChild(empty);
       return;
     }
 

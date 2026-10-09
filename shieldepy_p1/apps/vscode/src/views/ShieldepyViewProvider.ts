@@ -61,6 +61,15 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
           case 'openSettings':
             await vscode.commands.executeCommand(CMD.focusSettings);
             break;
+          case 'showMap':
+            await vscode.commands.executeCommand(CMD.showMap);
+            break;
+          case 'runChaos':
+            await vscode.commands.executeCommand(CMD.runChaos);
+            break;
+          case 'walkthrough':
+            await vscode.commands.executeCommand(CMD.gettingStarted);
+            break;
           case 'openRelated':
             await vscode.commands.executeCommand(CMD.openLocation, String(message.file), Number(message.line));
             break;

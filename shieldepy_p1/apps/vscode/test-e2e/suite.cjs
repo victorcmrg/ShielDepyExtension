@@ -51,9 +51,21 @@ exports.run = async function run() {
 
   await check('comandos registrados', async () => {
     const all = await vscode.commands.getCommands(true);
-    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard', 'shieldepy.showMap', 'shieldepy.exportTopology']) {
+    for (const c of ['shieldepy.explainCollisions', 'shieldepy.scanWorkspace', 'shieldepy.reviewImpact', 'shieldepy.setApiKey', 'shieldepy.refreshAccess', 'shieldepy.openDashboard', 'shieldepy.showMap', 'shieldepy.exportTopology', 'shieldepy.runChaos', 'shieldepy.gettingStarted']) {
       assert(all.includes(c), `faltando ${c}`);
     }
+  });
+
+  await check('R2: os primeiros passos estão registrados (4 passos, mídia no pacote) e o comando abre', async () => {
+    const ext = vscode.extensions.getExtension('shieldepy.shieldepy');
+    const walkthrough = (ext.packageJSON.contributes.walkthroughs || []).find((w) => w.id === 'start');
+    assert(walkthrough && walkthrough.steps.length === 4, 'walkthrough "start" com 4 passos');
+    for (const step of walkthrough.steps) {
+      assert(require('fs').existsSync(path.join(ext.extensionPath, step.media.markdown)), `mídia ausente: ${step.media.markdown}`);
+      assert(/\(command:shieldepy\.[\w.]+\)/.test(step.description), `passo ${step.id} sem botão de comando`);
+    }
+    await vscode.commands.executeCommand('shieldepy.gettingStarted');
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
 
   const pricing = file('services/pricing/handlers.ts');

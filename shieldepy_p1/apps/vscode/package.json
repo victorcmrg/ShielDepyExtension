@@ -97,6 +97,10 @@
         "title": "ShielDepy: Testar Caos"
       },
       {
+        "command": "shieldepy.gettingStarted",
+        "title": "ShielDepy: Primeiros Passos"
+      },
+      {
         "command": "shieldepy.setApiKey",
         "title": "ShielDepy: Configurar Chave da IA"
       },
@@ -125,6 +129,43 @@
         "command": "shieldepy.openLocation",
         "title": "ShielDepy: Abrir Trecho em Conflito",
         "enablement": "false"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "start",
+        "title": "Primeiros passos com o ShielDepy",
+        "description": "Do mapa do código ao teste de caos: tudo roda nesta máquina, sem conta e sem IA.",
+        "steps": [
+          {
+            "id": "findings",
+            "title": "Veja o que o motor provou",
+            "description": "Ao abrir um projeto JS/TS, o mapa é montado sozinho. Ciclos e colisões aparecem no Problems, no Explorer e na lista de erros.\n[Abrir a lista de erros](command:shieldepy.panel.focus)",
+            "media": { "markdown": "media/walkthrough/findings.md" },
+            "completionEvents": ["onView:shieldepy.panel"]
+          },
+          {
+            "id": "map",
+            "title": "Confira o mapa do sistema",
+            "description": "Rotas, controllers, serviços, banco e APIs externas, ligados pelo que o código prova.\n[Ver o mapa](command:shieldepy.showMap)",
+            "media": { "markdown": "media/walkthrough/map.md" },
+            "completionEvents": ["onCommand:shieldepy.showMap"]
+          },
+          {
+            "id": "chaos",
+            "title": "Teste o caos nas rotas sensíveis",
+            "description": "Timeout, 5xx e corrida injetados nas rotas que gravam no banco ou chamam APIs. Na primeira vez, o contrato sai do mapa.\n[Testar caos](command:shieldepy.runChaos)",
+            "media": { "markdown": "media/walkthrough/chaos.md" },
+            "completionEvents": ["onCommand:shieldepy.runChaos"]
+          },
+          {
+            "id": "ai",
+            "title": "Opcional: ligue a IA",
+            "description": "Com uma chave Anthropic ou Gemini, a IA explica os achados, conversa no chat e propõe hipóteses de caos.\n[Configurar a chave](command:shieldepy.setApiKey)",
+            "media": { "markdown": "media/walkthrough/ai.md" },
+            "completionEvents": ["onCommand:shieldepy.setApiKey"]
+          }
+        ]
       }
     ],
     "colors": [

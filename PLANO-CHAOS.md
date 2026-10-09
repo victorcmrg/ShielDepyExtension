@@ -603,7 +603,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Telas:** o painel perdeu a tela de bloqueio de página inteira. No lugar, um aviso discreto acima dos ladrilhos, só quando a empresa desliga a IA, com "Verificar de novo" e o painel web. O cabeçalho diz "Modo local" sem conta. O chat trava só com bloqueio da empresa (texto por motivo). A barra de status nunca mostra "Entrar": a dica diz modo local ou empresa, e avisa a IA desligada.
   - **Textos** nos 4 idiomas: 14 chaves de "entre para usar" saíram, 5 entraram (`localMode`, `sbLocalTip`, `sbAiOff`, `lockAiOffTitle`, `lockAiOffText`) e as de bloqueio foram reescritas como "a análise local continua; a IA…".
   - **Ao mudar a conta**, os arquivos abertos são reanalisados (os riscos da IA aparecem ou somem); nada mais é limpo.
-  - **E2E 29/29** (era 24): os cenários de suspensão e de repositório agora provam que ciclos e colisões **ficam** e que só o bloqueio da IA muda (`aiBlock()` na API de teste). Unitários: 317 (sem mudança). Extensão: 631 KB.
+  - **E2E 27/27** (os mesmos 27 de antes, reescritos; o commit da R1 diz "29/29" por engano de contagem): os cenários de suspensão e de repositório agora provam que ciclos e colisões **ficam** e que só o bloqueio da IA muda (`aiBlock()` na API de teste). Unitários: 317 (sem mudança). Extensão: 631 KB.
 - 2026-10-09: **R3 concluída (caos no editor).** Feita antes da R2, porque o walkthrough da R2 tem o passo "Testar caos".
   - **O contrato deixou de ser o maior atrito.** Antes, sem `shieldepy.chaos.config.ts` a CLI só imprimia um modelo genérico. Agora `chaosConfigScaffold(surface)` (core) gera o contrato a partir do mapa:
     - uma requisição por rota sensível, com `:id` virando `1`;
@@ -623,7 +623,16 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Armadilha encontrada:** o runner do Vitest usa `process.execPath`, que dentro do VS Code é o executável do editor. O `spawnProcess` passa `ELECTRON_RUN_AS_NODE=1` quando `process.versions.electron` existe; na CLI nada muda.
   - **Testes:**
     - unitários: 325, nenhum pulado (os exemplos agora têm `npm install`). Novos: 3 do contrato gerado (sintaxe, ida e volta pelo leitor de AST, o pipeline sem reclamar de rota ou API faltando), o `--init` na CLI e o aviso que sugere o `--init`;
-    - **E2E 33/33**. Novos: o projeto é achado, os pacotes faltando, o contrato criado no editor e **o caos rodando de verdade dentro do VS Code** no `checkout-express` (exit 1, corrida e timeout provados). Este último só roda quando o exemplo tem `npm install`.
+    - **E2E 31/31** (27 + 4; o commit da R3 diz "33/33" por engano de contagem). Novos: o projeto é achado, os pacotes faltando, o contrato criado no editor e **o caos rodando de verdade dentro do VS Code** no `checkout-express` (exit 1, corrida e timeout provados). Este último só roda quando o exemplo tem `npm install`.
+- 2026-10-09: **R2 concluída (primeiros passos).**
+  - **Walkthrough** "Primeiros passos com o ShielDepy" (`contributes.walkthroughs`, id `start`), com 4 passos. Cada um tem um botão de comando, um texto em `media/walkthrough/*.md` e se marca como feito sozinho:
+    1. a lista de erros (`onView`);
+    2. o mapa;
+    3. Testar Caos;
+    4. a chave da IA, opcional.
+  - Ele abre **uma vez** na primeira ativação (`globalState`; nunca no modo de teste). Depois, pelo comando novo **"ShielDepy: Primeiros Passos"**.
+  - **Painel sem achados** virou ponto de partida: "Nenhum problema provado até agora. Próximos passos:" com Ver o mapa, Testar caos nas rotas e Primeiros passos. Com um filtro de severidade ligado, continua só "Nada aqui ainda". São 4 chaves novas nos 4 idiomas.
+  - **E2E 32/32:** o walkthrough tem 4 passos, cada mídia existe no pacote, cada passo tem botão e o comando abre. A lista de comandos registrados passou a incluir `runChaos` e `gettingStarted`.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -649,7 +658,7 @@ Conferido no código da `main` (`297c964`), o caminho de quem instala a extensã
 
 ### Tarefas
 - **R1. Modo local.** ✅ Concluída em 2026-10-09 (ver o registro). Portão do motor sem conta; IA: chave própria sem conta, política da empresa com conta; chat sempre visível; painel sem tela de bloqueio (aviso discreto quando a empresa desliga a IA); status bar sem "Entrar"; a conta vai para "Configurações" como opcional. E2E ajustado.
-- **R2. Primeiros passos.** Walkthrough, aberto uma vez; estado vazio do painel com os próximos passos ("Ver mapa", "Testar caos").
+- **R2. Primeiros passos.** ✅ Concluída em 2026-10-09 (ver o registro). Walkthrough, aberto uma vez; estado vazio do painel com os próximos passos ("Ver mapa", "Testar caos").
 - **R3. Caos no editor.** ✅ Concluída em 2026-10-09 (ver o registro). Comando, bundle separado, saída no canal do ShielDepy, resultado no mapa e o relatório aberto no fim.
 - **R4. Pacote.** Ícone PNG, README/CHANGELOG da extensão, `repository`, `vsce package` limpo, tamanho conferido e instrução de instalar pelo `.vsix`.
 
