@@ -9,7 +9,10 @@ export interface SqlSummary {
   kind: SqlKind;
   /** Verbo principal em maiúsculas (`SELECT`, `INSERT`, `BEGIN`...), ou ausente se não reconhecido. */
   verb?: string;
-  /** Tabela principal: a escrita (INSERT/UPDATE/DELETE) ou a 1ª lida (SELECT). */
+  /**
+   * Tabela principal: a escrita (INSERT/UPDATE/DELETE) ou a 1ª lida no nível de fora (SELECT) —
+   * `SELECT (SELECT ... FROM category) FROM product` lê `product`. Só subconsulta → a 1ª dela.
+   */
   table?: string;
   /** Todas as tabelas citadas (FROM, JOIN, INTO, UPDATE), sem as CTEs. */
   tables: string[];
@@ -55,6 +58,7 @@ export function classifySql(sql: string): SqlSummary {
   let lock = false;
   const tables: string[] = [];
   let written: string | undefined;
+  let outerRead: string | undefined;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
     if (isOp(t, '(')) depth++;
@@ -75,10 +79,11 @@ export function classifySql(sql: string): SqlSummary {
     const named = nameAt(tokens, k);
     if (!named || ctes.has(named.name)) continue;
     if (!tables.includes(named.name)) tables.push(named.name);
+    if (depth === 0 && !outerRead && (word === 'FROM' || word === 'JOIN')) outerRead = named.name;
     if (depth === 0 && !written && (word === 'INTO' || word === 'UPDATE' || (word === 'FROM' && verb === 'DELETE'))) written = named.name;
   }
 
   const kind = verb ? MAIN_VERBS[verb]! : 'unknown';
-  const table = kind === 'write' ? written ?? tables[0] : tables[0];
+  const table = kind === 'write' ? written ?? tables[0] : outerRead ?? tables[0];
   return { kind, ...(verb && { verb }), ...(table && { table }), tables, ...(lock && { lock: true as const }) };
 }

@@ -11,7 +11,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 ## Como retomar num chat novo (atualizado em 2026-10-09, início da etapa C)
 
-**Onde estamos:** E1–E5, V1–V3, **R** (jornada do usuário e release) e **Q** (qualidade no projeto real) estão **todas mergeadas na `main`** (`03351c1`, PRs #1–#8). A etapa atual é a **C — caos utilizável**, na branch `feat/caos-utilizavel`, criada a partir da `main`. Leia, nesta ordem:
+**Onde estamos:** E1–E5, V1–V3, **R** (jornada do usuário e release) e **Q** (qualidade no projeto real) estão **todas mergeadas na `main`** (`03351c1`, PRs #1–#8). A etapa atual é a **C — caos utilizável**, na branch `feat/caos-utilizavel`, criada a partir da `main`. **A C1 parou no meio em 2026-10-09:** o último item do Registro diz o que foi feito e a ordem para retomar. Leia, nesta ordem:
 1. esta seção;
 2. a seção **"C — caos utilizável"**: por que existe, a ordem e as tarefas C1–C5, com o critério de pronto de cada uma;
 3. as seções "Q" e "F", que a C usa;
@@ -84,7 +84,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | mergeado (junto do PR #6); falta a medição paga (5e) |
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
-| C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento (só o plano escrito) |
+| C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
@@ -662,6 +662,34 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     2. `gh release create v0.1.0 shieldepy_p1/apps/vscode/shieldepy-0.1.0.vsix --title "ShielDepy 0.1.0" --notes-file shieldepy_p1/apps/vscode/CHANGELOG.md`.
 
     Se o repositório for privado, só quem tem acesso a ele baixa. O Marketplace fica para depois: ele precisa de um publisher `shieldepy` criado em marketplace.visualstudio.com e de um token do Azure DevOps.
+- 2026-10-09: **C1 em andamento (parada no meio, a pedido do usuário). Feito até aqui: o motor nos 3 projetos, antes de instalar dependências.**
+  - **Projetos escolhidos** (clonados no scratchpad da sessão, fora do repositório; num chat novo, clone de novo):
+    - `gothinkster/node-express-realworld-example-app` (`30b68e1`): TS, Prisma 4, Express 4, 39 arquivos. O tamanho "médio".
+    - `prisma/prisma-examples`, pasta `orm/express` (`caa902a`, sparse checkout): TS, **Prisma 7** com `@prisma/adapter-pg`, Express 5, 3 arquivos.
+    - `manfraio/rest_api_with_nodejs_and_postgres` (`fdd9fc7`): **JS** (CommonJS), `pg` puro, Express 4, 6 arquivos. Achado pela busca da API do GitHub; os boilerplates JS maiores com Postgres usam Sequelize ou Knex (que a F6 cobre), por isso este.
+  - **Medido antes das correções** (`graph` ~2 s em cada um, cobertura provada 100% nos três, 0 ciclos, 0 colisões, 0 ligações por palpite):
+
+    | Projeto | Rotas | I/O | Causa |
+    |---|---|---|---|
+    | realworld | 20, **sem o prefixo `/api`** | **0** | `const prisma = global.prisma \|\| new PrismaClient()` ficava sem tipo; `Router().use(a).use(b)` e `export default Router().use('/api', api)` (roteador sem nome) não eram roteadores |
+    | prisma 7 | 9 | **0** | o cliente vem de `../prisma/generated/client` (saída do `prisma generate`, que nem existe no clone), não de `@prisma/client` |
+    | pgjs | **0** | (0) | `require('express').Router()` saía `unbound`; `app.use('/x', require('./routes/x'))` não virava montagem; SQL no formato `pool.query({ text: '...', values })` não era lido |
+
+  - **Corrigido (todos baratos, no core; typecheck e os 330 testes passando):**
+    1. `constructedType` (`ast.ts`): `a || new X()` e `a ?? new X()` (e parênteses) dão o tipo `X`. Pega o singleton de desenvolvimento do Prisma.
+    2. `require('x')` como receptor: o `CallDesc` ganhou `spec`; o `resolveReturnMember` resolve `require('express').Router()` para o pacote e `require('./svc').f()` para o export do arquivo.
+    3. `require('./r')` como argumento: o `CallArg` `call` ganhou `origin` (o `module.exports` do arquivo); o `routes.ts` monta por ele.
+    4. Roteador sem nome: o `RawCall` ganhou `chainRoot`, a identidade de uma cadeia `X().a().b()`: a variável que a guarda, `default` no `export default`, ou `@linha:coluna` do começo dela. Vira o `receiverOrigin` do `CallSite`, e o `routes.ts` aceita receptor sem `object` quando há `receiverOrigin`.
+    5. Argumento objeto: o `CallArg` `object` ganhou `texts` (chaves com texto literal); o `pgOperation` lê `query({ text })`.
+    6. `classifySql`: na leitura, a tabela principal é a do 1º `FROM`/`JOIN` do nível de fora (`SELECT (SELECT ... FROM category) FROM product p` lê `product`, não `category`).
+    7. Prisma 7: o `ModuleResolver` lê o `output` dos `generator` do `schema.prisma` mais próximo (na pasta ou em `prisma/`, subindo até o `package.json`) com um analisador léxico (`prismaGeneratorOutputs`), e import para dentro dessa pasta vira o pacote `@prisma/client`.
+  - **Depois das correções:** realworld 20 rotas (com `/api`), 19 sensíveis, 30 operações; prisma 7 9 rotas, 9 sensíveis, 10 operações; pgjs 10 rotas, 10 sensíveis, 15 operações. Conferido à mão: `PUT /api/articles/:slug` (2 `findFirst`, o `update` do `disconnectArticlesTags` e o `update` final) e as rotas de `categories`/`products` do pgjs.
+  - **Para retomar a C1, nesta ordem:**
+    1. **Testes das correções** em `packages/core/test/real-project.test.ts`, um por item acima (ainda não escritos; só o teste de argumentos em `call-resolution.test.ts` foi ajustado para o `texts`). Conferir também o `GET /` do realworld: a cadeia mostra `express.static()` como middleware, que está certo.
+    2. Itens 3 e 4 da tabela da C1: conferir rotas à mão num recorte e rodar o `npm run cli -- chaos <pasta> --init` nos três (pendências, o que o mapa errou).
+    3. Itens 5 e 6: `npm install --ignore-scripts` em cada um, deixar o contrato rodando (banco: PGlite para o `pg`; para o Prisma, ver se dá SQLite ou PGlite com adapter; no Prisma 7 rodar o `prisma generate` e conferir se os arquivos gerados entram no mapa como ruído), depois `chaos --offline --report` e abrir os testes para julgar os achados.
+    4. Fechar a tabela da C1 aqui e a lista ordenada para a C2.
+  - Script de depuração usado (não versionado): um `.mts` rodado com `node --import tsx` que indexa a pasta e imprime `graph.callSitesIn(arquivo)` (nome, `outcome`, `package`, `receiverOrigin`, argumentos). Útil para achar a causa de rota ou I/O faltando.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 

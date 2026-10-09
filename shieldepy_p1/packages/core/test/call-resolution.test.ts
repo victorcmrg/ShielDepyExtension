@@ -375,7 +375,8 @@ describe('E2 — cada chamada em ordem, com posição e argumentos (callSitesIn 
       { kind: 'string', value: "it's" },
       { kind: 'template', prefix: 'https://api.ação.com/v1/' },
       { kind: 'string', value: 'sem-subst' },
-      { kind: 'object', keys: ['method', 'signal', 'x-y', '...'] },
+      // `texts`: só as chaves com texto literal (o SQL de `pool.query({ text: '...' })`)
+      { kind: 'object', keys: ['method', 'signal', 'x-y', '...'], texts: { method: { kind: 'string', value: 'POST' } } },
     ]);
     expect(site!.args[4]).toEqual({ kind: 'function' }); // callback dentro de função não vira símbolo
     expect(site!.args[5]).toMatchObject({ kind: 'name', chain: ['handler'], outcome: 'resolved', targets: [symbolId(graph, 'handler', f)] });

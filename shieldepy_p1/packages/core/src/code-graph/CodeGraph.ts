@@ -849,7 +849,9 @@ export class CodeGraph {
 
   private toCallSite(fileId: string, call: RawCall, ctx: ResolutionContext): CallSite {
     const r = this.resolveCall(fileId, call, ctx);
-    const origin = call.object ? this.valueOrigin(fileId, call.object, call.scope, ctx) : undefined;
+    const origin = call.object
+      ? this.valueOrigin(fileId, call.object, call.scope, ctx)
+      : call.chainRoot && { file: fileId, name: call.chainRoot.name, ...(call.chainRoot.scope === 'local' && { local: true as const }) };
     return {
       caller: call.caller,
       line: call.line!,
@@ -872,6 +874,12 @@ export class CodeGraph {
   }
 
   private resolveArg(fileId: string, arg: RawArg, ctx: ResolutionContext): CallArg {
+    if (arg.kind === 'call') {
+      // `app.use('/orders', require('./routes/orders'))`: o valor é o `module.exports` daquele arquivo
+      const target = arg.spec !== undefined ? this.specTargets.get(fileId)?.get(arg.spec) : undefined;
+      const loc = target?.kind === 'file' ? this.resolveExportLocal(target.id, 'default', new Set()) : undefined;
+      return { kind: 'call', callee: arg.callee, ...(loc && { origin: { file: loc.file, name: loc.local } }) };
+    }
     if (arg.kind !== 'name') return arg;
     const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx);
     return {
@@ -915,6 +923,14 @@ export class CodeGraph {
     depth: number
   ): CallResolution | undefined {
     if (depth > 8) return undefined;
+    if (inner.spec !== undefined && !inner.shadowed) {
+      // `require('express').Router()` / `require('./svc').create()`: o valor é o módulo
+      const target = this.specTargets.get(fileId)?.get(inner.spec);
+      if (!target || target.kind === 'unresolved') return UNRESOLVED;
+      if (target.kind === 'package') return this.external(target.name);
+      if (rest.length === 0) return this.found(this.resolveExport(target.id, method));
+      return this.resolveMemberOfExport(target.id, rest[0]!, rest.slice(1), method, ctx);
+    }
     const produced = this.resolveCall(fileId, inner, ctx, depth + 1);
     if (produced.outcome === 'callsExternal') return produced;
     if (produced.outcome === 'unbound') return NATIVE;

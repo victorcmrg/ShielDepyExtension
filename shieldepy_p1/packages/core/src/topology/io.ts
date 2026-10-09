@@ -54,7 +54,9 @@ function timeoutIn(config: CallArg | undefined, keys: string[], absent: TimeoutS
 
 function pgOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
   if (site.name !== 'query') return undefined;
-  const sql = staticText(site.args[0]);
+  // `query('SELECT ...', [..])` ou o formato objeto `query({ text: 'SELECT ...', values: [..] })`
+  const first = site.args[0];
+  const sql = staticText(first?.kind === 'object' ? first.texts?.text : first);
   if (!sql) return { kind: 'db_unknown', target: 'dynamic', via: 'pg' };
   const s = classifySql(sql.text);
   if (s.kind === 'tx') return { kind: 'db_tx', target: 'transaction', via: 'pg', operation: s.verb };

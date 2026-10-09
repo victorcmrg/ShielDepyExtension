@@ -132,14 +132,20 @@ export type CallArg =
   | { kind: 'string'; value: string }
   /** `\`https://api.x.com/${id}\`` → o texto literal antes da 1ª substituição. */
   | { kind: 'template'; prefix: string }
-  /** `{ method: 'POST', signal }` → as chaves; `...spread` vira `'...'`. */
-  | { kind: 'object'; keys: string[] }
+  /**
+   * `{ method: 'POST', signal }` → as chaves; `...spread` vira `'...'`. `texts`: as chaves cujo valor
+   * é texto literal (`pool.query({ text: 'SELECT ...', values })` → `text`), no mesmo formato acima.
+   */
+  | { kind: 'object'; keys: string[]; texts?: Record<string, { kind: 'string'; value: string } | { kind: 'template'; prefix: string }> }
   /** Callback inline; `symbolId` quando ele virou símbolo. */
   | { kind: 'function'; symbolId?: string }
   /** Identificador ou cadeia (`router`, `ctrl.create`), resolvido como referência. */
   | { kind: 'name'; chain: string[]; outcome: CallOutcome; targets: string[]; package?: string; origin?: ValueOrigin }
-  /** Resultado de outra chamada (`express.json()`, `auth('admin')`) — ela própria aparece como chamada separada. */
-  | { kind: 'call'; callee: string[] }
+  /**
+   * Resultado de outra chamada (`express.json()`, `auth('admin')`) — ela própria aparece como chamada separada.
+   * `require('./routes/orders')` traz `origin`: onde o `module.exports` daquele arquivo é declarado.
+   */
+  | { kind: 'call'; callee: string[]; origin?: ValueOrigin }
   | { kind: 'other' };
 
 /** Uma chamada do código, já resolvida, com a posição e os argumentos. */
