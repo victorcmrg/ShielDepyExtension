@@ -9,25 +9,25 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-09, início da etapa R)
+## Como retomar num chat novo (atualizado em 2026-10-09, início da etapa C)
 
-**Onde estamos:** E1–E5, V1–V3 estão **todas mergeadas na `main`** (`297c964`, PRs #1–#7). As branches em andamento formam uma pilha:
-- a **R** (jornada do usuário e release) está completa na `feat/jornada-release`, falta o merge;
-- a **Q** (qualidade no projeto real) está completa na `feat/qualidade-mapa`, **empilhada sobre a `feat/jornada-release`**;
-- a próxima é a **F** (rotas e I/O do resto de JS/TS, além do Express); ver a seção "F".
-
-**Ordem de merge: R → Q**, por merge comum. O release fica para depois da Q. Leia, nesta ordem:
+**Onde estamos:** E1–E5, V1–V3, **R** (jornada do usuário e release) e **Q** (qualidade no projeto real) estão **todas mergeadas na `main`** (`03351c1`, PRs #1–#8). A etapa atual é a **C — caos utilizável**, na branch `feat/caos-utilizavel`, criada a partir da `main`. Leia, nesta ordem:
 1. esta seção;
-2. a seção **"R — jornada do usuário e release"** (decisões do usuário e tarefas R1–R4);
-3. o fim do **Registro**, para os detalhes de cada fatia já feita.
+2. a seção **"C — caos utilizável"**: por que existe, a ordem e as tarefas C1–C5, com o critério de pronto de cada uma;
+3. as seções "Q" e "F", que a C usa;
+4. o fim do **Registro**, para os detalhes do que já foi feito.
+
+**O foco, nas palavras do usuário (2026-10-09):** "o negócio é o teste de caos". O mapa, os ciclos e as colisões são o apoio. Deixar o sistema utilizável é **fazer o caos rodar no projeto de quem instala**.
+
+**Autorizado pelo usuário (2026-10-09):** clonar projetos **públicos** do GitHub numa pasta temporária **fora do repositório** (o scratchpad da sessão ou `%TEMP%`), para a C1. Não commitar nada clonado. Rodar `npm install` neles pode; não rodar scripts de `postinstall` de procedência duvidosa (use `npm install --ignore-scripts` quando der).
 
 **Decisões de 2026-10-09 (do usuário):**
 - **Só JS/TS por enquanto.** Python talvez depois; Java e C# saem do roadmap (a E6 vira "Python, talvez").
 - **Modo local grátis:** sem conta, a extensão faz tudo o que é determinístico (ciclos, colisões, mapa, topologia, caos offline). A conta só traz o portal, a equipe e a política de IA da empresa.
 - **O portal ainda não está publicado.** O release não pode depender dele.
-- **Release:** primeiro `.vsix` nas GitHub Releases; o Marketplace fica para quando estabilizar.
+- **Release:** primeiro `.vsix` nas GitHub Releases; o Marketplace fica para quando estabilizar. **O release espera a C2** (contrato quase automático), para a primeira impressão já ser "rodou sem eu escrever nada". A licença ainda não foi decidida: perguntar antes de publicar.
 
-**Pendências antigas que continuam valendo:** o PR de teste do workflow no GitHub (o `shieldepy-chaos.yml` nunca rodou no Actions) e a medição paga da 5e.
+**Pendências antigas que continuam valendo:** o PR de teste do workflow no GitHub (o `shieldepy-chaos.yml` nunca rodou no Actions; virou a C4) e a medição paga da 5e (só com autorização).
 
 **Combinados com o usuário (seguir sem perguntar):**
 - Responder **em português**.
@@ -84,7 +84,8 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | mergeado (junto do PR #6); falta a medição paga (5e) |
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
-| F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F… | a definir | próxima; 3 a 5 semanas no total |
+| C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento (só o plano escrito) |
+| F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
 ### Registro
@@ -728,6 +729,79 @@ O usuário decidiu: corrigir o 1 e o 2, e **rebaixar a recursão** ("esse projet
 Testes: 330 unitários (+5 em `packages/core/test/real-project.test.ts`) e E2E 33/33.
 
 **Ainda não validado:** um projeto real de terceiros, grande. O próprio ShielDepy não usa Express com pg ou Prisma, então o caos não se aplica a ele: o portal é `node:http` com `node:sqlite`, e a topologia dá 0 rotas. É isso que a F resolve.
+
+## C — caos utilizável (escrito em 2026-10-09, antes de começar)
+
+### Por que existe
+O caos é o produto. Hoje ele tem dois gargalos, e nenhum dos dois foi medido fora dos nossos exemplos:
+1. **Alcance.** Só enxerga rotas **Express** com **pg ou Prisma** e APIs por `fetch` ou `axios`. Em qualquer outro projeto, o "Testar Caos" diz "nenhuma rota sensível" e o produto principal não roda. No próprio ShielDepy (portal em `node:http` com `node:sqlite`), a topologia dá 0 rotas.
+2. **Contrato manual.** Mesmo no Express, o `shieldepy.chaos.config.ts` gerado pela R3 deixa para o usuário escrever:
+   - `createApp`: subir o app sem abrir porta;
+   - `reset`: zerar o estado;
+   - um corpo válido por rota de escrita;
+   - a resposta saudável de cada API.
+
+   É onde a pessoa desiste.
+
+**Onde mexer:**
+- rotas: `packages/core/src/topology/routes.ts`;
+- I/O: `packages/core/src/topology/io.ts`;
+- contrato gerado: `packages/core/src/chaos-config.ts` (`chaosConfigScaffold`) e `apps/cli/src/chaos.ts` (`--init`);
+- comando da extensão: `apps/vscode/src/chaos/ChaosCommand.ts`;
+- templates dos testes: `packages/agent/src/chaos/templates.ts`.
+
+### Ordem
+**C1 → C2 → release (C5) → C3 → C4.** A C1 mede antes de mexer, a C2 tira o maior atrito de quem já é suportado, o release sai quando o Express estiver "sem escrever nada", e a C3 aumenta o alcance fatia por fatia. A C4 pode entrar a qualquer momento depois da C1, porque é meio dia e depende do usuário mexer no GitHub.
+
+### Tarefas
+- **C1. Caos em 2 ou 3 projetos Express reais de terceiros (1–2 dias).**
+  - **Escolha:** projetos públicos, ativos, de tamanhos diferentes, com Express e pg ou Prisma, e com pelo menos uma rota que lê e grava ou chama uma API externa. Pelo menos um em TS e um em JS. **Candidatos a conferir** (podem ter mudado; confira o `package.json` antes de usar):
+    - `gothinkster/node-express-realworld-example-app` (Prisma);
+    - o exemplo `rest-express` do `prisma/prisma-examples`;
+    - um boilerplate Express com pg (`pg` ou `node-postgres`).
+
+    Se algum não servir, achar outro pelo mesmo critério e registrar o porquê.
+  - **Para cada um, medir e registrar numa tabela no Registro:**
+    1. tamanho (arquivos, símbolos) e tempo do `shieldepy graph`;
+    2. cobertura provada, ligações por palpite e o ruído (ciclos, colisões falsas), com a causa de cada falso positivo;
+    3. rotas achadas × rotas reais (conferir à mão num recorte) e rotas sensíveis;
+    4. o `--init`: quantas pendências e o que o mapa errou (host, rota, parâmetro);
+    5. **o tempo e o que foi preciso para deixar o contrato rodando de verdade** (subir o app sem porta, banco em memória ou de teste, `reset`);
+    6. o resultado do `shieldepy chaos`: os controles passaram? Quantos achados? Algum é falso? (Abrir o teste e conferir.)
+  - **Como rodar:** clonar no scratchpad, `npm install --ignore-scripts` (ou o gerenciador do lockfile), `npm run cli -- graph|cycles|topology <pasta>` e `npm run cli -- chaos <pasta> --init`. Preencher o contrato, depois `npm run cli -- chaos <pasta> --offline --report <arquivo>`. O banco: preferir o que o projeto já usa nos testes dele; senão PGlite (o `checkout-express` usa) ou o SQLite do Prisma.
+  - **Corrigir dentro da C1** o que for bug barato do motor (como na Q), cada um com um teste em `packages/core/test/real-project.test.ts`. O que for grande vira tarefa nova neste plano.
+  - **Pronto quando:** a tabela está no Registro, os bugs baratos estão corrigidos com teste, e existe uma lista ordenada do que a C2 precisa resolver, tirada do que realmente doeu.
+- **C2. Contrato quase automático (3–5 dias).** Meta: num projeto Express suportado, o `--init` gera um contrato que **roda sem edição** (os controles passam) ou com **no máximo 1 pendência**. Ajustar a ordem pelo que a C1 mostrar.
+  - **C2a. `createApp`.** Achar pela AST onde o app é montado: a chamada `express()` (ou `Router` montado nela), o arquivo e o símbolo exportado (fábrica `createApp()`, `export const app` ou `export default app`). Distinguir do `app.listen()`: se o app só existe dentro do arquivo que dá `listen`, o contrato não pode importar esse arquivo, porque abriria a porta. Nesse caso, a pendência diz exatamente o que separar. Gerar o `import` e o `createApp: () => app` certos.
+  - **C2b. Corpos válidos.** Gerar o `body` de cada rota de escrita a partir do que o projeto já valida, nesta ordem:
+    1. schema `zod` ou `joi` usado no handler ou no middleware da rota;
+    2. DTO do `class-validator`;
+    3. o tipo TS do `req.body` (`Request<{}, {}, Body>` ou anotação);
+    4. as propriedades lidas de `req.body.x` no handler.
+
+    Valores de exemplo por tipo (string, número, e-mail, uuid, enum: o 1º valor). Sem fonte, fica a pendência.
+  - **C2c. Parâmetros de rota.** Hoje `:id` vira `1`. Melhorar quando o tipo for conhecido (uuid, por exemplo).
+  - **C2d. `reset` e banco de teste.** Pelo banco detectado na topologia, gerar o `reset` e o `setupFiles` sugeridos:
+    - Prisma: `deleteMany` nas tabelas tocadas, ou um banco SQLite ou de teste;
+    - pg: PGlite em memória, como no `checkout-express`, com o schema vindo das migrações do projeto quando existirem.
+
+    Se não der para gerar com segurança, a pendência explica o que fazer, com um exemplo.
+  - **C2e. `apis`.** Resposta saudável de cada host: se o projeto usa o SDK oficial (Stripe e afins), um formato mínimo conhecido; senão `{}` com a pendência.
+  - **Testes:** cada sub-tarefa com teste de unidade no core e um exemplo novo em `examples/` quando precisar. A aceitação é o `--init` dos projetos da C1 (e do `checkout-express` sem o contrato) chegar à meta.
+- **C3. Caos além do Express: a etapa F (3–5 semanas, em fatias).** Ver a seção "F" abaixo: desenho, fatias F1–F7 e ordem (F3 `node:http`, prova no próprio portal → F1 Fastify → F6 SQLite e Mongoose → F4 NestJS → F5 Next.js → o resto). **Cada fatia leva a C2 junto:** o `createApp` e os corpos daquele framework, não só as rotas.
+- **C4. Caos no CI de verdade (meio dia; o usuário mexe no GitHub).** Preparar um PR de teste que mexa numa rota sensível do `checkout-express` e rodar o `shieldepy-chaos.yml` no Actions. Conferir:
+  - o comentário com o relatório;
+  - o portão barrando (exit 1);
+  - o escopo `--base`.
+
+  O usuário abre o PR e confere; eu preparo a branch e as instruções.
+- **C5. Release v0.1.0 (cerca de 1 hora, depois da C2).**
+  1. Perguntar a licença (MIT ou todos os direitos reservados) e se o repositório é público. Se for privado, só quem tem acesso baixa o `.vsix`.
+  2. Atualizar o CHANGELOG e rodar `npm run package:vscode`.
+  3. Conferir o pacote: E2E contra a extensão instalada do `.vsix` (ver "Como rodar").
+  4. Entregar o comando `gh release create v0.1.0 …` para o usuário publicar.
+
+---
 
 ## F — rotas e I/O do resto de JS/TS (escrito em 2026-10-09, antes de começar)
 
