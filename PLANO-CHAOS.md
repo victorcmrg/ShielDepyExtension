@@ -34,9 +34,11 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**288** no fim da E4; **307** depois da 5e, parte gratuita).
-- `npm run build:vscode`: extensão (o bundle tem ~612 KB; se crescer muito, algo puxou o LangGraph para dentro dela).
-- `npm run test:e2e -w shieldepy`: E2E num VS Code real (**24/24**, leva alguns minutos).
+- `npm run check`: typecheck + testes unitários (**325** no fim da etapa R, nenhum pulado quando os exemplos têm `npm install`).
+- `npm run build:vscode`: dois arquivos. `dist/extension.js` tem ~640 KB; se crescer muito, algo puxou o LangGraph para dentro dele. O `dist/chaos.js` (~1,9 MB) é o pipeline de caos, carregado só pelo "Testar Caos".
+- `npm run test:e2e -w shieldepy`: E2E num VS Code real (**33/33**, leva alguns minutos). O cenário do caos de verdade só roda com `npm install` em `examples/checkout-express`.
+- `npm run package:vscode`: gera o `.vsix`. Para conferir o pacote, instale-o num `--extensions-dir` temporário e rode `SHIELDEPY_E2E_EXTENSION=<pasta instalada> node apps/vscode/test-e2e/run.mjs`.
+- **Portal em desenvolvimento:** a extensão vem sem portal (`shieldepy.webBaseUrl` vazio, modo local). Para testar o login com o `npm run web`, ponha `"shieldepy.webBaseUrl": "http://localhost:3000"` nas settings.
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
 - Dentro de um exemplo (`examples/checkout-express` e `-fixed`, que precisam de `npm install` próprio): `npm test` roda o teste de fumaça. Sem esse `npm install`, os testes da CLI e do agent que rodam o Vitest e o `tsc` dos exemplos são pulados.
 - Atenção no Windows: os caminhos têm acento e espaço (`Área de Trabalho`), então use sempre aspas. Os arquivos do repositório estão em CRLF, e edições por script que procuram `\n` podem não casar; prefira o editor.
@@ -75,7 +77,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído, mergeado (junto do PR #6); falta o PR de teste no GitHub |
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | mergeado (junto do PR #6); falta a medição paga (5e) |
-| R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | em andamento |
+| R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
 ### Registro
@@ -633,6 +635,25 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Ele abre **uma vez** na primeira ativação (`globalState`; nunca no modo de teste). Depois, pelo comando novo **"ShielDepy: Primeiros Passos"**.
   - **Painel sem achados** virou ponto de partida: "Nenhum problema provado até agora. Próximos passos:" com Ver o mapa, Testar caos nas rotas e Primeiros passos. Com um filtro de severidade ligado, continua só "Nada aqui ainda". São 4 chaves novas nos 4 idiomas.
   - **E2E 32/32:** o walkthrough tem 4 passos, cada mídia existe no pacote, cada passo tem botão e o comando abre. A lista de comandos registrados passou a incluir `runChaos` e `gettingStarted`.
+- 2026-10-09: **R4 concluída (pacote). Com ela, a etapa R está completa.**
+  - **Ícone:** `media/icon.png`, 256×256 com fundo transparente. É o `logo-mark.svg` do portal (o escudo verde com o foguete), renderizado pelo Chrome headless.
+  - **Manifesto:** `icon`, `repository`, `homepage` e `bugs`; README e CHANGELOG da extensão em `apps/vscode/` (o README é a página da extensão, com instalação pelo `.vsix`, o que ela faz, privacidade e configurações). O `.vscodeignore` passou a excluir o `.vscode-test/**` explicitamente.
+  - **Portal opcional de verdade:** `shieldepy.webBaseUrl` tem padrão **vazio** (era `http://localhost:3000`, que quebraria o "Entrar" de quem instala o pacote). Sem portal:
+    - sem conta e sem chamada de rede (`fetchMe`);
+    - o cartão da conta some das configurações;
+    - os 4 comandos de conta somem da paleta (contexto `shieldepy.portal`);
+    - o `login()` explica o motivo.
+  - **Em desenvolvimento:** `"shieldepy.webBaseUrl": "http://localhost:3000"` nas settings (o E2E já faz isso pelo `.vscode/settings.json` do workspace).
+  - **Pacote:** `npm run package:vscode` gera `apps/vscode/shieldepy-0.1.0.vsix` (37 arquivos, 1,77 MB). O script usa `--skip-license`: a licença é decisão do usuário (sem `LICENSE`, vale "todos os direitos reservados").
+  - **Provado:**
+    - o `.vsix` instala limpo num VS Code isolado (`--extensions-dir` temporário);
+    - **o E2E inteiro passou contra a extensão instalada do `.vsix`** (`SHIELDEPY_E2E_EXTENSION=<pasta> node test-e2e/run.mjs`), não só contra a pasta de desenvolvimento;
+    - E2E **33/33** (+1: sem portal, a conta some e as colisões ficam).
+  - **Para publicar o release (o usuário decide e faz):**
+    1. `npm run package:vscode`;
+    2. `gh release create v0.1.0 shieldepy_p1/apps/vscode/shieldepy-0.1.0.vsix --title "ShielDepy 0.1.0" --notes-file shieldepy_p1/apps/vscode/CHANGELOG.md`.
+
+    Se o repositório for privado, só quem tem acesso a ele baixa. O Marketplace fica para depois: ele precisa de um publisher `shieldepy` criado em marketplace.visualstudio.com e de um token do Azure DevOps.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -660,7 +681,7 @@ Conferido no código da `main` (`297c964`), o caminho de quem instala a extensã
 - **R1. Modo local.** ✅ Concluída em 2026-10-09 (ver o registro). Portão do motor sem conta; IA: chave própria sem conta, política da empresa com conta; chat sempre visível; painel sem tela de bloqueio (aviso discreto quando a empresa desliga a IA); status bar sem "Entrar"; a conta vai para "Configurações" como opcional. E2E ajustado.
 - **R2. Primeiros passos.** ✅ Concluída em 2026-10-09 (ver o registro). Walkthrough, aberto uma vez; estado vazio do painel com os próximos passos ("Ver mapa", "Testar caos").
 - **R3. Caos no editor.** ✅ Concluída em 2026-10-09 (ver o registro). Comando, bundle separado, saída no canal do ShielDepy, resultado no mapa e o relatório aberto no fim.
-- **R4. Pacote.** Ícone PNG, README/CHANGELOG da extensão, `repository`, `vsce package` limpo, tamanho conferido e instrução de instalar pelo `.vsix`.
+- **R4. Pacote.** ✅ Concluída em 2026-10-09 (ver o registro). Ícone PNG, README/CHANGELOG da extensão, `repository`, `vsce package` limpo, tamanho conferido e instrução de instalar pelo `.vsix`.
 
 ---
 

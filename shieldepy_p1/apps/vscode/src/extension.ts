@@ -67,8 +67,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   const auth = new AuthService(context.secrets, log);
   push(auth);
-  // A conta é opcional (modo local): ela só decide a IA da empresa, nunca o motor.
+  // A conta é opcional (modo local): ela só decide a IA da empresa, nunca o motor. Sem portal
+  // configurado, os comandos de conta nem aparecem na paleta.
   await auth.ensureLoaded(context.extension.id);
+  const syncPortal = () => vscode.commands.executeCommand('setContext', 'shieldepy.portal', config.hasPortal());
+  void syncPortal();
+  push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('shieldepy.webBaseUrl')) void syncPortal();
+    })
+  );
 
   // vscode://<publisher>.<name>/callback — recebe o retorno do navegador depois de
   // "Confiar" no /device-confirm (ver AuthService.completeLogin). A authority vem

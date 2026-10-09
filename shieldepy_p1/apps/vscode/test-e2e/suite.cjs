@@ -217,6 +217,19 @@ exports.run = async function run() {
     await waitFor('bloqueio voltar a ser o da IA não liberada', () => api.aiBlock() === 'aiDisabled', 10000);
   });
 
+  await check('R4: sem portal configurado (o padrão do pacote), a conta some e fica o modo local', async () => {
+    const cfg = vscode.workspace.getConfiguration('shieldepy');
+    const url = cfg.get('webBaseUrl');
+    await cfg.update('webBaseUrl', '', vscode.ConfigurationTarget.Workspace);
+    try {
+      await waitFor('modo local sem portal', () => api.aiBlock() === null, 10000);
+      assert(ours(audit, COLISAO).length === auditBefore, 'as colisões mudaram sem o portal');
+    } finally {
+      await cfg.update('webBaseUrl', url, vscode.ConfigurationTarget.Workspace);
+      await waitFor('a conta voltar com o portal', () => api.aiBlock() === 'aiDisabled', 10000);
+    }
+  });
+
   // --- mapa do sistema (E1 dentro do editor) ---------------------------------------------
   const edgeIn = (map, source, target, type) =>
     map.edges.some((e) => e.source.startsWith(source) && e.target.startsWith(target) && e.type === type);

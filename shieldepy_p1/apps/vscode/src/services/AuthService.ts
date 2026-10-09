@@ -83,7 +83,11 @@ export class AuthService implements vscode.Disposable {
         if (e.key === SECRET_AUTH_TOKEN) void this.refresh();
       }),
       // Abriu/fechou pasta no workspace: o repositório (e a liberação) pode ter mudado.
-      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh())
+      vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh()),
+      // Portal configurado ou removido: a conta aparece ou some.
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('shieldepy.webBaseUrl')) void this.refresh();
+      })
     );
   }
 
@@ -170,6 +174,7 @@ export class AuthService implements vscode.Disposable {
 
   /** Abre o navegador no /device-confirm; a promise resolve quando completeLogin() confirmar. */
   async login(): Promise<void> {
+    if (!config.hasPortal()) throw new Error('nenhum portal configurado (shieldepy.webBaseUrl). Sem conta, a extensão funciona em modo local.');
     if (this.pendingLogin) {
       clearTimeout(this.pendingLogin.timer);
       this.pendingLogin.reject(new Error('um novo login foi iniciado'));
@@ -192,6 +197,7 @@ export class AuthService implements vscode.Disposable {
 
   /** Painel web: os projetos da pessoa (é lá que o dono conecta repositórios e equipe). */
   async openDashboard(): Promise<void> {
+    if (!config.hasPortal()) return;
     await vscode.env.openExternal(vscode.Uri.parse(`${this.webBaseUrl()}/projects`));
   }
 
@@ -264,7 +270,8 @@ export class AuthService implements vscode.Disposable {
     }
 
     const token = await this.secrets.get(SECRET_AUTH_TOKEN);
-    if (!token) {
+    // Sem portal não há conta: modo local (o token, se houver, fica guardado para quando voltar).
+    if (!token || !config.hasPortal()) {
       this.cachedMe = null;
       this.cacheLoaded = true;
       this.cachedAt = Date.now();

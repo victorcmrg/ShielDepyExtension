@@ -5,6 +5,14 @@
   "version": "0.1.0",
   "publisher": "shieldepy",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/victorcmrg/ShielDepyExtension.git"
+  },
+  "homepage": "https://github.com/victorcmrg/ShielDepyExtension#readme",
+  "bugs": {
+    "url": "https://github.com/victorcmrg/ShielDepyExtension/issues"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -18,6 +26,7 @@
     "onUri"
   ],
   "main": "./dist/extension.js",
+  "icon": "media/icon.png",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -190,6 +199,14 @@
         "defaults": { "dark": "#10EF7C", "light": "#0B9E55", "highContrast": "#10EF7C", "highContrastLight": "#0A7A42" }
       }
     ],
+    "menus": {
+      "commandPalette": [
+        { "command": "shieldepy.login", "when": "shieldepy.portal" },
+        { "command": "shieldepy.logout", "when": "shieldepy.portal" },
+        { "command": "shieldepy.openDashboard", "when": "shieldepy.portal" },
+        { "command": "shieldepy.refreshAccess", "when": "shieldepy.portal" }
+      ]
+    },
     "configurationDefaults": {
       "chat.disableAIFeatures": true
     },
@@ -317,8 +334,8 @@
         },
         "shieldepy.webBaseUrl": {
           "type": "string",
-          "default": "http://localhost:3000",
-          "description": "URL base do site da ShielDepy (login, confirmação de dispositivo e API de conta). Aponte para localhost durante o desenvolvimento; troque para a URL de produção quando o site estiver publicado."
+          "default": "",
+          "description": "Endereço do portal da conta da empresa (login, confirmação de dispositivo, política de IA). Vazio = sem portal: a extensão roda em modo local e a área da conta fica escondida. Em desenvolvimento: http://localhost:3000."
         }
       }
     }
@@ -326,7 +343,7 @@
   "scripts": {
     "build": "node esbuild.mjs --production",
     "watch": "node esbuild.mjs --watch",
-    "package": "npm run build && vsce package --no-dependencies",
+    "package": "npm run build && vsce package --no-dependencies --skip-license",
     "test:e2e": "npm run build && node test-e2e/run.mjs"
   },
   "dependencies": {

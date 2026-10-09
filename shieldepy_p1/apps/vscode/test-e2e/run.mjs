@@ -1,6 +1,7 @@
 // Teste de ponta a ponta: baixa um VS Code de verdade, instala a extensão (dist/) e roda
 // `suite.cjs` DENTRO dele, num workspace temporário com os exemplos de colisão e um ciclo.
 // Uso: npm run test:e2e -w shieldepy   (precisa de `npm run build` antes)
+//      SHIELDEPY_E2E_EXTENSION=<pasta da extensão instalada do .vsix> node test-e2e/run.mjs
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,7 +16,8 @@ import { runTests } from '@vscode/test-electron';
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const extensionDevelopmentPath = join(here, '..');
+// SHIELDEPY_E2E_EXTENSION: roda a mesma suíte contra a extensão instalada de um .vsix (confere o pacote).
+const extensionDevelopmentPath = process.env.SHIELDEPY_E2E_EXTENSION || join(here, '..');
 const workspace = mkdtempSync(join(tmpdir(), 'shieldepy-e2e-'));
 
 cpSync(join(here, '..', '..', '..', 'examples', 'pedidos-microservices'), workspace, { recursive: true });
