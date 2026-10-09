@@ -90,7 +90,9 @@ const OUTPUT_TAIL = 4000;
 
 export const spawnProcess: ProcessRunner = (command, args, cwd) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FORCE_COLOR: '0' } });
+    // Dentro do VS Code (extensão), process.execPath é o executável do editor: ELECTRON_RUN_AS_NODE faz ele agir como o Node.
+    const env = { ...process.env, FORCE_COLOR: '0', ...(process.versions.electron && { ELECTRON_RUN_AS_NODE: '1' }) };
+    const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     let output = '';
     const keep = (chunk: Buffer) => {
       output = (output + chunk.toString('utf8')).slice(-OUTPUT_TAIL);

@@ -22,6 +22,7 @@ export const CMD = {
   showMap: 'shieldepy.showMap',
   exportTopology: 'shieldepy.exportTopology',
   compareMap: 'shieldepy.compareMap',
+  runChaos: 'shieldepy.runChaos',
 } as const;
 
 export const SECRET_ANTHROPIC = 'shieldepy.anthropicApiKey';

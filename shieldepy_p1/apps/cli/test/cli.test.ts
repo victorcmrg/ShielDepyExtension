@@ -122,7 +122,7 @@ describe('CLI', () => {
     expect((await run('report', 'x', '--fail-on', 'grave')).code).toBe(2);
     expect((await run('voar')).code).toBe(2);
     expect((await run('report', '/nao/existe')).err).toMatch(/erro:/);
-    expect(parseArgs(['explain', 'p', '--json'])).toEqual({ command: 'explain', target: 'p', json: true, pg: false, surface: false, noRun: false, offline: false });
+    expect(parseArgs(['explain', 'p', '--json'])).toEqual({ command: 'explain', target: 'p', json: true, pg: false, surface: false, noRun: false, offline: false, init: false });
   });
 
   it('topology: rotas, operações em ordem e tags do checkout-express', async () => {
@@ -209,11 +209,30 @@ describe('CLI chaos (E3)', () => {
     }
   });
 
-  it('sem shieldepy.chaos.config.ts: aborta com o modelo do arquivo', async () => {
+  it('sem shieldepy.chaos.config.ts: aborta com o modelo do arquivo e sugere o --init', async () => {
     const noConfig = await run('chaos', example('pedidos-microservices'), '--no-run', '--offline');
     expect(noConfig.code).toBe(2);
     expect(noConfig.err).toMatch(/falta shieldepy\.chaos\.config\.ts/);
     expect(noConfig.err).toMatch(/requests:/);
+    expect(noConfig.err).toMatch(/--init/);
+  });
+
+  it('--init cria o contrato a partir do mapa, e não sobrescreve um que já existe', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      for (const f of ['src', 'package.json', 'tsconfig.json']) fs.cpSync(path.join(example('checkout-express'), f), path.join(tmp, f), { recursive: true });
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(0);
+      expect(created.err).toMatch(/criado com 2 rota\(s\) sensível\(is\)/);
+      const config = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
+      expect(config).toContain("'POST /checkout': { path: '/checkout', body: {} }");
+      expect(config).toContain("'api.stripe.com': () => ({})");
+      const again = await run('chaos', tmp, '--init');
+      expect(again.code).toBe(2);
+      expect(again.err).toMatch(/já existe/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 

@@ -316,6 +316,56 @@ exports.run = async function run() {
     }
   });
 
+  // --- "Testar Caos" no editor (R3) -----------------------------------------------------
+  const checkoutRoot = path.join(root, 'checkout');
+
+  await check('R3: "Testar Caos" acha o checkout (rotas sensíveis no mapa, contrato pronto)', async () => {
+    const all = await vscode.commands.getCommands(true);
+    assert(all.includes('shieldepy.runChaos'), 'comando shieldepy.runChaos não registrado');
+    const found = api.chaos.projects().find((p) => p.root === checkoutRoot);
+    assert(found, `projetos: ${JSON.stringify(api.chaos.projects())}`);
+    assert(found.routes >= 1 && found.hasContract, `checkout: ${JSON.stringify(found)}`);
+  });
+
+  await check('R3: sem node_modules, aponta os pacotes que os testes de caos usam', async () => {
+    const missing = api.chaos.missingPackages(checkoutRoot);
+    assert(missing.join(',') === 'vitest,supertest,msw', `faltando: ${missing}`);
+  });
+
+  await check('R3: sem contrato, cria um a partir do mapa (o bundle do caos carrega no editor)', async () => {
+    const contract = file('checkout/shieldepy.chaos.config.ts');
+    const original = await vscode.workspace.fs.readFile(contract);
+    await vscode.workspace.fs.delete(contract);
+    try {
+      assert(api.chaos.projects().find((p) => p.root === checkoutRoot)?.hasContract === false, 'ainda vê o contrato apagado');
+      assert((await api.chaos.createContract(checkoutRoot)) === true, 'createContract falhou (veja o canal ShielDepy)');
+      const text = Buffer.from(await vscode.workspace.fs.readFile(contract)).toString('utf8');
+      assert(text.includes("'POST /checkout': { path: '/checkout', body: {} }"), `contrato:\n${text}`);
+      assert(text.includes("'api.stripe.com'") && text.includes('TODO(shieldepy)'), 'faltou a API ou as marcas de pendência');
+    } finally {
+      await vscode.workspace.fs.writeFile(contract, original);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
+  });
+
+  // Prova real (só quando o exemplo tem `npm install`): o caos roda no editor, com o Vitest do
+  // projeto no Node do VS Code (ELECTRON_RUN_AS_NODE), e barra a corrida e o timeout do Stripe.
+  const example = path.join(__dirname, '..', '..', '..', 'examples', 'checkout-express');
+  if (require('fs').existsSync(path.join(example, 'node_modules', 'vitest'))) {
+    await check('R3: o caos roda de verdade no editor e prova a corrida e o timeout (exit 1)', async () => {
+      try {
+        const code = await api.chaos.execute(example, { offline: true });
+        assert(code === 1, `código ${code}`);
+        const results = JSON.parse(require('fs').readFileSync(path.join(example, '.shieldepy', 'chaos-results.json'), 'utf8'));
+        const failed = results.outcomes.filter((o) => o.status === 'failed').map((o) => o.failure);
+        assert(failed.includes('race_condition') && failed.includes('timeout'), `falhas: ${failed}`);
+        assert(require('fs').existsSync(path.join(example, '.shieldepy', 'chaos-report.md')), 'sem o relatório');
+      } finally {
+        require('fs').rmSync(path.join(example, '.shieldepy'), { recursive: true, force: true });
+      }
+    });
+  } else console.log('  (pulado: R3 com o caos de verdade — rode npm install em examples/checkout-express)');
+
   const tsconfig = file('checkout/tsconfig.json');
   const tsconfigOriginal = Buffer.from(await vscode.workspace.fs.readFile(tsconfig)).toString('utf8');
 

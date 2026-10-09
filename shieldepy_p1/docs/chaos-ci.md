@@ -8,7 +8,7 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
 
 **Alvo suportado hoje:** Express com `pg` ou Prisma, e `fetch` ou `axios` para APIs externas.
 
-1. **`shieldepy.chaos.config.ts` na raiz do app.** É o contrato: só o projeto sabe subir o app sem abrir porta, zerar o estado, dizer o que nunca pode acontecer e montar uma requisição válida.
+1. **`shieldepy.chaos.config.ts` na raiz do app.** É o contrato: só o projeto sabe subir o app sem abrir porta, zerar o estado, dizer o que nunca pode acontecer e montar uma requisição válida. Para começar, `shieldepy chaos . --init` (ou **ShielDepy: Testar Caos** no VS Code) gera o arquivo a partir do mapa, com as rotas sensíveis e as APIs; complete as linhas marcadas com `TODO(shieldepy)`.
 
    ```ts
    import { minStock, resetDb } from './chaos/db';

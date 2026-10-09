@@ -604,6 +604,26 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Textos** nos 4 idiomas: 14 chaves de "entre para usar" saíram, 5 entraram (`localMode`, `sbLocalTip`, `sbAiOff`, `lockAiOffTitle`, `lockAiOffText`) e as de bloqueio foram reescritas como "a análise local continua; a IA…".
   - **Ao mudar a conta**, os arquivos abertos são reanalisados (os riscos da IA aparecem ou somem); nada mais é limpo.
   - **E2E 29/29** (era 24): os cenários de suspensão e de repositório agora provam que ciclos e colisões **ficam** e que só o bloqueio da IA muda (`aiBlock()` na API de teste). Unitários: 317 (sem mudança). Extensão: 631 KB.
+- 2026-10-09: **R3 concluída (caos no editor).** Feita antes da R2, porque o walkthrough da R2 tem o passo "Testar caos".
+  - **O contrato deixou de ser o maior atrito.** Antes, sem `shieldepy.chaos.config.ts` a CLI só imprimia um modelo genérico. Agora `chaosConfigScaffold(surface)` (core) gera o contrato a partir do mapa:
+    - uma requisição por rota sensível, com `:id` virando `1`;
+    - uma resposta saudável por host externo;
+    - `createApp` que lança um erro claro, para o arquivo compilar como está.
+  - **Marcas:** o que só o projeto sabe sai com `TODO(shieldepy)`, uma linha por pendência, e `chaosConfigPending()` conta. As invariantes ficam como exemplo opcional. A CLI ganhou `shieldepy chaos <pasta> --init`, que não sobrescreve um contrato existente.
+  - **Comando "ShielDepy: Testar Caos"** (`src/chaos/ChaosCommand.ts`), na ordem em que a pessoa precisa:
+    1. o projeto: a pasta com `package.json` mais próxima de cada rota sensível do mapa (com mais de um, uma lista);
+    2. sem contrato: oferece criá-lo e abre o arquivo;
+    3. contrato com pendências: avisa ("N pendências"), com "Abrir o contrato" ou "Rodar mesmo assim";
+    4. falta `vitest`, `supertest` ou `msw`: mostra o comando (npm, pnpm ou yarn, pelo lockfile) e oferece rodar num terminal;
+    5. escopo: "Só o que mudou desde origin/main" (o primeiro de `origin/main`, `origin/master`, `main` ou `master` que existir) ou "Todas as rotas sensíveis";
+    6. motor ou IA: só pergunta se a IA estiver disponível (chave e política da empresa); a chave vai pelo ambiente que a CLI lê (`AiService.cliEnv()`);
+    7. roda num pseudoterminal "ShielDepy: caos", com a mesma saída da CLI;
+    8. no fim, um aviso por código de saída, com "Ver no mapa" (o painel V2d já pega o resultado) e "Abrir relatório" (`.shieldepy/chaos-report.md`).
+  - **Bundle separado:** o pipeline (LangGraph, SDKs) virou `dist/chaos.js` (1,9 MB), carregado por `require` só quando o comando roda. A extensão passou de 631 para 641 KB. A CLI aceita `wasmDir` (`ChaosArgs` e `buildMapOf`), porque no bundle CJS o `defaultWasmDir()` não existe.
+  - **Armadilha encontrada:** o runner do Vitest usa `process.execPath`, que dentro do VS Code é o executável do editor. O `spawnProcess` passa `ELECTRON_RUN_AS_NODE=1` quando `process.versions.electron` existe; na CLI nada muda.
+  - **Testes:**
+    - unitários: 325, nenhum pulado (os exemplos agora têm `npm install`). Novos: 3 do contrato gerado (sintaxe, ida e volta pelo leitor de AST, o pipeline sem reclamar de rota ou API faltando), o `--init` na CLI e o aviso que sugere o `--init`;
+    - **E2E 33/33**. Novos: o projeto é achado, os pacotes faltando, o contrato criado no editor e **o caos rodando de verdade dentro do VS Code** no `checkout-express` (exit 1, corrida e timeout provados). Este último só roda quando o exemplo tem `npm install`.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -630,7 +650,7 @@ Conferido no código da `main` (`297c964`), o caminho de quem instala a extensã
 ### Tarefas
 - **R1. Modo local.** ✅ Concluída em 2026-10-09 (ver o registro). Portão do motor sem conta; IA: chave própria sem conta, política da empresa com conta; chat sempre visível; painel sem tela de bloqueio (aviso discreto quando a empresa desliga a IA); status bar sem "Entrar"; a conta vai para "Configurações" como opcional. E2E ajustado.
 - **R2. Primeiros passos.** Walkthrough, aberto uma vez; estado vazio do painel com os próximos passos ("Ver mapa", "Testar caos").
-- **R3. Caos no editor.** Comando, bundle separado, saída no canal do ShielDepy, resultado no mapa e o relatório aberto no fim.
+- **R3. Caos no editor.** ✅ Concluída em 2026-10-09 (ver o registro). Comando, bundle separado, saída no canal do ShielDepy, resultado no mapa e o relatório aberto no fim.
 - **R4. Pacote.** Ícone PNG, README/CHANGELOG da extensão, `repository`, `vsce package` limpo, tamanho conferido e instrução de instalar pelo `.vsix`.
 
 ---

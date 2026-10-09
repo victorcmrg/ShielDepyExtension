@@ -30,8 +30,8 @@ interface DiffIo {
 }
 
 /** O mapa de uma pasta (grafo de código + regras), com ids relativos a ela. Pasta inexistente = mapa vazio. */
-export async function buildMapOf(dir: string, registry: () => Promise<Registry>): Promise<{ graph: CodeGraph; system: SystemGraph }> {
-  const graph = await CodeGraph.create(defaultWasmDir(), silentHost);
+export async function buildMapOf(dir: string, registry: () => Promise<Registry>, wasmDir = defaultWasmDir()): Promise<{ graph: CodeGraph; system: SystemGraph }> {
+  const graph = await CodeGraph.create(wasmDir, silentHost);
   if (!existsSync(dir)) return { graph, system: buildSystemGraph(graph, [], dir) };
   await indexFiles(graph, await listSourceFiles(dir), silentHost);
   const { rules } = loadRulesFromPath(dir, await registry());

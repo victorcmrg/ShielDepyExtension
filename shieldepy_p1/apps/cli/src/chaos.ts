@@ -16,6 +16,8 @@ import {
   canonicalJson,
   diffSystemGraphs,
   CHAOS_CONFIG_FILE,
+  CHAOS_CONFIG_TODO,
+  chaosConfigScaffold,
   CodeGraph,
   indexFiles,
   listSourceFiles,
@@ -64,6 +66,10 @@ export interface ChaosArgs {
   base?: string;
   /** Grava o visualizador do mapa com o resultado do caos (e o diff, com `--base`) por cima (V2). */
   html?: string;
+  /** Só cria o `shieldepy.chaos.config.ts` a partir do mapa (R3). */
+  init?: boolean;
+  /** Pasta das gramáticas `.wasm` (a extensão passa a dela; a CLI usa a do @shieldepy/core). */
+  wasmDir?: string;
 }
 
 /** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
@@ -94,24 +100,39 @@ export async function runChaosCommand(
 ): Promise<number> {
   const root = path.resolve(args.target);
   const configPath = path.join(root, CHAOS_CONFIG_FILE);
-  if (!existsSync(configPath)) {
+  const hasConfig = existsSync(configPath);
+  if (args.init && hasConfig) {
+    io.err(`erro: ${CHAOS_CONFIG_FILE} já existe em ${args.target}; o --init não sobrescreve.`);
+    return 2;
+  }
+  if (!hasConfig && !args.init) {
     io.err(`erro: falta ${CHAOS_CONFIG_FILE} na raiz de ${args.target}.`);
-    io.err('Ele diz como subir o app, zerar o estado, o que nunca pode acontecer e como é uma requisição válida:\n');
+    io.err('Ele diz como subir o app, zerar o estado, o que nunca pode acontecer e como é uma requisição válida.');
+    io.err(`Gere um a partir do mapa (rotas sensíveis e APIs já preenchidas) com: shieldepy chaos ${args.target} --init\n`);
     io.err(CONFIG_TEMPLATE);
     return 2;
   }
 
-  const graph = await CodeGraph.create(defaultWasmDir(), silentHost);
+  const wasmDir = args.wasmDir ?? defaultWasmDir();
+  const graph = await CodeGraph.create(wasmDir, silentHost);
   await indexFiles(graph, await listSourceFiles(root), silentHost);
+  const { rules } = loadRulesFromPath(root, await registry());
+  const system = buildSystemGraph(graph, rules, root);
+  const topology = buildTopology(graph, system, root);
+  const fullSurface = attackSurface(topology);
+
+  // --init: o contrato inicial sai do próprio mapa; o que só o projeto sabe fica marcado
+  if (args.init) {
+    await writeFile(configPath, chaosConfigScaffold(fullSurface), 'utf8');
+    io.err(`✓ ${CHAOS_CONFIG_FILE} criado com ${fullSurface.routes.length} rota(s) sensível(is). Preencha os ${CHAOS_CONFIG_TODO} e rode de novo sem --init.`);
+    return 0;
+  }
+
   const config = graph.tsParser?.withTree(await readFile(configPath, 'utf8'), false, readChaosConfig);
   if (!config) {
     io.err(`erro: ${CHAOS_CONFIG_FILE} não exporta um objeto de config (export default { ... }).`);
     return 2;
   }
-  const { rules } = loadRulesFromPath(root, await registry());
-  const system = buildSystemGraph(graph, rules, root);
-  const topology = buildTopology(graph, system, root);
-  const fullSurface = attackSurface(topology);
 
   // --base: só as rotas sensíveis que o PR tocou (o resto não vai para a IA nem para os testes)
   let scope: ChaosScope | undefined;
@@ -119,7 +140,7 @@ export async function runChaosCommand(
   let surface = fullSurface;
   if (args.base) {
     try {
-      ({ scope, diff: baseDiff } = await scopeAgainstBase(root, args.base, system, topology, fullSurface, config.setupFiles, registry));
+      ({ scope, diff: baseDiff } = await scopeAgainstBase(root, args.base, system, topology, fullSurface, config.setupFiles, registry, wasmDir));
     } catch (err) {
       if (!(err instanceof GitBaseError)) throw err;
       io.err(`erro: ${err.message}`);
@@ -269,10 +290,11 @@ async function scopeAgainstBase(
   topology: TopologyGraph,
   surface: AttackSurface,
   setupFiles: string[],
-  registry: () => Promise<Registry>
+  registry: () => Promise<Registry>,
+  wasmDir: string
 ): Promise<{ scope: ChaosScope; diff: { base: string; commit: string; diff: MapDiff } }> {
   return withBaseCheckout(root, ref, async (baseDir, info) => {
-    const before = await buildMapOf(baseDir, registry);
+    const before = await buildMapOf(baseDir, registry, wasmDir);
     const baseTopology = buildTopology(before.graph, before.system, baseDir);
     const diff = diffSystemGraphs(before.system, system);
     const result = affectedRoutes(baseTopology, topology, diff, info.changedFiles, setupFiles);

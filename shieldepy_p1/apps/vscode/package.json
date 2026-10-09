@@ -93,6 +93,10 @@
         "title": "ShielDepy: Comparar Mapa com uma Branch"
       },
       {
+        "command": "shieldepy.runChaos",
+        "title": "ShielDepy: Testar Caos"
+      },
+      {
         "command": "shieldepy.setApiKey",
         "title": "ShielDepy: Configurar Chave da IA"
       },

@@ -9,6 +9,7 @@ import { CollisionPublisher } from './analysis/CollisionPublisher';
 import { FindingsCache } from './analysis/FindingsCache';
 import { FindingsManager } from './analysis/FindingsManager';
 import { ScanAnimator } from './analysis/ScanAnimator';
+import { ChaosCommand, type ChaosRunOptions } from './chaos/ChaosCommand';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
 import { explainWorkspaceCollisions, exportTopology, login, logout, refreshAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
@@ -46,6 +47,13 @@ interface TestApi {
   compareMap(ref: string): Promise<unknown>;
   /** Reindexa o workspace inteiro e devolve o relatório (teto, parcial). */
   reindex(): Promise<IndexReport>;
+  /** "Testar Caos" sem as caixas de diálogo (R3). */
+  chaos: {
+    projects(): unknown;
+    missingPackages(root: string): string[];
+    createContract(root: string): Promise<boolean>;
+    execute(root: string, options: ChaosRunOptions): Promise<number | undefined>;
+  };
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<TestApi | undefined> {
@@ -127,6 +135,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
   const mapPanel = new MapPanel(context.extensionUri, workspace, path.join(context.extensionPath, 'wasm'));
   push(mapPanel);
+  const chaosCommand = new ChaosCommand(context.extensionPath, workspace, ai, log);
+  push(chaosCommand);
   let exported: TopologyGraph | undefined;
   push(
     // retainContextWhenHidden: trocar de aba não descarta o rascunho não enviado do chat.
@@ -145,6 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     }),
     vscode.commands.registerCommand(CMD.scanWorkspace, () => chat.runFullScan()),
     vscode.commands.registerCommand(CMD.showMap, () => mapPanel.show()),
+    vscode.commands.registerCommand(CMD.runChaos, () => chaosCommand.run()),
     vscode.commands.registerCommand(CMD.compareMap, async (given?: unknown) => {
       const ref =
         typeof given === 'string'
@@ -274,6 +285,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     lastOverlay: () => mapPanel.lastOverlay,
     compareMap: (ref) => mapPanel.compare(ref),
     reindex: () => indexWorkspace(workspace, log),
+    chaos: {
+      projects: () => chaosCommand.projects(),
+      missingPackages: (root) => chaosCommand.missingPackages(root),
+      createContract: (root) => chaosCommand.createContract(root),
+      execute: (root, options) => chaosCommand.execute(root, options),
+    },
     decorationFor: (fsPath) => {
       const d = explorer.provideFileDecoration(vscode.Uri.file(fsPath));
       return d && { badge: d.badge, tooltip: d.tooltip, color: d.color?.id, propagate: d.propagate };

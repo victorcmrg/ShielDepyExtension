@@ -43,6 +43,7 @@ const USAGE = `uso:
                                                      o que mudou na estrutura do código desde o merge-base com <ref>
                                                      (símbolos novos/removidos/renomeados/com corpo alterado, topo dos arquivos, arestas)
   shieldepy chaos   <pasta> [--offline] [--fail-on <...>] [--report <arquivo.md>] [--base <ref>] [--html <arquivo>] [--no-run] [--json]
+  shieldepy chaos   <pasta> --init                   cria o shieldepy.chaos.config.ts a partir do mapa (rotas e APIs preenchidas)
                                                      gera testes de caos para as rotas sensíveis em
                                                      .shieldepy/chaos-tests/ (precisa de shieldepy.chaos.config.ts),
                                                      roda com o Vitest do projeto e serve de portão:
@@ -76,12 +77,13 @@ interface Args {
   surface: boolean;
   noRun: boolean;
   offline: boolean;
+  init: boolean;
 }
 
 const SEVERITY_ALIASES: Record<string, Severity> = { critico: 'Crítico', crítico: 'Crítico', alto: 'Alto', medio: 'Médio', médio: 'Médio', baixo: 'Baixo' };
 
 export function parseArgs(argv: string[]): Args {
-  const args: Args = { json: false, pg: false, surface: false, noRun: false, offline: false };
+  const args: Args = { json: false, pg: false, surface: false, noRun: false, offline: false, init: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') args.json = true;
@@ -89,6 +91,7 @@ export function parseArgs(argv: string[]): Args {
     else if (a === '--surface') args.surface = true;
     else if (a === '--no-run') args.noRun = true;
     else if (a === '--offline') args.offline = true;
+    else if (a === '--init') args.init = true;
     else if (['--out', '--html', '--report', '--base', '--portal', '--append-link'].some((f) => a === f || a.startsWith(`${f}=`))) {
       const flag = a.startsWith('--out') ? 'out' : a.startsWith('--html') ? 'html' : a.startsWith('--base') ? 'base' : a.startsWith('--portal') ? 'portal' : a.startsWith('--append-link') ? 'appendLink' : 'report';
       const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i];
@@ -213,7 +216,7 @@ export async function main(argv: string[], io: Io = { out: console.log, err: con
       }
       case 'chaos': {
         if (!args.target) throw new Error('informe a pasta do projeto');
-        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report, base: args.base, html: args.html }, io, registryWithTreeSitter);
+        return await runChaosCommand({ target: args.target, json: args.json, noRun: args.noRun, offline: args.offline, failOn: args.failOn, report: args.report, base: args.base, html: args.html, init: args.init }, io, registryWithTreeSitter);
       }
       default:
         io.err(USAGE);
