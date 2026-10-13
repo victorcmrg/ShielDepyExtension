@@ -6,7 +6,7 @@ import { findCycleThrough } from './cycles';
 import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
 import { topLevelHash } from './fingerprint';
 import { looksGenerated } from './generated';
-import { extractCalls, extractSymbols, type CallDesc, type RawArg, type RawCall, type Scope, type TypeRef } from './extract-ts';
+import { extractCalls, extractSymbols, extractValueCalls, type CallDesc, type RawArg, type RawCall, type Scope, type TypeRef } from './extract-ts';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
@@ -44,6 +44,9 @@ export interface WebParsers {
 
 /** Para onde um especificador de import de um arquivo aponta (já resolvido). */
 type SpecTarget = { kind: 'file'; id: string } | { kind: 'package'; name: string } | { kind: 'unresolved' };
+
+/** Tabela de módulo + os valores do topo que saem de uma chamada (`const app = express()`). */
+type FileModule = ModuleInfo & { valueCalls: Map<string, CallDesc> };
 
 type FileCoverage = Omit<CallCoverage, 'importsUnresolved'>;
 type CallOutcome = keyof FileCoverage | 'unbound';
@@ -98,7 +101,7 @@ export class CodeGraph {
   // de o arquivo ser criado). Revisitados quando um arquivo novo entra no grafo.
   private pendingImports = new Map<string, { fromPath: string; specs: string[] }>();
   // Tabela de imports/exports de cada arquivo de código e o destino de cada especificador.
-  private moduleInfo = new Map<string, ModuleInfo>();
+  private moduleInfo = new Map<string, FileModule>();
   private specTargets = new Map<string, Map<string, SpecTarget>>();
   private coverage = new Map<string, FileCoverage>();
   // Quem resolveu algum tipo por `implements` (interface → classes). Esses arquivos não importam a
@@ -106,6 +109,8 @@ export class CodeGraph {
   private interfaceDependents = new Map<string, Set<string>>();
   private readonly parsedListeners = new Set<ParsedListener>();
   private readonly resolver: ModuleResolver;
+  // Valores (`arquivo|nome`) sendo resolvidos pelo retorno da chamada que os produz — corta o laço.
+  private readonly valueCallStack = new Set<string>();
 
   constructor(
     private readonly parser: TsParser | undefined,
@@ -542,7 +547,7 @@ export class CodeGraph {
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
 
-      const info = extractModuleInfo(root);
+      const info: FileModule = { ...extractModuleInfo(root), valueCalls: extractValueCalls(root) };
       this.moduleInfo.set(fileId, info);
       this.linkImports(fileId, fsPath, info.specs);
 
@@ -823,13 +828,15 @@ export class CodeGraph {
 
       if (!call.object) {
         // `b()` com `import { a as b }` / `import b from` / `const b = require()`
-        return this.found(this.resolveExport(target.id, binding.imported === '*' ? 'default' : binding.imported));
+        const exported = binding.imported === '*' ? 'default' : binding.imported;
+        const ids = this.resolveExport(target.id, exported);
+        if (ids.length > 0) return this.found(ids);
+        // `new User()` com `module.exports = mongoose.model('User', s)`: o valor (e o que ele constrói) é do pacote
+        const loc = this.resolveExportLocal(target.id, exported, new Set());
+        return (loc && this.externalValue(loc.file, loc.local, ctx, depth)) ?? UNRESOLVED;
       }
-      if (binding.imported === '*') {
-        // `ns.fn()` com `import * as ns` / `const ns = require()`; `ns.obj.m()` segue a instância exportada
-        if (rest.length === 0) return this.found(this.resolveExport(target.id, call.name));
-        return this.resolveMemberOfExport(target.id, rest[0]!, rest.slice(1), call.name, ctx);
-      }
+      // `ns.fn()` com `import * as ns` / `const ns = require()`; `ns.obj.m()` segue a instância exportada
+      if (binding.imported === '*') return this.memberOfModule(target.id, rest, call.name, ctx, !!binding.require);
       // `orderService.create()` com `import { orderService }` — instância, objeto ou classe (estático)
       return this.resolveMemberOfExport(target.id, binding.imported, rest, call.name, ctx);
     }
@@ -957,6 +964,35 @@ export class CodeGraph {
     if (external) return this.external(external);
     // retorno anotado com tipo de fora do projeto → nativo; sem anotação → fallback por nome
     return declared ? NATIVE : undefined;
+  }
+
+  /**
+   * `User.get()` com `const User = mongoose.model('User', userSchema)`: o método é o estático que o
+   * projeto declara em `userSchema.statics = { get() {} }`. O que não estiver lá (`findOne`) é do pacote.
+   */
+  private modelStatics(fileId: string, produced: CallDesc, rest: string[], method: string): CallResolution | undefined {
+    const schema = produced.args?.[1];
+    if (produced.name !== 'model' || rest.length > 0 || schema?.kind !== 'name' || schema.chain.length !== 1) return undefined;
+    const container = `${schema.chain[0]}.statics`;
+    const ids = this.ownedSymbols(fileId).filter((id) => {
+      const m = this.graph.getNodeAttributes(id);
+      return isSymbolNode(m) && m.container === container && m.name === method;
+    });
+    return ids.length > 0 ? { outcome: 'callsResolved', targets: ids } : undefined;
+  }
+
+  /** O valor `local` de `fileId` sai de uma chamada a um pacote (`mongoose.model(...)`)? Então é desse pacote. */
+  private externalValue(fileId: string, local: string, ctx: ResolutionContext, depth: number): CallResolution | undefined {
+    const produced = this.moduleInfo.get(fileId)?.valueCalls.get(local);
+    const key = `${fileId}|${local}`;
+    if (!produced || depth > 8 || this.valueCallStack.has(key)) return undefined;
+    this.valueCallStack.add(key);
+    try {
+      const r = this.resolveCall(fileId, produced, ctx, depth + 1);
+      return r.outcome === 'callsExternal' ? r : undefined;
+    } finally {
+      this.valueCallStack.delete(key);
+    }
   }
 
   /** Fallback por nome (comportamento antigo): o arquivo + o que ele importa. */
@@ -1117,11 +1153,43 @@ export class CodeGraph {
     const alias = this.moduleInfo.get(fileId)?.objectRefs.get(`${container}.${method}`);
     if (alias && depth < 8) return this.resolveCall(fileId, { name: alias }, ctx, depth + 1);
     const type = this.moduleInfo.get(fileId)?.valueTypes.get(local);
-    return type ? this.resolveMember(fileId, type, rest, method, ctx) : undefined;
+    if (type) return this.resolveMember(fileId, type, rest, method, ctx);
+    // valor que sai de uma chamada (`const app = express()`, `module.exports = mongoose.model(...)`):
+    // o membro é do que a chamada devolve. A pilha corta o laço entre dois arquivos que se exportam assim.
+    const produced = this.moduleInfo.get(fileId)?.valueCalls.get(local);
+    const key = `${fileId}|${local}`;
+    if (!produced || this.valueCallStack.has(key)) return undefined;
+    const statics = this.modelStatics(fileId, produced, rest, method);
+    if (statics) return statics;
+    this.valueCallStack.add(key);
+    try {
+      return this.resolveReturnMember(fileId, produced, rest, method, ctx, depth + 1);
+    } finally {
+      this.valueCallStack.delete(key);
+    }
+  }
+
+  /**
+   * `m` no módulo `fileId` visto como um valor só: `import * as ns` / `const ns = require()` (`rest` são
+   * as propriedades entre o módulo e o método). Num `require`, um arquivo com `module.exports = app`
+   * devolve o próprio `app`: o que não for export com nome é membro dele.
+   */
+  private memberOfModule(fileId: string, rest: string[], method: string, ctx: ResolutionContext, cjs: boolean): CallResolution {
+    const named =
+      rest.length === 0 ? this.found(this.resolveExport(fileId, method)) : this.resolveMemberOfExport(fileId, rest[0]!, rest.slice(1), method, ctx);
+    if (cjs && named.outcome !== 'callsResolved' && named.outcome !== 'callsExternal' && this.moduleInfo.get(fileId)?.exports.has('default')) {
+      return this.resolveMemberOfExport(fileId, 'default', rest, method, ctx);
+    }
+    return named;
   }
 
   /** `x.m()` com `x` importado de `fileId` (seguindo barrels até onde `x` é declarado). */
   private resolveMemberOfExport(fileId: string, exported: string, rest: string[], method: string, ctx: ResolutionContext): CallResolution {
+    // `export * as svc from './svc'` / `module.exports.svc = require('./svc')`: `x` é o módulo inteiro
+    const ns = this.moduleInfo.get(fileId)?.reexports.find((re) => re.exported === exported && re.imported === '*');
+    const nsTarget = ns && this.specTargets.get(fileId)?.get(ns.spec);
+    if (nsTarget?.kind === 'file') return this.memberOfModule(nsTarget.id, rest, method, ctx, !!ns!.require);
+    if (nsTarget?.kind === 'package') return this.external(nsTarget.name);
     const loc = this.resolveExportLocal(fileId, exported, new Set());
     if (!loc) return UNRESOLVED;
     const member = this.resolveMemberOfLocal(loc.file, loc.local, rest, method, ctx);
@@ -1165,8 +1233,13 @@ export class CodeGraph {
       return { file: fileId, local };
     }
     for (const re of info.reexports) {
-      if (re.exported !== exported || re.imported === '*') continue;
+      if (re.exported !== exported) continue;
       const from = targetOf(re.spec);
+      // `module.exports.User = require('./user.model')` com `module.exports = User` lá: é o próprio valor
+      if (re.imported === '*') {
+        if (re.require && from && this.moduleInfo.get(from)?.exports.has('default')) return this.resolveExportLocal(from, 'default', seen);
+        continue;
+      }
       if (from) return this.resolveExportLocal(from, re.imported, seen);
     }
     if (exported !== 'default') {
@@ -1204,7 +1277,8 @@ export class CodeGraph {
   }
 
   private declaresTopLevel(fileId: string, name: string): boolean {
-    return this.topLevelByName(fileId, name).length > 0 || this.hasContainer(fileId, name) || !!this.moduleInfo.get(fileId)?.valueTypes.has(name);
+    const info = this.moduleInfo.get(fileId);
+    return this.topLevelByName(fileId, name).length > 0 || this.hasContainer(fileId, name) || !!info?.valueTypes.has(name) || !!info?.valueCalls.has(name);
   }
 
   private hasContainer(fileId: string, name: string): boolean {
@@ -1282,7 +1356,7 @@ export class CodeGraph {
     if (info.reexports.length > 0) return true;
     const imported = new Set(info.imports.map((b) => b.local));
     const exported = new Set(info.exports.values());
-    if ([...exported].some((local) => imported.has(local) || info.valueTypes.has(local))) return true;
+    if ([...exported].some((local) => imported.has(local) || info.valueTypes.has(local) || info.valueCalls.has(local))) return true;
     return [...info.objectRefs.keys()].some((path) => exported.has(path.split('.', 1)[0]!));
   }
 

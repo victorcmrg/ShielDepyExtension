@@ -12,6 +12,8 @@ export interface ImportBinding {
   local: string;
   imported: string;
   spec: string;
+  /** `const x = require()`: o valor é o `module.exports` inteiro — que pode ser um valor só (`module.exports = app`). */
+  require?: true;
 }
 
 /** `export { a as b } from './x'` → {exported:'b', imported:'a'}; `export * from` → {exported:'*', imported:'*'}. */
@@ -19,6 +21,8 @@ export interface ReExport {
   exported: string;
   imported: string;
   spec: string;
+  /** `module.exports.x = require('./x')`: repassa o `module.exports` inteiro (objeto de funções ou um valor só). */
+  require?: true;
 }
 
 export interface ModuleInfo {
@@ -193,7 +197,7 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
         if (spec === undefined) return true;
         addSpec(spec);
         const name = node.childForFieldName('name');
-        if (name?.type === 'identifier') imports.push({ local: name.text, imported: '*', spec });
+        if (name?.type === 'identifier') imports.push({ local: name.text, imported: '*', spec, require: true });
         else if (name?.type === 'object_pattern') {
           for (const p of name.namedChildren) {
             if (p.type === 'shorthand_property_identifier_pattern') imports.push({ local: p.text, imported: p.text, spec });
@@ -233,13 +237,19 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
           } else if (right.type === 'identifier') exports.set('default', right.text);
           else if (right.type === 'class' || FUNCTION_VALUE_TYPES.has(right.type)) {
             exports.set('default', right.childForFieldName('name')?.text ?? DEFAULT_EXPORT_NAME);
+          } else if ((right.type === 'call_expression' || right.type === 'new_expression') && requireSpec(right) === undefined) {
+            // `module.exports = mongoose.model('User', s)` / `= new Svc()`: o valor é o export `default`
+            exports.set('default', DEFAULT_EXPORT_NAME);
           }
           return true;
         }
         // exports.a = ...   |   module.exports.a = ...
         if (left.type === 'member_expression' && isModuleExports(left.childForFieldName('object'))) {
           const key = left.childForFieldName('property')?.text;
-          if (key) exports.set(key, right.type === 'identifier' ? right.text : key);
+          const spec = requireSpec(right);
+          // barrel CommonJS: `module.exports.User = require('./user.model')` repassa o valor daquele arquivo
+          if (key && spec !== undefined) reexports.push({ exported: key, imported: '*', spec, require: true });
+          else if (key) exports.set(key, right.type === 'identifier' ? right.text : key);
         }
         return true;
       }
@@ -258,6 +268,13 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
       const type = constructedType(inner); // export default new OrderService()
       if (type) valueTypes.set('default', type);
       if (inner.type === 'object') collectObjectRefs(inner, DEFAULT_EXPORT_NAME, objectRefs);
+      continue;
+    }
+    if (inner.type === 'expression_statement') {
+      // module.exports = new OrderService()
+      const assign = inner.namedChildren[0];
+      const type = assign?.type === 'assignment_expression' && isModuleExports(assign.childForFieldName('left')) ? constructedType(assign.childForFieldName('right')) : undefined;
+      if (type) valueTypes.set('default', type);
       continue;
     }
     if (inner.type !== 'lexical_declaration' && inner.type !== 'variable_declaration') continue;

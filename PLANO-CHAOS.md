@@ -9,9 +9,13 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-09, início da etapa C)
+## Como retomar num chat novo (atualizado em 2026-10-13, etapa M)
 
-**Onde estamos:** E1–E5, V1–V3, **R** (jornada do usuário e release) e **Q** (qualidade no projeto real) estão **todas mergeadas na `main`** (`03351c1`, PRs #1–#8). A etapa atual é a **C — caos utilizável**, na branch `feat/caos-utilizavel`, criada a partir da `main`. **A C1 parou no meio em 2026-10-09:** o último item do Registro diz o que foi feito e a ordem para retomar. Leia, nesta ordem:
+**Etapa atual (2026-10-13): M — mapeamento em grafos nos projetos reais**, na branch `feat/mapa-projetos-reais`, criada a partir da `origin/main` (`60bf07a`, depois da C1 parcial). Pedido do usuário: "o foco agora é deixar 100% a parte de mapeamento em grafos", testando em apps Express do GitHub; depois, um plugin que só se instala e roda (mapeia o sistema e diagnostica). Leia a seção **"M — mapeamento em projetos reais"** (por que existe, os projetos, as tarefas M1–M6) e o fim do Registro.
+
+**Atenção: duas linhas de trabalho separadas.** A branch local `feat/demo-tcc` (E6 — DB_Chaos, a demo do TCC e os botões "Ver grafo" e "Rodar testes de caos") saiu do `297c964` e **não está no GitHub nem na `main`**. A `main` seguiu por outra linha (R, Q, C1). Juntar as duas é decisão do usuário: há conflito previsível entre o "Testar Caos" da R3 e o botão "Rodar testes de caos" da `feat/demo-tcc`.
+
+**Onde estávamos em 2026-10-09:** E1–E5, V1–V3, **R** (jornada do usuário e release) e **Q** (qualidade no projeto real) estão **todas mergeadas na `main`** (`03351c1`, PRs #1–#8). A etapa atual é a **C — caos utilizável**, na branch `feat/caos-utilizavel`, criada a partir da `main`. **A C1 parou no meio em 2026-10-09:** o último item do Registro diz o que foi feito e a ordem para retomar. Leia, nesta ordem:
 1. esta seção;
 2. a seção **"C — caos utilizável"**: por que existe, a ordem e as tarefas C1–C5, com o critério de pronto de cada uma;
 3. as seções "Q" e "F", que a C usa;
@@ -85,6 +89,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
 | C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
+| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1 ✅ |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
@@ -690,6 +695,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     3. Itens 5 e 6: `npm install --ignore-scripts` em cada um, deixar o contrato rodando (banco: PGlite para o `pg`; para o Prisma, ver se dá SQLite ou PGlite com adapter; no Prisma 7 rodar o `prisma generate` e conferir se os arquivos gerados entram no mapa como ruído), depois `chaos --offline --report` e abrir os testes para julgar os achados.
     4. Fechar a tabela da C1 aqui e a lista ordenada para a C2.
   - Script de depuração usado (não versionado): um `.mts` rodado com `node --import tsx` que indexa a pasta e imprime `graph.callSitesIn(arquivo)` (nome, `outcome`, `package`, `receiverOrigin`, argumentos). Útil para achar a causa de rota ou I/O faltando.
+- 2026-10-13: **Etapa M aberta** (branch `feat/mapa-projetos-reais`, a partir da `origin/main` `60bf07a`). Antes, conferido que o chat estava na `feat/demo-tcc`, que é outra linha (ver "Como retomar").
+- 2026-10-13: **M1 concluída (CommonJS e Mongoose no grafo).** Medido em 6 projetos (tabela na seção M). As causas, todas no core:
+  1. **Valor que sai de uma chamada:** `const app = express()` / `module.exports = mongoose.model(...)` / `export default Router()`. O `extractValueCalls` (`extract-ts.ts`) guarda a chamada que produz cada valor do topo (com os argumentos), no `ModuleInfo` do `CodeGraph` (`valueCalls`). O `resolveMemberOfLocal` resolve `app.listen()` pelo retorno dela, em qualquer arquivo que importe o valor. Uma pilha (`valueCallStack`) corta o laço entre dois arquivos que se exportam assim.
+  2. **`require` de um valor único:** a ligação `const x = require()` ganhou `require: true`. Com `module.exports = app` no alvo, o que não for export com nome é membro do valor (`memberOfModule`). `module.exports = <chamada>` e `module.exports = new X()` agora viram o export `default`.
+  3. **Construir ou chamar um valor de pacote** (`new User()` com `User = mongoose.model(...)`): é do pacote (`externalValue`).
+  4. **Estáticos do Mongoose:** `mongoose.model(nome, schema)` procura primeiro em `schema.statics`. Para isso, os métodos de `userSchema.statics = { get() {} }` e de `userSchema.statics.isEmailTaken = function` ganharam o contêiner `userSchema.statics` (o mesmo vale para `Foo.prototype.bar = function`, que antes era função solta).
+  5. **Barrel CommonJS:** `module.exports.userService = require('./user.service')` vira re-export do módulo inteiro (`imported: '*'`, `require: true`). Valia também para o ESM: `export * as svc from` seguido de `import { svc }` não resolvia `svc.f()`; agora resolve.
+  - **Resultado:** `node-express-boilerplate` de 87,1% para 100% (205 chamadas provadas) e `express-rest-boilerplate` de 41,7% para 90,2% (os 4 por nome são métodos de instância, ver "Limitações" na seção M). Os 4 projetos em TS não mudaram. O mapa continua igual em qualquer ordem de indexação (conferido nos três maiores).
+  - **Testes:** `packages/core/test/real-express.test.ts`, com os 7 padrões da C1 (que estavam sem teste, em 6 testes) e 5 testes da M1. Sem as correções, os 4 da M1 que dependem delas falham. Suíte **341** (+11), typecheck limpo.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -830,6 +844,35 @@ O caos é o produto. Hoje ele tem dois gargalos, e nenhum dos dois foi medido fo
   4. Entregar o comando `gh release create v0.1.0 …` para o usuário publicar.
 
 ---
+
+## M — mapeamento em projetos reais (escrito em 2026-10-13)
+
+### Por que existe
+O usuário pediu para deixar o mapeamento em grafos "100%" antes de qualquer outra coisa, testando em apps Node/Express do GitHub. A C1 tinha medido 3 projetos (todos com 100% das chamadas provadas depois das correções). Ampliando para projetos em **CommonJS com Mongoose**, que é a pilha mais comum dos boilerplates Express, o mapa caía muito:
+
+| Projeto (clonado no scratchpad, `--depth 1`) | Linguagem / banco | Arquivos | Chamadas provadas antes | Depois da M1 |
+|---|---|---|---|---|
+| `gothinkster/node-express-realworld-example-app` | TS, Prisma | 39 | 100% | 100% |
+| `prisma/prisma-examples` (`orm/express`) | TS, Prisma 7 | 3 | 100% | 100% |
+| `manfraio/rest_api_with_nodejs_and_postgres` | JS, `pg` | 6 | 100% | 100% |
+| `hagopj13/node-express-boilerplate` | JS (CJS), Mongoose | 50 | **87,1%** (22 sem alvo) | **100%** (205 provadas) |
+| `danielfsousa/express-rest-boilerplate` | JS (CJS), Mongoose | 26 | **41,7%** (44 sem alvo) | **90,2%** (4 por nome) |
+| `w3tecch/express-typescript-boilerplate` | TS, TypeORM, `routing-controllers` | 80 | 97,7% | 97,7% |
+
+A topologia desses três últimos mostrou o resto do que falta (ver as tarefas).
+
+### Tarefas
+- **M1. CommonJS e Mongoose no grafo.** ✅ Concluída em 2026-10-13 (ver o registro).
+- **M2. Rotas que o mapa não lê.**
+  - `router.route('/x').get(a).post(b)`: hoje sai "caminho não literal" (19 rotas nos dois boilerplates).
+  - Montagem em laço: `[{ path: '/auth', route: authRoute }].forEach((r) => router.use(r.path, r.route))` perde o prefixo e vira middleware opaco.
+- **M3. Mongoose como I/O.** `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)
+- **M4. Rotas por decorators:** `routing-controllers` (`@JsonController('/users')` + `@Get('/:id')`) e NestJS (`@Controller` + `@Get`). O tsboiler dá 0 rotas. (É a F4, adiantada.)
+- **M5. Mais projetos medidos e um roteiro para repetir a medição.** Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
+- **M6. Fluxo do plugin "instalar e rodar".** Ao abrir o projeto, o plugin mapeia sozinho e mostra um resumo (rotas, operações, cobertura, onde o mapa é fraco), com o próximo passo (diagnosticar). Conferir o que a R1/R2 já entregam antes de mexer.
+
+### Limitações conhecidas (anotadas, não são bug)
+- **Métodos de instância do Mongoose** (`userSchema.methods.transform`, `user.transform()`): o valor `user` vem de `await User.findById()`, então o método sai como "do pacote mongoose" ou por nome (heurística). Seguir o documento até o schema exigiria levar o modelo junto do resultado da consulta.
 
 ## F — rotas e I/O do resto de JS/TS (escrito em 2026-10-09, antes de começar)
 

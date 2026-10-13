@@ -407,6 +407,13 @@ function objectPath(object: SyntaxNode): string | undefined {
     return name?.type === 'identifier' ? name.text : undefined;
   }
   if (holder?.type === 'export_statement') return DEFAULT_EXPORT_NAME;
+  // `userSchema.statics = { get() {} }` → `userSchema.statics` (os estáticos de um modelo do Mongoose)
+  if (holder?.type === 'assignment_expression' && holder.childForFieldName('right')?.startIndex === object.startIndex) {
+    const left = holder.childForFieldName('left');
+    const chain = memberChain(left);
+    if (chain && chain.length > 1 && chain[0] !== 'this' && !isModuleExportsNode(left) && chain[0] !== 'exports') return chain.join('.');
+    return undefined;
+  }
   if (holder?.type === 'pair' && holder.parent?.type === 'object') {
     const base = objectPath(holder.parent);
     const key = propertyKey(holder.childForFieldName('key'));
@@ -499,7 +506,11 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
         const isModuleExports = left.text === 'module.exports';
         const name = isModuleExports ? right.childForFieldName('name')?.text ?? DEFAULT_EXPORT_NAME : prop;
         const cls = left.childForFieldName('object')?.type === 'this' ? enclosingClass(node) : undefined;
+        // `userSchema.statics.isEmailTaken = function` / `Foo.prototype.bar = function`: método do objeto `a.b`
+        const owner = memberChain(left.childForFieldName('object'));
+        const ownerPath = owner && owner.length > 1 && owner[0] !== 'this' && owner[0] !== 'exports' && owner.join('.') !== 'module.exports' ? owner.join('.') : undefined;
         if (name && cls) push(node, 'method', name, right, { container: className(cls) });
+        else if (name && ownerPath) push(node, 'method', name, right, { container: ownerPath });
         else if (name) push(node, 'function', name, right);
       }
     } else if (node.type === 'arguments' && node.parent?.type === 'call_expression' && !insideFunction(node)) {
@@ -553,6 +564,52 @@ function chainRootOf(node: SyntaxNode): RawCall['chainRoot'] {
   }
   if (holder?.type === 'export_statement' && holder.children.some((c) => c.type === 'default')) return { name: DEFAULT_EXPORT_NAME, scope: 'module' };
   return { name: `@${root.startPosition.row}:${root.startPosition.column}`, scope: 'module' };
+}
+
+/** `module.exports` (lado esquerdo de uma atribuição). */
+function isModuleExportsNode(node: SyntaxNode | null | undefined): boolean {
+  return node?.type === 'member_expression' && node.childForFieldName('object')?.text === 'module' && node.childForFieldName('property')?.text === 'exports';
+}
+
+/**
+ * Valores do topo do arquivo que saem de uma chamada: `const app = express()`, `export const pool =
+ * createPool()`, `export default Router()` e `module.exports = mongoose.model('User', s)` (os dois
+ * últimos como `default`). Quem importa o valor resolve `app.listen()` pelo retorno da chamada — sem
+ * isso, `module.exports = app` deixava o `app` sem tipo em todo arquivo que fazia `require` dele.
+ */
+export function extractValueCalls(root: SyntaxNode): Map<string, CallDesc> {
+  const out = new Map<string, CallDesc>();
+  const callOf = (value: SyntaxNode | null | undefined): CallDesc | undefined => {
+    const inner = unwrap(value);
+    const desc = inner?.type === 'call_expression' && !isRequire(inner) ? describeCall(inner) : undefined;
+    if (!desc) return undefined;
+    // os argumentos dizem de onde o valor vem: `mongoose.model('User', userSchema)` → os estáticos do `userSchema`
+    const args = inner!.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment') ?? [];
+    return { ...desc, args: args.map((a) => describeArg(a, new Map())) };
+  };
+  for (const stmt of root.namedChildren) {
+    if (stmt.type === 'export_statement' && !stmt.childForFieldName('declaration')) {
+      const call = stmt.children.some((c) => c.type === 'default') ? callOf(stmt.childForFieldName('value')) : undefined;
+      if (call) out.set(DEFAULT_EXPORT_NAME, call);
+      continue;
+    }
+    if (stmt.type === 'expression_statement') {
+      const expr = stmt.namedChildren[0];
+      if (expr?.type !== 'assignment_expression' || !isModuleExportsNode(expr.childForFieldName('left'))) continue;
+      const call = callOf(expr.childForFieldName('right'));
+      if (call) out.set(DEFAULT_EXPORT_NAME, call);
+      continue;
+    }
+    const decl = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') : stmt;
+    if (decl?.type !== 'lexical_declaration' && decl?.type !== 'variable_declaration') continue;
+    for (const d of decl.namedChildren) {
+      const name = d.type === 'variable_declarator' ? d.childForFieldName('name') : undefined;
+      if (name?.type !== 'identifier' || d.childForFieldName('type')) continue; // anotado: o tipo vence (valueTypes)
+      const call = callOf(d.childForFieldName('value'));
+      if (call) out.set(name.text, call);
+    }
+  }
+  return out;
 }
 
 /**
