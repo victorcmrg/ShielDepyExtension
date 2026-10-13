@@ -167,6 +167,11 @@ export interface CallSite {
   /** Onde a raiz do receptor é declarada (`checkoutRouter` em `checkoutRouter.post`). */
   receiverOrigin?: ValueOrigin;
   args: CallArg[];
+  /**
+   * A chamada roda uma vez por item de uma lista literal (`routes.forEach((r) => router.use(r.path, r.route))`):
+   * onde a lista é declarada e o nome do item no callback. Os itens: `CodeGraph.arrayItems(array)`.
+   */
+  loop?: { array: ValueOrigin; param: string };
 }
 
 export function isSymbolNode(attrs: NodeAttrs): attrs is SymbolNodeAttrs {

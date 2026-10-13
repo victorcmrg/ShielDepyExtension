@@ -86,6 +86,11 @@ export interface RawCall {
    * nome teria — sem isso o roteador montado assim não existia.
    */
   chainRoot?: { name: string; scope?: Scope };
+  /**
+   * A chamada está no callback de `lista.forEach((item) => ...)` (ou `map`): roda uma vez por item da
+   * `lista`, que dentro do callback se chama `item`. É o que monta `routes.forEach((r) => router.use(r.path, r.route))`.
+   */
+  loop?: { array: string; param: string };
 }
 
 /** `module`: declarado no topo do arquivo; `local`: parâmetro ou variável de uma função. */
@@ -541,6 +546,22 @@ function stableIds(symbols: SymbolInfo[], fileId: string): void {
   }
 }
 
+const LOOP_METHODS = new Set(['forEach', 'map']);
+
+/** `lista.forEach((item) => { <node> })`: a lista e o nome do item (ver `RawCall.loop`). Só o callback mais próximo conta. */
+function loopOf(node: SyntaxNode): RawCall['loop'] {
+  for (let n = node.parent; n; n = n.parent) {
+    if (!FUNCTION_SCOPE_TYPES.has(n.type)) continue;
+    const call = n.parent?.type === 'arguments' ? n.parent.parent : undefined;
+    const chain = call?.type === 'call_expression' ? memberChain(call.childForFieldName('function')) : undefined;
+    if (!chain || chain.length !== 2 || !LOOP_METHODS.has(chain[1]!)) return undefined;
+    const param = n.childForFieldName('parameter') ?? n.childForFieldName('parameters')?.namedChildren[0];
+    const name = param ? paramName(param) : undefined;
+    return name ? { array: chain[0]!, param: name } : undefined;
+  }
+  return undefined;
+}
+
 /** Quem guarda a cadeia de chamadas de que `node` faz parte (ver `RawCall.chainRoot`). */
 function chainRootOf(node: SyntaxNode): RawCall['chainRoot'] {
   // a chamada que começa a cadeia: `Router()` em `Router().use(a).use(b)`
@@ -640,10 +661,12 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
       const scope = root === 'this' || root === 'super' ? undefined : declarationScope(node, root);
       const args = node.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment') ?? [];
       const chainRoot = !desc.object && desc.receiver && 'call' in desc.receiver ? chainRootOf(node) : undefined;
+      const loop = loopOf(node);
       results.push({
         caller,
         ...desc,
         ...(chainRoot && { chainRoot }),
+        ...(loop && { loop }),
         line: node.startPosition.row,
         column: node.startPosition.column,
         end: node.endIndex,

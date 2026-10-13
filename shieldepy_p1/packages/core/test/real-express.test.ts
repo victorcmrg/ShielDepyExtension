@@ -205,3 +205,72 @@ describe('M1 — CommonJS e Mongoose no mapa', () => {
     expect(site(graph, f, 'a.run').outcome).not.toBe('resolved');
   });
 });
+
+// M2: as rotas que os boilerplates registram de um jeito que o mapa não lia (19 rotas sem caminho e
+// todas sem o prefixo `/v1`).
+describe('M2 — rotas que o mapa não lia', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  it('`router.route(path).get(...).patch(...)`: cada verbo da cadeia no caminho da `.route()`', () => {
+    const r = indexFile(
+      graph,
+      fx,
+      'user.route.js',
+      [
+        "const express = require('express');",
+        'const ctrl = { get() {}, update() {}, list() {} };',
+        'function auth() { return (req, res, next) => next(); }',
+        'const router = express.Router();',
+        "router.route('/').get(auth(), ctrl.list);",
+        "router\n  .route('/:userId')\n  .get(auth(), ctrl.get)\n  .patch(ctrl.update);",
+        'router.route(dynamicPath).get(ctrl.get);',
+        'module.exports = router;',
+      ].join('\n')
+    );
+    const { routes, skipped } = findExpressRoutes(graph);
+    expect(routes.map(show)).toEqual(['GET /: auth() → ctrl.list', 'GET /:userId: auth() → ctrl.get', 'PATCH /:userId: ctrl.update']);
+    expect(routes[2]!.handlers[0]!.symbols).toEqual([memberId(graph, 'ctrl', 'update', r)]);
+    expect(skipped.map((s) => s.reason)).toEqual(['route(): caminho não literal']);
+  });
+
+  it('roteador montado por variável de `require` (`const userRoutes = require(...)`)', () => {
+    indexFile(graph, fx, 'routes/user.route.js', "const router = require('express').Router();\nrouter.get('/profile', (req, res) => {});\nmodule.exports = router;\n");
+    indexFile(graph, fx, 'routes/index.js', "const router = require('express').Router();\nconst userRoutes = require('./user.route');\nrouter.use('/users', userRoutes);\nmodule.exports = router;\n");
+    indexFile(graph, fx, 'app.js', "const express = require('express');\nconst routes = require('./routes');\nconst app = express();\napp.use('/v1', routes);\n");
+    expect(findExpressRoutes(graph).routes.map(show)).toEqual(['GET /v1/users/profile: <inline>']);
+  });
+
+  it('montagem em laço: `routes.forEach((r) => router.use(r.path, r.route))` sobre uma lista do topo', () => {
+    indexFile(graph, fx, 'v1/auth.route.js', "const router = require('express').Router();\nrouter.post('/login', (req, res) => {});\nmodule.exports = router;\n");
+    indexFile(graph, fx, 'v1/user.route.js', "const router = require('express').Router();\nrouter.get('/', (req, res) => {});\nmodule.exports = router;\n");
+    indexFile(
+      graph,
+      fx,
+      'v1/index.js',
+      [
+        "const express = require('express');",
+        "const authRoute = require('./auth.route');",
+        "const userRoute = require('./user.route');",
+        'const router = express.Router();',
+        'const defaultRoutes = [',
+        "  { path: '/auth', route: authRoute },",
+        "  { path: '/users', route: userRoute },",
+        '];',
+        'defaultRoutes.forEach((route) => {',
+        '  router.use(route.path, route.route);',
+        '});',
+        'module.exports = router;',
+      ].join('\n')
+    );
+    indexFile(graph, fx, 'app.js', "const express = require('express');\nconst routes = require('./v1');\nconst app = express();\napp.use('/v1', routes);\n");
+    expect(findExpressRoutes(graph).routes.map(show)).toEqual(['POST /v1/auth/login: <inline>', 'GET /v1/users: <inline>']);
+  });
+});

@@ -89,7 +89,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
 | C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
-| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1 ✅ |
+| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1 e M2 ✅ |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
@@ -704,6 +704,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   5. **Barrel CommonJS:** `module.exports.userService = require('./user.service')` vira re-export do módulo inteiro (`imported: '*'`, `require: true`). Valia também para o ESM: `export * as svc from` seguido de `import { svc }` não resolvia `svc.f()`; agora resolve.
   - **Resultado:** `node-express-boilerplate` de 87,1% para 100% (205 chamadas provadas) e `express-rest-boilerplate` de 41,7% para 90,2% (os 4 por nome são métodos de instância, ver "Limitações" na seção M). Os 4 projetos em TS não mudaram. O mapa continua igual em qualquer ordem de indexação (conferido nos três maiores).
   - **Testes:** `packages/core/test/real-express.test.ts`, com os 7 padrões da C1 (que estavam sem teste, em 6 testes) e 5 testes da M1. Sem as correções, os 4 da M1 que dependem delas falham. Suíte **341** (+11), typecheck limpo.
+- 2026-10-13: **M2 concluída (rotas que o mapa não lia).**
+  - **`router.route('/x').get(a).patch(b)`:** os verbos da cadeia já resolviam para o express, com o `receiverOrigin` `@linha:coluna` do `router.route(...)`. O `findExpressRoutes` agora registra cada verbo no caminho da `.route()` e no roteador dela. `.route()` com caminho não literal vai para os "não deu para ler".
+  - **Roteador por variável de `require`:** `const userRoutes = require('./user.route')` + `router.use('/users', userRoutes)` não montava. A C1 só tinha tratado o `require` direto no argumento. O `valueOrigin` segue o `module.exports = router` do alvo.
+  - **Montagem em laço:** `defaultRoutes.forEach((route) => router.use(route.path, route.route))`.
+    - O `ModuleInfo` guarda as listas literais de objetos do topo (`arrays`, só texto e nome).
+    - A chamada dentro do callback de `lista.forEach/map` ganha `loop` (`RawCall` → `CallSite.loop`, com a origem da lista).
+    - O `CodeGraph.arrayItems(origem)` devolve os itens com os nomes resolvidos, e o `routes.ts` faz uma chamada por item, trocando `route.path` e `route.route` pelos valores.
+  - **Resultado:** `node-express-boilerplate` e `express-rest-boilerplate` passaram de 10 e 1 rotas (sem prefixo) para **15 e 15**, todas com `/v1/...` e a cadeia de middlewares do app, sem nenhum registro ilegível. Os projetos da C1 não mudaram (20, 9 e 10 rotas).
+  - Suíte **344** (+3 em `real-express.test.ts`).
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -863,7 +872,7 @@ A topologia desses três últimos mostrou o resto do que falta (ver as tarefas).
 
 ### Tarefas
 - **M1. CommonJS e Mongoose no grafo.** ✅ Concluída em 2026-10-13 (ver o registro).
-- **M2. Rotas que o mapa não lê.**
+- **M2. Rotas que o mapa não lê.** ✅ Concluída em 2026-10-13 (ver o registro).
   - `router.route('/x').get(a).post(b)`: hoje sai "caminho não literal" (19 rotas nos dois boilerplates).
   - Montagem em laço: `[{ path: '/auth', route: authRoute }].forEach((r) => router.use(r.path, r.route))` perde o prefixo e vira middleware opaco.
 - **M3. Mongoose como I/O.** `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)

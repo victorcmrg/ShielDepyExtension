@@ -4,7 +4,7 @@
 // chamadas eram ligadas só pelo nome, e qualquer alias ou barrel quebrava a cadeia.
 // Função pura: não sabe nada de disco nem do grafo.
 
-import { constructedType, typeRef, type TypeRef } from './ast';
+import { constructedType, memberChain, typeRef, type TypeRef } from './ast';
 import type { SyntaxNode } from './parser';
 
 /** Ligação local criada por um import. `imported` é o nome exportado, `default` ou `*` (namespace/require). */
@@ -43,7 +43,16 @@ export interface ModuleInfo {
    * É o que liga `config.createApp()` em outro arquivo à função de verdade.
    */
   objectRefs: Map<string, string>;
+  /**
+   * Listas literais de objetos no topo: `const routes = [{ path: '/auth', route: authRoute }]` → routes:
+   * [{ path: '/auth' (texto), route: authRoute (nome) }]. É o que liga `routes.forEach((r) => router.use(r.path, r.route))`
+   * a cada montagem — o padrão de vários boilerplates Express.
+   */
+  arrays: Map<string, ArrayItem[]>;
 }
+
+/** Um objeto de uma lista literal: só os valores estáticos (texto ou nome). */
+export type ArrayItem = Record<string, { kind: 'string'; value: string } | { kind: 'name'; chain: string[] }>;
 
 /** Nome dado ao símbolo de `export default function () {}` / `export default () => {}`. */
 export const DEFAULT_EXPORT_NAME = 'default';
@@ -78,6 +87,27 @@ function collectObjectRefs(object: SyntaxNode, path: string, out: Map<string, st
     if (value.type === 'identifier') out.set(`${path}.${key}`, value.text);
     else if (value.type === 'object') collectObjectRefs(value, `${path}.${key}`, out);
   }
+}
+
+/** Os objetos de uma lista literal, com os valores que são texto ou nome; o que não for objeto fica vazio. */
+function arrayItems(array: SyntaxNode): ArrayItem[] {
+  return array.namedChildren
+    .filter((el) => el.type !== 'comment')
+    .map((el) => {
+      const item: ArrayItem = {};
+      if (el.type !== 'object') return item;
+      for (const p of el.namedChildren) {
+        if (p.type === 'shorthand_property_identifier') item[p.text] = { kind: 'name', chain: [p.text] };
+        if (p.type !== 'pair') continue;
+        const key = propertyKey(p.childForFieldName('key'));
+        const value = p.childForFieldName('value');
+        const text = stringValue(value);
+        const chain = memberChain(value);
+        if (key && text !== undefined) item[key] = { kind: 'string', value: text };
+        else if (key && chain) item[key] = { kind: 'name', chain };
+      }
+      return item;
+    });
 }
 
 function hasToken(node: SyntaxNode, token: string): boolean {
@@ -259,6 +289,7 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
 
   const valueTypes = new Map<string, TypeRef>();
   const objectRefs = new Map<string, string>();
+  const arrays = new Map<string, ArrayItem[]>();
   for (const stmt of root.namedChildren) {
     const inner = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') ?? stmt.childForFieldName('value') : stmt;
     if (!inner) continue;
@@ -285,8 +316,9 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
       const type = typeRef(d.childForFieldName('type')) ?? constructedType(value);
       if (type) valueTypes.set(name.text, type);
       if (value?.type === 'object') collectObjectRefs(value, name.text, objectRefs);
+      if (value?.type === 'array') arrays.set(name.text, arrayItems(value));
     }
   }
 
-  return { specs, imports, exports, reexports, valueTypes, objectRefs };
+  return { specs, imports, exports, reexports, valueTypes, objectRefs, arrays };
 }

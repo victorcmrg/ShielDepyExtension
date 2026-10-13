@@ -859,6 +859,8 @@ export class CodeGraph {
     const origin = call.object
       ? this.valueOrigin(fileId, call.object, call.scope, ctx)
       : call.chainRoot && { file: fileId, name: call.chainRoot.name, ...(call.chainRoot.scope === 'local' && { local: true as const }) };
+    const array = call.loop && this.valueOrigin(fileId, [call.loop.array], undefined, ctx);
+    const loop = array && this.moduleInfo.get(array.file)?.arrays.has(array.name) ? { array, param: call.loop!.param } : undefined;
     return {
       caller: call.caller,
       line: call.line!,
@@ -869,7 +871,30 @@ export class CodeGraph {
       ...(call.shadowed && { shadowed: true }),
       ...(origin && { receiverOrigin: origin }),
       args: (call.args ?? []).map((a) => this.resolveArg(fileId, a, ctx)),
+      ...(loop && { loop }),
     };
+  }
+
+  /**
+   * Os itens de uma lista literal do topo de um arquivo (`const routes = [{ path: '/auth', route: authRoute }]`),
+   * com os nomes resolvidos como os argumentos de uma chamada: `route` sai com a origem do `authRoute`.
+   */
+  arrayItems(array: ValueOrigin): Array<Record<string, CallArg>> {
+    const items = this.moduleInfo.get(array.file)?.arrays.get(array.name);
+    if (!items) return [];
+    const ctx = this.resolutionContext(array.file);
+    return items.map((item) => {
+      const out: Record<string, CallArg> = {};
+      for (const [key, v] of Object.entries(item)) {
+        if (v.kind === 'string') out[key] = v;
+        else {
+          const ref: CallDesc = v.chain.length === 1 ? { name: v.chain[0]! } : { name: v.chain.at(-1)!, object: v.chain.slice(0, -1) };
+          // sem `scope`: o nome pode ser import (`const authRoute = require(...)`) — o `valueOrigin` segue até a declaração
+          out[key] = this.resolveArg(array.file, { kind: 'name', chain: v.chain, ref }, ctx);
+        }
+      }
+      return out;
+    });
   }
 
   private publicResolution(r: CallResolution): { outcome: PublicCallOutcome; targets: string[]; package?: string } {
@@ -908,13 +933,19 @@ export class CodeGraph {
     if (scope === 'local') return { file: fileId, name: root, local: true };
     if (scope === 'module') return { file: fileId, name: root };
     const binding = ctx.bindings(fileId).get(root);
-    if (!binding) return this.declaresTopLevel(fileId, root) ? { file: fileId, name: root } : undefined;
+    if (!binding) return this.declaresTopLevel(fileId, root) || this.moduleInfo.get(fileId)?.arrays.has(root) ? { file: fileId, name: root } : undefined;
     const target = this.specTargets.get(fileId)?.get(binding.spec);
     if (target?.kind !== 'file') return undefined;
     // `import * as routes` + `routes.orders` → o export `orders`; sem membro, o namespace não é um valor declarado
     const exported = binding.imported === '*' ? next : binding.imported;
     const loc = exported ? this.resolveExportLocal(target.id, exported, new Set()) : undefined;
-    return loc && { file: loc.file, name: loc.local };
+    if (loc) return { file: loc.file, name: loc.local };
+    // `const userRoutes = require('./user.route')` com `module.exports = router` lá: o valor é o `router`
+    if (binding.require && this.moduleInfo.get(target.id)?.exports.has('default')) {
+      const value = this.resolveExportLocal(target.id, 'default', new Set());
+      return value && { file: value.file, name: value.local };
+    }
+    return undefined;
   }
 
   /**

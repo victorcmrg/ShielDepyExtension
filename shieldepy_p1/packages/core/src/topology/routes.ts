@@ -83,6 +83,12 @@ function handlerOf(graph: CodeGraph, arg: CallArg): RouteHandler | undefined {
   return { symbols: callable, label, ...(arg.outcome === 'heuristic' && { heuristic: true }) };
 }
 
+/** `r.path` dentro de `routes.forEach((r) => ...)` → o valor de `path` no item; o resto fica como está. */
+function itemArg(arg: CallArg, param: string, item: Record<string, CallArg>): CallArg {
+  if (arg.kind !== 'name' || arg.chain[0] !== param) return arg;
+  return arg.chain.length === 2 ? item[arg.chain[1]!] ?? { kind: 'other' } : { kind: 'other' };
+}
+
 /** Todas as rotas Express do grafo, com o caminho completo e a cadeia de handlers em ordem. */
 export function findExpressRoutes(graph: CodeGraph): RouteScan {
   const sites: Array<{ file: string; site: CallSite; router: string }> = [];
@@ -101,31 +107,52 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   const middlewares: Middleware[] = [];
   const skipped: SkippedRoute[] = [];
 
+  // `router.route('/x').get(a).post(b)`: cada verbo da cadeia registra no caminho da `.route()`. A cadeia
+  // é identificada pela posição da chamada que a começa (o `receiverOrigin` `@linha:coluna` dos verbos).
+  const routeChains = new Map<string, { router: string; path: string }>();
+  for (const { file, site, router } of sites) {
+    if (site.name !== 'route' || !site.object) continue;
+    const first = site.args[0];
+    if (first?.kind === 'string') routeChains.set(`${file}#@${site.line}:${site.column}`, { router, path: first.value });
+    else skipped.push({ file, line: site.line, reason: 'route(): caminho não literal' });
+  }
+
   for (const { file, site, router } of sites) {
     const pos: Position = { file, line: site.line, column: site.column };
-    const [first, ...rest] = site.args;
     const method = VERBS[site.name];
-    if (method) {
-      // `app.get('env')` com um argumento só é leitura de configuração, não rota
-      if (site.args.length < 2) continue;
-      if (first?.kind !== 'string') {
-        skipped.push({ ...pos, reason: `${method}: caminho não literal` });
-        continue;
-      }
-      const handlers = rest.map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
-      registrations.push({ ...pos, router, method, path: first.value, handlers });
-    } else if (site.name === 'use') {
-      const prefix = first?.kind === 'string' ? first.value : '';
-      for (const arg of first?.kind === 'string' ? rest : site.args) {
-        // `use('/x', router)` ou `use('/x', require('./routes/x'))`
-        const child =
-          arg.kind === 'name' ? valueKey(arg.origin, arg.chain, site.caller, file) : arg.kind === 'call' ? valueKey(arg.origin, undefined, site.caller, file) : undefined;
-        if (child && routers.has(child)) {
-          mounts.push({ ...pos, parent: router, child, prefix });
+    const chained = method && !site.object ? routeChains.get(router) : undefined;
+    if (chained) {
+      const handlers = site.args.map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
+      registrations.push({ ...pos, router: chained.router, method: method!, path: chained.path, handlers });
+      continue;
+    }
+    // `routes.forEach((r) => router.use(r.path, r.route))`: uma chamada por item da lista, com `r.x` trocado pelo valor do item
+    const loop = site.loop;
+    const runs = loop ? graph.arrayItems(loop.array).map((item) => site.args.map((a) => itemArg(a, loop.param, item))) : [site.args];
+    for (const args of runs) {
+      const [first, ...rest] = args;
+      if (method) {
+        // `app.get('env')` com um argumento só é leitura de configuração, não rota
+        if (args.length < 2) continue;
+        if (first?.kind !== 'string') {
+          skipped.push({ ...pos, reason: `${method}: caminho não literal` });
           continue;
         }
-        const handler = handlerOf(graph, arg);
-        if (handler) middlewares.push({ ...pos, router, prefix, handler: { ...handler, middleware: true } });
+        const handlers = rest.map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
+        registrations.push({ ...pos, router, method, path: first.value, handlers });
+      } else if (site.name === 'use') {
+        const prefix = first?.kind === 'string' ? first.value : '';
+        for (const arg of first?.kind === 'string' ? rest : args) {
+          // `use('/x', router)` ou `use('/x', require('./routes/x'))`
+          const child =
+            arg.kind === 'name' ? valueKey(arg.origin, arg.chain, site.caller, file) : arg.kind === 'call' ? valueKey(arg.origin, undefined, site.caller, file) : undefined;
+          if (child && routers.has(child)) {
+            mounts.push({ ...pos, parent: router, child, prefix });
+            continue;
+          }
+          const handler = handlerOf(graph, arg);
+          if (handler) middlewares.push({ ...pos, router, prefix, handler: { ...handler, middleware: true } });
+        }
       }
     }
   }
