@@ -847,8 +847,13 @@ export class CodeGraph {
         });
       }
       // `this.findOne()` num estático do Mongoose (`userSchema.statics.x = function`): `this` é o modelo
-      const schema = root === 'this' && rest.length === 0 && 'caller' in call ? this.schemaOf(call.caller as string) : undefined;
-      if (schema) return this.modelMember(schema.file, schema.produced, schema.kind, [], call.name) ?? this.resolveCall(schema.file, schema.produced, ctx, depth + 1);
+      // (num método ou hook, `this.constructor.hashIP()` é o modelo: o estático)
+      const viaModel = rest.length === 1 && rest[0] === 'constructor';
+      const schema = root === 'this' && (rest.length === 0 || viaModel) && 'caller' in call ? this.schemaOf(call.caller as string) : undefined;
+      if (schema && (!viaModel || schema.kind === 'methods')) {
+        const own = this.modelMember(schema.file, schema.produced, viaModel ? 'statics' : schema.kind, [], call.name);
+        return own ?? this.resolveCall(schema.file, schema.produced, ctx, depth + 1);
+      }
       return this.guess(call, ctx);
     }
     const binding = ctx.bindings(fileId).get(root ?? call.name);
@@ -865,7 +870,7 @@ export class CodeGraph {
         if (ids.length > 0) return this.found(ids);
         // `new User()` com `module.exports = mongoose.model('User', s)`: o valor (e o que ele constrói) é do pacote
         const loc = this.resolveExportLocal(target.id, exported, new Set());
-        return (loc && this.externalValue(loc.file, loc.local, ctx, depth)) ?? UNRESOLVED;
+        return (loc && (this.aliasedCall(loc.file, loc.local, [], ctx, depth) ?? this.externalValue(loc.file, loc.local, ctx, depth))) ?? UNRESOLVED;
       }
       // `ns.fn()` com `import * as ns` / `const ns = require()`; `ns.obj.m()` segue a instância exportada
       if (binding.imported === '*') return this.memberOfModule(target.id, rest, call.name, ctx, !!binding.require);
@@ -874,11 +879,8 @@ export class CodeGraph {
     }
 
     // `const User = db.user` no topo: `User.findOne()` é `db.user.findOne()`
-    const alias = depth < 8 ? this.moduleInfo.get(fileId)?.aliases.get(root ?? call.name) : undefined;
-    if (alias) {
-      const chain = [...alias, ...(call.object ? [...rest, call.name] : [])];
-      return this.resolveCall(fileId, { name: chain.at(-1)!, object: chain.slice(0, -1) }, ctx, depth + 1);
-    }
+    const aliased = this.aliasedCall(fileId, root ?? call.name, call.object ? [...rest, call.name] : [], ctx, depth);
+    if (aliased) return aliased;
 
     if (!call.object) {
       const local = this.topLevelByName(fileId, call.name);
@@ -1073,7 +1075,9 @@ export class CodeGraph {
     const attrs = this.graph.hasNode(symbolId) ? this.graph.getNodeAttributes(symbolId) : undefined;
     if (!attrs || !isSymbolNode(attrs) || !attrs.container) return undefined;
     const dot = attrs.container.lastIndexOf('.');
-    const kind = attrs.container.slice(dot + 1);
+    const suffix = attrs.container.slice(dot + 1);
+    // hook (`schema.pre('save', fn)`): o `this` é o documento, como num método
+    const kind = suffix === 'hooks' ? 'methods' : suffix;
     if (dot <= 0 || (kind !== 'statics' && kind !== 'methods')) return undefined;
     const schema = attrs.container.slice(0, dot);
     for (const produced of this.moduleInfo.get(attrs.file)?.valueCalls.values() ?? []) {
@@ -1116,6 +1120,17 @@ export class CodeGraph {
     if (!origin || origin.local) return undefined;
     const produced = this.moduleInfo.get(origin.file)?.valueCalls.get(origin.name);
     return produced?.name === 'model' ? { file: origin.file, produced, document: false } : undefined;
+  }
+
+  /**
+   * `local` é apelido no topo de `fileId` (`const User = db.user`, `export const { useX } = api`)? Resolve a
+   * chamada como se fosse feita pelo caminho de verdade, com `tail` (membros + método) depois dele.
+   */
+  private aliasedCall(fileId: string, local: string, tail: string[], ctx: ResolutionContext, depth: number): CallResolution | undefined {
+    const alias = depth < 8 ? this.moduleInfo.get(fileId)?.aliases.get(local) : undefined;
+    if (!alias) return undefined;
+    const chain = [...alias, ...tail];
+    return this.resolveCall(fileId, { name: chain.at(-1)!, object: chain.slice(0, -1) }, ctx, depth + 1);
   }
 
   /** O valor `local` de `fileId` sai de uma chamada a um pacote (`mongoose.model(...)`)? Então é desse pacote. */
@@ -1283,6 +1298,8 @@ export class CodeGraph {
   ): CallResolution | undefined {
     const classes = this.topLevelByName(fileId, local).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
     if (classes.length > 0) return this.membersOf(classes, rest, method, ctx);
+    const aliased = this.aliasedCall(fileId, local, [...rest, method], ctx, depth);
+    if (aliased) return aliased;
     // `new db.user()` / `const User = db.user; new User()`: chama (ou constrói) o próprio valor do módulo
     const direct = this.moduleInfo.get(fileId)?.objectRequires.get([local, ...rest, method].join('.'));
     const directTarget = direct !== undefined ? this.specTargets.get(fileId)?.get(direct) : undefined;

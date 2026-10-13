@@ -465,3 +465,74 @@ describe('M5a — o que mais 5 projetos mostraram', () => {
     expect(await snapshotOf(['src/index.js', 'src/index.css'])).toBe(await snapshotOf(['src/index.css', 'src/index.js']));
   });
 });
+
+// M5b: o que sobrava no proshop (frontend com Redux Toolkit, 38 sem alvo) e no hackathon-starter
+// (173 por nome, a maioria nos testes e nos hooks do modelo).
+describe('M5b — desestruturação exportada, hooks do Mongoose e `require` atribuído', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  it('`export const { useGetOrderQuery } = orderApiSlice` e `const { logout } = authSlice.actions`: membros do valor', () => {
+    indexFile(graph, fx, 'slices/apiSlice.js', "import { createApi } from '@reduxjs/toolkit/query/react';\nexport const apiSlice = createApi({});\n");
+    indexFile(
+      graph,
+      fx,
+      'slices/ordersApiSlice.js',
+      "import { apiSlice } from './apiSlice';\nexport const orderApiSlice = apiSlice.injectEndpoints({});\nexport const { useGetOrderQuery, usePayOrderMutation: usePay } = orderApiSlice;\n"
+    );
+    indexFile(graph, fx, 'slices/authSlice.js', "import { createSlice } from '@reduxjs/toolkit';\nconst authSlice = createSlice({});\nexport const { logout } = authSlice.actions;\n");
+    const f = indexFile(
+      graph,
+      fx,
+      'screens/Order.jsx',
+      "import { useGetOrderQuery, usePay } from '../slices/ordersApiSlice';\nimport { logout } from '../slices/authSlice';\nexport function Order() { useGetOrderQuery(1); usePay(); logout(); }\n"
+    );
+    expect(site(graph, f, 'useGetOrderQuery')).toMatchObject({ outcome: 'external', package: '@reduxjs/toolkit' });
+    expect(site(graph, f, 'usePay')).toMatchObject({ outcome: 'external', package: '@reduxjs/toolkit' });
+    expect(site(graph, f, 'logout')).toMatchObject({ outcome: 'external', package: '@reduxjs/toolkit' });
+    expect(graph.fileCoverage(f)).toMatchObject({ callsUnresolved: 0, callsHeuristic: 0 });
+  });
+
+  it('hooks do schema (`pre`/`post`) e `this.constructor.x()`: o `this` é o documento; `router.post` não é hook', () => {
+    const model = indexFile(
+      graph,
+      fx,
+      'models/User.js',
+      [
+        "const mongoose = require('mongoose');",
+        'const userSchema = new mongoose.Schema({});',
+        "userSchema.statics.hashIP = function (ip) { return ip; };",
+        "userSchema.methods.clearToken = function (kind) { this[kind] = undefined; };",
+        "userSchema.methods.verify = function (ip) { return this.constructor.hashIP(ip); };",
+        "userSchema.pre('save', function clearExpired() { this.clearToken('login'); });",
+        "const User = mongoose.model('User', userSchema);",
+        'module.exports = User;',
+      ].join('\n')
+    );
+    const routes = indexFile(graph, fx, 'routes.js', "const router = require('express').Router();\nrouter.post('/login', function login(req, res) { res.end(); });\n");
+    expect(site(graph, model, 'this.clearToken').targets).toEqual([memberId(graph, 'userSchema.methods', 'clearToken', model)]);
+    expect(site(graph, model, 'this.constructor.hashIP').targets).toEqual([memberId(graph, 'userSchema.statics', 'hashIP', model)]);
+    expect(memberId(graph, 'userSchema.hooks', 'clearExpired', model)).toBeTruthy();
+    // a rota continua função comum (sem contêiner), e continua rota
+    expect(graph.ownedSymbols(routes).map((id) => graph.nodeAttributes(id)).filter((a) => a?.kind === 'method')).toEqual([]);
+    expect(findExpressRoutes(graph).routes.map((r) => r.id)).toEqual(['POST /login']);
+  });
+
+  it('`let ctrl; ... ctrl = require(...)` (teste que recarrega o módulo) resolve como import', () => {
+    const svc = indexFile(graph, fx, 'controllers/user.js', 'exports.getUser = async () => {};\n');
+    const f = indexFile(
+      graph,
+      fx,
+      'test/user.test.js',
+      "describe('user', () => {\n  let userController;\n  beforeEach(() => { userController = require('../controllers/user'); });\n  it('x', async () => { await userController.getUser(); });\n});\n"
+    );
+    expect(site(graph, f, 'userController.getUser').targets).toEqual([symbolId(graph, 'getUser', svc)]);
+  });
+});

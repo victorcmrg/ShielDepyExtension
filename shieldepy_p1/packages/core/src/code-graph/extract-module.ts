@@ -140,15 +140,28 @@ function isModuleExports(node: SyntaxNode | null): boolean {
   );
 }
 
+/** `{ a, b: c }` → [{ key: 'a', local: 'a' }, { key: 'b', local: 'c' }]; padrões aninhados e `...resto` ficam de fora. */
+function patternNames(pattern: SyntaxNode): Array<{ key: string; local: string }> {
+  const out: Array<{ key: string; local: string }> = [];
+  for (const p of pattern.namedChildren) {
+    if (p.type === 'shorthand_property_identifier_pattern') out.push({ key: p.text, local: p.text });
+    else if (p.type === 'pair_pattern') {
+      const key = propertyKey(p.childForFieldName('key'));
+      const value = p.childForFieldName('value');
+      if (key && value?.type === 'identifier') out.push({ key, local: value.text });
+    }
+  }
+  return out;
+}
+
 function declaredNames(decl: SyntaxNode): string[] {
   const name = decl.childForFieldName('name');
   if (name) return [name.text];
-  // lexical_declaration / variable_declaration: `export const a = 1, b = 2`
+  // lexical_declaration / variable_declaration: `export const a = 1, b = 2` e `export const { a, b } = x`
   return decl.namedChildren
     .filter((c) => c.type === 'variable_declarator')
     .map((c) => c.childForFieldName('name'))
-    .filter((n): n is SyntaxNode => n?.type === 'identifier')
-    .map((n) => n.text);
+    .flatMap((n) => (n?.type === 'identifier' ? [n.text] : n?.type === 'object_pattern' ? patternNames(n).map((p) => p.local) : []));
 }
 
 export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
@@ -280,6 +293,13 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
           }
           return true;
         }
+        // `let ctrl; ... ctrl = require('../controllers/user')` (testes que recarregam o módulo): também é import
+        const assigned = left.type === 'identifier' && left.text !== 'exports' ? requireSpec(right) : undefined;
+        if (assigned !== undefined) {
+          addSpec(assigned);
+          if (!imports.some((b) => b.local === left.text)) imports.push({ local: left.text, imported: '*', spec: assigned, require: true });
+          return false;
+        }
         // exports.a = ...   |   module.exports.a = ...
         if (left.type === 'member_expression' && isModuleExports(left.childForFieldName('object'))) {
           const key = left.childForFieldName('property')?.text;
@@ -327,8 +347,11 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
     if (inner.type !== 'lexical_declaration' && inner.type !== 'variable_declaration') continue;
     for (const d of inner.namedChildren) {
       const name = d.type === 'variable_declarator' ? d.childForFieldName('name') : undefined;
-      if (name?.type !== 'identifier') continue;
       const value = d.childForFieldName('value');
+      // `export const { useGetOrderQuery } = orderApiSlice` / `const { logout } = authSlice.actions`: cada nome é um membro
+      const source = name?.type === 'object_pattern' && value ? memberChain(value) : undefined;
+      if (source && source[0] !== 'this') for (const p of patternNames(name!)) aliases.set(p.local, [...source, p.key]);
+      if (name?.type !== 'identifier') continue;
       const type = typeRef(d.childForFieldName('type')) ?? constructedType(value);
       if (type) valueTypes.set(name.text, type);
       if (value?.type === 'object') collectObjectRefs(value, name.text, objectRefs);

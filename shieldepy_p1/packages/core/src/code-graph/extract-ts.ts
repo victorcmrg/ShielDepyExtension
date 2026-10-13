@@ -202,6 +202,18 @@ function requireSpecOf(node: SyntaxNode): string | undefined {
   return first?.type === 'string' ? unquote(first.text) : undefined;
 }
 
+/** Em algum lugar de `scope`, `name = require('...')`? */
+function assignsRequire(scope: SyntaxNode, name: string): boolean {
+  let found = false;
+  walk(scope, (n) => {
+    if (found || n.type !== 'assignment_expression') return;
+    const left = n.childForFieldName('left');
+    const right = n.childForFieldName('right');
+    if (left?.type === 'identifier' && left.text === name && right && isRequire(right)) found = true;
+  });
+  return found;
+}
+
 const OPAQUE_VALUE_TYPES = new Set(['array', 'string', 'template_string', 'number', 'true', 'false', 'regex']);
 const LOOSE_TYPES = new Set(['any', 'unknown']);
 
@@ -264,6 +276,8 @@ function localType(from: SyntaxNode, name: string): LocalType {
           const value = d.childForFieldName('value');
           // `const f = () => {}` é símbolo, `const o = { m() {} }` tem métodos e `require()` é import: o grafo resolve
           if (value && (FUNCTION_VALUE_TYPES.has(value.type) || value.type === 'object' || isRequire(value))) return undefined;
+          // `let ctrl;` que depois recebe `ctrl = require('...')`: import (ver `extractModuleInfo`)
+          if (!value && assignsRequire(n, name)) return undefined;
           // apelido no topo do arquivo (`const User = db.user`): o grafo segue o membro (`ModuleInfo.aliases`)
           if (n.type === 'program' && value?.type === 'member_expression' && !d.childForFieldName('type')) return undefined;
           const annotated = annotatedType(d.childForFieldName('type'));
@@ -436,6 +450,41 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
 
 /** Chamadas que registram métodos num schema do Mongoose, e onde eles ficam. */
 const SCHEMA_REGISTRARS = new Map([['method', 'methods'], ['static', 'statics']]);
+/** Hooks do schema: o `this` do callback é o documento (`.hooks` é lido como `.methods` na resolução). */
+const SCHEMA_HOOKS = new Set(['pre', 'post']);
+
+/** `name` é declarado no topo do arquivo como `new mongoose.Schema(...)` / `new Schema(...)` / `mongoose.Schema(...)`? */
+function declaredAsSchema(from: SyntaxNode, name: string): boolean {
+  let program: SyntaxNode | null = from;
+  while (program && program.type !== 'program') program = program.parent;
+  for (const stmt of program?.namedChildren ?? []) {
+    const decl = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') : stmt;
+    if (decl?.type !== 'lexical_declaration' && decl?.type !== 'variable_declaration') continue;
+    for (const d of decl.namedChildren) {
+      if (d.type !== 'variable_declarator' || d.childForFieldName('name')?.text !== name) continue;
+      const value = unwrap(d.childForFieldName('value'));
+      const callee = value?.childForFieldName(value.type === 'new_expression' ? 'constructor' : 'function');
+      return (value?.type === 'new_expression' || value?.type === 'call_expression') && memberChain(callee)?.at(-1) === 'Schema';
+    }
+  }
+  return false;
+}
+
+/**
+ * `userSchema.method('x', fn)` → contêiner `userSchema.methods`, nome `x`; `userSchema.static('x', fn)` →
+ * `userSchema.statics`; `userSchema.pre('save', fn)` / `.post(...)` → `userSchema.hooks` (nome da função).
+ */
+function schemaCallback(call: SyntaxNode): { container: string; name?: string } | undefined {
+  const chain = memberChain(call.childForFieldName('function'));
+  if (chain?.length !== 2) return undefined;
+  const [schema, method] = chain as [string, string];
+  // só um schema de verdade: `router.post('/x', fn)` tem a mesma forma de `schema.post('save', fn)`
+  if (!declaredAsSchema(call, schema)) return undefined;
+  const first = call.childForFieldName('arguments')?.namedChildren[0];
+  const kind = SCHEMA_REGISTRARS.get(method);
+  if (kind && first?.type === 'string') return { container: `${schema}.${kind}`, name: unquote(first.text) };
+  return SCHEMA_HOOKS.has(method) && first?.type === 'string' ? { container: `${schema}.hooks` } : undefined;
+}
 
 /**
  * Nome de um objeto literal: `const repo = {…}` → `repo`; `export default {…}` → `default`;
@@ -459,7 +508,7 @@ function objectPath(object: SyntaxNode): string | undefined {
   if (holder?.type === 'arguments' && holder.parent?.type === 'call_expression') {
     const chain = memberChain(holder.parent.childForFieldName('function'));
     const kind = chain?.length === 2 ? SCHEMA_REGISTRARS.get(chain[1]!) : undefined;
-    return kind ? `${chain![0]}.${kind}` : undefined;
+    return kind && declaredAsSchema(object, chain![0]!) ? `${chain![0]}.${kind}` : undefined;
   }
   if (holder?.type === 'pair' && holder.parent?.type === 'object') {
     const base = objectPath(holder.parent);
@@ -580,6 +629,12 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
       }
     } else if (node.type === 'arguments' && node.parent?.type === 'call_expression' && !insideFunction(node)) {
       const callbacks = node.namedChildren.filter((arg) => FUNCTION_VALUE_TYPES.has(arg.type));
+      // `userSchema.pre('save', fn)` / `userSchema.method('x', fn)`: o callback é do schema (o `this` dele é o documento)
+      const schema = schemaCallback(node.parent);
+      if (schema && callbacks.length === 1) {
+        push(callbacks[0]!, 'method', schema.name ?? callbacks[0]!.childForFieldName('name')?.text ?? callbackLabel(node.parent), callbacks[0]!, { container: schema.container });
+        return;
+      }
       // `const createUser = catchAsync(async (req, res) => {})`: o callback é o `createUser` (o embrulho só repassa)
       const label = (callbacks.length === 1 && wrappedName(node.parent)) || callbackLabel(node.parent);
       for (const arg of callbacks) push(arg, 'function', label, arg);

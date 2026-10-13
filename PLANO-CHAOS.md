@@ -763,6 +763,18 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 
     O que ainda falta: o frontend React do proshop (38 sem alvo), os testes do hackathon (173 por nome), os decorators do tsboiler (M4) e a injeção por contêiner do bulletproof (`Container.get(Service)` e `@Inject('userModel')`).
   - Suíte **350** (+4), todas as 4 falham sem as correções.
+- 2026-10-13: **M5b: o resto do proshop e do hackathon-starter.**
+  1. **Desestruturação no topo vira apelido de membro:** `export const { useGetOrderQuery, usePayOrderMutation: usePay } = orderApiSlice` e `const { logout } = authSlice.actions` (Redux Toolkit). Os nomes viram export e apelido (`X.chave`).
+     - O `aliasedCall` resolve o apelido chamado direto, chamado com membro e importado de outro arquivo, e chega ao `@reduxjs/toolkit` pelo valor de `createApi`/`createSlice`.
+     - Resultado: proshop de 31,9% para **79,5%**, sem nenhuma chamada sem alvo.
+  2. **Hooks e `method/static` por chamada no schema:** `userSchema.pre('save', function clearExpired() {...})` dá contêiner `userSchema.hooks` (o `this` é o documento), e `userSchema.method('x', fn)` / `.static('x', fn)` dão `.methods` / `.statics`.
+     - Só vale com o receptor declarado no arquivo como `new mongoose.Schema(...)` / `new Schema(...)` / `mongoose.Schema(...)`: `router.post('/x', fn)` tem a mesma forma de `schema.post('save', fn)` (teste de regressão incluído).
+     - **`this.constructor.hashIP()`** num método ou hook é o estático do modelo.
+  3. **`let ctrl; ... ctrl = require('../controllers/user')`** (testes que recarregam o módulo) vira import do arquivo.
+     - Resultado: hackathon de 70,9% para **92,8%** (576 provadas).
+     - As 45 por nome que sobram: `req.flash`/`req.logout`/`req.user.x()` (o passport e um middleware põem no `req` em tempo de execução), mocks do sinon e o parâmetro `builder` do Redux. Ficam por nome, marcadas, porque não há como provar estaticamente.
+  - O mapa continua igual em qualquer ordem de indexação nos 10 projetos conferidos.
+  - Suíte **353** (+3).
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
