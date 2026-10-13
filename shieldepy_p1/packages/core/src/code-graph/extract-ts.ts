@@ -226,16 +226,26 @@ function requireSpecOf(node: SyntaxNode): string | undefined {
   return first?.type === 'string' ? unquote(first.text) : undefined;
 }
 
-/** Em algum lugar de `scope`, `name = require('...')`? */
+/**
+ * Nomes que recebem `nome = require('...')` em algum lugar do arquivo, por raiz. Uma varredura por
+ * arquivo: refazer a busca a cada referência a `let x;` deixava um teste de 2 mil linhas quadrático.
+ */
+const requireAssignments = new WeakMap<object, Set<string>>();
+
 function assignsRequire(scope: SyntaxNode, name: string): boolean {
-  let found = false;
-  walk(scope, (n) => {
-    if (found || n.type !== 'assignment_expression') return;
-    const left = n.childForFieldName('left');
-    const right = n.childForFieldName('right');
-    if (left?.type === 'identifier' && left.text === name && right && isRequire(right)) found = true;
-  });
-  return found;
+  // a chave é a árvore (um objeto por parse): o id de um nó pode ser reaproveitado depois que a árvore é liberada
+  let names = requireAssignments.get(scope.tree);
+  if (!names) {
+    const found = new Set<string>();
+    walk(scope.tree.rootNode, (n) => {
+      if (n.type !== 'assignment_expression') return;
+      const left = n.childForFieldName('left');
+      const right = n.childForFieldName('right');
+      if (left?.type === 'identifier' && right && isRequire(right)) found.add(left.text);
+    });
+    requireAssignments.set(scope.tree, (names = found));
+  }
+  return names.has(name);
 }
 
 const OPAQUE_VALUE_TYPES = new Set(['array', 'string', 'template_string', 'number', 'true', 'false', 'regex']);
