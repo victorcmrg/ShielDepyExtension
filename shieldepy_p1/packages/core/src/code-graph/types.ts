@@ -145,7 +145,7 @@ export type CallArg =
    * Resultado de outra chamada (`express.json()`, `auth('admin')`) — ela própria aparece como chamada separada.
    * `require('./routes/orders')` traz `origin`: onde o `module.exports` daquele arquivo é declarado.
    */
-  | { kind: 'call'; callee: string[]; origin?: ValueOrigin }
+  | { kind: 'call'; callee: string[]; origin?: ValueOrigin; functions?: string[] }
   | { kind: 'other' };
 
 /** Uma chamada do código, já resolvida, com a posição e os argumentos. */
@@ -172,6 +172,12 @@ export interface CallSite {
    * onde a lista é declarada e o nome do item no callback. Os itens: `CodeGraph.arrayItems(array)`.
    */
   loop?: { array: ValueOrigin; param: string };
+  /**
+   * Em `external`: o receptor é um modelo do Mongoose (ou documento dele) e este é o nome do modelo —
+   * `User.findOne()` com `User = mongoose.model('User', s)`, `this.findOne()` num estático, `user.save()`
+   * com `user = await User.findById()`. É o alvo da operação de banco.
+   */
+  model?: string;
 }
 
 export function isSymbolNode(attrs: NodeAttrs): attrs is SymbolNodeAttrs {

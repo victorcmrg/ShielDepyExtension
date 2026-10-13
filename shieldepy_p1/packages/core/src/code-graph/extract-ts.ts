@@ -100,7 +100,7 @@ export type Scope = 'module' | 'local';
 export type RawArg =
   | Exclude<CallArg, { kind: 'name' | 'call' }>
   | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope }
-  | { kind: 'call'; callee: string[]; spec?: string };
+  | { kind: 'call'; callee: string[]; spec?: string; functions?: string[] };
 
 const FUNCTION_SCOPE_TYPES = new Set([
   'function_declaration',
@@ -389,7 +389,11 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
   if (arg.type === 'call_expression') {
     const callee = memberChain(arg.childForFieldName('function'));
     const spec = requireSpecOf(arg);
-    if (callee) return { kind: 'call', callee, ...(spec !== undefined && { spec }) };
+    // `asyncHandler(async (req, res) => {})`: o callback embrulhado (quando virou símbolo)
+    const functions = (arg.childForFieldName('arguments')?.namedChildren ?? [])
+      .filter((a) => FUNCTION_VALUE_TYPES.has(a.type))
+      .flatMap((a) => symbolAt.get(a.startIndex)?.id ?? []);
+    if (callee) return { kind: 'call', callee, ...(spec !== undefined && { spec }), ...(functions.length > 0 && { functions }) };
   }
   const chain = memberChain(arg);
   if (!chain || chain[0] === 'super' || (chain.length === 1 && chain[0] === 'this')) return { kind: 'other' };
@@ -400,6 +404,9 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
       : { name: chain.at(-1)!, object: chain.slice(0, -1), ...receiverOf(arg, chain.slice(0, -1)) };
   return { kind: 'name', chain, ref, ...(scope && { scope }) };
 }
+
+/** Chamadas que registram métodos num schema do Mongoose, e onde eles ficam. */
+const SCHEMA_REGISTRARS = new Map([['method', 'methods'], ['static', 'statics']]);
 
 /**
  * Nome de um objeto literal: `const repo = {…}` → `repo`; `export default {…}` → `default`;
@@ -419,6 +426,12 @@ function objectPath(object: SyntaxNode): string | undefined {
     if (chain && chain.length > 1 && chain[0] !== 'this' && !isModuleExportsNode(left) && chain[0] !== 'exports') return chain.join('.');
     return undefined;
   }
+  // `userSchema.method({ transform() {} })` / `userSchema.static({ get() {} })` → `userSchema.methods` / `userSchema.statics`
+  if (holder?.type === 'arguments' && holder.parent?.type === 'call_expression') {
+    const chain = memberChain(holder.parent.childForFieldName('function'));
+    const kind = chain?.length === 2 ? SCHEMA_REGISTRARS.get(chain[1]!) : undefined;
+    return kind ? `${chain![0]}.${kind}` : undefined;
+  }
   if (holder?.type === 'pair' && holder.parent?.type === 'object') {
     const base = objectPath(holder.parent);
     const key = propertyKey(holder.childForFieldName('key'));
@@ -432,6 +445,24 @@ function containerOf(node: SyntaxNode): string | undefined {
   const parent = node.parent;
   if (parent?.type === 'class_body' && parent.parent) return className(parent.parent);
   return parent?.type === 'object' ? objectPath(parent) : undefined;
+}
+
+/**
+ * Quem guarda o valor de uma chamada que embrulha um callback: `const createUser = catchAsync(fn)`,
+ * `exports.createUser = catchAsync(fn)` e `{ createUser: catchAsync(fn) }` → `createUser`.
+ */
+function wrappedName(call: SyntaxNode): string | undefined {
+  const holder = call.parent;
+  if (holder?.type === 'variable_declarator' && holder.childForFieldName('value')?.startIndex === call.startIndex) {
+    const name = holder.childForFieldName('name');
+    return name?.type === 'identifier' ? name.text : undefined;
+  }
+  if (holder?.type === 'assignment_expression' && holder.childForFieldName('right')?.startIndex === call.startIndex) {
+    const left = holder.childForFieldName('left');
+    return left?.type === 'member_expression' && !isModuleExportsNode(left) ? left.childForFieldName('property')?.text : undefined;
+  }
+  if (holder?.type === 'pair' && holder.childForFieldName('value')?.startIndex === call.startIndex) return propertyKey(holder.childForFieldName('key'));
+  return undefined;
 }
 
 /** `app.post('/checkout')` — rótulo de um callback anônimo passado num nível em que não há função envolvente. */
@@ -519,10 +550,10 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
         else if (name) push(node, 'function', name, right);
       }
     } else if (node.type === 'arguments' && node.parent?.type === 'call_expression' && !insideFunction(node)) {
-      const label = callbackLabel(node.parent);
-      for (const arg of node.namedChildren) {
-        if (FUNCTION_VALUE_TYPES.has(arg.type)) push(arg, 'function', label, arg);
-      }
+      const callbacks = node.namedChildren.filter((arg) => FUNCTION_VALUE_TYPES.has(arg.type));
+      // `const createUser = catchAsync(async (req, res) => {})`: o callback é o `createUser` (o embrulho só repassa)
+      const label = (callbacks.length === 1 && wrappedName(node.parent)) || callbackLabel(node.parent);
+      for (const arg of callbacks) push(arg, 'function', label, arg);
     }
   });
 
@@ -598,15 +629,16 @@ function isModuleExportsNode(node: SyntaxNode | null | undefined): boolean {
  * últimos como `default`). Quem importa o valor resolve `app.listen()` pelo retorno da chamada — sem
  * isso, `module.exports = app` deixava o `app` sem tipo em todo arquivo que fazia `require` dele.
  */
-export function extractValueCalls(root: SyntaxNode): Map<string, CallDesc> {
+export function extractValueCalls(root: SyntaxNode, symbols: SymbolInfo[] = []): Map<string, CallDesc> {
   const out = new Map<string, CallDesc>();
+  const symbolAt = new Map(symbols.map((s) => [s.startIndex, s]));
   const callOf = (value: SyntaxNode | null | undefined): CallDesc | undefined => {
     const inner = unwrap(value);
     const desc = inner?.type === 'call_expression' && !isRequire(inner) ? describeCall(inner) : undefined;
     if (!desc) return undefined;
     // os argumentos dizem de onde o valor vem: `mongoose.model('User', userSchema)` → os estáticos do `userSchema`
     const args = inner!.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment') ?? [];
-    return { ...desc, args: args.map((a) => describeArg(a, new Map())) };
+    return { ...desc, args: args.map((a) => describeArg(a, symbolAt)) };
   };
   for (const stmt of root.namedChildren) {
     if (stmt.type === 'export_statement' && !stmt.childForFieldName('declaration')) {

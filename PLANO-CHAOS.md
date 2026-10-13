@@ -89,7 +89,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
 | C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
-| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1 e M2 ✅ |
+| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1, M2 e M3 ✅ |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
@@ -713,6 +713,27 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - O `CodeGraph.arrayItems(origem)` devolve os itens com os nomes resolvidos, e o `routes.ts` faz uma chamada por item, trocando `route.path` e `route.route` pelos valores.
   - **Resultado:** `node-express-boilerplate` e `express-rest-boilerplate` passaram de 10 e 1 rotas (sem prefixo) para **15 e 15**, todas com `/v1/...` e a cadeia de middlewares do app, sem nenhum registro ilegível. Os projetos da C1 não mudaram (20, 9 e 10 rotas).
   - Suíte **344** (+3 em `real-express.test.ts`).
+- 2026-10-13: **M3 concluída (Mongoose como I/O e handlers embrulhados).**
+  - **O modelo no grafo** (`CallSite.model`): `modelOf` acha a chamada `mongoose.model('User', schema)` por trás do receptor nestes casos:
+    - `User.findOne()`, inclusive importado por `require` ou barrel;
+    - `this.findOne()` num estático ou método do schema (`schemaOf`, pelo contêiner `userSchema.statics`/`.methods`);
+    - o documento: `new User(b).save()`, `const user = await User.findById(id)` e a cadeia `User.findOne(q).exec()`.
+  - **Resolução:**
+    - `this.x()` num estático vai para o estático do projeto ou para o pacote; antes, era palpite por nome.
+    - `user.transform()` num documento vai para `userSchema.methods.transform`.
+    - `schema.method({...})` e `schema.static({...})` também dão contêiner.
+  - **Operações** (`io.ts`, `via: 'mongoose'`), com o nome do modelo como alvo (`dynamic` quando não dá para saber):
+    - leitura: `find*`, `count*`, `exists`, `distinct` e `aggregate`;
+    - escrita: `create`, `insertMany`, `save`, `update*`, `replaceOne`, `find*AndUpdate/Delete/Remove`, `delete*`, `remove` e `bulkWrite`;
+    - transação: `startTransaction`/`commitTransaction`/`abortTransaction` contam; `withTransaction` só fica anotado.
+  - **Handler embrulhado** (achado no caminho, era o motivo de 0 operações): `const createUser = catchAsync(async (req, res) => {})`.
+    - O callback de dentro passa a se chamar `createUser` no grafo (`wrappedName`: declaração, `exports.x =` ou par de objeto). Antes, se chamava `catchAsync()`, e nada chegava nele.
+    - Inline, `router.get('/', asyncHandler(async () => {}))`: o argumento-chamada carrega os callbacks (`CallArg.functions`), e o handler da rota é o de dentro (`asyncHandler(<inline>)`).
+  - **Resultado:**
+    - `node-express-boilerplate`: de 0 para **12 rotas sensíveis e 29 operações**, com `read-then-write` em `User` e `Token`;
+    - `express-rest-boilerplate`: de 0 para **7 e 10**;
+    - os projetos da C1 não mudaram.
+  - Suíte **346** (+2).
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -875,13 +896,15 @@ A topologia desses três últimos mostrou o resto do que falta (ver as tarefas).
 - **M2. Rotas que o mapa não lê.** ✅ Concluída em 2026-10-13 (ver o registro).
   - `router.route('/x').get(a).post(b)`: hoje sai "caminho não literal" (19 rotas nos dois boilerplates).
   - Montagem em laço: `[{ path: '/auth', route: authRoute }].forEach((r) => router.use(r.path, r.route))` perde o prefixo e vira middleware opaco.
-- **M3. Mongoose como I/O.** `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)
+- **M3. Mongoose como I/O.** ✅ Concluída em 2026-10-13 (ver o registro); entrou junto o handler embrulhado (`catchAsync(fn)`). `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)
 - **M4. Rotas por decorators:** `routing-controllers` (`@JsonController('/users')` + `@Get('/:id')`) e NestJS (`@Controller` + `@Get`). O tsboiler dá 0 rotas. (É a F4, adiantada.)
 - **M5. Mais projetos medidos e um roteiro para repetir a medição.** Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
 - **M6. Fluxo do plugin "instalar e rodar".** Ao abrir o projeto, o plugin mapeia sozinho e mostra um resumo (rotas, operações, cobertura, onde o mapa é fraco), com o próximo passo (diagnosticar). Conferir o que a R1/R2 já entregam antes de mexer.
 
 ### Limitações conhecidas (anotadas, não são bug)
-- **Métodos de instância do Mongoose** (`userSchema.methods.transform`, `user.transform()`): o valor `user` vem de `await User.findById()`, então o método sai como "do pacote mongoose" ou por nome (heurística). Seguir o documento até o schema exigiria levar o modelo junto do resultado da consulta.
+- **Métodos de instância do Mongoose:** resolvem quando o documento é seguível (`const user = await User.findById(id)`, `new User(b).save()`, `.exec()`). Ficam por nome (heurística) quando o valor vem de fora da função: `req.user.transform()`, o parâmetro de `.then((user) => ...)` ou de `users.map((u) => ...)`.
+- **`withTransaction(cb)`** só fica anotado como `db_tx`: as operações do callback vêm antes dele na ordem de execução aproximada, então não contam como "dentro da transação". O `startTransaction`/`commitTransaction` explícito conta.
+- **Plugins do Mongoose** (`schema.plugin(paginate)`, que adiciona `User.paginate`): o método fica como "do pacote" e não vira operação.
 
 ## F — rotas e I/O do resto de JS/TS (escrito em 2026-10-09, antes de começar)
 

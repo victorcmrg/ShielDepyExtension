@@ -27,8 +27,8 @@ export const TOPOLOGY_VERSION = 1;
 const MAX_DEPTH = 16;
 const MAX_STEPS = 5000;
 
-const TX_OPEN = new Set(['BEGIN', 'START', '$transaction']);
-const TX_CLOSE = new Set(['COMMIT', 'ROLLBACK', 'END']);
+const TX_OPEN = new Set(['BEGIN', 'START', '$transaction', 'startTransaction']);
+const TX_CLOSE = new Set(['COMMIT', 'ROLLBACK', 'END', 'commitTransaction', 'abortTransaction']);
 
 type TagInput = Pick<IoOperation, 'kind' | 'target' | 'operation' | 'lock' | 'timeout'>;
 

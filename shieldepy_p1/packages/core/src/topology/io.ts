@@ -1,4 +1,4 @@
-// Operações de I/O, uma por chamada resolvida: banco (`pg`, Prisma) e API externa (`fetch`
+// Operações de I/O, uma por chamada resolvida: banco (`pg`, Prisma, Mongoose) e API externa (`fetch`
 // global, `axios`). A detecção é pelo pacote para o qual a chamada resolveu no grafo, não pelo
 // nome da variável — `db.query()` só é banco se `db` vier de `pg`.
 
@@ -86,6 +86,37 @@ function prismaOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 
   return { kind: read ? 'db_read' : 'db_write', target: model, via: 'prisma', operation: site.name };
 }
 
+const MONGOOSE_READ = new Set(['find', 'findOne', 'findById', 'countDocuments', 'estimatedDocumentCount', 'count', 'exists', 'distinct', 'aggregate']);
+const MONGOOSE_WRITE = new Set([
+  'create',
+  'insertMany',
+  'save',
+  'updateOne',
+  'updateMany',
+  'replaceOne',
+  'findOneAndUpdate',
+  'findByIdAndUpdate',
+  'findOneAndReplace',
+  'findOneAndDelete',
+  'findByIdAndDelete',
+  'findOneAndRemove',
+  'findByIdAndRemove',
+  'deleteOne',
+  'deleteMany',
+  'remove',
+  'bulkWrite',
+]);
+/** `session.startTransaction()` … `commitTransaction()`; o `withTransaction(cb)` só fica anotado (as operações do callback vêm antes dele na ordem). */
+const MONGOOSE_TX = new Set(['startTransaction', 'commitTransaction', 'abortTransaction', 'withTransaction']);
+
+function mongooseOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  if (MONGOOSE_TX.has(site.name)) return { kind: 'db_tx', target: 'transaction', via: 'mongoose', operation: site.name };
+  const read = MONGOOSE_READ.has(site.name);
+  if (!read && !MONGOOSE_WRITE.has(site.name)) return undefined;
+  // o modelo vem do grafo (`mongoose.model('User', s)`), inclusive para o documento (`user.save()`)
+  return { kind: read ? 'db_read' : 'db_write', target: site.model ?? 'dynamic', via: 'mongoose', operation: site.name };
+}
+
 /** Pacotes que exportam um `fetch` com a mesma assinatura do global. */
 const FETCH_PACKAGES = new Set(['node-fetch', 'undici', 'cross-fetch']);
 
@@ -121,6 +152,7 @@ export function ioOperationOf(site: CallSite, file: string): IoOperation | undef
   if (site.outcome === 'external' && site.package === 'pg') op = pgOperation(site);
   else if (site.outcome === 'external' && site.package === '@prisma/client') op = prismaOperation(site);
   else if (site.outcome === 'external' && site.package === 'axios') op = axiosOperation(site);
+  else if (site.outcome === 'external' && site.package === 'mongoose') op = mongooseOperation(site);
   else op = fetchOperation(site);
   return op && { ...op, symbol: site.caller, file, line: site.line };
 }

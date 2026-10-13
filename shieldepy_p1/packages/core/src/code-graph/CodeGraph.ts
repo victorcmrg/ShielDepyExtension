@@ -45,6 +45,13 @@ export interface WebParsers {
 /** Para onde um especificador de import de um arquivo aponta (já resolvido). */
 type SpecTarget = { kind: 'file'; id: string } | { kind: 'package'; name: string } | { kind: 'unresolved' };
 
+/** Um modelo do Mongoose: onde ele é criado (`mongoose.model('User', userSchema)`) e se o valor é um documento dele. */
+interface ModelRef {
+  file: string;
+  produced: CallDesc;
+  document: boolean;
+}
+
 /** Tabela de módulo + os valores do topo que saem de uma chamada (`const app = express()`). */
 type FileModule = ModuleInfo & { valueCalls: Map<string, CallDesc> };
 
@@ -547,7 +554,7 @@ export class CodeGraph {
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
 
-      const info: FileModule = { ...extractModuleInfo(root), valueCalls: extractValueCalls(root) };
+      const info: FileModule = { ...extractModuleInfo(root), valueCalls: extractValueCalls(root, symbols) };
       this.moduleInfo.set(fileId, info);
       this.linkImports(fileId, fsPath, info.specs);
 
@@ -803,6 +810,12 @@ export class CodeGraph {
         'call' in call.receiver
           ? this.resolveReturnMember(fileId, call.receiver.call, call.receiver.rest, call.name, ctx, depth)
           : this.resolveMember(fileId, call.receiver.type, call.receiver.rest, call.name, ctx);
+      // documento de um modelo do Mongoose (`(await User.findById(id)).transform()`): o método pode ser do schema
+      if (byType?.outcome === 'callsExternal' && 'call' in call.receiver && call.receiver.rest.length === 0) {
+        const model = this.modelOf(fileId, call, 'caller' in call ? (call.caller as string) : undefined, ctx);
+        const own = model?.document ? this.modelMember(model.file, model.produced, 'methods', [], call.name) : undefined;
+        if (own) return own;
+      }
       if (byType) return byType;
     }
 
@@ -817,6 +830,9 @@ export class CodeGraph {
           return !owner || !own.has(owner);
         });
       }
+      // `this.findOne()` num estático do Mongoose (`userSchema.statics.x = function`): `this` é o modelo
+      const schema = root === 'this' && rest.length === 0 && 'caller' in call ? this.schemaOf(call.caller as string) : undefined;
+      if (schema) return this.modelMember(schema.file, schema.produced, schema.kind, [], call.name) ?? this.resolveCall(schema.file, schema.produced, ctx, depth + 1);
       return this.guess(call, ctx);
     }
     const binding = ctx.bindings(fileId).get(root ?? call.name);
@@ -859,6 +875,9 @@ export class CodeGraph {
     const origin = call.object
       ? this.valueOrigin(fileId, call.object, call.scope, ctx)
       : call.chainRoot && { file: fileId, name: call.chainRoot.name, ...(call.chainRoot.scope === 'local' && { local: true as const }) };
+    // modelo do Mongoose por trás do receptor: o alvo da operação de banco (`User.findOne` → `User`)
+    const produced = r.outcome === 'callsExternal' ? this.modelOf(fileId, call, call.caller, ctx)?.produced : undefined;
+    const model = produced?.args?.[0]?.kind === 'string' ? produced.args[0].value : undefined;
     const array = call.loop && this.valueOrigin(fileId, [call.loop.array], undefined, ctx);
     const loop = array && this.moduleInfo.get(array.file)?.arrays.has(array.name) ? { array, param: call.loop!.param } : undefined;
     return {
@@ -872,6 +891,7 @@ export class CodeGraph {
       ...(origin && { receiverOrigin: origin }),
       args: (call.args ?? []).map((a) => this.resolveArg(fileId, a, ctx)),
       ...(loop && { loop }),
+      ...(model && { model }),
     };
   }
 
@@ -910,7 +930,7 @@ export class CodeGraph {
       // `app.use('/orders', require('./routes/orders'))`: o valor é o `module.exports` daquele arquivo
       const target = arg.spec !== undefined ? this.specTargets.get(fileId)?.get(arg.spec) : undefined;
       const loc = target?.kind === 'file' ? this.resolveExportLocal(target.id, 'default', new Set()) : undefined;
-      return { kind: 'call', callee: arg.callee, ...(loc && { origin: { file: loc.file, name: loc.local } }) };
+      return { kind: 'call', callee: arg.callee, ...(loc && { origin: { file: loc.file, name: loc.local } }), ...(arg.functions && { functions: arg.functions }) };
     }
     if (arg.kind !== 'name') return arg;
     const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx);
@@ -1001,15 +1021,63 @@ export class CodeGraph {
    * `User.get()` com `const User = mongoose.model('User', userSchema)`: o método é o estático que o
    * projeto declara em `userSchema.statics = { get() {} }`. O que não estiver lá (`findOne`) é do pacote.
    */
-  private modelStatics(fileId: string, produced: CallDesc, rest: string[], method: string): CallResolution | undefined {
+  private modelMember(fileId: string, produced: CallDesc, kind: 'statics' | 'methods', rest: string[], method: string): CallResolution | undefined {
     const schema = produced.args?.[1];
     if (produced.name !== 'model' || rest.length > 0 || schema?.kind !== 'name' || schema.chain.length !== 1) return undefined;
-    const container = `${schema.chain[0]}.statics`;
+    const container = `${schema.chain[0]}.${kind}`;
     const ids = this.ownedSymbols(fileId).filter((id) => {
       const m = this.graph.getNodeAttributes(id);
       return isSymbolNode(m) && m.container === container && m.name === method;
     });
     return ids.length > 0 ? { outcome: 'callsResolved', targets: ids } : undefined;
+  }
+
+  /**
+   * O símbolo é um estático ou método de um schema do Mongoose (`userSchema.statics.get`) que vira modelo
+   * no mesmo arquivo (`mongoose.model('User', userSchema)`)? Devolve a chamada que cria o modelo.
+   */
+  private schemaOf(symbolId: string): { file: string; produced: CallDesc; kind: 'statics' | 'methods' } | undefined {
+    const attrs = this.graph.hasNode(symbolId) ? this.graph.getNodeAttributes(symbolId) : undefined;
+    if (!attrs || !isSymbolNode(attrs) || !attrs.container) return undefined;
+    const dot = attrs.container.lastIndexOf('.');
+    const kind = attrs.container.slice(dot + 1);
+    if (dot <= 0 || (kind !== 'statics' && kind !== 'methods')) return undefined;
+    const schema = attrs.container.slice(0, dot);
+    for (const produced of this.moduleInfo.get(attrs.file)?.valueCalls.values() ?? []) {
+      const arg = produced.args?.[1];
+      if (produced.name === 'model' && arg?.kind === 'name' && arg.chain.length === 1 && arg.chain[0] === schema) return { file: attrs.file, produced, kind };
+    }
+    return undefined;
+  }
+
+  /**
+   * Nome do modelo do Mongoose por trás do receptor de uma chamada: `User.findOne()` (com `User =
+   * mongoose.model('User', s)`, mesmo importado), `this.findOne()` num estático, e o documento que um
+   * modelo devolve (`const user = await User.findById(id); user.save()` / `new User(body).save()`).
+   */
+  private modelOf(fileId: string, call: CallDesc, caller: string | undefined, ctx: ResolutionContext, depth = 0): ModelRef | undefined {
+    if (depth > 4) return undefined;
+    if (call.receiver && 'call' in call.receiver) {
+      // documento: o receptor é o resultado de `new User()` ou de `User.findById()`
+      // (inclusive pela cadeia da consulta: `User.findOne(q).populate('x').exec()`)
+      const inner = call.receiver.call;
+      const chained = inner.object || (inner.receiver && 'call' in inner.receiver);
+      const model = chained ? this.modelOf(fileId, inner, caller, ctx, depth + 1) : this.modelOfValue(fileId, [inner.name], inner.scope, ctx);
+      return model && { ...model, document: true };
+    }
+    const root = call.object?.[0];
+    if (root === 'this') {
+      const schema = caller ? this.schemaOf(caller) : undefined;
+      return schema && { file: schema.file, produced: schema.produced, document: schema.kind === 'methods' };
+    }
+    return root && call.object!.length === 1 ? this.modelOfValue(fileId, [root], call.scope, ctx) : undefined;
+  }
+
+  private modelOfValue(fileId: string, chain: string[], scope: Scope | undefined, ctx: ResolutionContext): ModelRef | undefined {
+    const origin = this.valueOrigin(fileId, chain, scope, ctx);
+    if (!origin || origin.local) return undefined;
+    const produced = this.moduleInfo.get(origin.file)?.valueCalls.get(origin.name);
+    return produced?.name === 'model' ? { file: origin.file, produced, document: false } : undefined;
   }
 
   /** O valor `local` de `fileId` sai de uma chamada a um pacote (`mongoose.model(...)`)? Então é desse pacote. */
@@ -1190,7 +1258,7 @@ export class CodeGraph {
     const produced = this.moduleInfo.get(fileId)?.valueCalls.get(local);
     const key = `${fileId}|${local}`;
     if (!produced || this.valueCallStack.has(key)) return undefined;
-    const statics = this.modelStatics(fileId, produced, rest, method);
+    const statics = this.modelMember(fileId, produced, 'statics', rest, method);
     if (statics) return statics;
     this.valueCallStack.add(key);
     try {

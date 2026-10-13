@@ -70,6 +70,8 @@ function covers(prefix: string, path: string): boolean {
 
 function handlerOf(graph: CodeGraph, arg: CallArg): RouteHandler | undefined {
   if (arg.kind === 'function') return { symbols: arg.symbolId ? [arg.symbolId] : [], label: '<inline>', inline: true };
+  // `asyncHandler(async (req, res) => {})`: o embrulho só repassa; o handler é o callback de dentro
+  if (arg.kind === 'call' && arg.functions?.length) return { symbols: arg.functions, label: `${arg.callee.join('.')}(<inline>)`, inline: true };
   if (arg.kind === 'call') return { symbols: [], label: `${arg.callee.join('.')}()`, opaque: true };
   if (arg.kind === 'other') return { symbols: [], label: '<expressão>', opaque: true };
   if (arg.kind !== 'name') return undefined;

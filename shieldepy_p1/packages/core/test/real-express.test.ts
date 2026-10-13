@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { classifySql, findExpressRoutes, ioOperationOf, type CallSite, type CodeGraph, type IoOperation, type Route } from '../src/index';
+import { buildSystemGraph, buildTopology, classifySql, findExpressRoutes, ioOperationOf, type CallSite, type CodeGraph, type IoOperation, type Route } from '../src/index';
 import { createGraph, Fixture, indexFile, symbolId } from './helpers';
 
 /** `GET /x: a → b` — a cadeia de handlers numa linha. */
@@ -272,5 +272,110 @@ describe('M2 — rotas que o mapa não lia', () => {
     );
     indexFile(graph, fx, 'app.js', "const express = require('express');\nconst routes = require('./v1');\nconst app = express();\napp.use('/v1', routes);\n");
     expect(findExpressRoutes(graph).routes.map(show)).toEqual(['POST /v1/auth/login: <inline>', 'GET /v1/users: <inline>']);
+  });
+});
+
+// M3: nos dois boilerplates com Mongoose, nenhuma rota era sensível (0 operações de I/O).
+describe('M3 — Mongoose como I/O e handlers embrulhados', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const USER_MODEL = [
+    "const mongoose = require('mongoose');",
+    'const userSchema = mongoose.Schema({ email: String, name: String });',
+    'userSchema.statics.isEmailTaken = async function (email) { return !!(await this.findOne({ email })); };',
+    'userSchema.method({ transform() { return { id: this.id }; } });',
+    "const User = mongoose.model('User', userSchema);",
+    'module.exports = User;',
+  ].join('\n');
+
+  it('operações pelo modelo: estático, documento (`new`, consulta com `.exec()`), `this` num estático e transação', () => {
+    const model = indexFile(graph, fx, 'models/user.model.js', USER_MODEL);
+    const f = indexFile(
+      graph,
+      fx,
+      'services/user.service.js',
+      [
+        "const mongoose = require('mongoose');",
+        "const User = require('../models/user.model');",
+        'async function rename(id, name) {',
+        '  const session = await mongoose.startSession();',
+        '  session.startTransaction();',
+        '  const user = await User.findById(id).exec();',
+        '  user.name = name;',
+        '  await user.save();',
+        '  await session.commitTransaction();',
+        '  return user.transform();',
+        '}',
+        'async function register(body) { return new User(body).save(); }',
+        'async function purge() { await User.deleteMany({}); }',
+      ].join('\n')
+    );
+    expect(ops(graph, f)).toEqual([
+      { kind: 'db_tx', target: 'transaction', via: 'mongoose', operation: 'startTransaction' },
+      { kind: 'db_read', target: 'User', via: 'mongoose', operation: 'findById' },
+      { kind: 'db_write', target: 'User', via: 'mongoose', operation: 'save' },
+      { kind: 'db_tx', target: 'transaction', via: 'mongoose', operation: 'commitTransaction' },
+      { kind: 'db_write', target: 'User', via: 'mongoose', operation: 'save' },
+      { kind: 'db_write', target: 'User', via: 'mongoose', operation: 'deleteMany' },
+    ]);
+    // o `this.findOne()` do estático também é leitura do User; e o método do documento é do schema
+    expect(ops(graph, model)).toEqual([{ kind: 'db_read', target: 'User', via: 'mongoose', operation: 'findOne' }]);
+    expect(site(graph, f, 'user.transform').targets).toEqual([memberId(graph, 'userSchema.methods', 'transform', model)]);
+  });
+
+  it('handler embrulhado (`catchAsync(fn)`, `asyncHandler(fn)`): a rota chega ao banco e ganha as tags', () => {
+    indexFile(graph, fx, 'models/user.model.js', USER_MODEL);
+    indexFile(
+      graph,
+      fx,
+      'controllers/user.controller.js',
+      [
+        "const User = require('../models/user.model');",
+        'const catchAsync = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);',
+        'const updateUser = catchAsync(async (req, res) => {',
+        '  const user = await User.findById(req.params.id);',
+        '  Object.assign(user, req.body);',
+        '  await user.save();',
+        '  res.send(user);',
+        '});',
+        'module.exports = { updateUser };',
+      ].join('\n')
+    );
+    indexFile(
+      graph,
+      fx,
+      'routes/user.route.js',
+      [
+        "const express = require('express');",
+        "const asyncHandler = require('express-async-handler');",
+        "const userController = require('../controllers/user.controller');",
+        "const User = require('../models/user.model');",
+        'const router = express.Router();',
+        "router.patch('/users/:id', userController.updateUser);",
+        "router.get('/users', asyncHandler(async (req, res) => { res.send(await User.find()); }));",
+        'module.exports = router;',
+      ].join('\n')
+    );
+    const t = buildTopology(graph, buildSystemGraph(graph, [], fx.dir), fx.dir);
+    const show = (id: string) => {
+      const r = t.routes.find((x) => x.id === id)!;
+      return [r.handlers.map((h) => h.label).join(' → '), ...r.operations.map((o) => `${o.kind} ${o.target} ${o.operation}`), ...r.tags.map((x) => x.tag)];
+    };
+    expect(show('PATCH /users/:id')).toEqual([
+      'userController.updateUser',
+      'db_read User findById',
+      'db_write User save',
+      'no-transaction',
+      'read-then-write',
+    ]);
+    expect(show('GET /users')).toEqual(['asyncHandler(<inline>)', 'db_read User find']);
   });
 });
