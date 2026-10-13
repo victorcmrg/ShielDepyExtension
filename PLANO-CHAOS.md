@@ -43,7 +43,8 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
 
 **Como rodar (de `shieldepy_p1/`):**
-- `npm run check`: typecheck + testes unitários (**325** no fim da etapa R, nenhum pulado quando os exemplos têm `npm install`).
+- `npm run check`: typecheck + testes unitários (**325** no fim da etapa R, **355** na etapa M; nenhum pulado quando os exemplos têm `npm install`).
+- `npm run mapa:reais [-- --so <id,...>] [--dir <pasta>] [--json <arquivo>]`: clona os 12 projetos reais da etapa M (commit fixo, fora do repositório, sem instalar nem executar nada deles) e imprime a tabela do mapa. Leva menos de 1 minuto depois de clonado.
 - `npm run build:vscode`: dois arquivos. `dist/extension.js` tem ~640 KB; se crescer muito, algo puxou o LangGraph para dentro dele. O `dist/chaos.js` (~1,9 MB) é o pipeline de caos, carregado só pelo "Testar Caos".
 - `npm run test:e2e -w shieldepy`: E2E num VS Code real (**33/33**, leva alguns minutos). O cenário do caos de verdade só roda com `npm install` em `examples/checkout-express`.
 - `npm run package:vscode`: gera o `.vsix`. Para conferir o pacote, instale-o num `--extensions-dir` temporário e rode `SHIELDEPY_E2E_EXTENSION=<pasta instalada> node apps/vscode/test-e2e/run.mjs`.
@@ -89,7 +90,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
 | C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
-| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1–M4 ✅, M5 em andamento |
+| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1–M5 ✅; falta a M6 (fluxo do plugin) |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
@@ -798,6 +799,28 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - `lujakob/nestjs-realworld-example-app` (NestJS + TypeORM, clonado agora): **21 rotas com `/api`, 20 sensíveis, 41 operações**, 100% das chamadas provadas, com `read-then-write` em `ArticleEntity`, `UserEntity`, `Comment` e `FollowsEntity`.
   - Suíte **355** (+2). A ajuda da CLI (`topology`) agora cita NestJS e `routing-controllers`.
   - **Ainda não coberto:** a injeção por contêiner do `typedi` sem tipo no construtor (`Container.get(AuthService)` e `@Inject('userModel') private userModel: Models.UserModel` do bulletproof); o `routePrefix` vindo do `.env`.
+- 2026-10-13: **M5 concluída: `npm run mapa:reais`** (`scripts/measure-real-projects.ts`).
+  - Os 12 projetos ficam **fixados num commit**.
+  - O script clona por `git fetch --depth 1 origin <sha>` (com sparse checkout para o `prisma-examples`) numa pasta fora do repositório (padrão `<tmp>/shieldepy-mapa-reais`), sem instalar nem executar nada deles, mede um por vez e imprime a tabela em markdown (`--json` grava os números).
+  - **Achado no caminho:** no Windows, uma pasta temporária funda estoura o limite de caminho ao gravar o pack do git. O script passa `core.longpaths=true`.
+  - **Tabela final da etapa M** (saída do script):
+
+    | Projeto | Pilha | Provadas | Por nome | Sem alvo | Rotas | Sensíveis | Operações |
+    |---|---|---|---|---|---|---|---|
+    | realworld | TS, Express, Prisma | 100% | 0 | 0 | 20 | 19 | 30 |
+    | prisma-express | TS, Express 5, Prisma 7 | 100% | 0 | 0 | 9 | 9 | 10 |
+    | pg-crud | JS (CJS), Express, pg | 100% | 0 | 0 | 10 | 10 | 15 |
+    | node-express-boilerplate | JS (CJS), Express, Mongoose | 100% | 0 | 0 | 15 | 12 | 29 |
+    | express-rest-boilerplate | JS (CJS), Express, Mongoose | 91,3% | 4 | 0 | 15 | 8 | 11 |
+    | express-typescript-boilerplate | TS, routing-controllers, TypeORM | 97,7% | 3 | 0 | 11 | 10 | 10 |
+    | hackathon-starter | JS (CJS), Express, Mongoose | 92,8% | 45 | 0 | 103 | 41 | 80 |
+    | bulletproof-nodejs | TS, Express, typedi, Mongoose | 100% | 0 | 0 | 4 | 0 | 0 |
+    | proshop-v2 | JS (ESM), Express, Mongoose, React | 79,5% | 9 | 0 | 26 | 21 | 52 |
+    | jwt-auth-mongodb | JS (CJS), Express, Mongoose | 100% | 0 | 0 | 7 | 2 | 4 |
+    | mern-memories | JS (ESM), Express, Mongoose, React | 100% | 0 | 0 | 6 | 6 | 7 |
+    | nest-realworld | TS, NestJS, TypeORM | 100% | 0 | 0 | 21 | 20 | 41 |
+
+    **Nenhuma chamada sem alvo** nos 12. As chamadas por nome que sobram são de valores postos em tempo de execução (`req.flash`, `req.logout`, `req.user`), parâmetros de callback (`builder` do Redux, `.then((u) => ...)`) e mocks do sinon. O único projeto sem operações é o bulletproof (contêiner do `typedi`).
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -962,7 +985,7 @@ A topologia desses três últimos mostrou o resto do que falta (ver as tarefas).
   - Montagem em laço: `[{ path: '/auth', route: authRoute }].forEach((r) => router.use(r.path, r.route))` perde o prefixo e vira middleware opaco.
 - **M3. Mongoose como I/O.** ✅ Concluída em 2026-10-13 (ver o registro); entrou junto o handler embrulhado (`catchAsync(fn)`). `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)
 - **M4. Rotas por decorators:** ✅ Concluída em 2026-10-13 (ver o registro), com o TypeORM como I/O. `routing-controllers` (`@JsonController('/users')` + `@Get('/:id')`) e NestJS (`@Controller` + `@Get`). O tsboiler dá 0 rotas. (É a F4, adiantada.)
-- **M5. Mais projetos medidos e um roteiro para repetir a medição.** Em andamento: M5a ✅ (11 projetos, tabela no registro); falta o script. Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
+- **M5. Mais projetos medidos e um roteiro para repetir a medição.** ✅ Concluída em 2026-10-13: M5a e M5b (correções), 12 projetos e o `npm run mapa:reais` (ver o registro). Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
 - **M6. Fluxo do plugin "instalar e rodar".** Ao abrir o projeto, o plugin mapeia sozinho e mostra um resumo (rotas, operações, cobertura, onde o mapa é fraco), com o próximo passo (diagnosticar). Conferir o que a R1/R2 já entregam antes de mexer.
 
 ### Limitações conhecidas (anotadas, não são bug)
