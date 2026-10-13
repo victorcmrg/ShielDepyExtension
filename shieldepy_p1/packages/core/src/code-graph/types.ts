@@ -146,6 +146,8 @@ export type CallArg =
    * `require('./routes/orders')` traz `origin`: onde o `module.exports` daquele arquivo é declarado.
    */
   | { kind: 'call'; callee: string[]; origin?: ValueOrigin; functions?: string[] }
+  /** Lista literal (`[auth, validate(schema)]`): o Express aceita middlewares assim. */
+  | { kind: 'array'; items: CallArg[] }
   | { kind: 'other' };
 
 /** Uma chamada do código, já resolvida, com a posição e os argumentos. */
@@ -178,6 +180,11 @@ export interface CallSite {
    * com `user = await User.findById()`. É o alvo da operação de banco.
    */
   model?: string;
+  /**
+   * A raiz do receptor é o parâmetro de índice n do chamador (`module.exports = function (app) { app.post() }`):
+   * o valor vem de quem chama a função (`require('./routes/auth')(app)`). As rotas usam para montar.
+   */
+  receiverParam?: number;
 }
 
 export function isSymbolNode(attrs: NodeAttrs): attrs is SymbolNodeAttrs {

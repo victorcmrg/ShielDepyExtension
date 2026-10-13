@@ -734,6 +734,35 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - `express-rest-boilerplate`: de 0 para **7 e 10**;
     - os projetos da C1 não mudaram.
   - Suíte **346** (+2).
+- 2026-10-13: **M5a: mais 5 projetos medidos e o que eles mostraram.** Os novos: `sahat/hackathon-starter`, `santiq/bulletproof-nodejs`, `bradtraversy/proshop-v2`, `bezkoder/node-js-jwt-auth-mongodb` e `adrianhajdin/project_mern_memories` (o `microsoft/TypeScript-Node-Starter` não existe mais). Correções:
+  1. **Rotas num parâmetro sem tipo:** `module.exports = function (app) { app.post(...) }` chamado com `require('./app/routes/auth.routes')(app)` (o bezkoder dava 1 rota de 7).
+     - O `RawCall` ganhou `module` (a chamada `require('./x')(...)`, que antes nem era registrada) e `receiverParam` (o receptor é o parâmetro *n* do chamador).
+     - O `routes.ts` (`routesOnParams`) trata cada chamada da função como uma **montagem sem prefixo** do roteador passado, na posição da chamada. Os middlewares do app registrados antes dela valem.
+     - Parâmetro que nenhum chamador liga a um roteador do express não vira rota.
+  2. **Middlewares em lista:** `post('/x', [auth, validate], ctrl)`. O `CallArg` ganhou `array`, e a cadeia de handlers achata a lista.
+  3. **Objeto de modelos montado por atribuição** (`models/index.js` com `db.user = require('./user.model')`) e **apelido do topo** (`const User = db.user`): o `ModuleInfo` ganhou `objectRequires` e `aliases`, seguidos na resolução, no `valueOrigin` e no modelo do Mongoose.
+     - Um apelido do topo deixou de ser "variável local sem tipo" na extração.
+     - O arquivo com `objectRequires` religa quem o importa, como um barrel.
+  4. **`const user = new User(b); user.save()`** com o modelo importado direto: o receptor tem o "tipo" `User`, que é um valor de pacote e não uma classe. Antes dava "nativo"; agora é do pacote, com o modelo.
+  5. **Mapa dependente da ordem de indexação** (achado no `project_mern_memories`; existia antes): um `.css` "gerado" (uma linha com SVG embutido) importado por `import './index.css'` ficava ou não no mapa conforme a ordem. Agora vira nó provisório quando alguém o importa, nas duas ordens.
+  - **Tabela (11 projetos), depois da M5a:**
+
+    | Projeto | Provadas | Por nome | Sem alvo | Rotas | Sensíveis | Operações |
+    |---|---|---|---|---|---|---|
+    | realworld (TS, Prisma) | 100% | 0 | 0 | 20 | 19 | 30 |
+    | prisma-examples express (Prisma 7) | 100% | 0 | 0 | 9 | 9 | 10 |
+    | rest_api pg (JS) | 100% | 0 | 0 | 10 | 10 | 15 |
+    | node-express-boilerplate (CJS, Mongoose) | 100% | 0 | 0 | 15 | 12 | 29 |
+    | express-rest-boilerplate (CJS, Mongoose) | 91,3% | 4 | 0 | 15 | 8 | 11 |
+    | express-typescript-boilerplate (TypeORM, decorators) | 97,7% | 3 | 0 | **0** | 0 | 0 |
+    | hackathon-starter (CJS, Mongoose) | **70,9%** | 173 | 0 | 103 | 41 | 80 |
+    | bulletproof-nodejs (TS, typedi) | 100% | 0 | 0 | 4 | **0** | 0 |
+    | proshop-v2 (ESM, Mongoose, React) | **31,9%** | 9 | 38 | 26 | 21 | 52 |
+    | jwt-auth-mongodb do bezkoder (CJS) | 100% | 0 | 0 | 7 | 2 | 4 |
+    | mern-memories (ESM, Mongoose, React) | 100% | 0 | 0 | 6 | 6 | 7 |
+
+    O que ainda falta: o frontend React do proshop (38 sem alvo), os testes do hackathon (173 por nome), os decorators do tsboiler (M4) e a injeção por contêiner do bulletproof (`Container.get(Service)` e `@Inject('userModel')`).
+  - Suíte **350** (+4), todas as 4 falham sem as correções.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -898,7 +927,7 @@ A topologia desses três últimos mostrou o resto do que falta (ver as tarefas).
   - Montagem em laço: `[{ path: '/auth', route: authRoute }].forEach((r) => router.use(r.path, r.route))` perde o prefixo e vira middleware opaco.
 - **M3. Mongoose como I/O.** ✅ Concluída em 2026-10-13 (ver o registro); entrou junto o handler embrulhado (`catchAsync(fn)`). `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)
 - **M4. Rotas por decorators:** `routing-controllers` (`@JsonController('/users')` + `@Get('/:id')`) e NestJS (`@Controller` + `@Get`). O tsboiler dá 0 rotas. (É a F4, adiantada.)
-- **M5. Mais projetos medidos e um roteiro para repetir a medição.** Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
+- **M5. Mais projetos medidos e um roteiro para repetir a medição.** Em andamento: M5a ✅ (11 projetos, tabela no registro); falta o script. Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
 - **M6. Fluxo do plugin "instalar e rodar".** Ao abrir o projeto, o plugin mapeia sozinho e mostra um resumo (rotas, operações, cobertura, onde o mapa é fraco), com o próximo passo (diagnosticar). Conferir o que a R1/R2 já entregam antes de mexer.
 
 ### Limitações conhecidas (anotadas, não são bug)

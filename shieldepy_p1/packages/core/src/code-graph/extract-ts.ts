@@ -79,6 +79,13 @@ export interface RawCall {
   scope?: Scope;
   /** `require('x')` com o especificador literal: o valor é o módulo `x` (`require('express').Router()`). */
   spec?: string;
+  /** `require('./routes/auth')(app)`: o que se chama é o `module.exports` do módulo `./routes/auth`. */
+  module?: string;
+  /**
+   * A raiz do receptor é o parâmetro de índice `n` da função que contém a chamada:
+   * `module.exports = function (app) { app.post(...) }` → 0. O valor vem de quem chama a função.
+   */
+  receiverParam?: number;
   /**
    * Receptor que é o resultado de uma cadeia (`Router().use(a).use(b)`): quem guarda a cadeia
    * inteira (`const api = ...` → `api`; `export default ...` → `default`) ou, solta, a posição
@@ -98,9 +105,10 @@ export type Scope = 'module' | 'local';
 
 /** Argumento como sai do parse; o `name` o CodeGraph resolve depois (vira `CallArg`). */
 export type RawArg =
-  | Exclude<CallArg, { kind: 'name' | 'call' }>
+  | Exclude<CallArg, { kind: 'name' | 'call' | 'array' }>
   | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope }
-  | { kind: 'call'; callee: string[]; spec?: string; functions?: string[] };
+  | { kind: 'call'; callee: string[]; spec?: string; functions?: string[] }
+  | { kind: 'array'; items: RawArg[] };
 
 const FUNCTION_SCOPE_TYPES = new Set([
   'function_declaration',
@@ -256,6 +264,8 @@ function localType(from: SyntaxNode, name: string): LocalType {
           const value = d.childForFieldName('value');
           // `const f = () => {}` é símbolo, `const o = { m() {} }` tem métodos e `require()` é import: o grafo resolve
           if (value && (FUNCTION_VALUE_TYPES.has(value.type) || value.type === 'object' || isRequire(value))) return undefined;
+          // apelido no topo do arquivo (`const User = db.user`): o grafo segue o membro (`ModuleInfo.aliases`)
+          if (n.type === 'program' && value?.type === 'member_expression' && !d.childForFieldName('type')) return undefined;
           const annotated = annotatedType(d.childForFieldName('type'));
           if (annotated !== null) return annotated;
           if (value && OPAQUE_VALUE_TYPES.has(value.type)) return 'opaque';
@@ -299,6 +309,9 @@ function describeCall(node: SyntaxNode): CallDesc | undefined {
     const spec = requireSpecOf(node);
     return { name: fn.text, ...(spec !== undefined && { spec }) };
   }
+  // `require('./routes/auth')(app)`: chama o `module.exports` daquele arquivo
+  const required = fn?.type === 'call_expression' ? requireSpecOf(fn) : undefined;
+  if (required !== undefined) return { name: DEFAULT_EXPORT_NAME, module: required };
   if (fn?.type !== 'member_expression') return undefined;
   const name = fn.childForFieldName('property')?.text;
   if (!name) return undefined;
@@ -323,6 +336,20 @@ function declaresIn(block: SyntaxNode, name: string): boolean {
     }
   }
   return false;
+}
+
+/** `name` é o parâmetro de índice n da função mais próxima que o declara? (Uma variável de mesmo nome antes dela → não.) */
+function paramIndexOf(from: SyntaxNode, name: string): number | undefined {
+  for (let n = from.parent; n; n = n.parent) {
+    if (FUNCTION_SCOPE_TYPES.has(n.type)) {
+      const single = n.childForFieldName('parameter');
+      if (single?.type === 'identifier' && single.text === name) return 0;
+      const i = (n.childForFieldName('parameters')?.namedChildren ?? []).findIndex((p) => paramName(p) === name);
+      if (i >= 0) return i;
+    }
+    if (BLOCK_TYPES.has(n.type) && declaresIn(n, name)) return undefined;
+  }
+  return undefined;
 }
 
 /** Onde `name`, visto de `from`, é declarado: topo do arquivo, dentro de uma função, ou fora daqui (import/global). */
@@ -386,6 +413,8 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
     const symbolId = symbolAt.get(arg.startIndex)?.id;
     return symbolId ? { kind: 'function', symbolId } : { kind: 'function' };
   }
+  // `[verifySignUp.checkDuplicate, verifySignUp.checkRoles]`: middlewares em lista
+  if (arg.type === 'array') return { kind: 'array', items: arg.namedChildren.filter((a) => a.type !== 'comment').map((a) => describeArg(a, symbolAt)) };
   if (arg.type === 'call_expression') {
     const callee = memberChain(arg.childForFieldName('function'));
     const spec = requireSpecOf(arg);
@@ -694,11 +723,13 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
       const args = node.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment') ?? [];
       const chainRoot = !desc.object && desc.receiver && 'call' in desc.receiver ? chainRootOf(node) : undefined;
       const loop = loopOf(node);
+      const receiverParam = desc.object && scope === 'local' ? paramIndexOf(node, root) : undefined;
       results.push({
         caller,
         ...desc,
         ...(chainRoot && { chainRoot }),
         ...(loop && { loop }),
+        ...(receiverParam !== undefined && { receiverParam }),
         line: node.startPosition.row,
         column: node.startPosition.column,
         end: node.endIndex,

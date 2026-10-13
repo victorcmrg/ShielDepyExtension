@@ -85,27 +85,83 @@ function handlerOf(graph: CodeGraph, arg: CallArg): RouteHandler | undefined {
   return { symbols: callable, label, ...(arg.outcome === 'heuristic' && { heuristic: true }) };
 }
 
+/** `post('/x', [auth, validate], create)`: a lista vale os middlewares dela, em ordem. */
+const flat = (args: CallArg[]): CallArg[] => args.flatMap((a) => (a.kind === 'array' ? flat(a.items) : [a]));
+
 /** `r.path` dentro de `routes.forEach((r) => ...)` → o valor de `path` no item; o resto fica como está. */
 function itemArg(arg: CallArg, param: string, item: Record<string, CallArg>): CallArg {
   if (arg.kind !== 'name' || arg.chain[0] !== param) return arg;
   return arg.chain.length === 2 ? item[arg.chain[1]!] ?? { kind: 'other' } : { kind: 'other' };
 }
 
-/** Todas as rotas Express do grafo, com o caminho completo e a cadeia de handlers em ordem. */
-export function findExpressRoutes(graph: CodeGraph): RouteScan {
-  const sites: Array<{ file: string; site: CallSite; router: string }> = [];
-  for (const file of graph.files()) {
-    for (const site of graph.callSitesIn(file)) {
-      // receptor nomeado (`router.post`) ou cadeia sem nome (`Router().use(a).use(b)`, que tem `receiverOrigin`)
-      if (!isExpress(site) || (!site.object && !site.receiverOrigin)) continue;
-      const router = valueKey(site.receiverOrigin, site.object, site.caller, file);
-      if (router) sites.push({ file, site, router });
+/**
+ * Registros num roteador que chega como parâmetro, sem tipo: `module.exports = function (app) { app.post(...) }`
+ * chamado com `require('./routes/auth')(app)` (ou `authRoutes(app)`). O parâmetro vale o roteador que
+ * cada chamador passa — inclusive outro parâmetro, que por sua vez veio de alguém. Sem chamador com
+ * um roteador do express, o registro não conta (o parâmetro pode ser qualquer coisa).
+ */
+function routesOnParams(
+  all: Array<{ file: string; site: CallSite }>,
+  routers: Set<string>
+): { sites: Array<{ file: string; site: CallSite; router: string }>; mounts: Mount[] } {
+  const onParam = all.filter(
+    ({ site }) => site.receiverParam !== undefined && site.outcome === 'unbound' && site.object?.length === 1 && (VERBS[site.name] || site.name === 'use' || site.name === 'route')
+  );
+  // chamador (função) → índice do parâmetro → chave do roteador-parâmetro
+  const params = new Map<string, Map<number, string>>();
+  for (const { file, site } of onParam) {
+    const key = valueKey(site.receiverOrigin, site.object, site.caller, file);
+    if (!key) continue;
+    let byIndex = params.get(site.caller);
+    if (!byIndex) params.set(site.caller, (byIndex = new Map()));
+    byIndex.set(site.receiverParam!, key);
+  }
+  if (params.size === 0) return { sites: [], mounts: [] };
+
+  // cada chamada da função que passa um valor no parâmetro é uma montagem sem prefixo, ali, naquela posição:
+  // os middlewares que o app registrou antes dela valem para as rotas de dentro
+  const mounts: Mount[] = [];
+  for (const { file, site } of all) {
+    if (site.outcome !== 'resolved') continue;
+    for (const target of site.targets) {
+      for (const [index, child] of params.get(target) ?? []) {
+        const arg = site.args[index];
+        const parent = arg?.kind === 'name' ? valueKey(arg.origin, arg.chain, site.caller, file) : undefined;
+        if (parent) mounts.push({ file, line: site.line, column: site.column, parent, child, prefix: '' });
+      }
     }
   }
+  // só conta o parâmetro que chega, por alguma cadeia de chamadas, a um roteador do express
+  const reaches = (key: string, seen: Set<string>): boolean =>
+    routers.has(key) || (!seen.has(key) && mounts.some((m) => m.child === key && reaches(m.parent, new Set([...seen, key]))));
+  const live = new Set([...params.values()].flatMap((byIndex) => [...byIndex.values()]).filter((k) => reaches(k, new Set())));
+  const sites = onParam
+    .map(({ file, site }) => ({ file, site, router: valueKey(site.receiverOrigin, site.object, site.caller, file)! }))
+    .filter((s) => live.has(s.router));
+  return { sites, mounts: mounts.filter((m) => live.has(m.child)) };
+}
+
+/** Todas as rotas Express do grafo, com o caminho completo e a cadeia de handlers em ordem. */
+export function findExpressRoutes(graph: CodeGraph): RouteScan {
+  const all: Array<{ file: string; site: CallSite }> = [];
+  for (const file of graph.files()) for (const site of graph.callSitesIn(file)) all.push({ file, site });
+
+  const sites: Array<{ file: string; site: CallSite; router: string }> = [];
+  for (const { file, site } of all) {
+    // receptor nomeado (`router.post`) ou cadeia sem nome (`Router().use(a).use(b)`, que tem `receiverOrigin`)
+    if (!isExpress(site) || (!site.object && !site.receiverOrigin)) continue;
+    const router = valueKey(site.receiverOrigin, site.object, site.caller, file);
+    if (router) sites.push({ file, site, router });
+  }
   const routers = new Set(sites.map((s) => s.router));
+  const onParams = routesOnParams(all, routers);
+  for (const s of onParams.sites) {
+    sites.push(s);
+    routers.add(s.router);
+  }
 
   const registrations: Registration[] = [];
-  const mounts: Mount[] = [];
+  const mounts: Mount[] = [...onParams.mounts];
   const middlewares: Middleware[] = [];
   const skipped: SkippedRoute[] = [];
 
@@ -124,7 +180,7 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
     const method = VERBS[site.name];
     const chained = method && !site.object ? routeChains.get(router) : undefined;
     if (chained) {
-      const handlers = site.args.map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
+      const handlers = flat(site.args).map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
       registrations.push({ ...pos, router: chained.router, method: method!, path: chained.path, handlers });
       continue;
     }
@@ -140,11 +196,11 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
           skipped.push({ ...pos, reason: `${method}: caminho não literal` });
           continue;
         }
-        const handlers = rest.map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
+        const handlers = flat(rest).map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
         registrations.push({ ...pos, router, method, path: first.value, handlers });
       } else if (site.name === 'use') {
         const prefix = first?.kind === 'string' ? first.value : '';
-        for (const arg of first?.kind === 'string' ? rest : args) {
+        for (const arg of flat(first?.kind === 'string' ? rest : args)) {
           // `use('/x', router)` ou `use('/x', require('./routes/x'))`
           const child =
             arg.kind === 'name' ? valueKey(arg.origin, arg.chain, site.caller, file) : arg.kind === 'call' ? valueKey(arg.origin, undefined, site.caller, file) : undefined;

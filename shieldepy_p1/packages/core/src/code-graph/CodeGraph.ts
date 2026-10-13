@@ -248,7 +248,16 @@ export class CodeGraph {
     if (!CodeGraph.isSupported(fsPath)) return;
     // Minificado ou saída de bundler: fora do mapa (e sai, se já estava — o build pode ter sobrescrito).
     if (looksGenerated(fsPath, text)) {
-      if (this.graph.hasNode(toFileId(fsPath))) this.removeFile(fsPath);
+      const fileId = toFileId(fsPath);
+      if (!this.graph.hasNode(fileId)) return;
+      // Importado por alguém (`import './index.css'`): fica o nó provisório, como antes de ser lido — o
+      // mesmo estado de quando o importador é indexado depois. Sem isso, o mapa dependia da ordem.
+      const importers = this.graph
+        .inEdges(fileId)
+        .filter((e) => this.graph.getEdgeAttribute(e, 'type') === 'imports')
+        .map((e) => this.graph.source(e));
+      this.removeFile(fsPath);
+      for (const importer of importers) this.addImportEdge(importer, fsPath);
       return;
     }
     try {
@@ -805,13 +814,20 @@ export class CodeGraph {
 
     if (call.dynamic) return this.guess(call, ctx);
 
+    if (call.module !== undefined) {
+      // `require('./routes/auth')(app)`: a função é o `module.exports` daquele arquivo
+      const target = this.specTargets.get(fileId)?.get(call.module);
+      if (target?.kind === 'package') return this.external(target.name);
+      return target?.kind === 'file' ? this.found(this.resolveExport(target.id, 'default')) : UNRESOLVED;
+    }
+
     if (call.receiver) {
       const byType =
         'call' in call.receiver
           ? this.resolveReturnMember(fileId, call.receiver.call, call.receiver.rest, call.name, ctx, depth)
           : this.resolveMember(fileId, call.receiver.type, call.receiver.rest, call.name, ctx);
       // documento de um modelo do Mongoose (`(await User.findById(id)).transform()`): o método pode ser do schema
-      if (byType?.outcome === 'callsExternal' && 'call' in call.receiver && call.receiver.rest.length === 0) {
+      if (byType?.outcome === 'callsExternal' && call.receiver.rest.length === 0) {
         const model = this.modelOf(fileId, call, 'caller' in call ? (call.caller as string) : undefined, ctx);
         const own = model?.document ? this.modelMember(model.file, model.produced, 'methods', [], call.name) : undefined;
         if (own) return own;
@@ -857,6 +873,13 @@ export class CodeGraph {
       return this.resolveMemberOfExport(target.id, binding.imported, rest, call.name, ctx);
     }
 
+    // `const User = db.user` no topo: `User.findOne()` é `db.user.findOne()`
+    const alias = depth < 8 ? this.moduleInfo.get(fileId)?.aliases.get(root ?? call.name) : undefined;
+    if (alias) {
+      const chain = [...alias, ...(call.object ? [...rest, call.name] : [])];
+      return this.resolveCall(fileId, { name: chain.at(-1)!, object: chain.slice(0, -1) }, ctx, depth + 1);
+    }
+
     if (!call.object) {
       const local = this.topLevelByName(fileId, call.name);
       if (local.length > 0) return { outcome: 'callsResolved', targets: local };
@@ -892,6 +915,7 @@ export class CodeGraph {
       args: (call.args ?? []).map((a) => this.resolveArg(fileId, a, ctx)),
       ...(loop && { loop }),
       ...(model && { model }),
+      ...(call.receiverParam !== undefined && { receiverParam: call.receiverParam }),
     };
   }
 
@@ -932,6 +956,7 @@ export class CodeGraph {
       const loc = target?.kind === 'file' ? this.resolveExportLocal(target.id, 'default', new Set()) : undefined;
       return { kind: 'call', callee: arg.callee, ...(loc && { origin: { file: loc.file, name: loc.local } }), ...(arg.functions && { functions: arg.functions }) };
     }
+    if (arg.kind === 'array') return { kind: 'array', items: arg.items.map((a) => this.resolveArg(fileId, a, ctx)) };
     if (arg.kind !== 'name') return arg;
     const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx);
     return {
@@ -951,6 +976,9 @@ export class CodeGraph {
     const [root, next] = chain;
     if (!root || root === 'this' || root === 'super') return undefined;
     if (scope === 'local') return { file: fileId, name: root, local: true };
+    // `const User = db.user`: a origem é a do membro
+    const alias = this.moduleInfo.get(fileId)?.aliases.get(root);
+    if (alias && chain.length < 16) return this.valueOrigin(fileId, [...alias, ...chain.slice(1)], undefined, ctx);
     if (scope === 'module') return { file: fileId, name: root };
     const binding = ctx.bindings(fileId).get(root);
     if (!binding) return this.declaresTopLevel(fileId, root) || this.moduleInfo.get(fileId)?.arrays.has(root) ? { file: fileId, name: root } : undefined;
@@ -963,6 +991,11 @@ export class CodeGraph {
     // `const userRoutes = require('./user.route')` com `module.exports = router` lá: o valor é o `router`
     if (binding.require && this.moduleInfo.get(target.id)?.exports.has('default')) {
       const value = this.resolveExportLocal(target.id, 'default', new Set());
+      // `db.user` com `db.user = require('./user.model')` lá: o valor é o daquele módulo
+      const spec = value && next ? this.moduleInfo.get(value.file)?.objectRequires.get(`${value.local}.${next}`) : undefined;
+      const member = spec !== undefined ? this.specTargets.get(value!.file)?.get(spec) : undefined;
+      const inner = member?.kind === 'file' ? this.resolveExportLocal(member.id, 'default', new Set()) : undefined;
+      if (inner) return { file: inner.file, name: inner.local };
       return value && { file: value.file, name: value.local };
     }
     return undefined;
@@ -1065,6 +1098,11 @@ export class CodeGraph {
       const model = chained ? this.modelOf(fileId, inner, caller, ctx, depth + 1) : this.modelOfValue(fileId, [inner.name], inner.scope, ctx);
       return model && { ...model, document: true };
     }
+    // `const user = new User(b); user.save()`: o receptor tem o "tipo" `User`, que é o modelo
+    if (call.receiver && 'type' in call.receiver && call.receiver.type.length === 1 && call.receiver.rest.length === 0 && call.object?.[0] !== 'this') {
+      const model = this.modelOfValue(fileId, call.receiver.type, undefined, ctx);
+      return model && { ...model, document: true };
+    }
     const root = call.object?.[0];
     if (root === 'this') {
       const schema = caller ? this.schemaOf(caller) : undefined;
@@ -1123,7 +1161,11 @@ export class CodeGraph {
   private resolveMember(fileId: string, type: TypeRef, rest: string[], method: string, ctx: ResolutionContext): CallResolution | undefined {
     const resolved = this.resolveType(fileId, type, ctx);
     if (resolved.external) return this.external(resolved.external);
-    if (resolved.classes.length === 0) return NATIVE;
+    if (resolved.classes.length === 0) {
+      // `const user = new User(b)` com `User` valor de pacote (`mongoose.model(...)`), não classe: o objeto é do pacote
+      const ctor = type.length === 1 ? this.resolveCall(fileId, { name: type[0]! }, ctx, 1) : undefined;
+      return ctor?.outcome === 'callsExternal' ? ctor : NATIVE;
+    }
     return this.membersOf(resolved.classes, rest, method, ctx);
   }
 
@@ -1241,6 +1283,23 @@ export class CodeGraph {
   ): CallResolution | undefined {
     const classes = this.topLevelByName(fileId, local).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
     if (classes.length > 0) return this.membersOf(classes, rest, method, ctx);
+    // `new db.user()` / `const User = db.user; new User()`: chama (ou constrói) o próprio valor do módulo
+    const direct = this.moduleInfo.get(fileId)?.objectRequires.get([local, ...rest, method].join('.'));
+    const directTarget = direct !== undefined ? this.specTargets.get(fileId)?.get(direct) : undefined;
+    if (directTarget?.kind === 'package') return this.external(directTarget.name);
+    if (directTarget?.kind === 'file') {
+      const ids = this.resolveExport(directTarget.id, 'default');
+      if (ids.length > 0) return this.found(ids);
+      const loc = this.resolveExportLocal(directTarget.id, 'default', new Set());
+      return (loc && this.externalValue(loc.file, loc.local, ctx, depth)) ?? UNRESOLVED;
+    }
+    // `db.user.findOne()` com `db.user = require('./user.model')` neste arquivo: segue para o módulo
+    for (let i = rest.length; i >= 1; i--) {
+      const spec = this.moduleInfo.get(fileId)?.objectRequires.get([local, ...rest.slice(0, i)].join('.'));
+      const target = spec !== undefined ? this.specTargets.get(fileId)?.get(spec) : undefined;
+      if (target?.kind === 'file') return this.memberOfModule(target.id, rest.slice(i), method, ctx, true);
+      if (target?.kind === 'package') return this.external(target.name);
+    }
     // objeto literal, inclusive aninhado: `config.invariants.check()` → método de contêiner `config.invariants`
     const container = [local, ...rest].join('.');
     const members = this.ownedSymbols(fileId).filter((id) => {
@@ -1452,7 +1511,8 @@ export class CodeGraph {
   private forwardsImports(fileId: string): boolean {
     const info = this.moduleInfo.get(fileId);
     if (!info) return false;
-    if (info.reexports.length > 0) return true;
+    // `db.user = require('./user.model')`: o objeto repassa outro módulo, como um barrel
+    if (info.reexports.length > 0 || info.objectRequires.size > 0) return true;
     const imported = new Set(info.imports.map((b) => b.local));
     const exported = new Set(info.exports.values());
     if ([...exported].some((local) => imported.has(local) || info.valueTypes.has(local) || info.valueCalls.has(local))) return true;

@@ -379,3 +379,89 @@ describe('M3 — Mongoose como I/O e handlers embrulhados', () => {
     expect(show('GET /users')).toEqual(['asyncHandler(<inline>)', 'db_read User find']);
   });
 });
+
+// M5a: mais 5 projetos (hackathon-starter, bulletproof, proshop-v2, o jwt-auth do bezkoder e o
+// mern-memories). O do bezkoder dava 1 rota de 7 e nenhuma operação.
+describe('M5a — o que mais 5 projetos mostraram', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  it('rotas num parâmetro `app` (`module.exports = function (app) {}` + `require(...)(app)`), com middlewares em lista', () => {
+    indexFile(
+      graph,
+      fx,
+      'app/routes/auth.routes.js',
+      [
+        "const controller = require('../controllers/auth.controller');",
+        "const verify = require('../middlewares/verify');",
+        'module.exports = function (app) {',
+        '  app.use(function (req, res, next) { next(); });',
+        "  app.post('/api/auth/signup', [verify.checkDuplicate, verify.checkRoles], controller.signup);",
+        '};',
+      ].join('\n')
+    );
+    indexFile(graph, fx, 'app/controllers/auth.controller.js', 'exports.signup = (req, res) => {};\n');
+    indexFile(graph, fx, 'app/middlewares/verify.js', 'const checkDuplicate = (req, res, next) => next();\nconst checkRoles = (req, res, next) => next();\nmodule.exports = { checkDuplicate, checkRoles };\n');
+    // função com `app` que ninguém chama com um roteador: não vira rota (o parâmetro pode ser qualquer coisa)
+    indexFile(graph, fx, 'app/unused.js', "module.exports = function (app) { app.get('/nunca', () => {}); };\n");
+    indexFile(
+      graph,
+      fx,
+      'server.js',
+      ["const express = require('express');", 'const app = express();', 'app.use(express.json());', "require('./app/routes/auth.routes')(app);", 'app.listen(3000);'].join('\n')
+    );
+    expect(findExpressRoutes(graph).routes.map(show)).toEqual([
+      'POST /api/auth/signup: express.json() → <inline> → verify.checkDuplicate → verify.checkRoles → controller.signup',
+    ]);
+  });
+
+  it('objeto de modelos montado por atribuição (`db.user = require(...)`) e `const User = db.user`', () => {
+    indexFile(graph, fx, 'models/user.model.js', "const mongoose = require('mongoose');\nconst User = mongoose.model('User', new mongoose.Schema({}));\nmodule.exports = User;\n");
+    indexFile(graph, fx, 'models/index.js', "const db = {};\ndb.mongoose = require('mongoose');\ndb.user = require('./user.model');\nmodule.exports = db;\n");
+    const f = indexFile(
+      graph,
+      fx,
+      'controllers/auth.js',
+      [
+        "const db = require('../models');",
+        'const User = db.user;',
+        'exports.signup = async (body) => {',
+        '  const user = new User(body);',
+        '  await user.save();',
+        '  return User.findOne({ email: body.email });',
+        '};',
+      ].join('\n')
+    );
+    expect(ops(graph, f)).toEqual([
+      { kind: 'db_write', target: 'User', via: 'mongoose', operation: 'save' },
+      { kind: 'db_read', target: 'User', via: 'mongoose', operation: 'findOne' },
+    ]);
+    expect(site(graph, f, 'User')).toMatchObject({ outcome: 'external', package: 'mongoose' }); // new User(body)
+    expect(graph.fileCoverage(f)).toMatchObject({ callsUnresolved: 0, callsHeuristic: 0 });
+  });
+
+  it('`const user = new User(b); user.save()` com o modelo importado direto (o "tipo" é o modelo)', () => {
+    indexFile(graph, fx, 'user.model.js', "const mongoose = require('mongoose');\nmodule.exports = mongoose.model('User', new mongoose.Schema({}));\n");
+    const f = indexFile(graph, fx, 'svc.js', "const User = require('./user.model');\nasync function add(b) { const user = new User(b); await user.save(); }\n");
+    expect(ops(graph, f)).toEqual([{ kind: 'db_write', target: 'User', via: 'mongoose', operation: 'save' }]);
+  });
+
+  it('CSS "gerado" (uma linha longa) importado pelo código: o mapa é o mesmo em qualquer ordem', async () => {
+    const css = `body { background: url("data:image/svg+xml,${'%3C'.repeat(1500)}"); }\n`;
+    fx.write('src/index.css', css);
+    fx.write('src/index.js', "import './index.css';\nexport const x = 1;\n");
+    const snapshotOf = async (order: string[]) => {
+      const g = await createGraph();
+      for (const rel of order) g.updateFile(fx.path(rel), rel.endsWith('.css') ? css : "import './index.css';\nexport const x = 1;\n");
+      return JSON.stringify(g.toSnapshot());
+    };
+    expect(await snapshotOf(['src/index.js', 'src/index.css'])).toBe(await snapshotOf(['src/index.css', 'src/index.js']));
+  });
+});

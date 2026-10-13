@@ -49,6 +49,13 @@ export interface ModuleInfo {
    * a cada montagem — o padrão de vários boilerplates Express.
    */
   arrays: Map<string, ArrayItem[]>;
+  /** Nomes do topo que só repetem um membro: `const User = db.user` → User: ['db', 'user']. */
+  aliases: Map<string, string[]>;
+  /**
+   * Membros de um objeto do topo que recebem um `require`: `db.user = require('./user.model')` →
+   * `db.user` → `./user.model`. É o `models/index.js` de muitos projetos Express.
+   */
+  objectRequires: Map<string, string>;
 }
 
 /** Um objeto de uma lista literal: só os valores estáticos (texto ou nome). */
@@ -290,6 +297,8 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
   const valueTypes = new Map<string, TypeRef>();
   const objectRefs = new Map<string, string>();
   const arrays = new Map<string, ArrayItem[]>();
+  const aliases = new Map<string, string[]>();
+  const objectRequires = new Map<string, string>();
   for (const stmt of root.namedChildren) {
     const inner = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') ?? stmt.childForFieldName('value') : stmt;
     if (!inner) continue;
@@ -302,10 +311,17 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
       continue;
     }
     if (inner.type === 'expression_statement') {
-      // module.exports = new OrderService()
       const assign = inner.namedChildren[0];
-      const type = assign?.type === 'assignment_expression' && isModuleExports(assign.childForFieldName('left')) ? constructedType(assign.childForFieldName('right')) : undefined;
+      if (assign?.type !== 'assignment_expression') continue;
+      const left = assign.childForFieldName('left');
+      const right = assign.childForFieldName('right');
+      // module.exports = new OrderService()
+      const type = isModuleExports(left) ? constructedType(right) : undefined;
       if (type) valueTypes.set('default', type);
+      // objeto montado por atribuição: `db.user = require('./user.model')` (o `index.js` de models)
+      const target = memberChain(left);
+      const spec = requireSpec(right);
+      if (target && target.length > 1 && spec !== undefined && target[0] !== 'module' && target[0] !== 'exports') objectRequires.set(target.join('.'), spec);
       continue;
     }
     if (inner.type !== 'lexical_declaration' && inner.type !== 'variable_declaration') continue;
@@ -317,8 +333,11 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
       if (type) valueTypes.set(name.text, type);
       if (value?.type === 'object') collectObjectRefs(value, name.text, objectRefs);
       if (value?.type === 'array') arrays.set(name.text, arrayItems(value));
+      // `const User = db.user`: o nome é só outro jeito de chegar no mesmo valor
+      const chain = value?.type === 'member_expression' ? memberChain(value) : undefined;
+      if (chain && chain[0] !== 'this') aliases.set(name.text, chain);
     }
   }
 
-  return { specs, imports, exports, reexports, valueTypes, objectRefs, arrays };
+  return { specs, imports, exports, reexports, valueTypes, objectRefs, arrays, aliases, objectRequires };
 }
