@@ -24,11 +24,15 @@ import { ConflictBalloon, openLocation } from './views/ConflictBalloon';
 import { ExplorerDecorations } from './views/ExplorerDecorations';
 import { MapPanel } from './views/MapPanel';
 import { indexWorkspace, isAnalyzable, reindexFromDisk, warnIfTruncated, type IndexReport } from './workspace/files';
+import { summarizeMap } from './workspace/mapSummary';
 import { WorkspaceModel } from './workspace/WorkspaceModel';
+import { t } from './i18n';
 
 let model: WorkspaceModel | undefined;
 
 const WALKTHROUGH_SHOWN = 'shieldepy.walkthroughShown';
+/** Por projeto (workspaceState): o aviso "o mapa ficou pronto" já apareceu aqui. */
+const MAP_SUMMARY_SHOWN = 'shieldepy.mapSummaryShown';
 
 /** Raiz de composição: cria os serviços, liga eventos e registra views/comandos. Nenhuma regra de negócio aqui. */
 /** API exposta só no Extension Host de teste (E2E). */
@@ -277,11 +281,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
   };
   push(watcher, watcher.onDidCreate(onDisk), watcher.onDidChange(onDisk));
 
+  // Terminou de mapear: conta o que o mapa achou (barra de status e log) e, uma vez por projeto, oferece
+  // o próximo passo — ver o mapa, ou já testar o caos se houver rota sensível. É o "instalar e rodar".
+  const announceMap = () => {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) return;
+    const summary = summarizeMap(workspace.graph, workspace.rules, folder.uri.fsPath);
+    if (summary.files === 0) return;
+    statusBar.setMap(summary);
+    log(
+      `[mapa] ${summary.files} arquivo(s), ${summary.routes} rota(s), ${summary.sensitive} sensível(is), ${summary.operations} operação(ões), ${summary.proven}% das chamadas provadas.`
+    );
+    if (context.extensionMode === vscode.ExtensionMode.Test || context.workspaceState.get<boolean>(MAP_SUMMARY_SHOWN)) return;
+    void context.workspaceState.update(MAP_SUMMARY_SHOWN, true);
+    const text = t(summary.routes > 0 ? 'mapReady' : 'mapReadyNoRoutes', { ...summary });
+    const weak = summary.weak > 0 ? ` ${t('mapWeak', { weak: summary.weak })}` : '';
+    const showMap = t('actionShowMap');
+    const runChaos = t('actionRunChaos');
+    void vscode.window.showInformationMessage(`ShielDepy: ${text}${weak}`, ...(summary.sensitive > 0 ? [showMap, runChaos] : [showMap])).then((pick) => {
+      if (pick === showMap) void vscode.commands.executeCommand(CMD.showMap);
+      else if (pick === runChaos) void vscode.commands.executeCommand(CMD.runChaos);
+    });
+  };
+
   indexWorkspace(workspace, log)
     .then((report) => {
       void warnIfTruncated(report);
       collisions.publish();
       for (const doc of vscode.workspace.textDocuments) analyzer.runNow(doc);
+      announceMap();
     })
     .catch((err) => log(`[ShielDepy] indexação inicial falhou: ${err}`));
 

@@ -13,6 +13,19 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Etapa atual (2026-10-13): M — mapeamento em grafos nos projetos reais**, na branch `feat/mapa-projetos-reais`, criada a partir da `origin/main` (`60bf07a`, depois da C1 parcial). Pedido do usuário: "o foco agora é deixar 100% a parte de mapeamento em grafos", testando em apps Express do GitHub; depois, um plugin que só se instala e roda (mapeia o sistema e diagnostica). Leia a seção **"M — mapeamento em projetos reais"** (por que existe, os projetos, as tarefas M1–M6) e o fim do Registro.
 
+**Estado ao fim de 2026-10-13:**
+- M1–M6 commitadas na `feat/mapa-projetos-reais`, sem push. Suíte 357.
+- Nos 12 projetos reais (`npm run mapa:reais`), nenhuma chamada fica sem alvo.
+- **Falta, e depende do usuário:**
+  - rodar o E2E num VS Code real (`npm run test:e2e -w shieldepy`);
+  - abrir um projeto à mão para ver o aviso da M6;
+  - subir a branch.
+- **Próximos passos possíveis:**
+  - injeção por contêiner (`typedi`/`Container.get`, o bulletproof);
+  - Fastify/Koa (F1/F2);
+  - Sequelize/Knex (F6);
+  - o caos rodar nos projetos Mongoose/TypeORM: o contrato (C2) e a injeção de falha no banco, que hoje é só `pg`.
+
 **Atenção: duas linhas de trabalho separadas.** A branch local `feat/demo-tcc` (E6 — DB_Chaos, a demo do TCC e os botões "Ver grafo" e "Rodar testes de caos") saiu do `297c964` e **não está no GitHub nem na `main`**. A `main` seguiu por outra linha (R, Q, C1). Juntar as duas é decisão do usuário: há conflito previsível entre o "Testar Caos" da R3 e o botão "Rodar testes de caos" da `feat/demo-tcc`.
 
 **Onde estávamos em 2026-10-09:** E1–E5, V1–V3, **R** (jornada do usuário e release) e **Q** (qualidade no projeto real) estão **todas mergeadas na `main`** (`03351c1`, PRs #1–#8). A etapa atual é a **C — caos utilizável**, na branch `feat/caos-utilizavel`, criada a partir da `main`. **A C1 parou no meio em 2026-10-09:** o último item do Registro diz o que foi feito e a ordem para retomar. Leia, nesta ordem:
@@ -90,7 +103,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
 | C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
-| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1–M5 ✅; falta a M6 (fluxo do plugin) |
+| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | M1–M6 ✅; falta conferir a M6 num VS Code real e o usuário subir a branch |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
@@ -821,6 +834,20 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     | nest-realworld | TS, NestJS, TypeORM | 100% | 0 | 0 | 21 | 20 | 41 |
 
     **Nenhuma chamada sem alvo** nos 12. As chamadas por nome que sobram são de valores postos em tempo de execução (`req.flash`, `req.logout`, `req.user`), parâmetros de callback (`builder` do Redux, `.then((u) => ...)`) e mocks do sinon. O único projeto sem operações é o bulletproof (contêiner do `typedi`).
+- 2026-10-13: **Desempenho conferido.**
+  - O `assignsRequire` da M5b varria o escopo a cada referência a `let x;`, o que é quadrático: o `test/user.test.js` do hackathon (2 mil linhas) levava 1,6 s. Agora é uma varredura por árvore (`WeakMap` pela `Tree`): 0,66 s, contra 0,62 s na `main` antes da etapa M.
+  - O hackathon inteiro indexa em ~4,8 s (3,9 s na `main`). A topologia leva 0,3 s.
+- 2026-10-13: **M6 concluída (o plugin conta o que mapeou e oferece o próximo passo).**
+  - `summarizeMap` (`apps/vscode/src/workspace/mapSummary.ts`) monta a topologia uma vez, sem reindexar, e resume: arquivos, rotas, sensíveis, operações, % de chamadas provadas e as sem prova.
+  - **Ao terminar a indexação inicial**, a extensão:
+    - grava o resumo no log (`[mapa] ...`);
+    - põe na dica da barra de status ("Mapa: 20 rota(s), 19 sensível(is), 100% das chamadas provadas");
+    - **uma vez por projeto** (`workspaceState`), mostra o aviso "ShielDepy: 39 arquivo(s) mapeado(s): 20 rota(s), 19 sensível(is) a testar, 100% das chamadas provadas", com **Ver o mapa do sistema** e, se houver rota sensível, **Testar caos nas rotas**. Sem rota reconhecida, o aviso diz quais frameworks o mapa lê.
+  - Nada disso roda no modo de teste (o E2E não muda). Textos nos 4 idiomas.
+  - Com o walkthrough da R2, o fluxo de quem instala fica: abrir o projeto → o mapa sai sozinho, com o resumo → Ver o mapa / Testar caos.
+  - Suíte **357** (+2 em `apps/vscode/test/mapSummary.test.ts`).
+  - `dist/extension.js`: 672 KB (era ~640 KB, pelas regras novas do core; o LangGraph continua fora).
+  - **Não conferido num VS Code real** (combinado de não abrir VS Code sem perguntar): falta rodar o E2E (`npm run test:e2e -w shieldepy`) e abrir um projeto à mão para ver o aviso.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -986,7 +1013,7 @@ A topologia desses três últimos mostrou o resto do que falta (ver as tarefas).
 - **M3. Mongoose como I/O.** ✅ Concluída em 2026-10-13 (ver o registro); entrou junto o handler embrulhado (`catchAsync(fn)`). `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)
 - **M4. Rotas por decorators:** ✅ Concluída em 2026-10-13 (ver o registro), com o TypeORM como I/O. `routing-controllers` (`@JsonController('/users')` + `@Get('/:id')`) e NestJS (`@Controller` + `@Get`). O tsboiler dá 0 rotas. (É a F4, adiantada.)
 - **M5. Mais projetos medidos e um roteiro para repetir a medição.** ✅ Concluída em 2026-10-13: M5a e M5b (correções), 12 projetos e o `npm run mapa:reais` (ver o registro). Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
-- **M6. Fluxo do plugin "instalar e rodar".** Ao abrir o projeto, o plugin mapeia sozinho e mostra um resumo (rotas, operações, cobertura, onde o mapa é fraco), com o próximo passo (diagnosticar). Conferir o que a R1/R2 já entregam antes de mexer.
+- **M6. Fluxo do plugin "instalar e rodar".** ✅ Concluída em 2026-10-13 (ver o registro); falta conferir num VS Code real (E2E e um projeto aberto à mão). Ao abrir o projeto, o plugin mapeia sozinho e mostra um resumo (rotas, operações, cobertura, onde o mapa é fraco), com o próximo passo (diagnosticar). Conferir o que a R1/R2 já entregam antes de mexer.
 
 ### Limitações conhecidas (anotadas, não são bug)
 - **Métodos de instância do Mongoose:** resolvem quando o documento é seguível (`const user = await User.findById(id)`, `new User(b).save()`, `.exec()`). Ficam por nome (heurística) quando o valor vem de fora da função: `req.user.transform()`, o parâmetro de `.then((user) => ...)` ou de `users.map((u) => ...)`.

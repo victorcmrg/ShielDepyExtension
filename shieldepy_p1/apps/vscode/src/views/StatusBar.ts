@@ -5,6 +5,7 @@ import { config } from '../config';
 import { CMD } from '../constants';
 import { t } from '../i18n';
 import type { AuthService } from '../services/AuthService';
+import type { MapSummary } from '../workspace/mapSummary';
 
 /**
  * Item da barra de status: mostra de relance se a extensão está liberada, analisando, e quantos
@@ -13,6 +14,8 @@ import type { AuthService } from '../services/AuthService';
 export class StatusBar implements vscode.Disposable {
   private readonly item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   private readonly disposables: vscode.Disposable[];
+  /** O que o mapa achou na indexação inicial (vai na dica). */
+  private map: MapSummary | undefined;
 
   constructor(
     private readonly auth: AuthService,
@@ -32,6 +35,11 @@ export class StatusBar implements vscode.Disposable {
     this.render();
   }
 
+  setMap(map: MapSummary): void {
+    this.map = map;
+    this.render();
+  }
+
   private render(): void {
     if (!config.statusBarEnabled()) {
       this.item.hide();
@@ -43,6 +51,7 @@ export class StatusBar implements vscode.Disposable {
     const me = this.auth.getCachedMe();
     const who = me ? me.companyName : t('sbLocalTip');
     const aiOff = this.auth.companyAiBlock() ? `\n${t('sbAiOff')}` : '';
+    const map = this.map ? `\n${t('sbMap', { routes: this.map.routes, sensitive: this.map.sensitive, proven: this.map.proven })}` : '';
 
     if (!config.analysisEnabled()) {
       this.item.text = `$(shield) ${t('sbPaused')}`;
@@ -58,7 +67,7 @@ export class StatusBar implements vscode.Disposable {
           ? '$(shield) ShielDepy $(check)'
           : `$(shield) $(error) ${error}  $(warning) ${warning}  $(info) ${info}`;
       const trigger = config.analysisTrigger() === 'onSave' ? t('sbTriggerOnSave') : t('sbTriggerOnType');
-      this.item.tooltip = `${who}\n${t('sbActiveTip', { trigger, n: total })}${aiOff}`;
+      this.item.tooltip = `${who}\n${t('sbActiveTip', { trigger, n: total })}${map}${aiOff}`;
       if (error > 0) this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     }
     this.item.show();
