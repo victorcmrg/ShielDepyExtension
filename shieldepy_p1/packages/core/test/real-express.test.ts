@@ -536,3 +536,113 @@ describe('M5b — desestruturação exportada, hooks do Mongoose e `require` atr
     expect(site(graph, f, 'userController.getUser').targets).toEqual([symbolId(graph, 'getUser', svc)]);
   });
 });
+
+// M4: rotas por decorator (routing-controllers e NestJS) e o TypeORM como I/O. O
+// express-typescript-boilerplate dava 0 rotas; o nestjs-realworld-example-app, idem.
+describe('M4 — rotas por decorator e TypeORM', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const topologyOf = () => buildTopology(graph, buildSystemGraph(graph, [], fx.dir), fx.dir);
+  const describeRoute = (id: string) => {
+    const r = topologyOf().routes.find((x) => x.id === id);
+    if (!r) throw new Error(`rota ${id} não encontrada`);
+    return [r.handlers.map((h) => h.label).join(' → '), ...r.operations.map((o) => `${o.kind} ${o.target} ${o.operation}`), ...r.tags.map((t) => t.tag)];
+  };
+
+  it('routing-controllers: `@JsonController` antes do `export`, verbos no método e repositório `extends Repository<Pet>`', () => {
+    indexFile(graph, fx, 'src/models/Pet.ts', 'export class Pet { id: string; name: string; }\n');
+    indexFile(
+      graph,
+      fx,
+      'src/repositories/PetRepository.ts',
+      "import { EntityRepository, Repository } from 'typeorm';\nimport { Pet } from '../models/Pet';\n@EntityRepository(Pet)\nexport class PetRepository extends Repository<Pet> {}\n"
+    );
+    indexFile(
+      graph,
+      fx,
+      'src/services/PetService.ts',
+      [
+        "import { PetRepository } from '../repositories/PetRepository';",
+        "import { Pet } from '../models/Pet';",
+        'export class PetService {',
+        '  constructor(private petRepository: PetRepository) {}',
+        '  public find(): Promise<Pet[]> { return this.petRepository.find(); }',
+        '  public async rename(id: string, name: string) { const pet = await this.petRepository.findOne(id); pet.name = name; return this.petRepository.save(pet); }',
+        '}',
+      ].join('\n')
+    );
+    indexFile(
+      graph,
+      fx,
+      'src/controllers/PetController.ts',
+      [
+        "import { Body, Get, JsonController, Param, Put } from 'routing-controllers';",
+        "import { PetService } from '../services/PetService';",
+        '@JsonController(\'/pets\')',
+        'export class PetController {',
+        '  constructor(private petService: PetService) {}',
+        '  @Get()',
+        '  public find() { return this.petService.find(); }',
+        "  @Put('/:id')",
+        "  public rename(@Param('id') id: string, @Body() body: { name: string }) { return this.petService.rename(id, body.name); }",
+        '}',
+      ].join('\n')
+    );
+    expect(findExpressRoutes(graph).routes.map(show)).toEqual(['GET /pets: PetController.find', 'PUT /pets/:id: PetController.rename']);
+    expect(describeRoute('PUT /pets/:id')).toEqual(['PetController.rename', 'db_read Pet findOne', 'db_write Pet save', 'no-transaction', 'read-then-write']);
+  });
+
+  it('NestJS: `@Controller`, `setGlobalPrefix`, `Repository<Cat>` injetado e `getRepository(Cat)`; classe sem `@Controller` não é rota', () => {
+    indexFile(graph, fx, 'src/cat.entity.ts', 'export class Cat { id: number; name: string; }\n');
+    indexFile(
+      graph,
+      fx,
+      'src/cats.service.ts',
+      [
+        "import { Injectable } from '@nestjs/common';",
+        "import { InjectRepository } from '@nestjs/typeorm';",
+        "import { Repository, getRepository } from 'typeorm';",
+        "import { Cat } from './cat.entity';",
+        '@Injectable()',
+        'export class CatsService {',
+        '  constructor(@InjectRepository(Cat) private readonly cats: Repository<Cat>) {}',
+        '  findAll() { return this.cats.find(); }',
+        '  count() { return getRepository(Cat).count(); }',
+        '}',
+      ].join('\n')
+    );
+    indexFile(
+      graph,
+      fx,
+      'src/cats.controller.ts',
+      [
+        "import { Controller, Get, Post } from '@nestjs/common';",
+        "import { CatsService } from './cats.service';",
+        "@Controller('cats')",
+        'export class CatsController {',
+        '  constructor(private readonly catsService: CatsService) {}',
+        '  @Get()',
+        '  findAll() { return this.catsService.findAll(); }',
+        "  @Get('count')",
+        '  count() { return this.catsService.count(); }',
+        '}',
+        'export class NotAController {',
+        "  @Post('x')",
+        '  x() {}',
+        '}',
+      ].join('\n')
+    );
+    indexFile(graph, fx, 'src/main.ts', "import { NestFactory } from '@nestjs/core';\nasync function bootstrap() { const app = await NestFactory.create({}); app.setGlobalPrefix('api'); }\n");
+    expect(findExpressRoutes(graph).routes.map(show)).toEqual(['GET /api/cats: CatsController.findAll', 'GET /api/cats/count: CatsController.count']);
+    expect(describeRoute('GET /api/cats')).toEqual(['CatsController.findAll', 'db_read Cat find']);
+    expect(describeRoute('GET /api/cats/count')).toEqual(['CatsController.count', 'db_read Cat count']);
+  });
+});

@@ -37,7 +37,7 @@ const USAGE = `uso:
                                                      mapa do sistema: código + regras + cobertura
                                                      (--html gera um visualizador interativo, offline)
   shieldepy topology <pasta> [--json] [--surface] [--out <arquivo>] [--html <arquivo>]
-                                                     rotas Express, operações de I/O em ordem e tags de risco
+                                                     rotas (Express, NestJS, routing-controllers), operações de I/O em ordem e tags de risco
                                                      (--surface: só o recorte que vai para a IA)
   shieldepy diff    <pasta> --base <ref> [--json] [--html <arquivo>]
                                                      o que mudou na estrutura do código desde o merge-base com <ref>

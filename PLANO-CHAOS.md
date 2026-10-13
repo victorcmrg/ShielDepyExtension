@@ -89,7 +89,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
 | Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
 | C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
-| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1, M2 e M3 ✅ |
+| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | em andamento: M1–M4 ✅, M5 em andamento |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 
@@ -775,6 +775,29 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
      - As 45 por nome que sobram: `req.flash`/`req.logout`/`req.user.x()` (o passport e um middleware põem no `req` em tempo de execução), mocks do sinon e o parâmetro `builder` do Redux. Ficam por nome, marcadas, porque não há como provar estaticamente.
   - O mapa continua igual em qualquer ordem de indexação nos 10 projetos conferidos.
   - Suíte **353** (+3).
+- 2026-10-13: **M4 concluída (rotas por decorator e TypeORM como I/O).**
+  - **Decorators:** a chamada de um decorator ganhou `decorates` (o símbolo decorado).
+    - Decorator de classe antes ou depois do `export` vale para a classe.
+    - Decorator de método fica antes do método, como irmão no `class_body`.
+  - **Rotas** (`decoratorRoutes`, em `routes.ts`), para `routing-controllers` e `@nestjs/common`:
+    - `@Controller('cats')` / `@JsonController('/pets')` / `@Controller({ path })` na classe dão o prefixo;
+    - `@Get/@Post/@Put/@Patch/@Delete/@Head/@Options/@All` no método dão o verbo e o caminho, e o handler é o próprio método;
+    - `app.setGlobalPrefix('api')` literal entra; o `routePrefix` do `routing-controllers` vindo de variável de ambiente, não;
+    - método com verbo numa classe sem `@Controller` não é rota.
+  - **TypeORM** (`via: 'typeorm'`): a entidade é o alvo, lida do **argumento genérico**. O símbolo de classe ganhou `extendsArg` e `fieldArgs`, e o `CodeGraph.entityOf` olha:
+    - o campo `private repo: Repository<User>` (padrão do Nest);
+    - o repositório próprio `extends Repository<Pet>` (subindo pelas bases);
+    - `getRepository(Pet)`. Para isso, a chamada que produz um receptor passou a levar os argumentos (`withArgs`).
+  - **Operações do TypeORM:**
+    - leitura: `find*`, `count*`, `exist*`, `sum/average/minimum/maximum`;
+    - escrita: `save`, `insert`, `update`, `upsert`, `delete`, `remove`, `soft*`, `restore`, `increment/decrement`, `clear`;
+    - SQL cru: `query('...')`, classificado pelo analisador léxico;
+    - transação: o `queryRunner` (`start/commit/rollbackTransaction`) conta; `transaction(cb)` só fica anotado.
+  - **Resultado:**
+    - `express-typescript-boilerplate` (routing-controllers + TypeORM): de 0 para **11 rotas, 10 sensíveis e 10 operações**;
+    - `lujakob/nestjs-realworld-example-app` (NestJS + TypeORM, clonado agora): **21 rotas com `/api`, 20 sensíveis, 41 operações**, 100% das chamadas provadas, com `read-then-write` em `ArticleEntity`, `UserEntity`, `Comment` e `FollowsEntity`.
+  - Suíte **355** (+2). A ajuda da CLI (`topology`) agora cita NestJS e `routing-controllers`.
+  - **Ainda não coberto:** a injeção por contêiner do `typedi` sem tipo no construtor (`Container.get(AuthService)` e `@Inject('userModel') private userModel: Models.UserModel` do bulletproof); o `routePrefix` vindo do `.env`.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -938,7 +961,7 @@ A topologia desses três últimos mostrou o resto do que falta (ver as tarefas).
   - `router.route('/x').get(a).post(b)`: hoje sai "caminho não literal" (19 rotas nos dois boilerplates).
   - Montagem em laço: `[{ path: '/auth', route: authRoute }].forEach((r) => router.use(r.path, r.route))` perde o prefixo e vira middleware opaco.
 - **M3. Mongoose como I/O.** ✅ Concluída em 2026-10-13 (ver o registro); entrou junto o handler embrulhado (`catchAsync(fn)`). `Model.find*/count*` = leitura e `create/save/update*/delete*/insertMany` = escrita, com o nome do modelo como alvo e `startSession`/`withTransaction` como transação. Sem isso, nenhuma rota de um projeto com Mongoose é "sensível". (É a parte Mongoose da F6, adiantada.)
-- **M4. Rotas por decorators:** `routing-controllers` (`@JsonController('/users')` + `@Get('/:id')`) e NestJS (`@Controller` + `@Get`). O tsboiler dá 0 rotas. (É a F4, adiantada.)
+- **M4. Rotas por decorators:** ✅ Concluída em 2026-10-13 (ver o registro), com o TypeORM como I/O. `routing-controllers` (`@JsonController('/users')` + `@Get('/:id')`) e NestJS (`@Controller` + `@Get`). O tsboiler dá 0 rotas. (É a F4, adiantada.)
 - **M5. Mais projetos medidos e um roteiro para repetir a medição.** Em andamento: M5a ✅ (11 projetos, tabela no registro); falta o script. Pelo menos 8 projetos de tamanhos diferentes na tabela acima, com as rotas conferidas à mão num recorte, e um script (`npm run mapa:reais`) que clona numa pasta temporária, mede e imprime a tabela.
 - **M6. Fluxo do plugin "instalar e rodar".** Ao abrir o projeto, o plugin mapeia sozinho e mostra um resumo (rotas, operações, cobertura, onde o mapa é fraco), com o próximo passo (diagnosticar). Conferir o que a R1/R2 já entregam antes de mexer.
 

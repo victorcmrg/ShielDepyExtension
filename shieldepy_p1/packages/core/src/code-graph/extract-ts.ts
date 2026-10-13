@@ -30,6 +30,9 @@ export interface SymbolInfo {
   implements?: string[];
   /** Classe: tipo de cada campo conhecido (campo tipado, `= new X()`, `constructor(private x: X)`, `this.x = ...`). */
   fields?: Record<string, TypeRef>;
+  /** Classe: o 1º argumento de tipo do `extends` (`extends Repository<Pet>` → Pet) e o de cada campo (`repo: Repository<User>` → User). */
+  extendsArg?: string;
+  fieldArgs?: Record<string, string>;
   /** Classe: nomes de TODAS as propriedades (com ou sem tipo conhecido) — `this.log()` com `log: (m) => void` é valor, não método. */
   properties?: string[];
   /** Função/método: tipo de retorno anotado (`Promise<T>` desembrulhado pra T). */
@@ -86,6 +89,8 @@ export interface RawCall {
    * `module.exports = function (app) { app.post(...) }` → 0. O valor vem de quem chama a função.
    */
   receiverParam?: number;
+  /** A chamada é um decorator (`@Get('/:id')`, `@Controller('cats')`) da classe ou do método com este id. */
+  decorates?: string;
   /**
    * Receptor que é o resultado de uma cadeia (`Router().use(a).use(b)`): quem guarda a cadeia
    * inteira (`const api = ...` → `api`; `export default ...` → `default`) ou, solta, a posição
@@ -135,15 +140,28 @@ function className(cls: SyntaxNode): string {
   return cls.childForFieldName('name')?.text ?? DEFAULT_EXPORT_NAME;
 }
 
-function heritage(cls: SyntaxNode): { extends?: TypeRef; implements?: string[] } {
+function heritage(cls: SyntaxNode): { extends?: TypeRef; extendsArg?: string; implements?: string[] } {
   const h = cls.namedChildren.find((c) => c.type === 'class_heritage');
   if (!h) return {};
   const ext = h.namedChildren.find((c) => c.type === 'extends_clause');
   const impl = h.namedChildren.find((c) => c.type === 'implements_clause');
   return {
     extends: typeRef(ext?.childForFieldName('value') ?? ext?.namedChildren[0]),
+    extendsArg: firstTypeArg(ext?.childForFieldName('type_arguments')),
     implements: impl?.namedChildren.map((c) => typeRef(c)?.at(-1)).filter((n): n is string => !!n),
   };
+}
+
+/** `<Pet>` / `<Pet, X>` → `Pet` (o 1º argumento de tipo, quando é um nome). */
+function firstTypeArg(args: SyntaxNode | null | undefined): string | undefined {
+  return args ? typeRef(args.namedChildren[0])?.at(-1) : undefined;
+}
+
+/** `Repository<User>` numa anotação → `User`. */
+function annotationTypeArg(annotation: SyntaxNode | null | undefined): string | undefined {
+  const inner = annotation?.type === 'type_annotation' ? annotation.namedChildren[0] : annotation;
+  if (inner?.type !== 'generic_type') return undefined;
+  return firstTypeArg(inner.childForFieldName('type_arguments') ?? inner.namedChildren.find((c) => c.type === 'type_arguments'));
 }
 
 function paramName(param: SyntaxNode): string | undefined {
@@ -152,16 +170,20 @@ function paramName(param: SyntaxNode): string | undefined {
 }
 
 /** Tipos dos campos de uma classe (o que permite seguir `this.repo.save()`) e o nome de todas as propriedades. */
-export function classFields(cls: SyntaxNode): { fields: Record<string, TypeRef>; properties: string[] } {
+export function classFields(cls: SyntaxNode): { fields: Record<string, TypeRef>; fieldArgs: Record<string, string>; properties: string[] } {
   const fields: Record<string, TypeRef> = {};
+  // `private repo: Repository<User>` → repo: User (a entidade de um repositório genérico do TypeORM)
+  const fieldArgs: Record<string, string> = {};
   const properties = new Set<string>();
   const body = cls.childForFieldName('body');
   for (const member of body?.namedChildren ?? []) {
     if (member.type === 'public_field_definition') {
       const name = member.childForFieldName('name')?.text;
       const type = typeRef(member.childForFieldName('type')) ?? constructedType(member.childForFieldName('value'));
+      const arg = annotationTypeArg(member.childForFieldName('type'));
       if (name) properties.add(name);
       if (name && type) fields[name] = type;
+      if (name && arg) fieldArgs[name] = arg;
     } else if (member.type === 'method_definition' && member.childForFieldName('name')?.text === 'constructor') {
       const paramTypes = new Map<string, TypeRef>();
       for (const p of member.childForFieldName('parameters')?.namedChildren ?? []) {
@@ -174,6 +196,8 @@ export function classFields(cls: SyntaxNode): { fields: Record<string, TypeRef>;
         if (!type) continue;
         paramTypes.set(name, type);
         if (isProperty) fields[name] = type;
+        const arg = annotationTypeArg(p.childForFieldName('type'));
+        if (isProperty && arg) fieldArgs[name] = arg;
       }
       walk(member.childForFieldName('body') ?? member, (n) => {
         if (n.type !== 'assignment_expression') return;
@@ -187,7 +211,7 @@ export function classFields(cls: SyntaxNode): { fields: Record<string, TypeRef>;
       });
     }
   }
-  return { fields, properties: [...properties] };
+  return { fields, fieldArgs, properties: [...properties] };
 }
 
 function isRequire(node: SyntaxNode): boolean {
@@ -286,7 +310,7 @@ function localType(from: SyntaxNode, name: string): LocalType {
           const constructed = constructedType(value);
           if (constructed) return constructed;
           const inner = unwrap(value);
-          const call = inner?.type === 'call_expression' ? describeCall(inner) : undefined;
+          const call = inner?.type === 'call_expression' ? withArgs(inner, describeCall(inner)) : undefined;
           return call ? { call } : null;
         }
       }
@@ -314,6 +338,13 @@ function receiverOf(node: SyntaxNode, chain: string[]): Pick<CallDesc, 'receiver
   return t ? { receiver: { type: t, rest } } : {};
 }
 
+/** A descrição de uma chamada que produz um receptor, com os argumentos: `getRepository(Pet).find()` diz a entidade. */
+function withArgs(node: SyntaxNode, desc: CallDesc | undefined): CallDesc | undefined {
+  if (!desc) return undefined;
+  const args = node.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment') ?? [];
+  return args.length > 0 ? { ...desc, args: args.map((a) => describeArg(a, new Map())) } : desc;
+}
+
 /** Descreve uma chamada (`f()`, `a.b.c()`, `x().y()`, `new X()`) do jeito que o grafo resolve. */
 function describeCall(node: SyntaxNode): CallDesc | undefined {
   const fn = node.childForFieldName(node.type === 'call_expression' ? 'function' : 'constructor');
@@ -334,7 +365,7 @@ function describeCall(node: SyntaxNode): CallDesc | undefined {
   if (object) return { name, object, ...receiverOf(node, object) };
   // `res.status(400).json()` / `(await repo.find()).map()` — o receptor é o resultado de outra chamada
   const inner = unwrap(objectNode);
-  const innerCall = inner?.type === 'call_expression' || inner?.type === 'new_expression' ? describeCall(inner) : undefined;
+  const innerCall = inner?.type === 'call_expression' || inner?.type === 'new_expression' ? withArgs(inner, describeCall(inner)) : undefined;
   return innerCall ? { name, receiver: { call: innerCall, rest: [] } } : { name, dynamic: true };
 }
 
@@ -585,9 +616,11 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
   walk(root, (node) => {
     if (CLASS_TYPES.has(node.type) && (node.type !== 'class' || node.parent?.type === 'variable_declarator')) {
       const h = heritage(node);
-      const { fields, properties } = classFields(node);
+      const { fields, fieldArgs, properties } = classFields(node);
       push(node, 'class', className(node), node, {
         extends: h.extends,
+        extendsArg: h.extendsArg,
+        fieldArgs: Object.keys(fieldArgs).length > 0 ? fieldArgs : undefined,
         implements: h.implements?.length ? h.implements : undefined,
         fields: Object.keys(fields).length > 0 ? fields : undefined,
         properties: properties.length > 0 ? properties : undefined,
@@ -779,12 +812,22 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
       const chainRoot = !desc.object && desc.receiver && 'call' in desc.receiver ? chainRootOf(node) : undefined;
       const loop = loopOf(node);
       const receiverParam = desc.object && scope === 'local' ? paramIndexOf(node, root) : undefined;
+      // `@Get('/:id')` no método / `@Controller('cats')` na classe (antes ou depois do `export`)
+      const holder = node.parent?.type === 'decorator' ? node.parent.parent : undefined;
+      let decorated = holder?.type === 'export_statement' ? holder.childForFieldName('declaration') : holder;
+      if (holder?.type === 'class_body') {
+        // no corpo da classe, os decorators de um método vêm antes dele, como irmãos
+        decorated = node.parent!.nextNamedSibling;
+        while (decorated?.type === 'decorator') decorated = decorated.nextNamedSibling;
+      }
+      const decorates = decorated ? symbolAt.get(decorated.startIndex)?.id : undefined;
       results.push({
         caller,
         ...desc,
         ...(chainRoot && { chainRoot }),
         ...(loop && { loop }),
         ...(receiverParam !== undefined && { receiverParam }),
+        ...(decorates && { decorates }),
         line: node.startPosition.row,
         column: node.startPosition.column,
         end: node.endIndex,

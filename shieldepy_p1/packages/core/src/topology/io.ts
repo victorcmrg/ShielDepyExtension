@@ -1,4 +1,4 @@
-// Operações de I/O, uma por chamada resolvida: banco (`pg`, Prisma, Mongoose) e API externa (`fetch`
+// Operações de I/O, uma por chamada resolvida: banco (`pg`, Prisma, Mongoose, TypeORM) e API externa (`fetch`
 // global, `axios`). A detecção é pelo pacote para o qual a chamada resolveu no grafo, não pelo
 // nome da variável — `db.query()` só é banco se `db` vier de `pg`.
 
@@ -117,6 +117,52 @@ function mongooseOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' 
   return { kind: read ? 'db_read' : 'db_write', target: site.model ?? 'dynamic', via: 'mongoose', operation: site.name };
 }
 
+const TYPEORM_READ = new Set([
+  'find',
+  'findBy',
+  'findOne',
+  'findOneBy',
+  'findOneOrFail',
+  'findOneByOrFail',
+  'findAndCount',
+  'findAndCountBy',
+  'findByIds',
+  'count',
+  'countBy',
+  'exist',
+  'exists',
+  'existsBy',
+  'sum',
+  'average',
+  'minimum',
+  'maximum',
+]);
+const TYPEORM_WRITE = new Set(['save', 'insert', 'update', 'upsert', 'delete', 'remove', 'softDelete', 'softRemove', 'restore', 'increment', 'decrement', 'clear']);
+/** `dataSource.transaction(cb)` / `manager.transaction(cb)` só ficam anotados; o `queryRunner` explícito conta. */
+const TYPEORM_TX: Record<string, string> = {
+  startTransaction: 'startTransaction',
+  commitTransaction: 'commitTransaction',
+  rollbackTransaction: 'abortTransaction',
+  transaction: 'transaction',
+};
+
+function typeormOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  const tx = TYPEORM_TX[site.name];
+  if (tx && Object.hasOwn(TYPEORM_TX, site.name)) return { kind: 'db_tx', target: 'transaction', via: 'typeorm', operation: tx };
+  if (site.name === 'query') {
+    // SQL cru: `manager.query('UPDATE ...')`
+    const sql = staticText(site.args[0]);
+    const s = sql ? classifySql(sql.text) : undefined;
+    if (!s || s.kind === 'unknown') return { kind: 'db_unknown', target: s?.table ?? 'dynamic', via: 'typeorm', operation: 'query' };
+    if (s.kind === 'tx') return { kind: 'db_tx', target: 'transaction', via: 'typeorm', operation: s.verb };
+    return { kind: s.kind === 'read' ? 'db_read' : 'db_write', target: s.table ?? 'dynamic', via: 'typeorm', operation: s.verb, ...(s.lock && { lock: true as const }) };
+  }
+  const read = TYPEORM_READ.has(site.name);
+  if (!read && !TYPEORM_WRITE.has(site.name)) return undefined;
+  // a entidade vem do grafo: `Repository<User>`, `extends Repository<Pet>` ou `getRepository(Pet)`
+  return { kind: read ? 'db_read' : 'db_write', target: site.model ?? 'dynamic', via: 'typeorm', operation: site.name };
+}
+
 /** Pacotes que exportam um `fetch` com a mesma assinatura do global. */
 const FETCH_PACKAGES = new Set(['node-fetch', 'undici', 'cross-fetch']);
 
@@ -153,6 +199,7 @@ export function ioOperationOf(site: CallSite, file: string): IoOperation | undef
   else if (site.outcome === 'external' && site.package === '@prisma/client') op = prismaOperation(site);
   else if (site.outcome === 'external' && site.package === 'axios') op = axiosOperation(site);
   else if (site.outcome === 'external' && site.package === 'mongoose') op = mongooseOperation(site);
+  else if (site.outcome === 'external' && site.package === 'typeorm') op = typeormOperation(site);
   else op = fetchOperation(site);
   return op && { ...op, symbol: site.caller, file, line: site.line };
 }

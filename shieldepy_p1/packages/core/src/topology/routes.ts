@@ -141,6 +141,62 @@ function routesOnParams(
   return { sites, mounts: mounts.filter((m) => live.has(m.child)) };
 }
 
+/** Pacotes de rotas por decorator: o controller dá o prefixo, o método dá o verbo e o caminho. */
+const DECORATOR_PACKAGES = new Set(['routing-controllers', '@nestjs/common']);
+const CONTROLLER_DECORATORS = new Set(['Controller', 'JsonController']);
+const VERB_DECORATORS: Record<string, HttpMethod> = { Get: 'GET', Post: 'POST', Put: 'PUT', Patch: 'PATCH', Delete: 'DELETE', Head: 'HEAD', Options: 'OPTIONS', All: 'ALL' };
+
+/**
+ * Rotas declaradas por decorator (`routing-controllers` e NestJS): `@JsonController('/pets')` /
+ * `@Controller('cats')` na classe e `@Get('/:id')` / `@Post()` no método. O handler é o próprio método;
+ * o prefixo global do Nest (`app.setGlobalPrefix('api')`) entra quando é literal.
+ */
+function decoratorRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSite }>, skipped: SkippedRoute[]): Route[] {
+  const fromPackage = (s: CallSite) => s.outcome === 'external' && DECORATOR_PACKAGES.has(s.package!);
+  const pathArg = (s: CallSite): string | undefined => {
+    const first = s.args[0];
+    if (!first) return '';
+    if (first.kind === 'string') return first.value;
+    // `@Controller({ path: 'cats' })`
+    const path = first.kind === 'object' ? first.texts?.path : undefined;
+    return path?.kind === 'string' ? path.value : undefined;
+  };
+  const prefixes = new Map<string, string>();
+  for (const { file, site } of all) {
+    if (!site.decorates || !fromPackage(site) || !CONTROLLER_DECORATORS.has(site.name)) continue;
+    const prefix = pathArg(site);
+    if (prefix === undefined) skipped.push({ file, line: site.line, reason: `@${site.name}: caminho não literal` });
+    else prefixes.set(site.decorates, prefix);
+  }
+  if (prefixes.size === 0) return [];
+  const globalPrefix = all.find(({ site }) => site.name === 'setGlobalPrefix' && site.outcome === 'external' && site.args[0]?.kind === 'string')?.site.args[0];
+
+  const routes: Route[] = [];
+  for (const { file, site } of all) {
+    const method = VERB_DECORATORS[site.name];
+    if (!method || !site.decorates || !fromPackage(site)) continue;
+    const attrs = graph.nodeAttributes(site.decorates);
+    if (!attrs || !isSymbolNode(attrs) || attrs.kind !== 'method' || !attrs.container) continue;
+    const prefix = prefixes.get(`${attrs.file}#${attrs.container}`);
+    if (prefix === undefined) continue; // classe sem `@Controller` (ou com caminho não literal, já avisado)
+    const path = pathArg(site);
+    if (path === undefined) {
+      skipped.push({ file, line: site.line, reason: `@${site.name}: caminho não literal` });
+      continue;
+    }
+    const full = joinPath(joinPath(joinPath('', globalPrefix?.kind === 'string' ? globalPrefix.value : ''), prefix), path);
+    routes.push({
+      id: `${method} ${full}`,
+      method,
+      path: full,
+      file,
+      line: site.line,
+      handlers: [{ symbols: [site.decorates], label: `${attrs.container}.${attrs.name}` }],
+    });
+  }
+  return routes;
+}
+
 /** Todas as rotas Express do grafo, com o caminho completo e a cadeia de handlers em ordem. */
 export function findExpressRoutes(graph: CodeGraph): RouteScan {
   const all: Array<{ file: string; site: CallSite }> = [];
@@ -231,6 +287,7 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
     climb(reg.router, joinPath('', reg.path), reg.handlers, reg, new Set());
   }
 
+  routes.push(...decoratorRoutes(graph, all, skipped));
   routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
   return { routes, skipped };
 }

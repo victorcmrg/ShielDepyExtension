@@ -557,6 +557,8 @@ export class CodeGraph {
           ...(sym.extends !== undefined && { extends: sym.extends }),
           ...(sym.implements !== undefined && { implements: sym.implements }),
           ...(sym.fields !== undefined && { fields: sym.fields }),
+          ...(sym.extendsArg !== undefined && { extendsArg: sym.extendsArg }),
+          ...(sym.fieldArgs !== undefined && { fieldArgs: sym.fieldArgs }),
           ...(sym.properties !== undefined && { properties: sym.properties }),
           ...(sym.returns !== undefined && { returns: sym.returns }),
         });
@@ -900,9 +902,10 @@ export class CodeGraph {
     const origin = call.object
       ? this.valueOrigin(fileId, call.object, call.scope, ctx)
       : call.chainRoot && { file: fileId, name: call.chainRoot.name, ...(call.chainRoot.scope === 'local' && { local: true as const }) };
-    // modelo do Mongoose por trás do receptor: o alvo da operação de banco (`User.findOne` → `User`)
+    // modelo (Mongoose) ou entidade (TypeORM) por trás do receptor: o alvo da operação de banco (`User.findOne` → `User`)
     const produced = r.outcome === 'callsExternal' ? this.modelOf(fileId, call, call.caller, ctx)?.produced : undefined;
-    const model = produced?.args?.[0]?.kind === 'string' ? produced.args[0].value : undefined;
+    const model =
+      produced?.args?.[0]?.kind === 'string' ? produced.args[0].value : r.outcome === 'callsExternal' ? this.entityOf(fileId, call, ctx) : undefined;
     const array = call.loop && this.valueOrigin(fileId, [call.loop.array], undefined, ctx);
     const loop = array && this.moduleInfo.get(array.file)?.arrays.has(array.name) ? { array, param: call.loop!.param } : undefined;
     return {
@@ -918,6 +921,7 @@ export class CodeGraph {
       ...(loop && { loop }),
       ...(model && { model }),
       ...(call.receiverParam !== undefined && { receiverParam: call.receiverParam }),
+      ...(call.decorates && { decorates: call.decorates }),
     };
   }
 
@@ -1113,6 +1117,43 @@ export class CodeGraph {
       return schema && { file: schema.file, produced: schema.produced, document: schema.kind === 'methods' };
     }
     return root && call.object!.length === 1 ? this.modelOfValue(fileId, [root], call.scope, ctx) : undefined;
+  }
+
+  /**
+   * Entidade do TypeORM por trás do receptor: o campo `private repo: Repository<User>` (NestJS), o repositório
+   * próprio (`class PetRepository extends Repository<Pet>`, num campo ou herdado) ou `getRepository(Pet)`.
+   */
+  private entityOf(fileId: string, call: CallDesc, ctx: ResolutionContext): string | undefined {
+    const receiver = call.receiver;
+    if (!receiver) return undefined;
+    if ('call' in receiver) {
+      const first = receiver.call.args?.[0];
+      return receiver.call.name === 'getRepository' && first?.kind === 'name' ? first.chain.at(-1) : undefined;
+    }
+    const attrsOf = (id: string) => {
+      const a = this.graph.hasNode(id) ? this.graph.getNodeAttributes(id) : undefined;
+      return a && isSymbolNode(a) ? a : undefined;
+    };
+    let classes = this.resolveType(fileId, receiver.type, ctx).classes;
+    for (const [i, field] of receiver.rest.entries()) {
+      if (i === receiver.rest.length - 1) {
+        const arg = classes.map((c) => attrsOf(c)?.fieldArgs?.[field]).find((a) => a);
+        if (arg) return arg;
+      }
+      classes = classes.flatMap((c) => this.fieldType(c, field, ctx, new Set())?.classes ?? []);
+    }
+    // o próprio repositório: `extends Repository<Pet>`, subindo pelas bases do projeto
+    const seen = new Set<string>();
+    while (classes.length > 0) {
+      const arg = classes.map((c) => attrsOf(c)?.extendsArg).find((a) => a);
+      if (arg) return arg;
+      for (const c of classes) seen.add(c);
+      classes = classes.flatMap((c) => {
+        const a = attrsOf(c);
+        return a?.extends ? this.resolveType(a.file, a.extends, ctx).classes.filter((b) => !seen.has(b)) : [];
+      });
+    }
+    return undefined;
   }
 
   private modelOfValue(fileId: string, chain: string[], scope: Scope | undefined, ctx: ResolutionContext): ModelRef | undefined {

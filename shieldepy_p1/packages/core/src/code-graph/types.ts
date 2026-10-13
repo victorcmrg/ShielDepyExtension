@@ -34,6 +34,9 @@ export interface SymbolNodeAttrs {
   extends?: string[];
   implements?: string[];
   fields?: Record<string, string[]>;
+  /** Classe: 1º argumento de tipo do `extends` (`Repository<Pet>` → Pet) e o de cada campo (`Repository<User>` → User). */
+  extendsArg?: string;
+  fieldArgs?: Record<string, string>;
   properties?: string[];
   /** Função/método: tipo de retorno anotado (`Promise<T>` → T); `[]` = anotado, mas não é classe. */
   returns?: string[];
@@ -185,6 +188,8 @@ export interface CallSite {
    * o valor vem de quem chama a função (`require('./routes/auth')(app)`). As rotas usam para montar.
    */
   receiverParam?: number;
+  /** A chamada é um decorator (`@Get('/:id')`, `@Controller('cats')`) do símbolo com este id (o método ou a classe). */
+  decorates?: string;
 }
 
 export function isSymbolNode(attrs: NodeAttrs): attrs is SymbolNodeAttrs {
