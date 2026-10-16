@@ -4,7 +4,7 @@
 // ref e o HEAD, como num PR: o que a `main` ganhou depois que a branch saiu não conta como mudança.
 
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
@@ -38,7 +38,8 @@ export interface BaseInfo {
 
 /** Resolve a base e lista o que mudou na pasta (commitado, não commitado e arquivo novo). */
 export async function baseInfo(dir: string, ref: string): Promise<BaseInfo & { top: string; rel: string }> {
-  const abs = path.resolve(dir);
+  // o git devolve o caminho real: no macOS `/var` é atalho para `/private/var`, e o relativo saía para fora do repositório
+  const abs = await realpath(path.resolve(dir)).catch(() => path.resolve(dir));
   const top = await git(abs, ['rev-parse', '--show-toplevel']);
   const rel = path.relative(top, abs).split(path.sep).join('/');
   await git(top, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => {
