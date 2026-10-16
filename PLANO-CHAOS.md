@@ -17,7 +17,8 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
 - **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
-- **L2 (C#) não começou**: o usuário vai fazer depois. O único estudo feito foi ler a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator vai usar:
+- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. Depois vêm a L3 (rotas), a L4 (I/O) e, em seguida, o Java (etapa J, a escrever).
+- Para a L2 foi lida a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator usa:
   - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
   - `class_declaration` com `bases: base_list` e `attribute_list`;
   - `field_declaration` → `variable_declaration` (`type`); `property_declaration`; `constructor_declaration` / `method_declaration` com `parameters`;
@@ -993,6 +994,27 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     4. **`npm run demo:verificar`:** chama `api.chaos.execute(<checkout>, { offline: true })`, o mesmo que o botão roda, sem as perguntas.
   - Suíte **365** (357 + os da E6 e da demo). O `build:vscode` passa (`extension.js` com 679 KB).
   - **Não conferido num VS Code real:** o E2E e o `demo:verificar`.
+- 2026-10-16: **L2 concluída (C#: símbolos, namespaces e chamadas).** Pedido do usuário: "crie os adaptadores para C# e após isso Java".
+  - **`extract-csharp.ts`** (só Tree-sitter): classes, structs e records (com o namespace), métodos, construtores (o nome é o da classe), funções locais e os callbacks de endpoint (`app.MapGet("/x", ...)`, em qualquer lugar) e de topo (Program.cs). Interface, enum e delegate não viram símbolo, como no TS.
+  - **Receptor por tipo:** variável local tipada, `var x = new X()`, `var x = chamada()` (pelo retorno, com `Task<T>` desembrulhado), parâmetro (inclusive de lambda), campo e propriedade (`_repo.Save()` = `this._repo.Save()`), injeção pelo construtor (`_db = db;`), `this`/`base`, estático (`OrderService.Create()`), qualificado (`App.Util.Fmt.Do()`) e chamada sem receptor dentro da classe. `nameof` não é chamada; delegate em campo ou variável não é método.
+  - **Atributos** viram chamadas `decorates`, como os decorators do TS (é o que a L3 usa para as rotas).
+  - **Resolução por namespace (CodeGraph):**
+    - o frontend devolve o `NamespaceScope` do arquivo: os namespaces visíveis (o próprio e os de cima, os `using`), os aliases (`using Svc = ...`) e os `global using`;
+    - cada classe guarda o `namespace`, e o índice `typesNamed` (nome simples → classes) resolve um nome pelo que o arquivo enxerga: simples, qualificado (absoluto ou relativo a um visível) ou alias;
+    - **religação:** quem resolveu um nome pelo índice fica em `typeDependents` e religa quando uma classe com esse nome entra, sai ou muda; um `global using` novo ou removido religa todo arquivo C#. Há teste de ordem de indexação.
+    - `new X()` tem resolução própria (`RawCall.ctor`): o construtor de `X`, a classe sem construtor, o pacote ou nativo.
+    - receptor qualificado: o tipo é o maior prefixo que resolve; o resto são membros (`OrderService.Instance.Do()`).
+  - **Base × interface:** a 1ª base vira `extends` só se não for interface declarada no arquivo nem seguir a convenção `I` + maiúscula; todas entram em `implements`. A base é resolvida **sem** cair nas implementações (`resolveType(..., implementers = false)`, também para o TS, onde não muda nada: os 361 testes de antes passam).
+  - **Tipos de fora** (`CSHARP_EXTERNAL_TYPES`): `DbContext`/`DbSet` → EF Core, `HttpClient` → `System.Net.Http`, `ControllerBase` e os atributos de rota → ASP.NET Core MVC, `WebApplication` → `Microsoft.AspNetCore.Builder`, `IEndpointRouteBuilder` → Routing, conexões ADO.NET (`IDbConnection`, Npgsql, SqlClient...). Viram ligações de import para o pacote, e os especificadores de um arquivo C# são sempre pacotes (`linkPackages`). O resto (BCL, LINQ, `ILogger`, `Results`) é nativo e não conta na cobertura.
+  - `obj/` (saída de build do .NET) entrou nas pastas ignoradas.
+  - **Exemplo `examples/pedidos-aspnet`:** o checkout do `checkout-express` em ASP.NET Core + EF Core, com os mesmos defeitos (corrida no estoque, falha parcial). No `graph`: 9 arquivos, **100% das chamadas provadas** (9 resolvidas, 17 para pacotes, nenhuma por nome nem sem alvo). As chamadas do EF Core saem com a entidade do `DbSet<T>` (`model=Order`).
+  - **Limitações (anotadas, não são bug):**
+    - construtor primário (`class X(IDep d)`, C# 12): a gramática do `tree-sitter-wasms` 0.1.13 não lê, e a classe sai com um nó de erro. Os parâmetros dele ficam sem tipo;
+    - métodos de extensão do projeto (`order.Validate()` com `static void Validate(this Order o)`) ficam sem alvo; `using static` não abre membros;
+    - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
+    - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
+  - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-16: **Correção à parte (`git-base.ts`):** no macOS, o `/var` é atalho para `/private/var`, e o `path.relative` entre a pasta e o topo do repositório (que o git devolve pelo caminho real) saía para fora dele. Os 8 testes de `diff.test.ts` falhavam no Mac; agora a pasta passa por `realpath` antes.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -1164,7 +1186,7 @@ O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só exist
 
 ### Tarefas
 - **L1. Motor por linguagem.** ✅ Concluída em 2026-10-16. `LanguageFrontend` (`code-graph/frontend.ts`: extensões, `parse`, `extract → { símbolos, módulo, valueCalls, chamadas, topHash }`); o `tsFrontend` embrulha os extratores de antes; o `CodeGraph` escolhe pela extensão; o `onParsed` diz a linguagem (a extensão só tira regras de TS da árvore de TS). Os 365 testes passam sem mudança.
-- **L2. C#: símbolos, namespaces e chamadas.**
+- **L2. C#: símbolos, namespaces e chamadas.** ✅ Concluída em 2026-10-16 (ver o registro).
   - Classes, interfaces, structs e records, métodos, construtores, campos e propriedades com tipo, e parâmetros.
   - Receptor por tipo: campo, parâmetro, `var x = new X()`, `this`/`base`, estático `Tipo.M()`, chamada sem receptor dentro da classe.
   - Injeção pelo construtor com interface → implementações.

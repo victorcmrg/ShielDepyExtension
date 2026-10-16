@@ -7,7 +7,8 @@ import { CodeGraph } from './CodeGraph';
 // `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa;
 // `.vscode-test`: o VS Code que o @vscode/test-electron baixa para os testes E2E (milhares de arquivos JS);
 // `vendor`/`bower_components`: bibliotecas de terceiros copiadas; `build`, `coverage`, `.next`, `.nuxt`,
-// `.svelte-kit`, `.turbo`, `.cache`, `.output`: saídas de build e de ferramenta (Q1 do plano).
+// `.svelte-kit`, `.turbo`, `.cache`, `.output`: saídas de build e de ferramenta (Q1 do plano);
+// `obj`: saída de build do .NET, com `.cs` gerado (etapa L).
 export const IGNORED_DIRS = new Set([
   'node_modules',
   'dist',
@@ -25,6 +26,7 @@ export const IGNORED_DIRS = new Set([
   '.turbo',
   '.cache',
   '.output',
+  'obj',
 ]);
 
 /**

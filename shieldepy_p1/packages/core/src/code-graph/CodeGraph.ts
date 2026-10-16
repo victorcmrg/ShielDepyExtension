@@ -6,7 +6,7 @@ import { findCycleThrough } from './cycles';
 import type { ImportBinding, ModuleInfo } from './extract-module';
 import { looksGenerated } from './generated';
 import type { CallDesc, RawArg, RawCall, Scope, TypeRef } from './extract-ts';
-import { tsFrontend, type LanguageFrontend, type LanguageId } from './frontend';
+import { csharpFrontend, tsFrontend, type LanguageFrontend, type LanguageId, type NamespaceScope } from './frontend';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
@@ -33,13 +33,18 @@ import {
 /** Chamado com a árvore de cada arquivo de código recém-parseado, antes de ela ser liberada. */
 export type ParsedListener = (file: { id: string; fsPath: string; language: LanguageId; root: import('./parser').SyntaxNode }) => void;
 
-export const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.html', '.htm', '.css'];
+export const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.cs', '.html', '.htm', '.css'];
 
 type G = Graph<NodeAttrs, EdgeAttrs>;
 
 export interface WebParsers {
   html?: GrammarParser;
   css?: GrammarParser;
+}
+
+/** Gramáticas das linguagens além de TS/JS (etapa L). Sem uma delas, os arquivos dela ficam fora do mapa. */
+export interface LanguageParsers {
+  csharp?: GrammarParser;
 }
 
 /** Para onde um especificador de import de um arquivo aponta (já resolvido). */
@@ -88,6 +93,10 @@ interface ResolutionContext {
   bindings(fileId: string): Map<string, ImportBinding>;
   legacy(name: string): string[];
   implementers(iface: string): string[];
+  /** C#/Java: as classes do projeto com esse nome simples, em qualquer namespace (registra a dependência). */
+  typesNamed(name: string): string[];
+  /** C#/Java: os `global using` de todos os arquivos. */
+  globalUsings(): string[];
 }
 
 const EMPTY_COVERAGE: FileCoverage = { callsResolved: 0, callsHeuristic: 0, callsUnresolved: 0, callsExternal: 0 };
@@ -114,6 +123,11 @@ export class CodeGraph {
   // Quem resolveu algum tipo por `implements` (interface → classes). Esses arquivos não importam a
   // classe que implementa, então a religação por import não os alcança: religam por aqui.
   private interfaceDependents = new Map<string, Set<string>>();
+  // C#/Java: o que cada arquivo enxerga (namespaces/packages) e quem resolveu um nome de tipo pelo
+  // índice de classes. Não há import de arquivo para religar: quem dependeu de `OrderService` religa
+  // quando uma classe com esse nome entra, sai ou muda — sem isso o mapa dependeria da ordem.
+  private scopes = new Map<string, NamespaceScope>();
+  private typeDependents = new Map<string, Set<string>>();
   private readonly parsedListeners = new Set<ParsedListener>();
   private readonly resolver: ModuleResolver;
   /** Uma linguagem por extensão (TS/JS hoje); HTML e CSS têm caminho próprio (`web`). */
@@ -125,20 +139,22 @@ export class CodeGraph {
     private readonly parser: TsParser | undefined,
     private readonly host: Host,
     /** Gramáticas de HTML/CSS. Sem uma delas, arquivos daquele tipo ficam fora do grafo. */
-    private readonly web: WebParsers = {}
+    private readonly web: WebParsers = {},
+    private readonly languages: LanguageParsers = {}
   ) {
     this.resolver = new ModuleResolver(host);
     this.frontends = parser ? [tsFrontend(parser)] : [];
+    if (languages.csharp) this.frontends.push(csharpFrontend(languages.csharp));
   }
 
   static async create(wasmDir: string, host: Host): Promise<CodeGraph> {
-    const optional = (name: 'html' | 'css') =>
+    const optional = (name: 'html' | 'css' | 'c_sharp') =>
       GrammarParser.load(wasmDir, name).catch((err) => {
-        host.log(`[CodeGraph] gramática ${name} indisponível — arquivos .${name} ficam fora do grafo: ${err}`);
+        host.log(`[CodeGraph] gramática ${name} indisponível — os arquivos dela ficam fora do grafo: ${err}`);
         return undefined;
       });
-    const [ts, html, css] = await Promise.all([TsParser.load(wasmDir), optional('html'), optional('css')]);
-    return new CodeGraph(ts, host, { html, css });
+    const [ts, html, css, csharp] = await Promise.all([TsParser.load(wasmDir), optional('html'), optional('css'), optional('c_sharp')]);
+    return new CodeGraph(ts, host, { html, css }, { csharp });
   }
 
   /** false se a gramática de TS não carregou (ex: .wasm faltando) — o grafo fica sem código TS/JS. */
@@ -188,7 +204,8 @@ export class CodeGraph {
     this.resolver.invalidate();
     const touchedPackages = new Set<string>();
     for (const [fileId, info] of this.moduleInfo) {
-      if (!this.graph.hasNode(fileId)) continue;
+      // C#/Java: os especificadores são pacotes, não dependem de tsconfig
+      if (!this.graph.hasNode(fileId) || this.scopes.has(fileId)) continue;
       const attrs = this.graph.getNodeAttributes(fileId);
       if (attrs.kind !== 'file') continue;
       for (const e of this.graph.outEdges(fileId)) {
@@ -214,13 +231,15 @@ export class CodeGraph {
    * (verificação de fix) sem que a análise em background leia um estado falso (item 2.3).
    */
   fork(): CodeGraph {
-    const copy = new CodeGraph(this.parser, this.host, this.web);
+    const copy = new CodeGraph(this.parser, this.host, this.web, this.languages);
     copy.graph = this.graph.copy();
     copy.rawCalls = new Map([...this.rawCalls].map(([k, v]) => [k, v.map((c) => ({ ...c }))]));
     copy.moduleInfo = new Map(this.moduleInfo);
     copy.specTargets = new Map([...this.specTargets].map(([k, v]) => [k, new Map(v)]));
     copy.coverage = new Map(this.coverage);
     copy.interfaceDependents = new Map([...this.interfaceDependents].map(([k, v]) => [k, new Set(v)]));
+    copy.scopes = new Map(this.scopes);
+    copy.typeDependents = new Map([...this.typeDependents].map(([k, v]) => [k, new Set(v)]));
     copy.pendingImports = new Map(
       [...this.pendingImports].map(([k, v]) => [k, { fromPath: v.fromPath, specs: [...v.specs] }])
     );
@@ -235,6 +254,8 @@ export class CodeGraph {
     this.specTargets.clear();
     this.coverage.clear();
     this.interfaceDependents.clear();
+    this.scopes.clear();
+    this.typeDependents.clear();
     this.parsedListeners.clear();
   }
 
@@ -283,14 +304,18 @@ export class CodeGraph {
   removeFile(fsPath: string): void {
     const fileId = toFileId(fsPath);
     const implemented = this.implementedNames(fileId);
+    const classes = this.classNames(fileId);
+    const globals = this.scopes.get(fileId)?.global;
     this.clearFileContents(fileId);
     this.rawCalls.delete(fileId);
     this.pendingImports.delete(fileId);
     this.moduleInfo.delete(fileId);
     this.specTargets.delete(fileId);
     this.coverage.delete(fileId);
+    this.scopes.delete(fileId);
     if (this.graph.hasNode(fileId)) this.graph.dropNode(fileId);
     this.relinkInterfaceDependents(implemented, fileId);
+    this.relinkTypeDependents(classes, fileId, (globals?.length ?? 0) > 0);
   }
 
   hasFile(fileId: string): boolean {
@@ -548,7 +573,11 @@ export class CodeGraph {
     try {
       const root = tree.rootNode;
       const implementedBefore = this.implementedNames(fileId);
-      const { symbols, module, valueCalls, calls, topHash } = frontend.extract(root, fileId);
+      const classesBefore = this.classNames(fileId);
+      const globalsBefore = (this.scopes.get(fileId)?.global ?? []).join('|');
+      const { symbols, module, valueCalls, calls, topHash, scope } = frontend.extract(root, fileId);
+      if (scope) this.scopes.set(fileId, scope);
+      else this.scopes.delete(fileId);
       this.resetFileNode(fileId, { kind: 'file', path: fsPath, topHash });
       for (const sym of symbols) {
         this.graph.mergeNode(sym.id, {
@@ -567,13 +596,15 @@ export class CodeGraph {
           ...(sym.fieldArgs !== undefined && { fieldArgs: sym.fieldArgs }),
           ...(sym.properties !== undefined && { properties: sym.properties }),
           ...(sym.returns !== undefined && { returns: sym.returns }),
+          ...(sym.namespace !== undefined && { namespace: sym.namespace }),
         });
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
 
       const info: FileModule = { ...module, valueCalls };
       this.moduleInfo.set(fileId, info);
-      this.linkImports(fileId, fsPath, info.specs);
+      if (scope) this.linkPackages(fileId, info.specs);
+      else this.linkImports(fileId, fsPath, info.specs);
 
       this.rawCalls.set(fileId, calls);
       this.relinkCalls(fileId);
@@ -582,6 +613,10 @@ export class CodeGraph {
       this.relinkImporters(fileId);
       // ...e quem chega aqui por uma interface (`repo: IRepo` → `class PgRepo implements IRepo`) também.
       this.relinkInterfaceDependents(new Set([...implementedBefore, ...this.implementedNames(fileId)]), fileId);
+      // ...e, no C#/Java, quem resolveu pelo nome uma classe que este arquivo tinha ou passou a ter
+      // (um `global using` novo ou removido muda o que todo arquivo enxerga)
+      const globalsChanged = globalsBefore !== (scope?.global ?? []).join('|');
+      this.relinkTypeDependents(new Set([...classesBefore, ...this.classNames(fileId)]), fileId, globalsChanged);
 
       for (const listener of this.parsedListeners) {
         try {
@@ -711,6 +746,19 @@ export class CodeGraph {
     else this.pendingImports.delete(fileId);
   }
 
+  /** C#/Java: cada especificador é um pacote (os tipos de fora que o arquivo usa), nunca um arquivo. */
+  private linkPackages(fileId: string, specs: string[]): void {
+    const targets = new Map<string, SpecTarget>();
+    for (const spec of specs) {
+      const pkg = packageNodeId(spec);
+      this.graph.mergeNode(pkg, { kind: 'package', name: spec });
+      this.graph.mergeEdgeWithKey(`${fileId}->imports->${pkg}`, fileId, pkg, { type: 'imports' });
+      targets.set(spec, { kind: 'package', name: spec });
+    }
+    this.specTargets.set(fileId, targets);
+    this.pendingImports.delete(fileId);
+  }
+
   private addImportEdge(fileId: string, targetFsPath: string): void {
     const target = toFileId(targetFsPath);
     if (!this.graph.hasNode(target)) {
@@ -782,6 +830,8 @@ export class CodeGraph {
     const bindingCache = new Map<string, Map<string, ImportBinding>>();
     let legacyScope: Map<string, string[]> | undefined;
     let implementers: Map<string, string[]> | undefined;
+    let typeIndex: Map<string, string[]> | undefined;
+    let globals: string[] | undefined;
     return {
       bindings: (file) => {
         let map = bindingCache.get(file);
@@ -812,6 +862,22 @@ export class CodeGraph {
         }
         return implementers.get(iface) ?? [];
       },
+      typesNamed: (name) => {
+        let dependents = this.typeDependents.get(name);
+        if (!dependents) this.typeDependents.set(name, (dependents = new Set()));
+        dependents.add(fileId);
+        if (!typeIndex) {
+          typeIndex = new Map();
+          this.graph.forEachNode((id, attrs) => {
+            if (attrs.kind !== 'class' || attrs.namespace === undefined) return;
+            const list = typeIndex!.get(attrs.name);
+            if (list) list.push(id);
+            else typeIndex!.set(attrs.name, [id]);
+          });
+        }
+        return typeIndex.get(name) ?? [];
+      },
+      globalUsings: () => (globals ??= [...new Set([...this.scopes.values()].flatMap((s) => s.global ?? []))]),
     };
   }
 
@@ -828,6 +894,8 @@ export class CodeGraph {
       if (target?.kind === 'package') return this.external(target.name);
       return target?.kind === 'file' ? this.found(this.resolveExport(target.id, 'default')) : UNRESOLVED;
     }
+
+    if (call.ctor && call.receiver && 'type' in call.receiver) return this.resolveConstructor(fileId, call.receiver.type, ctx);
 
     if (call.receiver) {
       const byType =
@@ -1129,12 +1197,14 @@ export class CodeGraph {
    * Entidade do TypeORM por trás do receptor: o campo `private repo: Repository<User>` (NestJS), o repositório
    * próprio (`class PetRepository extends Repository<Pet>`, num campo ou herdado) ou `getRepository(Pet)`.
    */
-  private entityOf(fileId: string, call: CallDesc, ctx: ResolutionContext): string | undefined {
+  private entityOf(fileId: string, call: CallDesc, ctx: ResolutionContext, depth = 0): string | undefined {
     const receiver = call.receiver;
     if (!receiver) return undefined;
     if ('call' in receiver) {
       const first = receiver.call.args?.[0];
-      return receiver.call.name === 'getRepository' && first?.kind === 'name' ? first.chain.at(-1) : undefined;
+      if (receiver.call.name === 'getRepository') return first?.kind === 'name' ? first.chain.at(-1) : undefined;
+      // C#/Java: a consulta encadeada (`_db.Orders.Where(...).FirstOrDefaultAsync()`) é da entidade do começo da cadeia
+      return this.scopes.has(fileId) && depth < 16 ? this.entityOf(fileId, receiver.call, ctx, depth + 1) : undefined;
     }
     const attrsOf = (id: string) => {
       const a = this.graph.hasNode(id) ? this.graph.getNodeAttributes(id) : undefined;
@@ -1156,7 +1226,7 @@ export class CodeGraph {
       for (const c of classes) seen.add(c);
       classes = classes.flatMap((c) => {
         const a = attrsOf(c);
-        return a?.extends ? this.resolveType(a.file, a.extends, ctx).classes.filter((b) => !seen.has(b)) : [];
+        return a?.extends ? this.resolveType(a.file, a.extends, ctx, false).classes.filter((b) => !seen.has(b)) : [];
       });
     }
     return undefined;
@@ -1221,6 +1291,16 @@ export class CodeGraph {
    * (ex: `Map`, `Error`) — quem chamou tenta outro caminho.
    */
   private resolveMember(fileId: string, type: TypeRef, rest: string[], method: string, ctx: ResolutionContext): CallResolution | undefined {
+    // C#/Java: `App.Util.Fmt.Do()` / `OrderService.Instance.Do()` — o tipo é o maior prefixo que resolve; o resto são membros
+    if (type.length > 1 && this.scopes.has(fileId)) {
+      for (let k = type.length; k >= 1; k--) {
+        const r = this.resolveType(fileId, type.slice(0, k), ctx);
+        if (r.classes.length === 0 && !r.external) continue;
+        rest = [...type.slice(k), ...rest];
+        type = type.slice(0, k);
+        break;
+      }
+    }
     const resolved = this.resolveType(fileId, type, ctx);
     if (resolved.external) return this.external(resolved.external);
     if (resolved.classes.length === 0) {
@@ -1281,7 +1361,7 @@ export class CodeGraph {
     // `this.log()` com `log` propriedade (função guardada num campo): é valor, não método do projeto
     if (attrs.properties?.includes(name)) return { ids: [], unknownBase: true };
     if (!attrs.extends) return { ids, unknownBase: false };
-    const base = this.resolveType(attrs.file, attrs.extends, ctx);
+    const base = this.resolveType(attrs.file, attrs.extends, ctx, false);
     if (base.external) return { ids: [], external: base.external, unknownBase: false };
     if (base.classes.length === 0) return { ids: [], unknownBase: true };
     const merged = { ids: [] as string[], external: undefined as string | undefined, unknownBase: false };
@@ -1302,7 +1382,7 @@ export class CodeGraph {
     const declared = attrs.fields?.[field];
     if (declared) return this.resolveType(attrs.file, declared, ctx);
     if (!attrs.extends) return undefined;
-    for (const base of this.resolveType(attrs.file, attrs.extends, ctx).classes) {
+    for (const base of this.resolveType(attrs.file, attrs.extends, ctx, false).classes) {
       const t = this.fieldType(base, field, ctx, seen);
       if (t) return t;
     }
@@ -1313,7 +1393,9 @@ export class CodeGraph {
    * Classe(s) que um nome de tipo representa no arquivo: import (inclusive `ns.Tipo`), classe
    * local, ou — se for uma interface — as classes que a implementam.
    */
-  private resolveType(fileId: string, type: TypeRef, ctx: ResolutionContext): ResolvedType {
+  private resolveType(fileId: string, type: TypeRef, ctx: ResolutionContext, implementers = true): ResolvedType {
+    // `implementers = false` na base de uma classe: no C# a 1ª base pode ser uma interface, e cair nas
+    // implementações dela faria a classe "herdar" os métodos das irmãs.
     const [head, ...tail] = type;
     if (!head) return { classes: [] };
     const binding = ctx.bindings(fileId).get(head);
@@ -1324,11 +1406,51 @@ export class CodeGraph {
       const exported = binding.imported === '*' ? tail[0] : binding.imported;
       if (!exported) return { classes: [] };
       const classes = this.resolveExport(target.id, exported).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
-      return { classes: classes.length > 0 ? classes : ctx.implementers(exported) };
+      return { classes: classes.length > 0 || !implementers ? classes : ctx.implementers(exported) };
     }
+    const scope = this.scopes.get(fileId);
+    if (scope) return this.resolveScopedType(scope, type, ctx, implementers);
     if (tail.length > 0) return { classes: [] };
     const local = this.topLevelByName(fileId, head).filter((id) => this.graph.getNodeAttribute(id, 'kind') === 'class');
-    return { classes: local.length > 0 ? local : ctx.implementers(head) };
+    return { classes: local.length > 0 || !implementers ? local : ctx.implementers(head) };
+  }
+
+  /**
+   * C#/Java: as classes que um nome de tipo representa pelos namespaces que o arquivo enxerga.
+   * `OrderService` → as de nome `OrderService` num namespace visível (o próprio e os de cima, os
+   * `using`, os `global using` e o global); `Services.OrderService` / `App.Services.OrderService` →
+   * qualificado, absoluto ou relativo a um visível; `Svc` com `using Svc = App.Services.OrderService;`.
+   */
+  private resolveScopedType(scope: NamespaceScope, type: TypeRef, ctx: ResolutionContext, implementers: boolean): ResolvedType {
+    const alias = Object.hasOwn(scope.aliases, type[0]!) ? scope.aliases[type[0]!] : undefined;
+    const full = alias ? [...alias.split('.'), ...type.slice(1)] : type;
+    const name = full.at(-1)!;
+    const qualifier = full.slice(0, -1).join('.');
+    const roots = alias ? [''] : ['', ...scope.visible, ...ctx.globalUsings()];
+    const wanted = new Set(qualifier ? roots.map((r) => (r ? `${r}.${qualifier}` : qualifier)) : roots);
+    const classes = ctx.typesNamed(name).filter((id) => {
+      const attrs = this.graph.getNodeAttributes(id);
+      return isSymbolNode(attrs) && attrs.namespace !== undefined && wanted.has(attrs.namespace);
+    });
+    if (classes.length > 0 || !implementers || full.length > 1) return { classes };
+    return { classes: ctx.implementers(name) };
+  }
+
+  /** C#/Java: `new X()` → o construtor de `X` (ou a classe, sem construtor declarado); tipo de pacote → externa; nativo → nada. */
+  private resolveConstructor(fileId: string, type: TypeRef, ctx: ResolutionContext): CallResolution {
+    const t = this.resolveType(fileId, type, ctx, false);
+    if (t.external) return this.external(t.external);
+    if (t.classes.length === 0) return NATIVE;
+    const targets = t.classes.flatMap((cls) => {
+      const a = this.graph.getNodeAttributes(cls);
+      if (!isSymbolNode(a)) return [];
+      const ctors = this.ownedSymbols(a.file).filter((id) => {
+        const m = this.graph.getNodeAttributes(id);
+        return isSymbolNode(m) && m.kind === 'method' && m.container === a.name && m.name === a.name;
+      });
+      return ctors.length > 0 ? ctors : [cls];
+    });
+    return { outcome: 'callsResolved', targets };
   }
 
   /**
@@ -1490,6 +1612,24 @@ export class CodeGraph {
       if (attrs.kind === 'class') for (const n of attrs.implements ?? []) names.add(n);
     }
     return names;
+  }
+
+  /** C#/Java: nomes das classes que o arquivo declara (o índice de tipos é por nome). */
+  private classNames(fileId: string): Set<string> {
+    const names = new Set<string>();
+    if (!this.scopes.has(fileId)) return names;
+    for (const id of this.ownedSymbols(fileId)) {
+      const attrs = this.graph.getNodeAttributes(id);
+      if (attrs.kind === 'class') names.add(attrs.name);
+    }
+    return names;
+  }
+
+  /** Religa quem resolveu algum destes nomes pelo índice de tipos — ou, com `all`, todo arquivo C#/Java. */
+  private relinkTypeDependents(names: Set<string>, changedFile: string, all = false): void {
+    const files = new Set<string>(all ? this.scopes.keys() : []);
+    for (const name of names) for (const f of this.typeDependents.get(name) ?? []) files.add(f);
+    for (const f of files) if (f !== changedFile && this.graph.hasNode(f)) this.relinkCalls(f);
   }
 
   private relinkInterfaceDependents(interfaces: Set<string>, changedFile: string): void {

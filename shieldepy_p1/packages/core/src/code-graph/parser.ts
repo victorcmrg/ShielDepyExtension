@@ -61,6 +61,11 @@ export class GrammarParser {
     return new GrammarParser(parser, name);
   }
 
+  /** Quem chama é dono da árvore e tem que chamar `tree.delete()` (o grafo de C#/Java guarda a árvore até extrair). */
+  parse(text: string): Tree {
+    return this.parser.parse(text);
+  }
+
   withTree<T>(text: string, fn: (root: SyntaxNode) => T): T {
     const tree = this.parser.parse(text);
     try {

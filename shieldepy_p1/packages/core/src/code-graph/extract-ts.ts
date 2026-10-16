@@ -37,6 +37,8 @@ export interface SymbolInfo {
   properties?: string[];
   /** Função/método: tipo de retorno anotado (`Promise<T>` desembrulhado pra T). */
   returns?: TypeRef;
+  /** Classe de C#/Java: o namespace (ou package) onde ela é declarada — a resolução é por ele, não por import de arquivo. */
+  namespace?: string;
 }
 
 /**
@@ -91,6 +93,8 @@ export interface RawCall {
   receiverParam?: number;
   /** A chamada é um decorator (`@Get('/:id')`, `@Controller('cats')`) da classe ou do método com este id. */
   decorates?: string;
+  /** C#/Java: `new X()` — o alvo é o construtor de `X` (ou a própria classe, sem construtor declarado). O tipo vem em `receiver`. */
+  ctor?: true;
   /**
    * Receptor que é o resultado de uma cadeia (`Router().use(a).use(b)`): quem guarda a cadeia
    * inteira (`const api = ...` → `api`; `export default ...` → `default`) ou, solta, a posição
@@ -694,7 +698,7 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
  * arquivo (callbacks inline iguais, `const f` em funções diferentes) ganham `~2`, `~3` pela
  * ordem no arquivo. A linha continua em `startLine`.
  */
-function stableIds(symbols: SymbolInfo[], fileId: string): void {
+export function stableIds(symbols: SymbolInfo[], fileId: string): void {
   const seen = new Map<string, number>();
   for (const s of [...symbols].sort((a, b) => a.startIndex - b.startIndex)) {
     const base = `${fileId}#${s.container ? `${s.container}.${s.name}` : s.name}`;

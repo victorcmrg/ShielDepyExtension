@@ -40,6 +40,8 @@ export interface SymbolNodeAttrs {
   properties?: string[];
   /** Função/método: tipo de retorno anotado (`Promise<T>` → T); `[]` = anotado, mas não é classe. */
   returns?: string[];
+  /** Classe de C#/Java: namespace (ou package) onde é declarada. */
+  namespace?: string;
 }
 
 /** Dependência externa (`pg`, `@prisma/client`, `node:fs`) — id `pkg:<nome>`. */
