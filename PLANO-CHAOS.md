@@ -17,7 +17,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
 - **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
-- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. Depois vêm a L3 (rotas), a L4 (I/O) e, em seguida, o Java (etapa J, a escrever).
+- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core). Depois vêm a L4 (I/O) e, em seguida, o Java (etapa J, a escrever).
 - Para a L2 foi lida a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator usa:
   - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
   - `class_declaration` com `bases: base_list` e `attribute_list`;
@@ -1014,6 +1014,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-16: **L3 concluída (rotas do ASP.NET Core).** Em `topology/routes.ts`, junto das do Express e dos decorators, com a mesma regra: só conta o que resolve para o pacote do ASP.NET Core.
+  - **Controllers:** `[Route]` na classe (um ou vários) e `[HttpGet]`/`[HttpPost]`/... e `[Route]` no método. `[controller]` = nome da classe sem `Controller`; `[action]` = nome do método sem `Async` (o padrão do ASP.NET Core). Template do método com `/` ou `~/` ignora o da classe. Verbo sem template usa o `[Route]` do método ou só o da classe; `[Route]` sem verbo vira `ALL`. Classe sem `[Route]` tem prefixo vazio. O caminho fica na sintaxe do ASP.NET (`{id:int}`), como está escrito.
+  - **Minimal APIs:** `MapGet`/`MapPost`/`MapPut`/`MapPatch`/`MapDelete` num receptor do `Microsoft.AspNetCore.Builder` ou `Routing` (o `app`, um grupo ou o `IEndpointRouteBuilder` de um método de extensão). O prefixo vem dos `MapGroup("/x")` de onde o receptor veio, em cadeia (`app.MapGroup("/a").MapGet(...)`) ou por variável (`var api = app.MapGroup("/api")`), aninhados. Para isso o `CallSite` ganhou o `receiverCall` (só em C#/Java): a chamada que produziu o receptor, com os argumentos.
+  - Caminho não literal (`[HttpGet(Constantes.Rota)]`, `app.MapGet(path, ...)`) vai para `skipped`, como no Express.
+  - Um atributo `HttpGet` declarado no próprio projeto não é rota (resolve para a classe do projeto, não para o pacote).
+  - No exemplo: `POST /api/Checkout` (controller) e `GET /api/orders/{id}` (minimal API, handler inline).
+  - **Limitações:** um grupo recebido como parâmetro (`MapOrders(this RouteGroupBuilder g)`) fica sem o prefixo de quem o criou, porque a chamada do método de extensão resolve para o pacote, não para o método do projeto. O roteamento por convenção (`MapControllerRoute("{controller}/{action}")`) não é lido. `MapMethods` fica de fora.
+  - Suíte **376** (+4).
 - 2026-10-16: **Correção à parte (`git-base.ts`):** no macOS, o `/var` é atalho para `/private/var`, e o `path.relative` entre a pasta e o topo do repositório (que o git devolve pelo caminho real) saía para fora dele. Os 8 testes de `diff.test.ts` falhavam no Mac; agora a pasta passa por `realpath` antes.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
@@ -1191,7 +1199,7 @@ O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só exist
   - Receptor por tipo: campo, parâmetro, `var x = new X()`, `this`/`base`, estático `Tipo.M()`, chamada sem receptor dentro da classe.
   - Injeção pelo construtor com interface → implementações.
   - Testes de unidade e um exemplo `examples/pedidos-aspnet`.
-- **L3. Rotas do ASP.NET Core** (controllers e minimal APIs).
+- **L3. Rotas do ASP.NET Core** (controllers e minimal APIs). ✅ Concluída em 2026-10-16 (ver o registro).
 - **L4. I/O do C#** (EF Core, `HttpClient`, Dapper).
 - **L5. Projetos C# reais no `mapa:reais`:** 3 a 5 do GitHub, fixados por commit, na tabela.
 - **L6. Extensão:** indexar `.cs` no grafo (hoje só regras), o mapa e o resumo da M6. O caos em C# **não** entra nesta etapa: os testes gerados são Vitest/supertest, e para C# seriam xUnit/`WebApplicationFactory`, outra etapa.

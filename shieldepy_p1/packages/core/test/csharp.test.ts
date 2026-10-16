@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { indexFiles, isSymbolNode, listSourceFiles, packageNodeId, silentHost, toFileId, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
+import { findExpressRoutes, indexFiles, isSymbolNode, listSourceFiles, packageNodeId, silentHost, toFileId, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
 import { createGraph, Fixture, indexFile, REPO_ROOT } from './helpers';
 
 /** Id do método `name` da classe `container` no arquivo. */
@@ -316,5 +316,142 @@ describe('L2 — o exemplo examples/pedidos-aspnet', () => {
     const charge = graph.callsOf(methodId(graph, 'StripeGateway', 'ChargeAsync', file('Gateways/StripeGateway.cs')));
     expect(charge.find((c) => c.name === 'PostAsync')).toMatchObject({ outcome: 'external', package: 'System.Net.Http', args: [{ kind: 'string', value: 'https://api.stripe.com/v1/charges' }, expect.anything()] });
     expect(graph.stats).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
+  });
+});
+
+describe('L3 — rotas do ASP.NET Core', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const routesOf = () => findExpressRoutes(graph);
+  const summary = () =>
+    routesOf()
+      .routes.map((r) => `${r.id} → ${r.handlers.map((h) => h.label).join(', ')}`)
+      .sort();
+
+  it('controllers: `[Route]` na classe com `[controller]`, verbos com e sem template, `/` absoluto, `[Route]` no método e `[action]`', () => {
+    indexFile(
+      graph,
+      fx,
+      'OrdersController.cs',
+      `using Microsoft.AspNetCore.Mvc;
+namespace App.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class OrdersController : ControllerBase
+{
+    [HttpGet]
+    public IActionResult List() => Ok();
+
+    [HttpGet("{id:int}")]
+    public IActionResult Get(int id) => Ok();
+
+    [HttpPost("/checkout")]
+    public IActionResult Checkout() => Ok();
+
+    [HttpPut]
+    [Route("{id}/status")]
+    public IActionResult SetStatus(int id) => Ok();
+
+    [Route("[action]")]
+    public async Task<IActionResult> ExportAsync() => Ok();
+}
+
+public class HealthController : ControllerBase
+{
+    [HttpGet("health")]
+    public IActionResult Ping() => Ok();
+}
+
+[Route("v1/items")]
+[Route("v2/items")]
+public class ItemsController : Controller
+{
+    [HttpDelete("{id}")]
+    public IActionResult Remove(int id) => Ok();
+}
+`
+    );
+    expect(summary()).toEqual([
+      'ALL /api/Orders/Export → OrdersController.ExportAsync',
+      'DELETE /v1/items/{id} → ItemsController.Remove',
+      'DELETE /v2/items/{id} → ItemsController.Remove',
+      'GET /api/Orders → OrdersController.List',
+      'GET /api/Orders/{id:int} → OrdersController.Get',
+      'GET /health → HealthController.Ping',
+      'POST /checkout → OrdersController.Checkout',
+      'PUT /api/Orders/{id}/status → OrdersController.SetStatus',
+    ]);
+  });
+
+  it('um atributo `HttpGet` do próprio projeto não é rota (não resolve para o ASP.NET Core)', () => {
+    indexFile(
+      graph,
+      fx,
+      'Fake.cs',
+      `namespace App;
+public class HttpGet : System.Attribute { public HttpGet(string t) { } }
+public class C { [HttpGet("x")] public void M() { } }
+`
+    );
+    expect(routesOf().routes).toEqual([]);
+  });
+
+  it('minimal APIs: `MapGet` no app, grupos aninhados, cadeia, grupo de métodos, extensão com `IEndpointRouteBuilder` e caminho não literal', () => {
+    const handlers = indexFile(graph, fx, 'Handlers.cs', 'namespace App;\npublic static class Handlers { public static string Create(int x) => ""; }\n');
+    indexFile(
+      graph,
+      fx,
+      'Program.cs',
+      `using App;
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+app.MapGet("/ping", () => "pong");
+var api = app.MapGroup("/api");
+var v1 = api.MapGroup("v1");
+v1.MapPost("/orders", Handlers.Create);
+app.MapGroup("/admin").MapDelete("/users/{id}", (int id) => id);
+var dynamicPath = "/x";
+app.MapGet(dynamicPath, () => 1);
+app.Run();
+`
+    );
+    indexFile(
+      graph,
+      fx,
+      'Endpoints.cs',
+      `namespace App;
+public static class Endpoints
+{
+    public static void MapReports(this IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/reports", () => "r");
+    }
+}
+`
+    );
+    expect(summary()).toEqual([
+      'DELETE /admin/users/{id} → <inline>',
+      'GET /ping → <inline>',
+      'GET /reports → <inline>',
+      'POST /api/v1/orders → Handlers.Create',
+    ]);
+    const post = routesOf().routes.find((r) => r.method === 'POST')!;
+    expect(post.handlers[0]!.symbols).toEqual([methodId(graph, 'Handlers', 'Create', handlers)]);
+    expect(routesOf().skipped.map((s) => s.reason)).toEqual(['MapGet: caminho não literal']);
+  });
+
+  it('o exemplo pedidos-aspnet: `POST /api/Checkout` (controller) e `GET /api/orders/{id}` (minimal API)', async () => {
+    const root = path.join(REPO_ROOT, 'examples', 'pedidos-aspnet');
+    await indexFiles(graph, await listSourceFiles(root), silentHost);
+    expect(summary()).toEqual(['GET /api/orders/{id} → <inline>', 'POST /api/Checkout → CheckoutController.Create']);
   });
 });

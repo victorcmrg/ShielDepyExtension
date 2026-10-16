@@ -24,6 +24,7 @@ import {
   type GraphStats,
   type HtmlUsage,
   type NodeAttrs,
+  type ReceiverCall,
   type SymbolContextEntry,
   type SymbolCycle,
   type SymbolNodeAttrs,
@@ -982,6 +983,7 @@ export class CodeGraph {
       produced?.args?.[0]?.kind === 'string' ? produced.args[0].value : r.outcome === 'callsExternal' ? this.entityOf(fileId, call, ctx) : undefined;
     const array = call.loop && this.valueOrigin(fileId, [call.loop.array], undefined, ctx);
     const loop = array && this.moduleInfo.get(array.file)?.arrays.has(array.name) ? { array, param: call.loop!.param } : undefined;
+    const receiverCall = this.scopes.has(fileId) ? this.receiverCallOf(fileId, call, ctx) : undefined;
     return {
       caller: call.caller,
       line: call.line!,
@@ -996,7 +998,16 @@ export class CodeGraph {
       ...(model && { model }),
       ...(call.receiverParam !== undefined && { receiverParam: call.receiverParam }),
       ...(call.decorates && { decorates: call.decorates }),
+      ...(receiverCall && { receiverCall }),
     };
+  }
+
+  /** C#/Java: a cadeia de chamadas que produziu o receptor (ver `CallSite.receiverCall`). */
+  private receiverCallOf(fileId: string, call: CallDesc, ctx: ResolutionContext, depth = 0): ReceiverCall | undefined {
+    if (!call.receiver || !('call' in call.receiver) || depth > 16) return undefined;
+    const inner = call.receiver.call;
+    const next = this.receiverCallOf(fileId, inner, ctx, depth + 1);
+    return { name: inner.name, args: (inner.args ?? []).map((a) => this.resolveArg(fileId, a, ctx)), ...(next && { receiverCall: next }) };
   }
 
   /**

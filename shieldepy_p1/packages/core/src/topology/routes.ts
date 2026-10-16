@@ -3,7 +3,7 @@
 // (`app.use('/api', router)`), seguindo `router` até onde ele é declarado (import, barrel).
 
 import type { CodeGraph } from '../code-graph/CodeGraph';
-import { isSymbolNode, type CallArg, type CallSite, type ValueOrigin } from '../code-graph/types';
+import { isSymbolNode, type CallArg, type CallSite, type ReceiverCall, type ValueOrigin } from '../code-graph/types';
 import type { HttpMethod, Route, RouteHandler, RouteScan, SkippedRoute } from './types';
 
 const VERBS: Record<string, HttpMethod> = {
@@ -288,8 +288,168 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   }
 
   routes.push(...decoratorRoutes(graph, all, skipped));
+  routes.push(...aspNetControllerRoutes(graph, all, skipped));
+  routes.push(...minimalApiRoutes(graph, all, skipped));
   routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
   return { routes, skipped };
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+// ---------------------------------------------------------------------------------------------
+// ASP.NET Core (etapa L3). Como no Express, um atributo de rota só conta se resolve para o pacote do
+// ASP.NET Core, e um `MapGet` só se o receptor é dele — nunca qualquer método chamado `MapGet`.
+
+const ASPNET_MVC = 'Microsoft.AspNetCore.Mvc';
+const ASPNET_MINIMAL = new Set(['Microsoft.AspNetCore.Builder', 'Microsoft.AspNetCore.Routing']);
+const VERB_ATTRIBUTES: Record<string, HttpMethod> = {
+  HttpGet: 'GET',
+  HttpPost: 'POST',
+  HttpPut: 'PUT',
+  HttpPatch: 'PATCH',
+  HttpDelete: 'DELETE',
+  HttpHead: 'HEAD',
+  HttpOptions: 'OPTIONS',
+};
+const MAP_VERBS: Record<string, HttpMethod> = { MapGet: 'GET', MapPost: 'POST', MapPut: 'PUT', MapPatch: 'PATCH', MapDelete: 'DELETE' };
+
+/** Junta os segmentos com uma barra só, começando por `/`. */
+function slashJoin(...parts: string[]): string {
+  const segs = parts.flatMap((p) => p.split('/')).filter((seg) => seg !== '');
+  return `/${segs.join('/')}`;
+}
+
+/** `api/[controller]` + `{id}` → `/api/checkout/{id}`; template do método com `/` ou `~/` no começo ignora o da classe. */
+export function aspNetPath(prefix: string, template: string): string {
+  if (template.startsWith('~/')) return slashJoin(template.slice(2));
+  if (template.startsWith('/')) return slashJoin(template);
+  return slashJoin(prefix, template);
+}
+
+/** Troca `[controller]` e `[action]` (sem diferenciar maiúscula) pelos nomes; `[[` e `]]` são colchetes literais. */
+export function aspNetTokens(template: string, controller: string, action: string): string {
+  let out = '';
+  for (let i = 0; i < template.length; i++) {
+    const c = template[i]!;
+    if ((c === '[' || c === ']') && template[i + 1] === c) {
+      out += c;
+      i++;
+      continue;
+    }
+    const end = c === '[' ? template.indexOf(']', i) : -1;
+    if (end < 0) {
+      out += c;
+      continue;
+    }
+    const token = template.slice(i + 1, end).toLowerCase();
+    out += token === 'controller' ? controller : token === 'action' ? action : template.slice(i, end + 1);
+    i = end;
+  }
+  return out;
+}
+
+/**
+ * Rotas de controller: `[Route("api/[controller]")]` na classe e `[HttpGet("{id}")]` / `[HttpPost]` /
+ * `[Route("x")]` no método. `[controller]` é o nome da classe sem `Controller`; `[action]` é o do método
+ * sem `Async` (o padrão do ASP.NET Core). Um `[Route]` no método sem verbo aceita qualquer verbo (`ALL`).
+ */
+function aspNetControllerRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSite }>, skipped: SkippedRoute[]): Route[] {
+  const attributes = all.filter(({ site }) => site.decorates && site.outcome === 'external' && site.package === ASPNET_MVC);
+  if (attributes.length === 0) return [];
+  const template = (site: CallSite): string | undefined => {
+    const first = site.args[0];
+    return !first ? '' : first.kind === 'string' ? first.value : undefined;
+  };
+  const kindOf = (id: string) => {
+    const a = graph.nodeAttributes(id);
+    return a && isSymbolNode(a) ? a : undefined;
+  };
+
+  const classRoutes = new Map<string, string[]>();
+  const methodRoutes = new Map<string, Array<{ file: string; site: CallSite; template: string }>>();
+  const methodVerbs = new Map<string, Array<{ file: string; site: CallSite; method: HttpMethod; template?: string }>>();
+  const push = <T>(map: Map<string, T[]>, key: string, value: T) => {
+    const list = map.get(key);
+    if (list) list.push(value);
+    else map.set(key, [value]);
+  };
+  for (const { file, site } of attributes) {
+    const target = kindOf(site.decorates!);
+    const verb = VERB_ATTRIBUTES[site.name];
+    if (site.name !== 'Route' && !verb) continue;
+    const t = template(site);
+    if (t === undefined) {
+      skipped.push({ file, line: site.line, reason: `[${site.name}]: caminho não literal` });
+      continue;
+    }
+    if (target?.kind === 'class' && site.name === 'Route') push(classRoutes, site.decorates!, t);
+    else if (target?.kind === 'method' && site.name === 'Route') push(methodRoutes, site.decorates!, { file, site, template: t });
+    else if (target?.kind === 'method' && verb) push(methodVerbs, site.decorates!, { file, site, method: verb, ...(site.args.length > 0 && { template: t }) });
+  }
+
+  const routes: Route[] = [];
+  for (const id of new Set([...methodVerbs.keys(), ...methodRoutes.keys()])) {
+    const attrs = kindOf(id)!;
+    const container = attrs.container ?? '';
+    const controller = container.endsWith('Controller') && container.length > 'Controller'.length ? container.slice(0, -'Controller'.length) : container;
+    const action = attrs.name.endsWith('Async') && attrs.name.length > 'Async'.length ? attrs.name.slice(0, -'Async'.length) : attrs.name;
+    const prefixes = classRoutes.get(`${attrs.file}#${container}`) ?? [''];
+    const own = methodRoutes.get(id) ?? [];
+    const verbs = methodVerbs.get(id) ?? [];
+    // cada verbo com o template dele; sem template, os `[Route]` do método (ou só o da classe)
+    const combos: Array<{ method: HttpMethod; template: string; file: string; line: number }> = verbs.length
+      ? verbs.flatMap((v) =>
+          v.template !== undefined
+            ? [{ method: v.method, template: v.template, file: v.file, line: v.site.line }]
+            : own.length
+              ? own.map((r) => ({ method: v.method, template: r.template, file: v.file, line: v.site.line }))
+              : [{ method: v.method, template: '', file: v.file, line: v.site.line }]
+        )
+      : own.map((r) => ({ method: 'ALL' as const, template: r.template, file: r.file, line: r.site.line }));
+    for (const combo of combos) {
+      for (const prefix of prefixes) {
+        const path = aspNetPath(aspNetTokens(prefix, controller, action), aspNetTokens(combo.template, controller, action));
+        routes.push({
+          id: `${combo.method} ${path}`,
+          method: combo.method,
+          path,
+          file: combo.file,
+          line: combo.line,
+          handlers: [{ symbols: [id], label: `${container}.${attrs.name}` }],
+        });
+      }
+    }
+  }
+  return routes;
+}
+
+/** Os prefixos dos `MapGroup("/x")` de onde o receptor veio, do mais externo ao mais interno; `undefined` se um não é literal. */
+function groupPrefixes(call: ReceiverCall | undefined): string[] | undefined {
+  const out: string[] = [];
+  for (let rc = call; rc; rc = rc.receiverCall) {
+    if (rc.name !== 'MapGroup') continue;
+    const first = rc.args[0];
+    if (first?.kind !== 'string') return undefined;
+    out.unshift(first.value);
+  }
+  return out;
+}
+
+/** Minimal APIs: `app.MapGet("/x", handler)`, com o prefixo dos grupos (`var api = app.MapGroup("/api")`). */
+function minimalApiRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSite }>, skipped: SkippedRoute[]): Route[] {
+  const routes: Route[] = [];
+  for (const { file, site } of all) {
+    const method = MAP_VERBS[site.name];
+    if (!method || site.outcome !== 'external' || !ASPNET_MINIMAL.has(site.package!)) continue;
+    const [first, ...rest] = site.args;
+    const prefixes = groupPrefixes(site.receiverCall);
+    if (first?.kind !== 'string' || !prefixes) {
+      skipped.push({ file, line: site.line, reason: `${site.name}: caminho não literal` });
+      continue;
+    }
+    const path = slashJoin(...prefixes, first.value);
+    const handlers = rest.map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
+    routes.push({ id: `${method} ${path}`, method, path, file, line: site.line, handlers });
+  }
+  return routes;
+}

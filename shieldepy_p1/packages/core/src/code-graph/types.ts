@@ -192,6 +192,18 @@ export interface CallSite {
   receiverParam?: number;
   /** A chamada é um decorator (`@Get('/:id')`, `@Controller('cats')`) do símbolo com este id (o método ou a classe). */
   decorates?: string;
+  /**
+   * C#/Java: a chamada que produziu o receptor — encadeada (`app.MapGroup("/api").MapGet(...)`) ou por uma
+   * variável (`var api = app.MapGroup("/api"); api.MapGet(...)`). É o que dá o prefixo de um grupo de rotas.
+   */
+  receiverCall?: ReceiverCall;
+}
+
+/** A chamada que produziu um receptor: o nome, os argumentos estáticos e, por sua vez, a que produziu o receptor dela. */
+export interface ReceiverCall {
+  name: string;
+  args: CallArg[];
+  receiverCall?: ReceiverCall;
 }
 
 export function isSymbolNode(attrs: NodeAttrs): attrs is SymbolNodeAttrs {
