@@ -17,7 +17,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
 - **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
-- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core). Depois vêm a L4 (I/O) e, em seguida, o Java (etapa J, a escrever).
+- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). Faltam a L5 (projetos C# reais) e a L6 (extensão); em seguida, o Java (etapa J, a escrever).
 - Para a L2 foi lida a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator usa:
   - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
   - `class_declaration` com `bases: base_list` e `attribute_list`;
@@ -1014,6 +1014,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-16: **L4 concluída (I/O do C#).** Em `topology/io.ts`, pela regra de sempre: a operação sai do pacote para o qual a chamada resolveu no grafo, nunca do nome da variável.
+  - **EF Core** (`via: 'efcore'`): leitura só no que materializa (`ToListAsync`, `First*`, `Single*`, `Any`, `Count`, `FindAsync`...; `Where`/`Include`/`OrderBy` só montam a consulta); escrita em `Add`/`Update`/`Remove`/`Attach` e `ExecuteUpdate`/`ExecuteDelete`; o alvo é a entidade do `DbSet<T>`, inclusive no fim de uma consulta encadeada (o `entityOf` segue o `receiverCall` em C#/Java). `SaveChanges` vira `db_tx` (`SaveChanges`); `BeginTransaction`/`Commit`/`Rollback` viram `startTransaction`/`commitTransaction`/`abortTransaction`, os nomes que o `sensitivityTags` já entende. SQL cru (`FromSqlRaw`, `ExecuteSqlRaw`...) pelo `classifySql`, com `FOR UPDATE`; o materializador depois de um `FromSqlRaw` não conta de novo.
+  - **Dapper** (`via: 'dapper'`): `Query*`/`Execute*` numa conexão ADO.NET (`IDbConnection`, Npgsql, SqlClient, MySqlConnector, Sqlite), com o SQL literal classificado; SQL que não é literal vira `db_unknown`.
+  - **HttpClient** (`via: 'httpclient'`): `GetAsync`/`PostAsync`/`SendAsync`/`*AsJsonAsync`..., inclusive o cliente do `IHttpClientFactory.CreateClient()`; o host vem da URL literal (relativa ou `SendAsync` → `dynamic`). **O timeout sai `unknown`:** o do `HttpClient` é do cliente (100 s por padrão), configurado fora da chamada (injeção, `AddHttpClient`), então o `no-timeout` não aparece no C#.
+  - **CodeGraph:** campo herdado de uma base de pacote (`_db.Database`, com `Db : DbContext`) é do pacote (só em C#/Java).
+  - **No exemplo:** `POST /api/Checkout` sai com as mesmas tags do `checkout-express` (corrida e `no-transaction` em `StockItem`, `write-after-api-call` em `Order` e `StockItem`, `external-io` no Stripe), menos o `no-timeout`; tudo `proven`.
+  - **O caos continua só JS/TS** (os testes gerados são Vitest + supertest). O `shieldepy chaos` (e o "Testar Caos" da extensão, que usa o mesmo comando) agora para com exit 2 e aponta o `shieldepy topology` quando a pasta não tem JS/TS; num repositório misto, as rotas de C#/Java ficam fora do caos, com um aviso.
+  - Suíte **380** (+3 do C#, +1 da CLI).
 - 2026-10-16: **L3 concluída (rotas do ASP.NET Core).** Em `topology/routes.ts`, junto das do Express e dos decorators, com a mesma regra: só conta o que resolve para o pacote do ASP.NET Core.
   - **Controllers:** `[Route]` na classe (um ou vários) e `[HttpGet]`/`[HttpPost]`/... e `[Route]` no método. `[controller]` = nome da classe sem `Controller`; `[action]` = nome do método sem `Async` (o padrão do ASP.NET Core). Template do método com `/` ou `~/` ignora o da classe. Verbo sem template usa o `[Route]` do método ou só o da classe; `[Route]` sem verbo vira `ALL`. Classe sem `[Route]` tem prefixo vazio. O caminho fica na sintaxe do ASP.NET (`{id:int}`), como está escrito.
   - **Minimal APIs:** `MapGet`/`MapPost`/`MapPut`/`MapPatch`/`MapDelete` num receptor do `Microsoft.AspNetCore.Builder` ou `Routing` (o `app`, um grupo ou o `IEndpointRouteBuilder` de um método de extensão). O prefixo vem dos `MapGroup("/x")` de onde o receptor veio, em cadeia (`app.MapGroup("/a").MapGet(...)`) ou por variável (`var api = app.MapGroup("/api")`), aninhados. Para isso o `CallSite` ganhou o `receiverCall` (só em C#/Java): a chamada que produziu o receptor, com os argumentos.
@@ -1200,7 +1208,7 @@ O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só exist
   - Injeção pelo construtor com interface → implementações.
   - Testes de unidade e um exemplo `examples/pedidos-aspnet`.
 - **L3. Rotas do ASP.NET Core** (controllers e minimal APIs). ✅ Concluída em 2026-10-16 (ver o registro).
-- **L4. I/O do C#** (EF Core, `HttpClient`, Dapper).
+- **L4. I/O do C#** (EF Core, `HttpClient`, Dapper). ✅ Concluída em 2026-10-16 (ver o registro).
 - **L5. Projetos C# reais no `mapa:reais`:** 3 a 5 do GitHub, fixados por commit, na tabela.
 - **L6. Extensão:** indexar `.cs` no grafo (hoje só regras), o mapa e o resumo da M6. O caos em C# **não** entra nesta etapa: os testes gerados são Vitest/supertest, e para C# seriam xUnit/`WebApplicationFactory`, outra etapa.
 

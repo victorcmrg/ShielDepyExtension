@@ -1393,8 +1393,11 @@ export class CodeGraph {
     const declared = attrs.fields?.[field];
     if (declared) return this.resolveType(attrs.file, declared, ctx);
     if (!attrs.extends) return undefined;
-    for (const base of this.resolveType(attrs.file, attrs.extends, ctx, false).classes) {
-      const t = this.fieldType(base, field, ctx, seen);
+    const base = this.resolveType(attrs.file, attrs.extends, ctx, false);
+    // C#/Java: campo herdado de uma base de pacote (`_db.Database` com `Db : DbContext`) é do pacote
+    if (base.external && this.scopes.has(attrs.file)) return { classes: [], external: base.external };
+    for (const b of base.classes) {
+      const t = this.fieldType(b, field, ctx, seen);
       if (t) return t;
     }
     return undefined;

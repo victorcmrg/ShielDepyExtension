@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { findExpressRoutes, indexFiles, isSymbolNode, listSourceFiles, packageNodeId, silentHost, toFileId, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
+import { buildSystemGraph, buildTopology, findExpressRoutes, indexFiles, ioOperationOf, isSymbolNode, listSourceFiles, packageNodeId, silentHost, toFileId, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
 import { createGraph, Fixture, indexFile, REPO_ROOT } from './helpers';
 
 /** Id do método `name` da classe `container` no arquivo. */
@@ -453,5 +453,151 @@ public static class Endpoints
     const root = path.join(REPO_ROOT, 'examples', 'pedidos-aspnet');
     await indexFiles(graph, await listSourceFiles(root), silentHost);
     expect(summary()).toEqual(['GET /api/orders/{id} → <inline>', 'POST /api/Checkout → CheckoutController.Create']);
+  });
+});
+
+describe('L4 — I/O do C# (EF Core, Dapper, HttpClient)', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  /** As operações de I/O de um método, na ordem, como `tipo alvo (via · operação)`. */
+  const opsOf = (container: string, name: string, fileId: string) =>
+    graph
+      .callsOf(methodId(graph, container, name, fileId))
+      .map((c) => ioOperationOf(c, fileId))
+      .filter((o) => o !== undefined)
+      .map((o) => `${o!.kind} ${o!.target} (${o!.via} · ${o!.operation ?? ''}${o!.lock ? ' · lock' : ''}${o!.timeout ? ' · timeout ' + o!.timeout : ''})`);
+
+  const CONTEXT = `using Microsoft.EntityFrameworkCore;
+namespace App.Data;
+public class Order { public int Id { get; set; } }
+public class Stock { public int Qty { get; set; } }
+public class Db : DbContext
+{
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<Stock> Stock => Set<Stock>();
+}
+`;
+
+  it('EF Core: só o que materializa é leitura; Add/Update/Remove e ExecuteDelete são escrita da entidade; SaveChanges e transação', () => {
+    indexFile(graph, fx, 'Db.cs', CONTEXT);
+    const repo = indexFile(
+      graph,
+      fx,
+      'Repo.cs',
+      `using Microsoft.EntityFrameworkCore;
+namespace App.Data;
+public class Repo
+{
+    private readonly Db _db;
+    public Repo(Db db) { _db = db; }
+    public async Task Run(int id)
+    {
+        using var tx = await _db.Database.BeginTransactionAsync();
+        var list = await _db.Orders.Where(o => o.Id > id).OrderBy(o => o.Id).ToListAsync();
+        var one = await _db.Orders.FindAsync(id);
+        _db.Stock.Update(new Stock());
+        _db.Orders.Remove(one!);
+        await _db.Orders.Where(o => o.Id == 0).ExecuteDeleteAsync();
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+    }
+    public async Task Raw()
+    {
+        await _db.Stock.FromSqlRaw("SELECT * FROM stock WHERE id = {0} FOR UPDATE", 1).ToListAsync();
+        await _db.Database.ExecuteSqlRawAsync("UPDATE stock SET qty = qty - 1");
+    }
+}
+`
+    );
+    expect(opsOf('Repo', 'Run', repo)).toEqual([
+      'db_tx transaction (efcore · startTransaction)',
+      'db_read Order (efcore · ToListAsync)',
+      'db_read Order (efcore · FindAsync)',
+      'db_write Stock (efcore · Update)',
+      'db_write Order (efcore · Remove)',
+      'db_write Order (efcore · ExecuteDeleteAsync)',
+      'db_tx transaction (efcore · SaveChanges)',
+      'db_tx transaction (efcore · commitTransaction)',
+    ]);
+    expect(opsOf('Repo', 'Raw', repo)).toEqual(['db_read stock (efcore · SELECT · lock)', 'db_write stock (efcore · UPDATE)']);
+  });
+
+  it('Dapper numa conexão ADO.NET (SQL literal classificado) e HttpClient (host da URL, inclusive pelo IHttpClientFactory)', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'Io.cs',
+      `using System.Data;
+using Dapper;
+using Npgsql;
+namespace App;
+public class Io
+{
+    private readonly IDbConnection _conn;
+    private readonly HttpClient _http;
+    private readonly IHttpClientFactory _factory;
+    public Io(IDbConnection conn, HttpClient http, IHttpClientFactory factory) { _conn = conn; _http = http; _factory = factory; }
+    public async Task Sql(int id)
+    {
+        await _conn.QueryFirstOrDefaultAsync<int>("SELECT qty FROM stock WHERE product_id = @id", new { id });
+        await _conn.ExecuteAsync("UPDATE stock SET qty = qty - 1 WHERE product_id = @id", new { id });
+        await using var conn = new NpgsqlConnection("x");
+        await conn.ExecuteAsync(GetSql());
+    }
+    public async Task Http(string token)
+    {
+        await _http.PostAsJsonAsync("https://api.stripe.com/v1/charges", new { token });
+        var client = _factory.CreateClient("correios");
+        await client.GetFromJsonAsync<object>($"https://api.correios.com.br/frete/{token}");
+        var res = await _http.GetAsync("/relativo");
+        await res.Content.ReadAsStringAsync();
+    }
+    private string GetSql() => "";
+}
+`
+    );
+    expect(opsOf('Io', 'Sql', f)).toEqual([
+      'db_read stock (dapper · SELECT)',
+      'db_write stock (dapper · UPDATE)',
+      'db_unknown dynamic (dapper · ExecuteAsync)',
+    ]);
+    expect(opsOf('Io', 'Http', f)).toEqual([
+      'api_call api.stripe.com (httpclient · PostAsJsonAsync · timeout unknown)',
+      'api_call api.correios.com.br (httpclient · GetFromJsonAsync · timeout unknown)',
+      'api_call dynamic (httpclient · GetAsync · timeout unknown)',
+    ]);
+  });
+
+  it('o exemplo pedidos-aspnet: as mesmas tags do checkout-express (corrida no estoque e falha parcial depois do Stripe)', async () => {
+    const root = path.join(REPO_ROOT, 'examples', 'pedidos-aspnet');
+    await indexFiles(graph, await listSourceFiles(root), silentHost);
+    const system = buildSystemGraph(graph, [], root);
+    const topology = buildTopology(graph, system, root);
+    const checkout = topology.routes.find((r) => r.id === 'POST /api/Checkout')!;
+    expect(checkout.operations.map((o) => `${o.kind} ${o.target}`)).toEqual([
+      'db_read StockItem',
+      'api_call api.stripe.com',
+      'db_read StockItem',
+      'db_write StockItem',
+      'db_tx transaction',
+      'db_write Order',
+      'db_tx transaction',
+    ]);
+    expect(checkout.tags).toEqual([
+      { tag: 'external-io', targets: ['api.stripe.com'] },
+      { tag: 'no-transaction', targets: ['StockItem'] },
+      { tag: 'read-then-write', targets: ['StockItem'] },
+      { tag: 'write-after-api-call', targets: ['Order', 'StockItem'] },
+    ]);
+    expect(checkout.confidence).toBe('proven');
+    expect(topology.routes.find((r) => r.id === 'GET /api/orders/{id}')!.operations.map((o) => `${o.kind} ${o.target}`)).toEqual(['db_read Order']);
   });
 });

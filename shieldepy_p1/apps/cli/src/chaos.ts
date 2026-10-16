@@ -23,6 +23,7 @@ import {
   listSourceFiles,
   readChaosConfig,
   silentHost,
+  TS_EXTENSIONS,
   type AttackSurface,
   type MapDiff,
   type SystemGraph,
@@ -99,6 +100,13 @@ export async function runChaosCommand(
   runTests: ChaosTestRunner = runChaosTests
 ): Promise<number> {
   const root = path.resolve(args.target);
+  // os testes gerados são Vitest + supertest: o caos só vale para JS/TS. C# e Java têm mapa e topologia (etapa L).
+  const sources = await listSourceFiles(root);
+  if (!sources.some(isChaosSource) && sources.some((f) => !isWebAsset(f))) {
+    io.err(`erro: o caos gera testes Vitest/supertest e só roda em projetos JS/TS; ${args.target} não tem código JS/TS.`);
+    io.err(`O mapa e as rotas sensíveis deste projeto saem com: shieldepy topology ${args.target}`);
+    return 2;
+  }
   const configPath = path.join(root, CHAOS_CONFIG_FILE);
   const hasConfig = existsSync(configPath);
   if (args.init && hasConfig) {
@@ -115,11 +123,14 @@ export async function runChaosCommand(
 
   const wasmDir = args.wasmDir ?? defaultWasmDir();
   const graph = await CodeGraph.create(wasmDir, silentHost);
-  await indexFiles(graph, await listSourceFiles(root), silentHost);
+  await indexFiles(graph, sources, silentHost);
   const { rules } = loadRulesFromPath(root, await registry());
   const system = buildSystemGraph(graph, rules, root);
   const topology = buildTopology(graph, system, root);
-  const fullSurface = attackSurface(topology);
+  // num repositório misto, as rotas de C#/Java ficam fora do caos (o teste gerado não as alcança)
+  const others = topology.routes.filter((r) => !isChaosSource(r.file));
+  if (others.length > 0) io.err(`ℹ ${others.length} rota(s) de C#/Java fora do caos (só JS/TS): ${others.map((r) => r.id).join(', ')}`);
+  const fullSurface = attackSurface({ ...topology, routes: topology.routes.filter((r) => isChaosSource(r.file)) });
 
   // --init: o contrato inicial sai do próprio mapa; o que só o projeto sabe fica marcado
   if (args.init) {
@@ -373,4 +384,13 @@ function printChaos(state: ChaosStateType, label: string, cost: ReturnType<CostM
     if (noRun) out(`  rodar à mão: npx vitest run --config ${CHAOS_TESTS_DIR}/vitest.config.ts`);
     out('');
   } else out('nenhum teste gerado (nenhuma rota sensível com falha testável)\n');
+}
+
+/** Código que o caos alcança (o teste gerado importa o app): JS/TS. */
+function isChaosSource(file: string): boolean {
+  return TS_EXTENSIONS.includes(path.extname(file).toLowerCase() as (typeof TS_EXTENSIONS)[number]);
+}
+
+function isWebAsset(file: string): boolean {
+  return ['.html', '.htm', '.css'].includes(path.extname(file).toLowerCase());
 }

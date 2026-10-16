@@ -217,6 +217,17 @@ describe('CLI chaos (E3)', () => {
     expect(noConfig.err).toMatch(/--init/);
   });
 
+  it('projeto sem JS/TS (C#): o caos não roda e aponta a topologia, sem criar nada', async () => {
+    for (const flags of [['--no-run', '--offline'], ['--init']]) {
+      const r = await run('chaos', example('pedidos-aspnet'), ...flags);
+      expect(r.code).toBe(2);
+      expect(r.err).toMatch(/só roda em projetos JS\/TS/);
+      expect(r.err).toMatch(/shieldepy topology/);
+    }
+    expect(fs.existsSync(path.join(example('pedidos-aspnet'), 'shieldepy.chaos.config.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(example('pedidos-aspnet'), '.shieldepy'))).toBe(false);
+  });
+
   it('--init cria o contrato a partir do mapa, e não sobrescreve um que já existe', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
     try {

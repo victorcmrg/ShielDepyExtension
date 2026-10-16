@@ -192,6 +192,77 @@ function axiosOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | '
   };
 }
 
+// --- C# (etapa L4) ------------------------------------------------------------------------------
+
+/** EF Core: as consultas só vão ao banco quando materializam (`Where`/`Include`/`OrderBy` montam, não leem). */
+const EF_READ = new Set(
+  [
+    'ToList', 'ToArray', 'ToDictionary', 'ToHashSet', 'First', 'FirstOrDefault', 'Single', 'SingleOrDefault', 'Last', 'LastOrDefault',
+    'ElementAt', 'ElementAtOrDefault', 'Any', 'All', 'Count', 'LongCount', 'Sum', 'Min', 'Max', 'Average', 'Contains', 'Find', 'ForEach', 'Load',
+  ].flatMap((m) => [m, `${m}Async`])
+);
+/** `Add`/`Update`/`Remove` marcam a escrita da entidade; o `SaveChanges` é quando ela vai ao banco (vira `db_tx`). */
+const EF_WRITE = new Set(['Add', 'AddAsync', 'AddRange', 'AddRangeAsync', 'Update', 'UpdateRange', 'Remove', 'RemoveRange', 'Attach', 'ExecuteUpdate', 'ExecuteUpdateAsync', 'ExecuteDelete', 'ExecuteDeleteAsync']);
+const EF_RAW_READ = new Set(['FromSqlRaw', 'FromSqlInterpolated', 'FromSql', 'SqlQuery', 'SqlQueryRaw']);
+const EF_RAW_EXEC = new Set(['ExecuteSqlRaw', 'ExecuteSqlRawAsync', 'ExecuteSqlInterpolated', 'ExecuteSqlInterpolatedAsync', 'ExecuteSql', 'ExecuteSqlAsync']);
+/** Transação explícita, no `Database` do contexto ou na conexão ADO.NET, com os nomes que o `sensitivityTags` entende. */
+const DOTNET_TX: Record<string, string> = {
+  BeginTransaction: 'startTransaction',
+  BeginTransactionAsync: 'startTransaction',
+  Commit: 'commitTransaction',
+  CommitAsync: 'commitTransaction',
+  Rollback: 'abortTransaction',
+  RollbackAsync: 'abortTransaction',
+};
+
+/** SQL literal de um argumento, classificado. */
+function sqlOperation(arg: CallArg | undefined, via: IoOperation['via'], operation: string): Omit<IoOperation, 'symbol' | 'file' | 'line'> {
+  const sql = staticText(arg);
+  const s = sql ? classifySql(sql.text) : undefined;
+  if (!s || s.kind === 'unknown') return { kind: 'db_unknown', target: s?.table ?? 'dynamic', via, operation };
+  if (s.kind === 'tx') return { kind: 'db_tx', target: 'transaction', via, operation: s.verb };
+  return { kind: s.kind === 'read' ? 'db_read' : 'db_write', target: s.table ?? 'dynamic', via, operation: s.verb, ...(s.lock && { lock: true as const }) };
+}
+
+function efCoreOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  const tx = Object.hasOwn(DOTNET_TX, site.name) ? DOTNET_TX[site.name] : undefined;
+  if (tx) return { kind: 'db_tx', target: 'transaction', via: 'efcore', operation: tx };
+  if (site.name === 'SaveChanges' || site.name === 'SaveChangesAsync') return { kind: 'db_tx', target: 'transaction', via: 'efcore', operation: 'SaveChanges' };
+  if (EF_RAW_READ.has(site.name) || EF_RAW_EXEC.has(site.name)) return sqlOperation(site.args[0], 'efcore', site.name);
+  const read = EF_READ.has(site.name);
+  if (!read && !EF_WRITE.has(site.name)) return undefined;
+  // `FromSqlRaw("SELECT ...").ToListAsync()`: a leitura é a do SQL, já contada nele
+  for (let rc = site.receiverCall; read && rc; rc = rc.receiverCall) if (EF_RAW_READ.has(rc.name)) return undefined;
+  // a entidade vem do grafo: o `DbSet<T>` do contexto, inclusive no começo de uma consulta encadeada
+  return { kind: read ? 'db_read' : 'db_write', target: site.model ?? 'dynamic', via: 'efcore', operation: site.name };
+}
+
+/** Pacotes das conexões ADO.NET (onde o Dapper pendura os métodos de extensão). */
+const ADO_PACKAGES = new Set(['System.Data', 'Microsoft.Data.SqlClient', 'Npgsql', 'MySqlConnector', 'Microsoft.Data.Sqlite']);
+const DAPPER_METHODS = new Set(
+  ['Query', 'QueryFirst', 'QueryFirstOrDefault', 'QuerySingle', 'QuerySingleOrDefault', 'QueryMultiple', 'Execute', 'ExecuteScalar', 'ExecuteReader'].flatMap((m) => [m, `${m}Async`])
+);
+
+function dapperOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  const tx = Object.hasOwn(DOTNET_TX, site.name) ? DOTNET_TX[site.name] : undefined;
+  if (tx) return { kind: 'db_tx', target: 'transaction', via: 'dapper', operation: tx };
+  return DAPPER_METHODS.has(site.name) ? sqlOperation(site.args[0], 'dapper', site.name) : undefined;
+}
+
+/** `HttpClient`: os métodos que fazem a requisição (`ReadFromJsonAsync` no conteúdo da resposta não é). */
+const HTTPCLIENT_METHODS = new Set([
+  'GetAsync', 'PostAsync', 'PutAsync', 'PatchAsync', 'DeleteAsync', 'SendAsync', 'GetStringAsync', 'GetByteArrayAsync', 'GetStreamAsync',
+  'GetFromJsonAsync', 'PostAsJsonAsync', 'PutAsJsonAsync', 'PatchAsJsonAsync', 'DeleteFromJsonAsync',
+]);
+
+function httpClientOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  if (!HTTPCLIENT_METHODS.has(site.name)) return undefined;
+  // `SendAsync(request)`: a URL está no `HttpRequestMessage`. O timeout é do cliente (`HttpClient.Timeout`, 100 s
+  // por padrão), configurado fora da chamada (na injeção, no `AddHttpClient`): não dá para ler daqui.
+  const url = site.name === 'SendAsync' ? undefined : site.args[0];
+  return { kind: 'api_call', target: hostOf(url), via: 'httpclient', operation: site.name, timeout: 'unknown' };
+}
+
 /** A operação de I/O que esta chamada faz, ou `undefined` se ela não é I/O reconhecido. */
 export function ioOperationOf(site: CallSite, file: string): IoOperation | undefined {
   let op: Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined;
@@ -200,6 +271,9 @@ export function ioOperationOf(site: CallSite, file: string): IoOperation | undef
   else if (site.outcome === 'external' && site.package === 'axios') op = axiosOperation(site);
   else if (site.outcome === 'external' && site.package === 'mongoose') op = mongooseOperation(site);
   else if (site.outcome === 'external' && site.package === 'typeorm') op = typeormOperation(site);
+  else if (site.outcome === 'external' && site.package === 'Microsoft.EntityFrameworkCore') op = efCoreOperation(site);
+  else if (site.outcome === 'external' && site.package === 'System.Net.Http') op = httpClientOperation(site);
+  else if (site.outcome === 'external' && ADO_PACKAGES.has(site.package!)) op = dapperOperation(site);
   else op = fetchOperation(site);
   return op && { ...op, symbol: site.caller, file, line: site.line };
 }

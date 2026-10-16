@@ -53,7 +53,7 @@ export interface IoOperation {
   kind: IoKind;
   /** Tabela, model do Prisma, host da API, `transaction`, ou `dynamic` quando não dá pra ler. */
   target: string;
-  via: 'pg' | 'prisma' | 'mongoose' | 'typeorm' | 'fetch' | 'axios';
+  via: 'pg' | 'prisma' | 'mongoose' | 'typeorm' | 'fetch' | 'axios' | 'efcore' | 'dapper' | 'httpclient';
   /** Verbo SQL, operação do Prisma ou método do axios. */
   operation?: string;
   /** `SELECT ... FOR UPDATE`. */
