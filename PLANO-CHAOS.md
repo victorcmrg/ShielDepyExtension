@@ -9,7 +9,13 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Ordem de entrega (ajuste pedido):** primeiro aperfeiçoar o mapeamento do sistema em grafos (Fase 0 + Fase 1), com métrica de cobertura e testes. Só depois disso, e com o grafo validado nos exemplos, entram os agentes (Fases 2–4). Cada marco é um PR separado.
 
-## Como retomar num chat novo (atualizado em 2026-10-13, etapa M)
+## Como retomar num chat novo (atualizado em 2026-10-16, etapa L)
+
+**Etapa atual (2026-10-16): L — motor por linguagem e C#**, na branch `feat/motor-linguagens`, criada a partir da `main` (`efa9b1d`, com tudo integrado). Leia a seção **"L — motor por linguagem e C#"** (decisão, desenho e tarefas L1–L6) e o fim do Registro. **O `CLAUDE.md` da raiz tem os combinados de trabalho** (vale em qualquer máquina).
+
+**Decisão do usuário (2026-10-16), que substitui a de 2026-10-09 ("só JS/TS; Java e C# fora"):** a próxima linguagem é **C#**, depois **Python**. O motor continua nosso (Tree-sitter), sem o Graphify. O Graphify entra só como comparação no TCC: ele faz um grafo geral para a IA, sem chamadas em ordem com argumentos, sem tipo do receptor e sem rotas e I/O por framework.
+
+**O que vem antes (etapa M e a integração), para contexto:**
 
 **Etapa atual (2026-10-13): M — mapeamento em grafos nos projetos reais**, na branch `feat/mapa-projetos-reais`, criada a partir da `origin/main` (`60bf07a`, depois da C1 parcial). Pedido do usuário: "o foco agora é deixar 100% a parte de mapeamento em grafos", testando em apps Express do GitHub; depois, um plugin que só se instala e roda (mapeia o sistema e diagnostica). Leia a seção **"M — mapeamento em projetos reais"** (por que existe, os projetos, as tarefas M1–M6) e o fim do Registro.
 
@@ -105,6 +111,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 | E6. **DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | concluído, integrado à `main` em 2026-10-16 |
 | Demo do TCC (`npm run demo`, botões "Ver grafo" e "Rodar testes de caos") | `feat/demo-tcc` | concluído, integrado à `main` em 2026-10-16 |
+| L. Motor por linguagem e C# (frontend por linguagem, namespaces, ASP.NET Core, EF Core), tarefas L1–L6 | `feat/motor-linguagens` | em andamento |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -1116,6 +1123,46 @@ O caos é o produto. Hoje ele tem dois gargalos, e nenhum dos dois foi medido fo
   4. Entregar o comando `gh release create v0.1.0 …` para o usuário publicar.
 
 ---
+
+## L — motor por linguagem e C# (escrito em 2026-10-16, antes de começar)
+
+### Por que existe
+O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só existe para JS/TS. C#, Java e Python são lidos só para as regras de evento (`packages/extractors`). O usuário decidiu: **C# primeiro, depois Python**, no nosso motor.
+
+### O que prende o motor ao TS hoje (conferido no código)
+- `CodeGraph.updateCodeFile` só chama o `TsParser`, e as funções de extração (`extract-ts`, `extract-module`) leem a AST do TS.
+- **A resolução de nomes é por import de arquivo:** `ImportBinding` + `ModuleResolver` (`./x`, `paths` do tsconfig, pacotes do npm). No C# não há import de arquivo: `using App.Services;` torna visíveis os tipos de um **namespace**, que se espalha por vários arquivos (e `partial class` divide uma classe entre arquivos).
+- O que já é genérico e fica igual: o grafo (`SymbolInfo`, `RawCall` com `receiver`, `CallSite`), a manutenção incremental, a religação, a cobertura, a topologia, o visualizador e o caos.
+
+### Desenho (decisões; registrar o porquê se mudar)
+- **Interface por linguagem** (`LanguageFrontend`): extensões, parser e `extract(raiz) → { símbolos, módulo, chamadas }`. O TS vira uma implementação, **sem mudar o comportamento** (os testes atuais são a prova). O `CodeGraph` escolhe o frontend pela extensão.
+- **Resolução por namespace no C#:**
+  - cada classe guarda o `namespace`;
+  - o `CodeGraph` mantém um índice nome simples → classes;
+  - um nome resolve para as classes dos namespaces visíveis no arquivo: o próprio namespace e os de cima, os `using` (inclusive `global using` de qualquer arquivo) e o global;
+  - quem resolveu um nome por esse índice é religado quando uma classe com esse nome entra ou sai (como o `interfaceDependents` já faz com interfaces).
+- **Base × interface:** no C# a lista de bases mistura a classe-base e as interfaces. A primeira vira `extends` e todas entram em `implements`. A base é resolvida **sem** cair nas implementações (uma interface na 1ª posição não vira "classe-base").
+- **Tipos de fora do projeto:**
+  - os que importam para o caos vão para um "pacote" pelo nome: `DbContext`/`DbSet` → EF Core, `HttpClient` → `System.Net.Http`, `ControllerBase` → ASP.NET Core;
+  - os outros (BCL: `string`, `List`, `Task`, LINQ) são nativos e não contam na cobertura.
+  - Não há como saber o pacote de um tipo qualquer sem o compilador; registrar o que ficar de fora.
+- **Rotas (ASP.NET Core):** `[ApiController]` + `[Route("api/[controller]")]` na classe e `[HttpGet("{id}")]` no método (com `[controller]` trocado pelo nome sem "Controller"); minimal APIs (`app.MapGet("/x", handler)`, `MapGroup`).
+- **I/O:**
+  - EF Core: `DbSet<T>` dá a entidade. `Find/FirstOrDefault/Where/ToList...` (inclusive `Async`) = leitura; `Add/Update/Remove` = escrita pendente, e `SaveChanges(Async)` = a escrita de fato; `BeginTransaction` = transação.
+  - `HttpClient`: `GetAsync/PostAsync/SendAsync...` = `api_call`, com host e timeout quando literais.
+  - Dapper e SQL cru (`ExecuteAsync`/`QueryAsync` com SQL literal) pelo analisador léxico.
+
+### Tarefas
+- **L1. Motor por linguagem.** `LanguageFrontend`; o TS passa a ser uma implementação; os 365 testes passam sem mudança.
+- **L2. C#: símbolos, namespaces e chamadas.**
+  - Classes, interfaces, structs e records, métodos, construtores, campos e propriedades com tipo, e parâmetros.
+  - Receptor por tipo: campo, parâmetro, `var x = new X()`, `this`/`base`, estático `Tipo.M()`, chamada sem receptor dentro da classe.
+  - Injeção pelo construtor com interface → implementações.
+  - Testes de unidade e um exemplo `examples/pedidos-aspnet`.
+- **L3. Rotas do ASP.NET Core** (controllers e minimal APIs).
+- **L4. I/O do C#** (EF Core, `HttpClient`, Dapper).
+- **L5. Projetos C# reais no `mapa:reais`:** 3 a 5 do GitHub, fixados por commit, na tabela.
+- **L6. Extensão:** indexar `.cs` no grafo (hoje só regras), o mapa e o resumo da M6. O caos em C# **não** entra nesta etapa: os testes gerados são Vitest/supertest, e para C# seriam xUnit/`WebApplicationFactory`, outra etapa.
 
 ## M — mapeamento em projetos reais (escrito em 2026-10-13)
 
