@@ -17,7 +17,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
 - **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
-- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). **L5 ✅** (4 projetos C# reais) e **L6 ✅** (extensão; falta conferir num VS Code real). **A etapa L está completa.** Em seguida, o Java (etapa J, a escrever).
+- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). **L5 ✅** (4 projetos C# reais) e **L6 ✅** (extensão; falta conferir num VS Code real). **A etapa L está completa.** Em seguida, o Java: leia a seção **"J — Java no motor"**.
 - Para a L2 foi lida a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator usa:
   - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
   - `class_declaration` com `bases: base_list` e `attribute_list`;
@@ -122,7 +122,8 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
 | E6. **DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | concluído, integrado à `main` em 2026-10-16 |
 | Demo do TCC (`npm run demo`, botões "Ver grafo" e "Rodar testes de caos") | `feat/demo-tcc` | concluído, integrado à `main` em 2026-10-16 |
-| L. Motor por linguagem e C# (frontend por linguagem, namespaces, ASP.NET Core, EF Core), tarefas L1–L6 | `feat/motor-linguagens` | em andamento |
+| L. Motor por linguagem e C# (frontend por linguagem, namespaces, ASP.NET Core, EF Core), tarefas L1–L6 | `feat/motor-linguagens` | concluído (L1–L6) |
+| J. Java no motor (Spring Boot: rotas, Spring Data, JdbcTemplate, clientes HTTP), tarefas J1–J6 | `feat/motor-linguagens` | em andamento |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -1244,6 +1245,30 @@ O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só exist
 - **L4. I/O do C#** (EF Core, `HttpClient`, Dapper). ✅ Concluída em 2026-10-16 (ver o registro).
 - **L5. Projetos C# reais no `mapa:reais`:** 3 a 5 do GitHub, fixados por commit, na tabela. ✅ Concluída em 2026-10-16 (ver o registro).
 - **L6. Extensão:** indexar `.cs` no grafo (hoje só regras), o mapa e o resumo da M6. ✅ Concluída em 2026-10-16 (ver o registro); falta conferir num VS Code real. O caos em C# **não** entra nesta etapa: os testes gerados são Vitest/supertest, e para C# seriam xUnit/`WebApplicationFactory`, outra etapa.
+
+## J — Java no motor (escrito em 2026-10-16, antes de começar)
+
+### Por que existe
+Pedido do usuário: "crie os adaptadores para C# e após isso Java". A etapa L deixou o motor por linguagem e a resolução por namespace prontas; o Java reaproveita as duas. O alvo é o **Spring Boot**: as rotas, o Spring Data JPA, o JdbcTemplate, o `EntityManager`, o `RestTemplate`/`WebClient`/`RestClient` e o `@Transactional`. O caos continua só JS/TS.
+
+### Desenho (decisões; registrar o porquê se mudar)
+- **Frontend `extract-java.ts`** (gramática `tree-sitter-java` do `tree-sitter-wasms`, que lê records, `var` e text blocks sem erro — conferido).
+- **Resolução por package**, pelo mesmo `NamespaceScope` do C#: visível = o próprio package e os `import x.*;`; cada `import x.y.Tipo;` é um alias (`Tipo` → `x.y.Tipo`). Sem "namespaces de cima" (o Java não tem). `import static` fica de fora.
+- **Tipos de fora** só pelo import (o Java sempre importa): um `import` cujo nome qualificado começa por um prefixo conhecido vira ligação para o pacote — `org.springframework.data` (repositórios), `org.springframework.jdbc`, `jakarta.persistence`/`javax.persistence`, `org.springframework.web.client` (`RestTemplate`, `RestClient`), `org.springframework.web.reactive.function.client` (`WebClient`), `org.springframework.web.bind.annotation` (rotas), `org.springframework.transaction`, `java.net.http`. No `import x.*;` de um prefixo conhecido, só os nomes da lista dele.
+- **Repositório do Spring Data** (`interface OrderRepository extends JpaRepository<Order, Long>`) vira símbolo de classe (sem os métodos declarados, que o Spring gera): a base é o pacote e o `extendsArg` é a entidade — o mesmo caminho do `Repository<Pet>` do TypeORM. Interface comum continua sem símbolo (cai nas implementações, como no TS e no C#).
+- **Lombok:** classe com `@Data`/`@Getter`/`@Setter`/`@Value`/`@Builder` ganha os acessores gerados (`getX`, `setX`, `isX`, `builder`) em `properties`: chamá-los é nativo, não "sem alvo". Enum ganha `values`/`valueOf`/`name`/`ordinal`.
+- **Retorno:** `Optional<T>`, `CompletableFuture<T>`, `Mono<T>` viram T (como o `Task<T>` do C#); coleções viram nativo.
+- **Anotações** viram chamadas `decorates` (como os atributos do C#). Os argumentos: o valor posicional, e os pares `chave = valor` num `object` com `values` (o `CallArg` ganha `values` e o tipo `constant`, para `RequestMethod.POST`).
+- **Rotas (Spring MVC):** `@RequestMapping` na classe (um ou vários caminhos) e `@GetMapping`/`@PostMapping`/... ou `@RequestMapping(method = ...)` no método; sem `method`, `ALL`.
+- **I/O:** Spring Data (pelo nome do método: `save*`/`delete*` escrita, `find*`/`get*`/`count*`/`exists*` leitura, na entidade do repositório), JdbcTemplate (SQL literal), `EntityManager` (`persist`/`merge`/`remove`, `find`, `createNativeQuery`), `@Transactional` (abre transação na entrada do método), `RestTemplate` (host da URL), `WebClient`/`RestClient` (o host vem do `.uri("...")` da cadeia, no `retrieve`). Timeout: `unknown` (é do cliente).
+
+### Tarefas
+- **J1. Java: símbolos, packages e chamadas** (classes, records, enums, métodos, construtores, campos com tipo, injeção por construtor/campo, Lombok, repositórios do Spring Data), com testes.
+- **J2. Rotas do Spring MVC.**
+- **J3. I/O do Java** (Spring Data, JdbcTemplate, `EntityManager`, `@Transactional`, `RestTemplate`/`WebClient`/`RestClient`).
+- **J4. Exemplo `examples/pedidos-springboot`:** o checkout do `checkout-express` em Spring Boot, com os mesmos defeitos.
+- **J5. Projetos Java reais no `mapa:reais`.**
+- **J6. Extensão:** `.java` no grafo, as regras do `@EventListener` da mesma árvore, textos.
 
 ## M — mapeamento em projetos reais (escrito em 2026-10-13)
 
