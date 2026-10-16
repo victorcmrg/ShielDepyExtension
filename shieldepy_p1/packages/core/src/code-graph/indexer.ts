@@ -8,7 +8,7 @@ import { CodeGraph } from './CodeGraph';
 // `.vscode-test`: o VS Code que o @vscode/test-electron baixa para os testes E2E (milhares de arquivos JS);
 // `vendor`/`bower_components`: bibliotecas de terceiros copiadas; `build`, `coverage`, `.next`, `.nuxt`,
 // `.svelte-kit`, `.turbo`, `.cache`, `.output`: saídas de build e de ferramenta (Q1 do plano);
-// `obj`: saída de build do .NET, com `.cs` gerado (etapa L).
+// `obj`: saída de build do .NET, com `.cs` gerado (etapa L); `target`, `.gradle`: saída do Maven/Gradle (etapa J).
 export const IGNORED_DIRS = new Set([
   'node_modules',
   'dist',
@@ -27,6 +27,8 @@ export const IGNORED_DIRS = new Set([
   '.cache',
   '.output',
   'obj',
+  'target',
+  '.gradle',
 ]);
 
 /**

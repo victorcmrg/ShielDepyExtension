@@ -6,7 +6,7 @@ import { findCycleThrough } from './cycles';
 import type { ImportBinding, ModuleInfo } from './extract-module';
 import { looksGenerated } from './generated';
 import type { CallDesc, RawArg, RawCall, Scope, TypeRef } from './extract-ts';
-import { csharpFrontend, tsFrontend, type LanguageFrontend, type LanguageId, type NamespaceScope } from './frontend';
+import { csharpFrontend, javaFrontend, tsFrontend, type LanguageFrontend, type LanguageId, type NamespaceScope } from './frontend';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
@@ -34,7 +34,7 @@ import {
 /** Chamado com a árvore de cada arquivo de código recém-parseado, antes de ela ser liberada. */
 export type ParsedListener = (file: { id: string; fsPath: string; language: LanguageId; root: import('./parser').SyntaxNode }) => void;
 
-export const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.cs', '.html', '.htm', '.css'];
+export const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.cs', '.java', '.html', '.htm', '.css'];
 
 type G = Graph<NodeAttrs, EdgeAttrs>;
 
@@ -46,6 +46,7 @@ export interface WebParsers {
 /** Gramáticas das linguagens além de TS/JS (etapa L). Sem uma delas, os arquivos dela ficam fora do mapa. */
 export interface LanguageParsers {
   csharp?: GrammarParser;
+  java?: GrammarParser;
 }
 
 /** Para onde um especificador de import de um arquivo aponta (já resolvido). */
@@ -104,6 +105,9 @@ interface ResolutionContext {
   handlersOf(name: string): string[];
 }
 
+/** Java: métodos que tiram o valor de um `Optional`/`CompletableFuture`/`Mono` (o T do `unwraps`). */
+const UNWRAP_METHODS = new Set(['orElseThrow', 'orElse', 'orElseGet', 'get', 'join', 'block']);
+
 /** Chave dos métodos de extensão no `typeDependents` (o nome do método, não de uma classe). */
 const EXTENSION_KEY = 'ext:';
 /** Chave das mensagens do MediatR no `typeDependents` (quem despachou `Command` religa quando um handler dela muda). */
@@ -155,16 +159,17 @@ export class CodeGraph {
     this.resolver = new ModuleResolver(host);
     this.frontends = parser ? [tsFrontend(parser)] : [];
     if (languages.csharp) this.frontends.push(csharpFrontend(languages.csharp));
+    if (languages.java) this.frontends.push(javaFrontend(languages.java));
   }
 
   static async create(wasmDir: string, host: Host): Promise<CodeGraph> {
-    const optional = (name: 'html' | 'css' | 'c_sharp') =>
+    const optional = (name: 'html' | 'css' | 'c_sharp' | 'java') =>
       GrammarParser.load(wasmDir, name).catch((err) => {
         host.log(`[CodeGraph] gramática ${name} indisponível — os arquivos dela ficam fora do grafo: ${err}`);
         return undefined;
       });
-    const [ts, html, css, csharp] = await Promise.all([TsParser.load(wasmDir), optional('html'), optional('css'), optional('c_sharp')]);
-    return new CodeGraph(ts, host, { html, css }, { csharp });
+    const [ts, html, css, csharp, java] = await Promise.all([TsParser.load(wasmDir), optional('html'), optional('css'), optional('c_sharp'), optional('java')]);
+    return new CodeGraph(ts, host, { html, css }, { csharp, java });
   }
 
   /** false se a gramática de TS não carregou (ex: .wasm faltando) — o grafo fica sem código TS/JS. */
@@ -615,6 +620,7 @@ export class CodeGraph {
           ...(sym.namespace !== undefined && { namespace: sym.namespace }),
           ...(sym.extensionOf !== undefined && { extensionOf: sym.extensionOf }),
           ...(sym.handles !== undefined && { handles: sym.handles }),
+          ...(sym.unwraps !== undefined && { unwraps: sym.unwraps }),
         });
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
@@ -1011,6 +1017,9 @@ export class CodeGraph {
         if (own.length > 0) return { outcome: 'callsResolved', targets: own };
       }
       if (byType) return byType;
+      // C#/Java: `com.other.Fmt.go()` — a raiz minúscula não era campo da classe: a cadeia é um nome qualificado de tipo
+      const qualified = call.object && this.scopes.has(fileId) && call.object[0] !== 'this' && call.object[0] !== 'super' && call.object[0] !== 'base' ? this.qualifiedMember(fileId, call.object, call.name, ctx) : undefined;
+      if (qualified) return qualified;
     }
 
     const [root, ...rest] = call.object ?? [];
@@ -1206,6 +1215,9 @@ export class CodeGraph {
     depth: number
   ): CallResolution | undefined {
     if (depth > 8) return undefined;
+    // Java: `find(id).orElseThrow()` com `find(): Optional<Order>` — o valor desembrulhado é um `Order`
+    const unwrapped = UNWRAP_METHODS.has(inner.name) ? this.unwrappedType(fileId, inner, ctx, depth) : undefined;
+    if (unwrapped) return unwrapped.classes.length > 0 ? this.membersOf(unwrapped.classes, rest, method, ctx) : unwrapped.external ? this.external(unwrapped.external) : NATIVE;
     if (inner.spec !== undefined && !inner.shadowed) {
       // `require('express').Router()` / `require('./svc').create()`: o valor é o módulo
       const target = this.specTargets.get(fileId)?.get(inner.spec);
@@ -1240,6 +1252,25 @@ export class CodeGraph {
     if (external) return this.external(external);
     // retorno anotado com tipo de fora do projeto → nativo; sem anotação → fallback por nome
     return declared ? NATIVE : undefined;
+  }
+
+  /** O T que `inner` (um `orElseThrow()`/`get()`/`join()`...) desembrulha, se o receptor dele é um método do projeto com `unwraps`. */
+  private unwrappedType(fileId: string, inner: CallDesc, ctx: ResolutionContext, depth: number): ResolvedType | undefined {
+    if (!inner.receiver || !('call' in inner.receiver) || inner.receiver.rest.length > 0) return undefined;
+    const produced = this.resolveCall(fileId, inner.receiver.call, ctx, depth + 1);
+    if (produced.outcome !== 'callsResolved') return undefined;
+    const classes = new Set<string>();
+    let external: string | undefined;
+    let any = false;
+    for (const id of produced.targets) {
+      const a = this.graph.hasNode(id) ? this.graph.getNodeAttributes(id) : undefined;
+      if (!a || !isSymbolNode(a) || !a.unwraps) continue;
+      any = true;
+      const t = this.resolveType(a.file, a.unwraps, ctx);
+      for (const c of t.classes) classes.add(c);
+      external ??= t.external;
+    }
+    return any ? { classes: [...classes], ...(external && { external }) } : undefined;
   }
 
   /**
@@ -1614,6 +1645,16 @@ export class CodeGraph {
     if (classes.length === 0 && !qualifier) classes = candidates.filter((c) => c.attrs.container && wanted.has(c.attrs.namespace!)).map((c) => c.id);
     if (classes.length > 0 || !implementers || full.length > 1) return { classes };
     return { classes: ctx.implementers(name) };
+  }
+
+  /** C#/Java: `m` no tipo que o maior prefixo de `chain` nomeia (`com.other.Fmt` + `go`); o resto da cadeia são membros. */
+  private qualifiedMember(fileId: string, chain: string[], method: string, ctx: ResolutionContext): CallResolution | undefined {
+    for (let k = chain.length; k >= 1; k--) {
+      const r = this.resolveType(fileId, chain.slice(0, k), ctx, false);
+      if (r.external) return this.external(r.external);
+      if (r.classes.length > 0) return this.membersOf(r.classes, chain.slice(k), method, ctx);
+    }
+    return undefined;
   }
 
   /** C#/Java: `new X()` → o construtor de `X` (ou a classe, sem construtor declarado); tipo de pacote → externa; nativo → nada. */

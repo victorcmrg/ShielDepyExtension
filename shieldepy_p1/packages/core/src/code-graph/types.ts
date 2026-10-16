@@ -46,6 +46,8 @@ export interface SymbolNodeAttrs {
   extensionOf?: string[];
   /** Classe de C#: as mensagens do MediatR que ela trata (`Create.Command`). */
   handles?: string[];
+  /** Java: o T de um retorno `Optional<T>`/`CompletableFuture<T>`/`Mono<T>` (quem desembrulha, `orElseThrow()`, dá T). */
+  unwraps?: string[];
 }
 
 /** Dependência externa (`pg`, `@prisma/client`, `node:fs`) — id `pkg:<nome>`. */
@@ -145,7 +147,15 @@ export type CallArg =
    * `{ method: 'POST', signal }` → as chaves; `...spread` vira `'...'`. `texts`: as chaves cujo valor
    * é texto literal (`pool.query({ text: 'SELECT ...', values })` → `text`), no mesmo formato acima.
    */
-  | { kind: 'object'; keys: string[]; texts?: Record<string, { kind: 'string'; value: string } | { kind: 'template'; prefix: string }> }
+  | {
+      kind: 'object';
+      keys: string[];
+      texts?: Record<string, { kind: 'string'; value: string } | { kind: 'template'; prefix: string }>;
+      /** Java: os pares de uma anotação (`@PostMapping(value = {"/a"}, method = RequestMethod.POST)`), cada valor descrito. */
+      values?: Record<string, CallArg>;
+    }
+  /** Java: constante de enum ou campo estático num argumento de anotação (`RequestMethod.POST`). */
+  | { kind: 'constant'; chain: string[] }
   /** Callback inline; `symbolId` quando ele virou símbolo. */
   | { kind: 'function'; symbolId?: string }
   /** Identificador ou cadeia (`router`, `ctrl.create`), resolvido como referência. */

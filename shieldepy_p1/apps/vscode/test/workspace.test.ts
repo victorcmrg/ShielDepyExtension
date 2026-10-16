@@ -46,7 +46,7 @@ describe('WorkspaceModel — grafo estrutural + grafo de interações num parse 
     expect(model.rulesIn(toFileId(pricing))[0]!.location).toEqual({ file: toFileId(pricing), line: 1 });
   });
 
-  it('Java entra pelo extrator regex e avisa quem escuta mudança de regras', () => {
+  it('Java entra pela árvore do grafo (extrator do @EventListener) e avisa quem escuta mudança de regras', () => {
     const listener = vi.fn();
     model.onDidChangeRules(listener);
     write('audit/Audit.java', AUDIT_JAVA);

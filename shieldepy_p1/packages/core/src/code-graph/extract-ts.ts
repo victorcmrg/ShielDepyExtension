@@ -43,6 +43,8 @@ export interface SymbolInfo {
   extensionOf?: TypeRef;
   /** Classe de C#: as mensagens que ela trata no MediatR (`IRequestHandler<Create.Command, R>` → `Create.Command`). */
   handles?: string[];
+  /** Método de Java que devolve `Optional<T>`/`CompletableFuture<T>`/`Mono<T>`: o T (o `returns` fica nativo). */
+  unwraps?: TypeRef;
 }
 
 /**

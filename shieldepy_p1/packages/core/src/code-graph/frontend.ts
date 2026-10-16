@@ -3,6 +3,7 @@
 // pela extensão, guarda o que o frontend extraiu e resolve as chamadas (etapa L do plano).
 
 import { extractCSharp } from './extract-csharp';
+import { extractJava } from './extract-java';
 import { extractModuleInfo, type ModuleInfo } from './extract-module';
 import { extractCalls, extractSymbols, extractValueCalls, type CallDesc, type RawCall, type SymbolInfo } from './extract-ts';
 import { topLevelHash } from './fingerprint';
@@ -80,5 +81,17 @@ export function csharpFrontend(parser: GrammarParser): LanguageFrontend {
     extensions: CSHARP_EXTENSIONS,
     parse: (text) => parser.parse(text),
     extract: (root, fileId) => extractCSharp(root, fileId),
+  };
+}
+
+export const JAVA_EXTENSIONS = ['.java'] as const;
+
+/** Java (gramática do Tree-sitter): classes, packages, chamadas por tipo do receptor, anotações, Spring Data. */
+export function javaFrontend(parser: GrammarParser): LanguageFrontend {
+  return {
+    language: 'java',
+    extensions: JAVA_EXTENSIONS,
+    parse: (text) => parser.parse(text),
+    extract: (root, fileId) => extractJava(root, fileId),
   };
 }
