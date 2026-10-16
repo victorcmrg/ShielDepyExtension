@@ -1,0 +1,614 @@
+#!/usr/bin/env node
+// Demo do ShielDepy para a apresentação: prepara tudo e abre o VS Code com o plugin num sistema de
+// exemplo (uma loja: checkout com Stripe e Postgres, microserviços de pedidos e relatórios), já
+// logado num portal local, com o ROTEIRO.md aberto ao lado.
+//
+//   npm run demo                 prepara (na 1ª vez instala e compila), sobe o portal e abre o VS Code
+//   npm run demo -- --do-zero    apaga a pasta da demo e recria tudo
+//   npm run demo -- --compilar   recompila a extensão e o portal antes
+//   npm run demo -- --sem-vscode só prepara e sobe o portal (abra o VS Code pelo comando impresso)
+//   npm run demo:caos            roda o caos de novo no checkout da demo e publica no portal
+//
+// Nada é criado dentro do repositório: a demo mora em ~/ShielDepy-demo (ou em DEMO_DIR), com o
+// sistema e o banco do portal (ver paths.mjs). O sistema abre numa janela NOVA do seu VS Code, com a
+// extensão do repositório carregada (--extensionDevelopmentPath) e o login vindo do .vscode/settings.json dele.
+// Funciona no Windows (caminhos com acento e espaço), no Linux e no macOS. Precisa de Node >= 22.6,
+// git e o VS Code instalado. Ctrl+C no terminal encerra o portal (o VS Code da demo fica aberto).
+
+import { spawn, spawnSync } from 'node:child_process';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { APP, DEMO, PORTAL_DATA, ROOT, SEED_FILE, WORKSPACE } from './paths.mjs';
+
+const EXAMPLES = join(ROOT, 'examples');
+const PORT = Number(process.env.DEMO_PORT) || 3001;
+const PORTAL = `http://localhost:${PORT}`;
+/** O "repositório" da demo. É só o remote do git local: nada é enviado para lá. */
+const DEMO_REMOTE = 'https://github.com/acme-demo/sistema-loja.git';
+const CLI = join(ROOT, 'apps', 'cli', 'bin', 'shieldepy.js');
+const TSX = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const SELF = fileURLToPath(import.meta.url);
+
+const args = new Set(process.argv.slice(2));
+const isWin = process.platform === 'win32';
+
+// ---------------------------------------------------------------- saída
+const c = (code) => (s) => (process.stdout.isTTY ? `\x1b[${code}m${s}\x1b[0m` : s);
+const bold = c('1');
+const green = c('32');
+const yellow = c('33');
+const red = c('31');
+const dim = c('2');
+const step = (n, total, msg) => console.log(`\n${bold(`[${n}/${total}]`)} ${msg}`);
+const ok = (msg) => console.log(`  ${green('✓')} ${msg}`);
+const warn = (msg) => console.log(`  ${yellow('!')} ${msg}`);
+function fail(msg) {
+  console.error(`\n${red('✖')} ${msg}`);
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------- processos
+/** Roda e espera o fim (nada fica rodando depois). Devolve o resultado. */
+function run(cmd, cmdArgs, { cwd = ROOT, env = {}, show = false, allow = [0], shell = false } = {}) {
+  const r = spawnSync(cmd, cmdArgs, { cwd, env: { ...process.env, ...env }, stdio: show ? 'inherit' : 'pipe', encoding: 'utf8', shell });
+  if (r.error) fail(`não consegui rodar ${cmd}: ${r.error.message}`);
+  if (!allow.includes(r.status)) {
+    if (!show) console.error((r.stdout ?? '') + (r.stderr ?? ''));
+    fail(`${[cmd, ...cmdArgs].join(' ')} saiu com código ${r.status}`);
+  }
+  return r;
+}
+
+/** npm sem shell: pelo npm-cli.js que o próprio `npm run` informa (caminhos com espaço funcionam). */
+function npm(npmArgs, opts) {
+  const npmCli = process.env.npm_execpath;
+  if (npmCli && npmCli.endsWith('.js')) return run(process.execPath, [npmCli, ...npmArgs], opts);
+  return run(isWin ? 'npm.cmd' : 'npm', npmArgs, { ...opts, shell: isWin });
+}
+
+const node = (scriptArgs, opts) => run(process.execPath, scriptArgs, opts);
+const git = (gitArgs, cwd = WORKSPACE) =>
+  run('git', ['-c', 'user.name=Demo ShielDepy', '-c', 'user.email=demo@shieldepy.local', '-c', 'core.autocrlf=false', ...gitArgs], { cwd });
+const currentBranch = () => run('git', ['branch', '--show-current'], { cwd: WORKSPACE }).stdout.trim();
+
+/** Arquivo que marca a pasta como da demo: sem ele, nada é apagado. */
+const MARKER = '.shieldepy-demo';
+
+/** Cria a pasta da demo (fora do repositório) com a marca. */
+function ensureDemoDir() {
+  if (existsSync(DEMO) && !existsSync(join(DEMO, MARKER)) && readdirSync(DEMO).length > 0) {
+    fail(`${DEMO} já existe e não é da demo. Escolha outra pasta: DEMO_DIR=<pasta> npm run demo`);
+  }
+  mkdirSync(DEMO, { recursive: true });
+  writeFileSync(join(DEMO, MARKER), 'Pasta da demo do ShielDepy (npm run demo). Pode apagar inteira.\n');
+}
+
+/**
+ * Apaga uma pasta da demo. O `node_modules` do checkout é um link para o do exemplo: ele sai antes,
+ * como link, para nunca apagar as dependências do exemplo por engano.
+ */
+function removeDemoDir(dir) {
+  if (!existsSync(dir)) return;
+  // só apaga pasta que a própria demo criou (DEMO_DIR pode apontar para qualquer lugar)
+  if (!existsSync(join(DEMO, MARKER))) fail(`não apago ${DEMO}: não foi a demo que criou esta pasta (falta o arquivo ${MARKER}).`);
+  for (const link of [join(dir, 'checkout', 'node_modules'), join(dir, 'sistema-loja', 'checkout', 'node_modules')]) {
+    try {
+      if (lstatSync(link).isSymbolicLink()) unlinkSync(link);
+    } catch {
+      // não existe
+    }
+  }
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// ---------------------------------------------------------------- pré-requisitos
+function checkPrereqs() {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major < 22 || (major === 22 && minor < 6)) fail(`precisa de Node 22.6 ou mais novo (este é ${process.version}). Baixe em https://nodejs.org`);
+  ok(`Node ${process.version}`);
+  if (spawnSync('git', ['--version']).status !== 0) fail('o git não foi encontrado no PATH. Instale em https://git-scm.com');
+  ok('git');
+}
+
+/**
+ * Como abrir o VS Code do mesmo jeito que o comando `code` abre. No Windows, o `code.cmd` faz
+ * `ELECTRON_RUN_AS_NODE=1 "Code.exe" "<versão>\resources\app\out\cli.js" <args>`: é esse CLI que
+ * cria a janela (ou repassa para uma instância aberta). Abrir o `Code.exe` direto, sem ele, pode
+ * travar sem janela (por exemplo, com uma atualização do VS Code pendente). O `code.cmd` não é
+ * chamado pelo cmd.exe porque o cmd estraga caminhos com acento ("Área de Trabalho").
+ * No Linux e no macOS, o `code` é um script com shebang e roda direto.
+ */
+function findVsCode() {
+  if (process.env.VSCODE_BIN) return existsSync(process.env.VSCODE_BIN) ? { cmd: process.env.VSCODE_BIN, pre: [], env: {}, label: process.env.VSCODE_BIN } : undefined;
+  const found = spawnSync(isWin ? 'where' : 'which', ['code'], { encoding: 'utf8' });
+  const onPath = (found.stdout ?? '').split(/\r?\n/).filter(Boolean);
+  if (!isWin) {
+    const mac = '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code';
+    const cmd = [...onPath, mac, '/usr/bin/code', '/snap/bin/code'].find((p) => existsSync(p));
+    return cmd ? { cmd, pre: [], env: {}, label: cmd } : undefined;
+  }
+  const cmds = [
+    ...onPath.filter((p) => p.toLowerCase().endsWith('code.cmd')),
+    join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
+  ].filter((p) => existsSync(p));
+  for (const codeCmd of cmds) {
+    const exe = join(dirname(codeCmd), '..', 'Code.exe');
+    // a pasta da versão está escrita no code.cmd ("%~dp0..\<versão>\resources\app\out\cli.js")
+    const text = readFileSync(codeCmd, 'utf8');
+    const at = text.indexOf('\\resources\\app\\out\\cli.js');
+    const from = text.lastIndexOf('..\\', at);
+    const version = at > 0 && from >= 0 ? text.slice(from + 3, at) : '';
+    const cli = version ? join(dirname(codeCmd), '..', version, 'resources', 'app', 'out', 'cli.js') : join(dirname(codeCmd), '..', 'resources', 'app', 'out', 'cli.js');
+    if (existsSync(exe) && existsSync(cli)) return { cmd: exe, pre: [cli], env: { ELECTRON_RUN_AS_NODE: '1' }, label: codeCmd };
+  }
+  return undefined;
+}
+
+/** O VS Code da demo já usou o token (o plugin abriu e entrou no portal)? */
+async function pluginCheckedIn(seed, since) {
+  try {
+    const r = await fetch(`${PORTAL}/api/account`, { headers: { cookie: seed.ownerCookie } });
+    if (!r.ok) return false;
+    const { devices = [] } = await r.json();
+    return devices.some((d) => d.label === 'VS Code da demo' && (d.lastUsedAt ?? 0) > since);
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------- instalação e build
+function install() {
+  if (!existsSync(join(ROOT, 'node_modules', 'tsx'))) {
+    console.log(dim('  instalando as dependências do ShielDepy (só na primeira vez; leva alguns minutos)...'));
+    npm(['ci', '--no-audit', '--no-fund'], { show: true });
+  }
+  ok('dependências do ShielDepy');
+  const dir = join(EXAMPLES, 'checkout-express');
+  if (!existsSync(join(dir, 'node_modules', 'vitest'))) {
+    console.log(dim('  instalando as dependências do checkout de exemplo...'));
+    npm(['ci', '--no-audit', '--no-fund'], { cwd: dir, show: true });
+  }
+  ok('dependências do checkout (Vitest, MSW, PGlite)');
+}
+
+/** O arquivo mais recente de uma pasta (fora node_modules e dist). */
+function newestMtime(dir) {
+  let newest = 0;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue;
+    const p = join(dir, e.name);
+    newest = Math.max(newest, e.isDirectory() ? newestMtime(p) : statSync(p).mtimeMs);
+  }
+  return newest;
+}
+
+/** O build não existe, ou o código mudou depois dele (ex.: depois de um git pull). */
+function stale(output, sources) {
+  if (!existsSync(output)) return true;
+  const built = statSync(output).mtimeMs;
+  return sources.some((src) => existsSync(src) && (statSync(src).isDirectory() ? newestMtime(src) : statSync(src).mtimeMs) > built);
+}
+
+function build(force) {
+  const packages = ['core', 'agent', 'viewer', 'extractors'].map((p) => join(ROOT, 'packages', p, 'src'));
+  if (force || stale(join(ROOT, 'apps', 'vscode', 'dist', 'extension.js'), [join(ROOT, 'apps', 'vscode', 'src'), join(ROOT, 'apps', 'vscode', 'package.json'), ...packages])) {
+    console.log(dim('  compilando a extensão...'));
+    npm(['run', 'build', '-w', 'shieldepy']);
+  }
+  ok('extensão compilada (apps/vscode/dist)');
+  if (force || stale(join(ROOT, 'apps', 'frontend', 'dist', 'app.html'), [join(ROOT, 'apps', 'frontend', 'src')])) {
+    console.log(dim('  compilando o portal...'));
+    npm(['run', 'build', '-w', '@shieldepy/frontend']);
+  }
+  ok('portal compilado (apps/frontend/dist)');
+}
+
+// ---------------------------------------------------------------- o sistema da demo
+const SKIP = new Set(['node_modules', '.shieldepy', 'smoke.test.ts']);
+const copyExample = (from, to) => cpSync(from, to, { recursive: true, filter: (src) => !SKIP.has(src.split(/[\\/]/).pop()) });
+
+/** Dois módulos que se chamam um ao outro: o ciclo que o plugin acusa ao abrir o arquivo. */
+const RELATORIOS = {
+  'resumo.ts': `import { totalDoPeriodo } from './totais';
+
+/** Resumo mensal de vendas, para o painel do gerente. */
+export function resumoMensal(mes: number): string {
+  const total = totalDoPeriodo(mes);
+  return \`mês \${mes}: R$ \${total.toFixed(2)}\`;
+}
+`,
+  'totais.ts': `import { resumoMensal } from './resumo';
+
+/** Total vendido no mês. Defeito plantado para a demo: chama o resumo de volta (ciclo). */
+export function totalDoPeriodo(mes: number): number {
+  if (mes > 1) console.log('mês anterior:', resumoMensal(mes - 1));
+  return mes * 100;
+}
+`,
+};
+
+/**
+ * O sistema da loja em dois estados: `main` (com os defeitos) e `correcao` (o checkout corrigido).
+ *   checkout/   API Express: estoque no Postgres e cobrança no Stripe (os testes de caos rodam aqui)
+ *   pedidos/    microserviços que reagem ao mesmo evento e escrevem o mesmo campo (colisões)
+ *   relatorios/ dois módulos em ciclo
+ */
+function prepareWorkspace() {
+  if (existsSync(join(WORKSPACE, '.git'))) {
+    // uma demo de versão anterior (o ROTEIRO.md ainda no git dela) é recriada
+    const ignore = existsSync(join(WORKSPACE, '.gitignore')) ? readFileSync(join(WORKSPACE, '.gitignore'), 'utf8') : '';
+    if (ignore.includes('ROTEIRO.md')) {
+      ok(`sistema da demo já existe: ${WORKSPACE}`);
+      return;
+    }
+    warn('o sistema da demo é de uma versão anterior: recriando');
+  }
+  removeDemoDir(WORKSPACE);
+  mkdirSync(WORKSPACE, { recursive: true });
+  copyExample(join(EXAMPLES, 'checkout-express'), APP);
+  copyExample(join(EXAMPLES, 'pedidos-microservices'), join(WORKSPACE, 'pedidos'));
+  mkdirSync(join(WORKSPACE, 'relatorios'));
+  for (const [file, content] of Object.entries(RELATORIOS)) writeFileSync(join(WORKSPACE, 'relatorios', file), content);
+
+  const pkg = JSON.parse(readFileSync(join(APP, 'package.json'), 'utf8'));
+  pkg.name = 'checkout';
+  writeFileSync(join(APP, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
+  // `npm run caos` na raiz do sistema (o terminal do VS Code abre nela)
+  const root = { name: 'sistema-loja', private: true, description: 'Sistema de exemplo da demo do ShielDepy.', scripts: { caos: `node "${SELF}" --caos` } };
+  writeFileSync(join(WORKSPACE, 'package.json'), `${JSON.stringify(root, null, 2)}\n`);
+  // o ROTEIRO.md e o .vscode/ são regravados a cada execução (token novo, roteiro atualizado): fora do git
+  writeFileSync(join(WORKSPACE, '.gitignore'), 'node_modules/\n.shieldepy/\n.vscode/\nROTEIRO.md\n');
+  // as dependências do checkout de exemplo, sem instalar de novo (junction no Windows, symlink no resto)
+  symlinkSync(join(EXAMPLES, 'checkout-express', 'node_modules'), join(APP, 'node_modules'), isWin ? 'junction' : 'dir');
+
+  git(['init', '--quiet', '-b', 'main']);
+  git(['remote', 'add', 'origin', DEMO_REMOTE]);
+  git(['add', '-A']);
+  git(['commit', '--quiet', '-m', 'Sistema da loja: checkout, pedidos e relatórios']);
+
+  // a branch corrigida: reserva antes de cobrar, timeout no Stripe e estorno se o pedido não gravar
+  git(['switch', '--quiet', '-c', 'correcao']);
+  rmSync(join(APP, 'src'), { recursive: true, force: true });
+  copyExample(join(EXAMPLES, 'checkout-express-fixed', 'src'), join(APP, 'src'));
+  git(['add', '-A']);
+  git(['commit', '--quiet', '-m', 'Corrige o checkout: reserva atômica, timeout no Stripe e estorno quando o pedido não grava']);
+  git(['switch', '--quiet', 'main']);
+  ok(`sistema da demo criado em ${WORKSPACE} (branches main e correcao)`);
+}
+
+// ---------------------------------------------------------------- portal
+function seedPortal() {
+  rmSync(PORTAL_DATA, { recursive: true, force: true });
+  mkdirSync(PORTAL_DATA, { recursive: true });
+  node([TSX, join('scripts', 'demo', 'seed.ts'), DEMO_REMOTE, SEED_FILE], { env: { SHIELDEPY_DATA_DIR: PORTAL_DATA } });
+  ok('portal com a empresa Acme, as contas de demonstração e o projeto do sistema');
+  return JSON.parse(readFileSync(SEED_FILE, 'utf8'));
+}
+
+async function portalUp() {
+  try {
+    const r = await fetch(`${PORTAL}/api/me`);
+    return r.status === 401 || r.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function startPortal() {
+  if (await portalUp()) fail(`a porta ${PORT} já está em uso. Feche o que está nela ou rode com outra porta: DEMO_PORT=3002 npm run demo`);
+  const server = spawn(process.execPath, [TSX, join('server', 'server.ts')], {
+    cwd: join(ROOT, 'apps', 'frontend'),
+    env: { ...process.env, SHIELDEPY_DATA_DIR: PORTAL_DATA, PORT: String(PORT), PUBLIC_URL: PORTAL },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  server.stdout.on('data', (d) => (output += d));
+  server.stderr.on('data', (d) => (output += d));
+  for (let i = 0; i < 60; i++) {
+    if (server.exitCode !== null) fail(`o portal não subiu:\n${output}`);
+    if (await portalUp()) {
+      ok(`portal no ar: ${PORTAL}`);
+      return server;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  stopTree(server);
+  fail(`o portal não respondeu em 30 s:\n${output}`);
+}
+
+/** Encerra o processo e os filhos dele (no Windows, matar só o pai deixa o filho órfão na memória). */
+function stopTree(child) {
+  if (!child || child.exitCode !== null) return;
+  if (isWin) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  else child.kill();
+}
+
+// ---------------------------------------------------------------- caos
+/** Roda o caos (offline, sem gastar com IA) no checkout, na branch atual, e publica no portal. */
+function chaos(ciToken, label) {
+  const report = join(APP, '.shieldepy', 'chaos-report.md');
+  const html = join(APP, '.shieldepy', 'mapa.html');
+  console.log(dim(`  rodando os testes de caos (${label})... leva uns 30 s`));
+  const r = node([CLI, 'chaos', APP, '--offline', '--report', report, '--html', html], { allow: [0, 1, 2] });
+  const line = (r.stdout ?? '').split(/\r?\n/).find((l) => l.includes('resultado:'));
+  if (r.status === 2) warn(`o caos não rodou (erro de ambiente):\n${r.stdout}${r.stderr}`);
+  else ok(`${label}: ${line?.replace(/^.*resultado:\s*/, '') ?? 'concluído'} (exit ${r.status})`);
+  if (ciToken) {
+    const p = node([CLI, 'publish', APP, '--portal', PORTAL], { env: { SHIELDEPY_PORTAL_TOKEN: ciToken }, allow: [0, 1, 2] });
+    if (p.status === 0) ok(`publicado no portal (${(p.stdout ?? '').trim().split(' ').pop()})`);
+    else warn(`não publicou no portal: ${(p.stderr || p.stdout || '').trim()}`);
+  }
+  return r.status;
+}
+
+// ---------------------------------------------------------------- VS Code
+/**
+ * As configurações do sistema da demo (.vscode/settings.json, fora do git dele), gravadas a cada
+ * execução: o portal é recriado, e com ele o token. O plugin lê daqui o portal e o token.
+ */
+function writeWorkspaceSettings(seed) {
+  mkdirSync(join(WORKSPACE, '.vscode'), { recursive: true });
+  const settings = {
+    'shieldepy.webBaseUrl': PORTAL,
+    // só aceito pelo plugin porque o portal é localhost (ver config.demoToken na extensão)
+    'shieldepy.demoToken': seed.deviceToken,
+    // o ROTEIRO.md abre já formatado
+    'workbench.editorAssociations': { 'ROTEIRO.md': 'vscode.markdown.preview.editor' },
+    'git.openRepositoryInParentFolders': 'never',
+  };
+  writeFileSync(join(WORKSPACE, '.vscode', 'settings.json'), `${JSON.stringify(settings, null, 2)}\n`);
+  writeFileSync(join(WORKSPACE, 'ROTEIRO.md'), roteiro());
+}
+
+/**
+ * Abre o sistema numa janela NOVA do seu VS Code, com a extensão do repositório carregada
+ * (--extensionDevelopmentPath: a janela "[Extension Development Host]"). Usa a instância que já
+ * está aberta, como o `code .`. Uma instância separada (outro --user-data-dir) não abre quando o
+ * VS Code tem uma atualização pendente, então a demo não depende disso.
+ */
+async function openVsCode(seed) {
+  const code = findVsCode();
+  const launchArgs = [WORKSPACE, join(WORKSPACE, 'ROTEIRO.md'), `--extensionDevelopmentPath=${join(ROOT, 'apps', 'vscode')}`, '--new-window'];
+  const manual = () => {
+    console.log('\n  Para abrir à mão (o login vem do .vscode/settings.json do sistema da demo):');
+    console.log(`  code ${launchArgs.map((a) => `"${a}"`).join(' ')}`);
+  };
+  if (!code || args.has('--sem-vscode')) {
+    if (!code) warn('não achei o VS Code. Instale (https://code.visualstudio.com), marque "Adicionar ao PATH", ou indique o executável em VSCODE_BIN.');
+    manual();
+    return;
+  }
+  // Rodando de dentro de um VS Code (terminal integrado, extensão), o ambiente traz variáveis do
+  // Electron e do VS Code (ELECTRON_RUN_AS_NODE, VSCODE_ESM_ENTRYPOINT, VSCODE_PID, ...) que
+  // atrapalham o CLI. Saem todas; o CLI recebe só as dele.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VSCODE_|ELECTRON_|CHROME_CRASHPAD)/i.test(k)));
+  Object.assign(env, code.env);
+  const since = Date.now();
+  console.log(dim(`  abrindo pelo ${code.label}...`));
+  // o CLI do VS Code abre a janela e sai; o que ele disser vai para a tela (ajuda a diagnosticar)
+  const cli = spawnSync(code.cmd, [...code.pre, ...launchArgs], { env, encoding: 'utf8', timeout: 60_000, windowsHide: true });
+  const said = `${cli.stdout ?? ''}${cli.stderr ?? ''}`.trim();
+  if (cli.error || (cli.status !== 0 && cli.status !== null)) {
+    warn(`o VS Code não abriu (${cli.error?.message ?? `código ${cli.status}`})${said ? `:\n${said}` : ''}`);
+    manual();
+    return;
+  }
+  if (said) console.log(dim(`  ${said.split(/\r?\n/).join('\n  ')}`));
+  // confirma pela outra ponta: o plugin, ao abrir, entra no portal com o token da demo
+  console.log(dim('  esperando o plugin entrar no portal (até 2 min; se o VS Code perguntar se você confia nos autores da pasta, clique "Sim, confio")...'));
+  for (let i = 0; i < 120; i++) {
+    if (await pluginCheckedIn(seed, since)) {
+      ok('janela nova do VS Code aberta, com o plugin ShielDepy ativo e logado, e o ROTEIRO.md');
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  warn('o VS Code foi chamado, mas o plugin não deu sinal em 2 min.');
+  console.log('  Confira:');
+  console.log('  - abriu uma janela "[Extension Development Host] sistema-loja"? Se perguntou se você confia nos autores, clique "Sim, confio";');
+  console.log('  - a janela pode ter aberto atrás das outras: procure "sistema-loja" na barra de tarefas;');
+  console.log('  - no Windows, se nada abriu, feche todas as janelas do VS Code (para terminar a atualização pendente) e rode de novo.');
+  manual();
+}
+
+// ---------------------------------------------------------------- roteiro
+/** O passo a passo da apresentação: vai como ROTEIRO.md no sistema e abre sozinho no VS Code. */
+function roteiro() {
+  return `# Roteiro da demo do ShielDepy
+
+O ShielDepy lê o código sem executar nada, monta o grafo do sistema, acha as rotas que fazem
+operações arriscadas (banco e APIs externas) e gera testes de caos só para elas. Quem comanda tudo
+é o plugin, por dois botões.
+
+Este sistema tem três partes:
+
+| Pasta | O que é | O que o ShielDepy acha |
+|---|---|---|
+| \`checkout/\` | API Express: estoque no Postgres e cobrança no Stripe | corrida no estoque, Stripe sem timeout, cobra e não grava o pedido se o banco cair |
+| \`pedidos/\` | microserviços que reagem ao mesmo evento \`order.updated\` | dois serviços escrevem o mesmo campo \`total\` |
+| \`relatorios/\` | resumo e totais de vendas | um módulo chama o outro em ciclo |
+
+Branches: **main** (com os defeitos) e **correcao** (o checkout corrigido).
+
+---
+
+## 0. A janela
+
+Esta é a janela **[Extension Development Host]**: o VS Code com o plugin ShielDepy carregado direto do
+repositório. Se ele perguntar se você confia nos autores da pasta, clique **"Sim, confio"** (sem isso, o
+plugin não roda).
+
+Na **barra da esquerda**, clique no **ícone do escudo (ShielDepy)**. O painel abre já liberado: em cima,
+o projeto **"Sistema da loja (demo do TCC)"** (o plugin entrou sozinho no portal local) e os dois botões:
+
+| Botão | O que faz |
+|---|---|
+| **◇ Ver grafo do sistema** | abre o mapa: rotas, controller → service → repositórios → banco e APIs |
+| **⚡ Rodar testes de caos** | gera e roda os testes, acusa os erros no código e mostra o grafo final com o que quebrou |
+
+Os mesmos botões aparecem como ícones no título do painel. Para ver o plugin trabalhando, abra a Saída
+(**Ctrl+Shift+U**) e escolha **ShielDepy**: cada passo dos testes aparece ali.
+
+## 1. Lista de erros: o que o plugin já acha só lendo o código
+
+Abaixo dos botões fica a **Lista de erros** (contadores Erro / Aviso / Info):
+- **Escrita dupla em "total" no evento order.updated**: \`pedidos/services/pricing\` e \`pedidos/services/tax\`
+  reagem ao mesmo evento e escrevem o mesmo campo. O total final depende de quem rodou por último;
+- **"total" é lido e escrito sem ordem garantida**: \`pedidos/services/audit\` lê o que os outros dois escrevem.
+
+Clique num problema: o editor abre no trecho. Abra \`relatorios/totais.ts\`: aparece o aviso amarelo
+**Ciclo de chamadas detectado** (\`totalDoPeriodo → resumoMensal → totalDoPeriodo\`).
+
+## 2. Botão ◇ Ver grafo do sistema
+
+Abre a aba **Mapa do sistema**:
+- à esquerda, **Cobertura das chamadas internas** (100% provado: nenhuma ligação adivinhada), as **rotas**
+  com as tags de risco e os filtros **Mostrar**;
+- no centro, o grafo: arquivos, funções, classes, pacotes (\`pg\`, \`express\`) e as operações de banco e de API.
+
+Clique em **POST /checkout** (na lista de rotas ou no grafo): abre o **fluxo da rota** — requisição →
+controller → service → repositórios → \`db_read stock\` → \`api_call api.stripe.com\` → \`db_write\`.
+Clique num nó: **Cadeia abaixo**, **Quem chega aqui** e **Abrir código**. **Voltar ao mapa** volta ao grafo inteiro.
+
+## 3. Botão ⚡ Rodar testes de caos
+
+1. Clique. Uma notificação mostra cada etapa: topologia → hipóteses de falha → testes gerados → Vitest
+   (controle + caos). Leva uns 30 s. O botão fica "Rodando os testes de caos…" e pode ser cancelado.
+2. No fim, **6 falhas provadas**:
+   - na **Lista de erros** e no **Problems** (Ctrl+Shift+M), cada uma na linha do código atingida:
+     - \`StockRepository.decrement\`: **corrida em stock** (\`stockNeverNegative\`);
+     - \`OrderRepository.insert\`: **falha parcial** — cobrou no Stripe e não gravou o pedido (\`noChargeWithoutOrder\`);
+     - \`StripeGateway.charge\`: **API lenta, com erro ou resposta inválida** — a rota fica pendurada;
+   - o **grafo final** abre sozinho: a rota **POST /checkout** em vermelho (\`✖\`), as operações atingidas
+     com borda vermelha, e o painel **Caos** com cada falha, a invariante violada e o teste gerado.
+3. Passe o mouse num erro: os pontos relacionados levam ao **teste que provou a falha**
+   (\`checkout/.shieldepy/chaos-tests/\`) e à rota.
+
+## 4. A correção, como num pull request
+
+No terminal (**Ctrl+'**), troque para a branch corrigida:
+
+\`\`\`
+git switch correcao
+\`\`\`
+
+Clique de novo em **⚡ Rodar testes de caos**: **0 falhas**. A corrida, o timeout, o 5xx, o corpo
+inválido e a falha parcial **aguentam**; os erros de caos somem da lista e a rota fica verde (\`✓\`).
+
+Depois, **Ctrl+Shift+P → ShielDepy: Comparar Mapa com uma Branch** → \`main\`: o mapa marca o que a
+correção mudou (\`StripeGateway.refund\`, \`StockRepository.reserve\`, \`StockRepository.release\`,
+\`OrderNotSavedError\`, o \`CheckoutService.checkout\` alterado) e as rotas que ela tocou. O filtro
+**só o que o PR mudou (e os vizinhos)**, em **Mostrar**, deixa só essa parte.
+
+## 5. O portal (o histórico do CI)
+
+Abra **${PORTAL}** no navegador e entre com \`dono@acme.test\` / \`Acme-Dono-2026\`.
+**Projetos → Sistema da loja (demo do TCC)**: o painel **Caos no CI** tem o histórico (a main barrada,
+a correção aguentando). Clique numa execução: cada rota vira uma **linha do tempo** das operações, com a
+estação atingida marcada ("Falha parcial" em **grava orders**), a invariante violada e o teste.
+
+## 6. Voltar ao começo
+
+\`\`\`
+git switch main
+\`\`\`
+
+e **⚡ Rodar testes de caos** de novo: as 6 falhas voltam. Os arquivos gerados ficam em \`checkout/.shieldepy/\`
+(\`chaos-tests/\`: os testes; \`chaos-results.json\`: o que o plugin lê).
+
+---
+
+**Outras abas do plugin:** a **engrenagem do ShielDepy** (barra da esquerda) tem as configurações
+(conta, empresa, chave da IA); o **Chat do ShielDepy** (barra da direita) responde sobre os achados e
+precisa de chave da IA (**ShielDepy: Configurar Chave da IA**). A demo roda sem IA: as hipóteses e os
+testes vêm do motor, sem custo.
+`;
+}
+
+function printSummary(seed) {
+  console.log(`
+${bold('══════════════════════ ShielDepy — demo pronta ══════════════════════')}
+
+${bold('Sistema:')} ${WORKSPACE}
+${bold('Portal:')}  ${PORTAL}   login ${bold(seed.owner.email)} / ${bold(seed.owner.password)}
+
+O passo a passo está no ${bold('ROTEIRO.md')}, que abriu no VS Code (também em ${join(WORKSPACE, 'ROTEIRO.md')}).
+Resumo: escudo na barra da esquerda → ${bold('◇ Ver grafo do sistema')} e ${bold('⚡ Rodar testes de caos')}
+(os erros aparecem na Lista de erros e o grafo final abre com o que quebrou) · no terminal do VS Code:
+git switch correcao e ⚡ de novo · "ShielDepy: Comparar Mapa com uma Branch" → main.
+
+${dim('Deixe este terminal aberto: ele mantém o portal no ar. Ctrl+C encerra o portal.')}
+`);
+}
+
+// ---------------------------------------------------------------- comandos
+async function main() {
+  if (args.has('--caos')) {
+    if (!existsSync(join(WORKSPACE, '.git'))) fail('a demo ainda não foi preparada. Rode antes: npm run demo');
+    const seed = existsSync(SEED_FILE) ? JSON.parse(readFileSync(SEED_FILE, 'utf8')) : undefined;
+    const up = await portalUp();
+    if (!up) warn(`o portal não está no ar (${PORTAL}): o resultado não será publicado. Ele sobe com npm run demo.`);
+    chaos(up ? seed?.ciToken : undefined, `branch ${currentBranch()}`);
+    console.log(`\n  relatório: ${join(APP, '.shieldepy', 'chaos-report.md')}`);
+    return;
+  }
+
+  console.log(bold('\n🛡️  ShielDepy — preparando a demo'));
+  // outra demo aberta segura o banco do portal (e a porta): avisa antes de mexer em qualquer coisa
+  if (await portalUp()) {
+    fail(`já tem um portal rodando na porta ${PORT}, provavelmente outra "npm run demo" aberta.\n  Vá no terminal dela e aperte Ctrl+C (ou feche aquele terminal), e rode de novo.\n  Para rodar as duas ao mesmo tempo, use outra porta e outra pasta: DEMO_PORT=3002 DEMO_DIR=<pasta> npm run demo`);
+  }
+  if (args.has('--do-zero')) {
+    removeDemoDir(DEMO);
+    ok(`pasta da demo apagada (${DEMO})`);
+  }
+  ensureDemoDir();
+  console.log(dim(`  pasta da demo (fora do repositório): ${DEMO}`));
+  const TOTAL = 6;
+  step(1, TOTAL, 'Pré-requisitos');
+  checkPrereqs();
+  step(2, TOTAL, 'Dependências');
+  install();
+  step(3, TOTAL, 'Compilação');
+  build(args.has('--do-zero') || args.has('--compilar'));
+  step(4, TOTAL, 'Sistema da demo (checkout, pedidos e relatórios)');
+  prepareWorkspace();
+  step(5, TOTAL, 'Portal local e testes de caos');
+  const seed = seedPortal();
+  writeWorkspaceSettings(seed);
+  const server = await startPortal();
+  // o portal nunca fica órfão: sai junto com o script, seja por Ctrl+C, erro ou fim
+  const stop = () => {
+    stopTree(server);
+    process.exit(0);
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
+  process.on('SIGHUP', stop);
+  process.on('exit', () => stopTree(server));
+  // o histórico do portal (o banco é novo a cada execução): a correção aguenta e a main é barrada,
+  // como se o CI tivesse rodado. Volta para a branch em que estava.
+  if (args.has('--sem-historico')) {
+    ok('histórico do portal pulado (--sem-historico)');
+  } else if (run('git', ['status', '--porcelain'], { cwd: WORKSPACE }).stdout.trim()) {
+    warn('o sistema da demo tem mudanças não commitadas: o histórico do portal fica só com a branch atual');
+    chaos(seed.ciToken, `branch ${currentBranch()}`);
+  } else {
+    const start = currentBranch();
+    for (const branch of ['correcao', 'main'].filter((b) => b !== start).concat(start)) {
+      git(['switch', '--quiet', branch]);
+      chaos(seed.ciToken, `branch ${branch}`);
+    }
+  }
+  // o VS Code abre sem resultado local: quem roda os testes, na apresentação, é o botão do plugin
+  rmSync(join(APP, '.shieldepy'), { recursive: true, force: true });
+  step(6, TOTAL, 'VS Code');
+  await openVsCode(seed);
+  printSummary(seed);
+  // mantém o portal no ar até o Ctrl+C
+  await new Promise(() => {});
+}
+
+await main();

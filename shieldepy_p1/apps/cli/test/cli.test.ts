@@ -189,7 +189,7 @@ describe('CLI chaos (E3)', () => {
       expect(r.warnings).toEqual([]);
       // a rota só de leitura não ganha teste de corrida nem de rede
       expect(r.specs.every((s: { routeId: string }) => s.routeId === 'POST /checkout')).toBe(true);
-      expect(fs.readdirSync(chaosDir('checkout-express')).filter((f) => f.endsWith('.spec.ts'))).toHaveLength(4);
+      expect(fs.readdirSync(chaosDir('checkout-express')).filter((f) => f.endsWith('.spec.ts'))).toHaveLength(6);
     } finally {
       fs.rmSync(chaosDir('checkout-express'), { recursive: true, force: true });
     }
@@ -202,7 +202,7 @@ describe('CLI chaos (E3)', () => {
       fs.writeFileSync(stale, '// velho');
       const { code, out } = await run('chaos', example('checkout-express-fixed'), '--no-run', '--offline');
       expect(code).toBe(0);
-      expect(out).toMatch(/3 teste\(s\) de caos/);
+      expect(out).toMatch(/5 teste\(s\) de caos/);
       expect(fs.existsSync(stale)).toBe(false); // o corrigido tem timeout: não há mais hipótese de timeout
     } finally {
       fs.rmSync(chaosDir('checkout-express-fixed'), { recursive: true, force: true });
@@ -240,6 +240,8 @@ const RACE = 'POST /checkout__race_condition__stock';
 const TIMEOUT = 'POST /checkout__timeout__api.stripe.com';
 const H5XX = 'POST /checkout__http_5xx_intermittent__api.stripe.com';
 const MALFORMED = 'POST /checkout__malformed_response__api.stripe.com';
+const PARTIAL_ORDERS = 'POST /checkout__partial_failure_after_external_call__orders';
+const PARTIAL_STOCK = 'POST /checkout__partial_failure_after_external_call__stock';
 
 describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
   const dir = example('checkout-express');
@@ -263,9 +265,9 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
       asked = ids;
       return results({ [RACE]: ['failed', 'stateCheck: stockNeverNegative'], [TIMEOUT]: ['failed', 'respondsWithin: o cliente ficou mais de 6000 ms sem resposta'] })(root, ids);
     });
-    expect(asked.sort()).toEqual([H5XX, MALFORMED, RACE, TIMEOUT].sort()); // partial_failure não tem teste
+    expect(asked.sort()).toEqual([H5XX, MALFORMED, PARTIAL_ORDERS, PARTIAL_STOCK, RACE, TIMEOUT].sort());
     expect(r.code).toBe(1);
-    expect(r.out).toMatch(/2 achado\(s\), 2 aguentou\(aram\), 0 inválido/);
+    expect(r.out).toMatch(/2 achado\(s\), 4 aguentou\(aram\), 0 inválido/);
     expect(r.out).toMatch(/✖ Crítico\s+race_condition[\s\S]*stateCheck: stockNeverNegative/);
     expect(r.out).toMatch(/✖ Alto\s+timeout/);
     expect(r.err).toContain('portão: 2 achado(s) de caos.');
@@ -286,11 +288,11 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
         severity: 'Crítico',
         testFile: '.shieldepy/chaos-tests/POST__checkout__race_condition__stock.spec.ts',
       });
-      expect(file.untested.map((u: { failure: string }) => u.failure)).toEqual(['partial_failure_after_external_call', 'partial_failure_after_external_call']);
+      expect(file.untested).toEqual([]); // desde a E6, a falha parcial também tem teste
       const scripts = fs.readFileSync(html, 'utf8').split('<script>').slice(1).map((s) => s.slice(0, s.indexOf('</script>')));
       const { topology, overlay } = embedded(scripts[4]!);
       expect(overlay.chaos.topologyHash).toBe(topology.contentHash);
-      expect(overlay.chaos.outcomes).toHaveLength(4);
+      expect(overlay.chaos.outcomes).toHaveLength(6);
       expect(() => new Function(scripts[5]!)).not.toThrow();
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -351,11 +353,14 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
 // acima: no mesmo arquivo eles rodam em sequência, e um não apaga a pasta do outro.
 describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', () => {
   for (const [name, expected] of [
-    ['checkout-express', { code: 1, failed: [RACE, TIMEOUT, H5XX, MALFORMED], passed: [] as string[] }],
-    ['checkout-express-fixed', { code: 0, failed: [] as string[], passed: [RACE, H5XX, MALFORMED] }],
+    ['checkout-express', { code: 1, failed: [RACE, TIMEOUT, H5XX, MALFORMED, PARTIAL_ORDERS, PARTIAL_STOCK], passed: [] as string[], invalid: [] as string[] }],
+    // o corrigido estorna e devolve a reserva quando o INSERT do pedido falha (antes da D4, esse era o
+    // achado da E6); o `stock` só é gravado depois da API no caminho de erro (release), então a falha
+    // não dispara: inválido, que não conta no portão
+    ['checkout-express-fixed', { code: 0, failed: [] as string[], passed: [RACE, H5XX, MALFORMED, PARTIAL_ORDERS], invalid: [PARTIAL_STOCK] }],
   ] as const) {
     it.skipIf(!vitestEntry(example(name)))(
-      `${name}: exit ${expected.code}, ${expected.failed.length} achado(s), ${expected.passed.length} aprovado(s), nenhum inválido`,
+      `${name}: exit ${expected.code}, ${expected.failed.length} achado(s), ${expected.passed.length} aprovado(s), ${expected.invalid.length} inválido(s)`,
       async () => {
         const dir = example(name);
         try {
@@ -365,7 +370,7 @@ describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', ()
           const ids = (status: string) => r.results.filter((x) => x.status === status).map((x) => x.hypothesisId).sort();
           expect(ids('failed')).toEqual([...expected.failed].sort());
           expect(ids('passed')).toEqual([...expected.passed].sort());
-          expect(ids('invalid')).toEqual([]);
+          expect(ids('invalid')).toEqual([...expected.invalid].sort());
         } finally {
           fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
         }

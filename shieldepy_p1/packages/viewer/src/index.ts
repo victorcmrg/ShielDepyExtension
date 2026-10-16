@@ -260,7 +260,8 @@ const APP = String.raw`
   const routeChaos = new Map();
   const failedTargets = new Set();
   if (CHAOS) {
-    const rank = { failed: 3, invalid: 2, passed: 1 };
+    // inválido não prova nada: a rota só fica inválida quando nenhum teste dela valeu
+    const rank = { failed: 3, passed: 2, invalid: 1 };
     for (const o of CHAOS.outcomes) {
       const cur = routeChaos.get(o.routeId);
       if (!cur || rank[o.status] > rank[cur.status] || (o.status === 'failed' && o.severity === 'Crítico')) routeChaos.set(o.routeId, { status: o.status, severity: o.severity });

@@ -3,7 +3,7 @@
 // que a lista-base não inclui. Tudo que ela disser fora do catálogo ou da superfície é descartado.
 
 import type { AttackSurface, SurfaceRoute } from '@shieldepy/core';
-import { CATALOG, catalogEntry, type ChaosAgent, type FailureId } from './catalog';
+import { CATALOG, catalogEntry, isTestable, type ChaosAgent, type FailureId } from './catalog';
 
 /** 1 = alta, 3 = baixa. */
 export type Priority = 1 | 2 | 3;
@@ -63,7 +63,7 @@ export function baselineHypotheses(surface: AttackSurface): Hypothesis[] {
           priority: defaultPriority(entry.id),
           rationale: offlineRationale(route, entry.id, target),
           source: 'motor',
-          testable: entry.testable,
+          testable: isTestable(entry, route, target),
         });
       }
     }
@@ -109,7 +109,7 @@ export function parseThreatModel(
     seen.add(id);
     const priority = h.priority === 1 || h.priority === 2 || h.priority === 3 ? h.priority : defaultPriority(entry.id);
     const rationale = typeof h.rationale === 'string' && h.rationale.trim() ? h.rationale.trim().slice(0, MAX_RATIONALE) : offlineRationale(route, entry.id, target);
-    hypotheses.push({ id, routeId: route.id, failure: entry.id, agent: entry.agent, target, priority, rationale, source: 'ia', testable: entry.testable });
+    hypotheses.push({ id, routeId: route.id, failure: entry.id, agent: entry.agent, target, priority, rationale, source: 'ia', testable: isTestable(entry, route, target) });
   });
   const summary = typeof obj.summary === 'string' && obj.summary.trim() ? obj.summary.trim().slice(0, 2000) : undefined;
   return { hypotheses, rejected, ...(summary && { summary }) };

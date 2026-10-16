@@ -158,9 +158,7 @@ export function buildChaosResults(input: {
         failure: h.failure,
         target: h.target,
         reason: !h.testable
-          ? catalogEntry(h.failure)?.agent === 'db_chaos'
-            ? 'precisa de falha injetada no banco (DB_Chaos, depois)'
-            : 'sem template de teste no MVP'
+          ? (catalogEntry(h.failure)?.untestedReason ?? 'sem template de teste no MVP')
           : input.runError
             ? 'os testes não rodaram (erro de ambiente)'
             : input.outcomes

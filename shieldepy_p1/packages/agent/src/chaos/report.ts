@@ -111,9 +111,9 @@ export function renderChaosReport(input: ChaosReportInput): string {
     out.push('');
   }
   if (untested.length > 0) {
-    out.push('### Hipóteses sem teste no MVP (não bloqueiam)', '');
+    out.push('### Hipóteses sem teste (não bloqueiam)', '');
     for (const h of untested) {
-      const why = catalogEntry(h.failure)?.agent === 'db_chaos' ? 'precisa de falha injetada no banco (DB_Chaos, depois)' : 'sem template de teste no MVP';
+      const why = catalogEntry(h.failure)?.untestedReason ?? 'sem template de teste no MVP';
       out.push(`- ${code(h.routeId)} · ${h.failure} em ${code(h.target)}: ${why}`);
     }
     out.push('');
@@ -137,7 +137,9 @@ export function offlineChaosParagraph(outcomes: ChaosOutcome[]): string {
     const what =
       o.failure === 'race_condition'
         ? `requisições simultâneas em ${o.routeId} corrompem ${o.target}`
-        : o.message?.includes('não respondeu') || o.message?.startsWith('respondsWithin')
+        : o.failure === 'partial_failure_after_external_call'
+          ? `em ${o.routeId}, a gravação em ${o.target} falha depois da chamada externa e nada é compensado`
+          : o.message?.includes('não respondeu') || o.message?.startsWith('respondsWithin')
           ? `com ${o.target} sob ${o.failure}, ${o.routeId} fica sem responder`
           : `com ${o.target} sob ${o.failure}, ${o.routeId} quebra a invariante`;
     return `${what} (${o.message})`;
@@ -155,7 +157,7 @@ export function chaosExplainerSystem(): string {
     'Escreva UM parágrafo em português do Brasil (no máximo 120 palavras) para o autor do PR: a causa provável de cada',
     'achado, ligando-a às operações (ex.: "lê stock, espera o Stripe e só depois grava"), e a correção típica',
     '(reservar com UPDATE condicional, transação com FOR UPDATE, timeout com AbortSignal, tratar a resposta da API e',
-    'responder 502). Sem markdown de título, sem listas, sem blocos de código.',
+    'responder 502; estornar a cobrança quando a gravação seguinte falha). Sem markdown de título, sem listas, sem blocos de código.',
     '',
     'Responda SOMENTE com JSON: {"paragraph": "..."}',
   ].join('\n');

@@ -182,8 +182,9 @@ esses testes com o Vitest do projeto e serve de portão de PR. O pipeline é um 
    código, e propõe hipóteses do catálogo (`race_condition`, `timeout`, `http_5xx_intermittent`,
    `malformed_response`, ...). O motor gera a lista-base pelas tags; **a IA não tira nada dela**, só
    explica, prioriza e acrescenta, e o que ela inventa (rota, falha ou alvo) é descartado.
-2. **Especialistas Network e Concurrency** (IA, tier `fast`): preenchem uma spec validada
-   (atraso, status, corpo inválido, requisições em paralelo, invariantes). A IA **não escreve código**.
+2. **Especialistas Network, Concurrency e DB_Chaos** (IA, tier `fast`): preenchem uma spec validada
+   (atraso, status, corpo inválido, requisições em paralelo, qual gravação no banco falha e com que
+   erro, invariantes). A IA **não escreve código**.
 3. **Templates**: cada spec vira um `.spec.ts` (Vitest + supertest + MSW) com um bloco de
    **controle** (a mesma requisição, sem caos) e o de **caos**.
 
@@ -194,20 +195,30 @@ export default {
   createApp,                                   // o app sem abrir porta
   setupFiles: ['chaos/setup.ts'],              // ex.: o banco vira PGlite em memória
   async reset() { /* estado limpo antes de cada teste */ },
-  invariants: { async stockNeverNegative() { /* ... */ } },
+  invariants: { async stockNeverNegative() { /* ... */ }, async noChargeWithoutOrder(ctx) { /* ctx.apiCalls */ } },
   apis: { 'api.stripe.com': () => ({ id: 'ch_test', status: 'succeeded' }) }, // resposta saudável
   requests: { 'POST /checkout': { path: '/checkout', body: { /* válido */ } } },
 };
 ```
 
-No `examples/checkout-express`, os 4 testes de caos falham (corrida no estoque, Stripe sem
-timeout, e a rota pendurada com 5xx ou corpo inválido), enquanto os controles passam. No
-`examples/checkout-express-fixed`, tudo passa.
+**DB_Chaos (falha parcial).** Quando a rota grava no banco depois de chamar uma API externa (tag
+`write-after-api-call`), o teste deixa a requisição correr até a API responder com sucesso e então
+faz a primeira gravação na tabela alvo falhar, trocando o `query` do `Pool`/`Client` do `pg`. Os
+invariantes recebem `ctx.apiCalls` (as chamadas às APIs que deram certo), e daí sai, por exemplo,
+`noChargeWithoutOrder`: nenhum cliente cobrado sem pedido. Se a gravação alvo não acontece depois
+da API (ex.: só existe no caminho de erro), o resultado é inválido ("a falha não disparou"), não
+achado. Só `pg` por enquanto: gravação via Prisma fica como hipótese sem teste.
+
+No `examples/checkout-express`, os 6 testes de caos falham (corrida no estoque, Stripe sem
+timeout, a rota pendurada com 5xx ou corpo inválido, e a falha parcial em `orders` e em `stock`:
+cobrado sem pedido), enquanto os controles passam. No `examples/checkout-express-fixed`, tudo
+aguenta: ele reserva antes de cobrar, tem timeout e, se o pedido não grava, estorna a cobrança e
+devolve a reserva.
 
 **Execução e portão.** O comando roda os testes gerados e classifica cada hipótese:
 - **achado:** o controle passou e o caos falhou;
 - **aguentou:** os dois passaram;
-- **inválido:** o controle falhou ou o arquivo não carregou. Não conta no portão.
+- **inválido:** o controle falhou, o arquivo não carregou ou a falha no banco não disparou. Não conta no portão.
 
 A severidade sai do motor: corrida ou estado corrompido é Crítico; rota pendurada ou 500 é Alto; status inesperado é Médio. Os códigos de saída são:
 - **exit 1:** há achado com severidade `--fail-on` ou pior (sem `--fail-on`, qualquer achado);
@@ -320,7 +331,12 @@ npm install
 npm run check                 # typecheck + testes unitários/integração (vitest)
 npm run build:vscode          # gera apps/vscode/dist e copia os .wasm
 npm run test:e2e -w shieldepy # abre um VS Code DE VERDADE e testa a extensão ponta a ponta
+npm run demo                  # a demo da apresentação: sistema de exemplo + portal + VS Code com o plugin
+npm run demo:verificar        # confere o roteiro da demo sem abrir janela (e encerra tudo no fim)
 ```
+
+A demo (`scripts/demo/`) está explicada no [README da raiz](../README.md#ver-funcionando-demo-para-a-apresentação).
+Nada é criado dentro do repositório: a demo mora em `~/ShielDepy-demo` (ou em `DEMO_DIR`). O passo a passo da apresentação é o `ROTEIRO.md`, gerado dentro do sistema da demo (`~/ShielDepy-demo/sistema-loja/`).
 
 **Extensão**: abra esta pasta no VS Code e aperte **F5**. Abre uma janela nova com `examples/`.
 Em `pedidos-microservices/services`, `pricing` e `tax` devem ficar marcados em vermelho
@@ -422,8 +438,9 @@ Do Projeto18:
   recebido como parâmetro (sai sem o prefixo de quem chama), SQL que não é literal
   (`db_unknown`) e chamadas dentro de callbacks passados a funções (`prisma.$transaction(async (tx) => ...)`:
   o `tx` não tem tipo, então as operações de dentro não aparecem).
-- Caos: só falhas de rede e de concorrência têm teste. Falha no banco depois da chamada externa
-  (`partial_failure_after_external_call`) e `retry_storm` aparecem como hipótese, mas sem teste. Host
+- Caos: falhas de rede, de concorrência e no banco depois da chamada externa têm teste. A falha
+  no banco só é injetada no `pg` (Prisma, TypeORM e Knex ficam como hipótese sem teste), e não há
+  falha no meio de uma transação. `retry_storm` aparece como hipótese, mas sem teste. Host
   de API dinâmico (URL montada em runtime) não gera teste de rede, porque não se sabe o que interceptar.
 - O painel, o chat e as configurações são testados no E2E só indiretamente (via comandos e
   Diagnostics), não clicando na interface.

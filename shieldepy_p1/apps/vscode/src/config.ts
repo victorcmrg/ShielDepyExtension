@@ -46,6 +46,20 @@ export const config = {
   hasPortal(): boolean {
     return this.webBaseUrl() !== '';
   },
+  /**
+   * Token do portal da demo local (`npm run demo` grava no .vscode/settings.json do sistema da demo).
+   * Só vale com o portal em localhost: uma pasta qualquer não troca a conta de ninguém por um portal de fora.
+   */
+  demoToken(): string | undefined {
+    const token = this.raw.get<string>('demoToken', '');
+    if (!token) return undefined;
+    try {
+      const host = new URL(this.webBaseUrl()).hostname;
+      return host === 'localhost' || host === '127.0.0.1' ? token : undefined;
+    } catch {
+      return undefined;
+    }
+  },
   /** Quando a análise automática roda: a cada pausa na digitação, ou só ao salvar/abrir. */
   analysisTrigger(): AnalysisTrigger {
     return this.raw.get<AnalysisTrigger>('backgroundAnalysis.trigger', 'onType');

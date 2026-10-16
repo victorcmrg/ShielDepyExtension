@@ -26,7 +26,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
   - Sequelize/Knex (F6);
   - o caos rodar nos projetos Mongoose/TypeORM: o contrato (C2) e a injeção de falha no banco, que hoje é só `pg`.
 
-**Atenção: duas linhas de trabalho separadas.** A branch local `feat/demo-tcc` (E6 — DB_Chaos, a demo do TCC e os botões "Ver grafo" e "Rodar testes de caos") saiu do `297c964` e **não está no GitHub nem na `main`**. A `main` seguiu por outra linha (R, Q, C1). Juntar as duas é decisão do usuário: há conflito previsível entre o "Testar Caos" da R3 e o botão "Rodar testes de caos" da `feat/demo-tcc`.
+**Integração (2026-10-16):** a `main` passou a ter tudo: a linha R/Q/C1/M e a da E6 (DB_Chaos) com a demo do TCC (`feat/db-chaos` e `feat/demo-tcc`). Ver o fim do Registro. **Demo:** `npm run demo` (abre o VS Code com o plugin num sistema de exemplo) e `npm run demo:verificar` (confere o roteiro sem janela).
 
 **Onde estávamos em 2026-10-09:** E1–E5, V1–V3, **R** (jornada do usuário e release) e **Q** (qualidade no projeto real) estão **todas mergeadas na `main`** (`03351c1`, PRs #1–#8). A etapa atual é a **C — caos utilizável**, na branch `feat/caos-utilizavel`, criada a partir da `main`. **A C1 parou no meio em 2026-10-09:** o último item do Registro diz o que foi feito e a ordem para retomar. Leia, nesta ordem:
 1. esta seção;
@@ -48,12 +48,13 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Combinados com o usuário (seguir sem perguntar):**
 - Responder **em português**.
-- Trabalhar **fatia por fatia** (4a, 4b, ...): cada uma termina com testes passando, este plano atualizado (registro + ✅ na tarefa) e **um commit** no mesmo commit da mudança. Mensagem de commit em português, terminando com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- **Gastar com a API da IA (chamada paga) só com autorização explícita do usuário**, na hora de medir (tarefa 5e).
+- Trabalhar **fatia por fatia** (D1, D2, ...): cada uma termina com testes passando, este plano atualizado (registro + ✅ na tarefa) e **um commit** no mesmo commit da mudança. Mensagem de commit em português, terminando com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Gastar com a API da IA (chamada paga) só com autorização explícita do usuário.**
 - **Não fazer push nem abrir PR.** O usuário sobe a branch e faz o merge quando a etapa **inteira** estiver pronta. No fim, avisar e oferecer título e descrição do PR.
 - Escolhas técnicas que surgirem: decidir, registrar no plano o porquê e avisar no resumo. Só perguntar o que for realmente do usuário (ex.: gastar dinheiro com chamada paga à IA, mexer no GitHub).
-- **Nada de regex para ler código** (só Tree-sitter ou analisador léxico). Regex em texto da IA ou em caminho de arquivo pode.
+- **Nada de regex para ler código** (só Tree-sitter ou analisador léxico). Regex em texto da IA, em caminho de arquivo ou em texto que o app manda em tempo de execução pode.
 - O princípio do projeto: **o motor prova, a IA propõe**. Toda saída da IA é validada, existe caminho offline, e um teste só conta como falha se o controle passou.
+- Mudança visual (relatório, visualizador, portal): conferir em screenshot antes de dar por pronta. O roteiro do portal está no registro da V3c/V3d: banco temporário com `SHIELDEPY_DATA_DIR`, `chaos` + `publish` de verdade, screenshot pelo protocolo do Chrome com a sessão. Lembrar de **matar o servidor** no fim; no Windows o processo do tsx sobrevive ao fim do terminal.
 
 **Como rodar (de `shieldepy_p1/`):**
 - `npm run check`: typecheck + testes unitários (**325** no fim da etapa R, **355** na etapa M; nenhum pulado quando os exemplos têm `npm install`).
@@ -65,34 +66,30 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 - `npm run cli -- chaos examples/checkout-express --offline [--report chaos-report.md]`: gera e roda os testes de caos e aplica o portão (exit 1 no vulnerável e 0 no `-fixed`). Com `--no-run`, só gera.
 - Dentro de um exemplo (`examples/checkout-express` e `-fixed`, que precisam de `npm install` próprio): `npm test` roda o teste de fumaça. Sem esse `npm install`, os testes da CLI e do agent que rodam o Vitest e o `tsc` dos exemplos são pulados.
 - Atenção no Windows: os caminhos têm acento e espaço (`Área de Trabalho`), então use sempre aspas. Os arquivos do repositório estão em CRLF, e edições por script que procuram `\n` podem não casar; prefira o editor.
+- `npm run cli -- diff <pasta> --base <ref>` e `npm run cli -- publish <pasta> --portal <url>`.
+- `npm run estimate:chaos` (grátis) e `npm run measure:chaos -- --sim-gastar` (pago).
+- `npm run demo` / `npm run demo:verificar`: a demo do TCC (sistema de exemplo fora do repositório, em `~/ShielDepy-demo`).
+- Portal: `npm run web` (build + servidor). Para os testes, o banco vai para uma pasta temporária com `SHIELDEPY_DATA_DIR`.
 
 **Ainda não feito, de propósito (não é bug):**
-- Os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram, porque falta medir com chamada paga.
-- `partial_failure` e `retry_storm` não têm teste (aparecem no relatório como "sem teste no MVP", sem bloquear).
-- O workflow da E4 nunca rodou no GitHub (depende do push), e nenhum secret `ANTHROPIC_API_KEY` foi configurado: no CI ele roda `--offline` até o usuário decidir pagar pela IA.
-- As observações do registro da 3a: 5 heurísticas e 2 sem alvo no `packages/` do próprio ShielDepy. (O `graph apps` lento foi resolvido na V2e: o `.vscode-test` agora é ignorado.)
+- Os modelos padrão (`fast` e `deep` = Haiku 4.5) não mudaram: falta a medição paga.
+- `retry_storm` continua sem teste (o exemplo não tem retry). O DB_Chaos só injeta no `pg`: Prisma, TypeORM e Knex ficam sem teste, e falha no meio de transação também.
+- A falha parcial em `stock` no corrigido sai **inválida** ("a falha não disparou"): o `stock` só é gravado depois da API no caminho de erro. É o comportamento esperado, não bug.
+- Com 7 operações, a linha do tempo do portal rola na horizontal sem dica visual (observação da D5).
+- Nenhum secret de IA ou de portal foi configurado no GitHub: o CI roda `--offline` e não publica.
+- As observações do registro da 3a: 5 heurísticas e 2 sem alvo no `packages/` do próprio ShielDepy.
 
 ## Progresso e fluxo de trabalho
 
 Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança. Cada etapa tem sua branch. **O merge na `main` é feito pelo usuário** quando a etapa inteira estiver completa.
 
-- **E1 — Mapeamento em grafos** (tarefas 1a–1d, branch `feat/chaos-grafo`): pré-requisito de tudo. O grafo precisa ser completo e confiável antes de qualquer agente. **Completa em 2026-10-07, mergeada na `main` (PR #1).**
-- **E2 — Topologia** (tarefas 2a–2f, ver a seção "Fase 1 / E2"), **E3 — Agentes** (tarefa 3), **E4 — Gate de CI** (tarefa 4).
-- **Merges feitos:** `feat/chaos-grafo` (E1, PR #1) → `feat/grafo-visualizador` (V1, PR #2).
-- **E2 completa e mergeada** (PR #3, `b4eeb7b`).
-- **E3 completa e mergeada** (PR #4, `ccc11c2`).
-- **E4 completa** na branch `feat/chaos-gate` (criada a partir da `main`, `ccc11c2`): 4a–4e. Enviada pelo usuário; falta o merge e o PR de teste no GitHub.
-- **Reordenação de 2026-10-08 (decidida com o usuário):** a antiga E5 (outras linguagens) virou **E6**. A **E5** passou a ser o **mapa incremental e o custo**: ids estáveis, diff entre o mapa do PR e o da `main`, caos só nas rotas que o PR tocou e medição do custo real da IA. Motivo: é a maior alavanca de custo e de tempo de CI, e o diff entre mapas também é pré-requisito do V2. Ver a seção "E5".
-- **V3 completo** na branch `feat/portal-v3` (V3a–V3e), empilhada sobre a `feat/visualizador-v2`. **Ordem de merge: E4 → E5 → V2 → V3**, todas por merge comum (não squash).
-- **V2 completo** na branch `feat/visualizador-v2` (V2a–V2e), empilhada sobre a `feat/mapa-incremental`. Ordem de merge: E4 → E5 → V2. Ver "V2 — desenho e tarefas" na seção "Visualização do grafo".
-- **E5 — pronta, menos a medição paga** na branch `feat/mapa-incremental`: 5a–5d, 5f e a parte gratuita da 5e. Para medir: `ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar` (estimativa abaixo de US$ 0,50).
+- **Mergeados na `main`:** E1 (PR #1), V1 (PR #2), E2 (PR #3), E3 (PR #4), E4 (`feat/chaos-gate`), E5 com a 5g (`feat/mapa-incremental`, PR #5), V2 (PR #6) e V3 (PR #7), até o `297c964`.
+- **Reordenações (decididas com o usuário):** em 2026-10-08, "outras linguagens" passou de E5 para E6, abrindo espaço para a E5 (mapa incremental e custo). No mesmo dia passou para **E7**, abrindo espaço para o **DB_Chaos (E6)**, a última falha do catálogo sem teste.
+- **E6 — DB_Chaos: concluída** na branch `feat/db-chaos`, esperando o merge. Depois, a E7.
 
 | Tarefa | Branch | Status |
 |---|---|---|
-| 1a. Fase 0: imports (tsconfig paths, require, barrels, default, alias, namespace) | `feat/chaos-grafo` | concluído, mergeado |
-| 1b. Fase 0: chamadas (this, instâncias, params tipados, references) | `feat/chaos-grafo` | concluído, mergeado |
-| 1c. Fase 0: snapshot unificado + exemplo `checkout-express` com 100% de cobertura | `feat/chaos-grafo` | concluído, mergeado |
-| 1d. Extratores de regras sem regex: Java/Python/C# para Tree-sitter; PL/pgSQL por analisador léxico; HTML/CSS para Tree-sitter | `feat/chaos-grafo` | concluído, mergeado |
+| 1a–1d. E1: mapeamento em grafos (imports, chamadas, snapshot, extratores sem regex) | `feat/chaos-grafo` | concluído, mergeado |
 | V1. Visualizador de conferência do mapa (`shieldepy graph --html`) | `feat/grafo-visualizador` | concluído, mergeado |
 | 2. E2 / Fase 1: topologia (`topology-graph.json`, rotas, I/O, CLI `topology`), tarefas 2a–2f | `feat/topologia` | concluído, mergeado (PR #3) |
 | V2. Visualizador de produto: resultados do caos e diff do PR no mapa (CLI e extensão), tarefas V2a–V2e | `feat/visualizador-v2` | concluído, mergeado (PR #6) |
@@ -100,12 +97,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | 3. E3 / Fases 2–3: LangGraph + agentes (tarefas 3a–3f, ver "E3 — contexto") | `feat/chaos-agentes` | concluído, mergeado (PR #4) |
 | 4. E4 / Fase 4: execução, gate, GitHub Actions (tarefas 4a–4e, ver "E4 — contexto") | `feat/chaos-gate` | concluído, mergeado (junto do PR #6); falta o PR de teste no GitHub |
 | 5. E5: mapa incremental e custo (ids estáveis, diff de mapas, caos só no que o PR tocou, medição de custo), tarefas 5a–5f | `feat/mapa-incremental` | mergeado (junto do PR #6); falta a medição paga (5e) |
-| R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído; falta o merge e publicar o release |
-| Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído; falta o merge (depois da R) |
-| C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | em andamento: C1 pela metade (7 correções do motor feitas; faltam os testes delas, o `--init` e rodar o caos; ver o Registro) |
-| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | M1–M6 ✅; falta conferir a M6 num VS Code real e o usuário subir a branch |
+| R. Jornada do usuário e release da extensão (modo local, primeiros passos, caos no editor, `.vsix`), tarefas R1–R4 | `feat/jornada-release` | concluído, mergeado (PR #8); falta publicar o release |
+| Q. Qualidade no projeto real (minificados e pastas de terceiros, ciclo só com prova, recursão leve), tarefas Q1–Q3 | `feat/qualidade-mapa` (sobre a `feat/jornada-release`) | concluído, mergeado (PR #8) |
+| C. Caos utilizável: validação em projetos reais, contrato quase automático, F, CI de verdade, release; tarefas C1–C5 | `feat/caos-utilizavel` | C1 parcial mergeada (PR #9); os testes das correções entraram na M; faltam o `--init` e rodar o caos nos projetos reais |
+| M. Mapeamento em grafos nos projetos reais (CommonJS, Mongoose, `router.route()`, montagem em laço, decorators, mais projetos medidos), tarefas M1–M6 | `feat/mapa-projetos-reais` | M1–M6 ✅, integrada à `main` em 2026-10-16; falta conferir a M6 num VS Code real |
 | F. Rotas e I/O do resto de JS/TS (Fastify, NestJS, Next.js, Koa, `node:http`; TypeORM, Mongoose, Sequelize, Drizzle, mysql2, SQLite…), tarefas F1–F7 | dentro da C (C3) | pendente; 3 a 5 semanas no total |
 | 6. E6: grafo de chamadas para Python (Java e C# saíram do roadmap em 2026-10-09) | a definir | talvez, depois do release |
+| E6. **DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | concluído, integrado à `main` em 2026-10-16 |
+| Demo do TCC (`npm run demo`, botões "Ver grafo" e "Rodar testes de caos") | `feat/demo-tcc` | concluído, integrado à `main` em 2026-10-16 |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -626,6 +625,122 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - **Docs:** a seção "Portal: o histórico de cada repositório" no `docs/chaos-ci.md` (criar o token, guardar no GitHub, o que vai para o portal, retenção) e o README (o `publish`, o portal e os arquivos novos no mapa do código).
   - **Estado final do V3:** 321 testes unitários (28 do portal, 8 deles do V3b), extensão com 636 KB (sem mudança: o V3 não toca nela). As páginas foram conferidas em screenshots nos temas claro e escuro e no celular. O servidor e o banco temporários da conferência foram desligados e apagados.
   - **Para usar de verdade:** subir o portal com `PUBLIC_URL` (ou `OAUTH_REDIRECT_BASE`) apontando para o endereço público, criar o token na página do projeto e configurar o secret e a variável no GitHub.
+- 2026-10-08: **E4, E5 (com a 5g), V2 e V3 mergeados pelo usuário** (PRs #5–#7, `main` em `297c964`).
+  - **Validação do que estava só no papel:**
+    - pela API pública do GitHub, o workflow rodou nos três PRs e no push da `main`, e tudo passou: `chaos-gate`, `self-test` (o vulnerável barrado no Linux do GitHub) e `check` (a suíte com os exemplos instalados);
+    - "Publicar no portal" ficou `skipped` (sem token);
+    - o bot comentou o relatório no PR #7, com um comentário só (o `--edit-last` funciona);
+    - E2E 27/27 na `main`.
+  - **Falta (depende do usuário):** o PR de teste vermelho, a medição paga e o portal no ar. Tudo descrito em "Como retomar".
+  - **Plano atualizado para a próxima etapa:** E6 — DB_Chaos ("outras linguagens" virou E7). Branch `feat/db-chaos` criada a partir da `main`.
+  - **Achado ao desenhar o DB_Chaos:** o `checkout-express-fixed` também tem a falha parcial. Ele cobra e só depois grava o pedido; se o `insert` falhar, o cliente fica cobrado sem pedido e a reserva do estoque não volta. Isso vira a aceitação da E6.
+- 2026-10-08: **D1 concluído (invariantes com contexto).**
+  - Os testes gerados passam `ctx = { apiCalls }` a cada função de `invariants` (no controle e no caos). O tipo `ChaosInvariantContext` está no core, só como documentação: os projetos não importam o ShielDepy e copiam o formato no próprio config.
+  - **Decisão (muda o desenho, que falava do `request:end` do MSW):** a chamada é registrada **dentro do handler saudável** do MSW, logo antes de devolver a resposta. Assim, só entra a chamada que **deu certo**; a que recebeu falha injetada (5xx, corpo inválido, atraso) não conta como cobrança. Com o `request:end`, um 503 do Stripe contaria como cobrança e o `noChargeWithoutOrder` acusaria o corrigido sem motivo. E não depende da ordem de eventos do MSW: quando o app recebe a resposta, a chamada já está na lista (a D3 usa isso para ligar a falha no banco).
+  - `apiCalls` é zerado antes de cada teste (`beforeEach`, antes do `reset`).
+  - Exemplos: `noChargeWithoutOrder(ctx?)` nos dois (cobranças `POST /v1/charges` − estornos `POST /v1/refunds` ≤ pedidos; sem contexto, `true`). Os testes de fumaça chamam os invariantes sem argumento e continuam passando.
+  - Docs: o contrato no `docs/chaos-ci.md` (com o parágrafo do contexto), o README e o `CONFIG_TEMPLATE` da CLI.
+  - Conferido: `chaos` no vulnerável continua com os 4 achados e o corrigido aguenta os 3; `npm test` e `tsc` nos dois exemplos; suíte **321** passando.
+- 2026-10-08: **D2 + D3 concluídos (catálogo, spec, especialista e template do DB_Chaos)**, num commit só: o template tem que saber gerar a `DbSpec` para o código compilar.
+  - **Catálogo:** `partial_failure_after_external_call` passa a `testable: true`, com uma restrição por alvo (`testableOn`): só quando a tabela é gravada via `pg`. Gravação via Prisma continua sem teste, com o motivo. Cada entrada ganhou o `untestedReason`, usado pela CLI, pelo relatório e pelo `chaos-results.json` (antes o texto estava repetido nos três).
+  - **`DbSpec`:** `{ kind: 'db', target, op: any|insert|update|delete, error: connection|constraint|timeout, expect }`. O padrão do motor é `op: any`, `error: connection` e os invariantes nesta ordem: os `stateCheck` do projeto, `noUnhandledError`, `statusIn [502, 503, 504]` e `respondsWithin 6000`.
+  - **Decisões (mudam o desenho):**
+    - o estado vem **primeiro**, porque a primeira asserção que quebra é a que vai para o relatório. O achado que importa é "cobrou e não gravou" (`noChargeWithoutOrder`), não o 500 que veio junto;
+    - `statusIn` sem o 500 do desenho (era `[500, 502, 503]`). O `noUnhandledError` já proíbe o 500, então ficou `[502, 503, 504]`, igual aos 5xx da rede.
+  - **Validação do que a IA propõe:** o `op` só pode ser `any` ou um verbo que a rota de fato grava na tabela depois da primeira chamada externa (`dbOpsAfterApi`, lido da topologia); o especialista recebe essa lista como `writesAfterApi`. O `error` tem que estar no catálogo. O resto é descartado e registrado.
+  - **Grafo:** o nó `db` entra no fan-out por `Send` (o agente `db_chaos` do catálogo vai para o nó `db`). Agora toda hipótese `testable` vira spec.
+  - **Template `db`:**
+    - troca o `query` do `Pool` e do `Client` do `pg` (os dois, e no `default` também), como o app os enxerga. Com o `vi.mock('pg')` do exemplo são as classes do PGlite; sem mock, as do `pg` de verdade. Ler um export que o mock não tem lança no Vitest, por isso a leitura fica num `try`;
+    - a espiã liga quando há chamada saudável em `apiCalls` (D1) e falha a primeira gravação na tabela alvo com o erro no formato do `pg` (mensagem do Postgres e `code`: `ECONNRESET`, `23505` ou `57014`). Depois deixa passar tudo; só vale no bloco de caos;
+    - o SQL é lido por palavras, sem regex. O primeiro verbo de gravação decide: `INSERT INTO t`, `UPDATE [ONLY] t` (menos `FOR UPDATE`/`DO UPDATE`), `DELETE FROM [ONLY] t`. Isso tira aspas e schema e aceita CTE (`WITH … UPDATE`).
+  - **Decisão nova: "a falha não disparou" é inválido, não achado.** Se nenhuma gravação na tabela alvo acontece depois da API (ex.: o `release` do corrigido, que só roda no caminho de erro), o teste falha com uma mensagem que começa com `DB_NOT_FIRED`, e o runner da E4 classifica como **inválido**, com o motivo. O mesmo vale se o app não usar o `pg`.
+  - **Achado no corrigido (a 1ª parte da D4, registrada antes de corrigir):** `chaos examples/checkout-express-fixed --offline` → **exit 1**:
+    - **Crítico** em `partial_failure_after_external_call` / `orders`, com `stateCheck: noChargeWithoutOrder`. O `INSERT` do pedido falha depois da cobrança, nada é estornado e a exceção sobe: a requisição fica pendurada (o Express 4 não pega promise rejeitada) e o cliente fica cobrado sem pedido;
+    - `stock`: inválido ("a falha não disparou"), porque o `stock` só é gravado depois da API no `release`;
+    - continuam aguentando: corrida, 5xx e corpo inválido.
+  - **Vulnerável:** 6 achados, os 4 de antes **mais** a falha parcial em `orders` e em `stock` (Crítico, `noChargeWithoutOrder`).
+  - Testes: `specialists.test.ts` (spec padrão, validação do `op` e do `error`, `testableOn` com Prisma, o ramo `db` com IA), `templates.test.ts` (o arquivo gerado, e ele compila nos dois exemplos), `chaos-run.test.ts` (o "não disparou" vira inválido) e a aceitação da CLI com os números novos (o corrigido sai exit 1 até a D4). Suíte **326**.
+- 2026-10-08: **D4 concluído (a compensação no corrigido).**
+  - `PaymentGateway.refund(chargeId)`; o `StripeGateway` estorna com `POST /v1/refunds`, **com o mesmo timeout** (sem ele, o host voltaria a ter `no-timeout` e a hipótese de timeout reapareceria).
+  - `CheckoutService.checkout`: se o `orders.insert` falha depois de cobrar, estorna, devolve a reserva e lança `OrderNotSavedError` (com `refunded`); o controller responde **502** `{ error: 'pedido não gravado', refunded }`. Estorno que falha não esconde o erro: sai `refunded: false`, para alguém reconciliar.
+  - **Depois da compensação:** `chaos examples/checkout-express-fixed --offline` → **exit 0**: a falha parcial em `orders` aguenta (charges − refunds = 0 ≤ 0 pedidos, 502, estoque de volta), e a corrida, o 5xx e o corpo inválido continuam aguentando. O `stock` segue inválido ("a falha não disparou"), o que não conta no portão.
+  - Topologia (teste da E2): o corrigido ganhou `api_call api.stripe.com refund` (com timeout) e um segundo `db_write stock release`; as tags não mudaram.
+  - Fumaça: o corrigido ganhou "o banco cai no INSERT do pedido, depois da cobrança: 502, cobrança estornada e estoque de volta" (espiã no `Pool` do PGlite). No vulnerável **não** entrou o equivalente: lá o erro vira promise rejeitada sem tratamento (Express 4), e o Vitest derruba o `npm test` com "Unhandled Rejection". O teste de caos gerado já prova esse defeito.
+  - Suíte **326**; `npm test` (5) e `tsc` no corrigido.
+- 2026-10-08: **D5 concluído (superfícies, CI e custo).**
+  - **CLI:** o texto e o JSON já serviam; a linha "sem teste" usa o `untestedReason` do catálogo.
+  - **Relatório markdown:**
+    - a seção virou "Hipóteses sem teste (não bloqueiam)";
+    - o resumo do motor ganhou a frase da falha parcial ("a gravação em orders falha depois da chamada externa e nada é compensado");
+    - o prompt do parágrafo da IA cita a correção típica (estornar a cobrança).
+  - **Visualizador (achado pelo screenshot):** a rota pegava o pior status e "inválido" pesava mais que "aguentou". No corrigido, ela aparecia como `? POST /checkout` tracejada, com 4 testes aguentando e 1 inválido. **Decisão:** inválido não prova nada, então a rota só fica inválida quando nenhum teste dela valeu (ordem: achado > aguentou > inválido).
+  - **Portal:**
+    - o chip de inválido mostra o alvo ("Falha parcial em stock: inválido");
+    - os hints das métricas mudaram: inválidos = "o controle falhou, ou a falha não disparou"; sem teste = "sem template, ou banco fora do pg";
+    - **a falha parcial só marca a gravação.** Antes, a marcação era pelo nome da tabela, e a falha parcial em `stock` acendia também "lê stock" (achado no screenshot).
+  - **CI:** o `self-test` exige também `partial_failure_after_external_call` em `orders` no relatório do vulnerável, e os comentários do workflow citam a compensação. YAML validado e o self-test simulado com o relatório real.
+  - **Custo (`RELATORIO-CUSTO-IA.md`, estimativa grátis refeita):**
+    - o script de estimativa ganhou a resposta do especialista `db` e os 6 achados do vulnerável;
+    - vulnerável: 8 chamadas, **~US$ 0,017** no Haiku (era 0,012) e ~US$ 0,031 com o Threat Modeler no Sonnet;
+    - 100 rotas sensíveis: US$ 0,70 a 1,08;
+    - com `--base`, ~US$ 0,25 por mês;
+    - a recomendação não mudou.
+  - **Conferência visual (roteiro da V3):** portal num banco temporário, `chaos` + `publish` de verdade dos dois exemplos e screenshots pelo protocolo do Chrome com sessão, em desktop e celular.
+    - **vulnerável:** "6 achados barraram este PR", com **"Falha parcial" na estação "grava orders"**; "lê stock" só com a Corrida;
+    - **corrigido:** "O código aguentou todas as falhas injetadas", 4 aguentaram e 1 inválido, com o estorno e o segundo `release` na linha do tempo;
+    - o visualizador (`--html`) foi conferido nos dois exemplos.
+    - Servidor, Chrome headless e banco temporário desligados e apagados.
+  - **Observação (não mexi):** com 7 operações, a linha do tempo do corrigido passa da largura no desktop e rola na horizontal (`overflow-x`, como no V3), sem uma dica visual de que há mais à direita. No celular, ela fica vertical e aparece inteira.
+  - Suíte **326**.
+- 2026-10-08: **D6 concluído, e com ele a E6 (DB_Chaos).**
+  - **Docs:**
+    - README: o especialista DB_Chaos no pipeline, um parágrafo do DB_Chaos (onde a falha é injetada, `ctx.apiCalls`, o "não disparou", só `pg`), os números novos dos exemplos e o limite reescrito;
+    - `docs/chaos-ci.md`: a falha no banco na introdução e os limites (só `pg`, sem transação, o "não disparou", `retry_storm`).
+  - **Aceitação (conferida):**
+    - `chaos examples/checkout-express --offline` → **exit 1, 6 achados**: os 4 de antes e a falha parcial em `orders` e em `stock`, as duas Crítico, com `noChargeWithoutOrder` violada;
+    - `chaos examples/checkout-express-fixed --offline` → **antes da compensação**, exit 1 com a falha parcial em `orders` (D2+D3); **depois** (D4), exit 0, com 4 aguentando e 1 inválido (`stock`, a falha não disparou);
+    - os testes gerados compilam contra os dois exemplos;
+    - suíte **326**, extensão com **636 KB** (sem mudança) e E2E **27/27** num VS Code real;
+    - o portal mostra a falha parcial em "grava orders" (screenshots da D5);
+    - o self-test do CI foi simulado com o relatório real. A execução no GitHub fica para depois do merge.
+  - **Fica para o usuário:** subir a branch e fazer o merge; depois, o PR de teste sem a compensação (roteiro em "Como retomar").
+- 2026-10-08: **Demo do TCC (`feat/demo-tcc`, a partir da `feat/db-chaos`).** O usuário parou a E7. Primeiro pensou em publicar no Vercel, mas desistiu: o que ele quer é clonar, rodar um comando e já apresentar o plugin.
+  - **`npm run demo`** (`scripts/demo/demo.mjs`, Node puro, sem shell; funciona com acento e espaço no caminho):
+    1. confere os pré-requisitos e instala e compila na primeira vez;
+    2. cria `~/ShielDepy-demo/sistema-loja`, **fora do repositório** (pedido do usuário: o projeto não pode ganhar nada; `DEMO_DIR` muda o lugar, e uma marca `.shieldepy-demo` impede o `--do-zero` de apagar uma pasta que não seja da demo), com três partes: `checkout/` (o `checkout-express`), `pedidos/` (o `pedidos-microservices`, com colisões) e `relatorios/` (um ciclo), um repositório com as branches `main` (com defeitos) e `correcao` (o `src` do corrigido);
+    3. sobe o portal num banco próprio (`scripts/demo/seed.ts` reaproveita o `seedDemo` e acrescenta o projeto, o token da extensão e o de CI);
+    4. roda o caos nas duas branches e publica;
+    5. abre o VS Code com `--extensionDevelopmentPath`, num perfil separado, com o `ROTEIRO.md` aberto em modo de leitura.
+  - O `ROTEIRO.md` é o passo a passo por aba do plugin: Lista de erros, o ciclo, o mapa com o caos, a topologia, a correção (`git switch correcao` + `npm run caos`), "Comparar Mapa com uma Branch" e o portal.
+  - **Na extensão:** `SHIELDEPY_DEMO_TOKEN` faz o login automático. Ele passa pelo `/api/me` como qualquer token, então não é atalho de acesso.
+  - **Dois bugs da extensão que a demo revelou (corrigidos):**
+    - o `reindexFromDisk` (observador de arquivos) não aplicava nem as pastas ignoradas nem o portão de repositório liberado. Os testes gerados em `.shieldepy/` entravam no grafo e poluíam o "Comparar Mapa", e arquivos de repositório não liberado podiam ser indexados;
+    - o `IGNORED_SEGMENT` não tinha `.shieldepy`.
+  - **Abrir o VS Code de dentro de outro VS Code:** o ambiente herda `ELECTRON_RUN_AS_NODE`, `VSCODE_ESM_ENTRYPOINT` etc., e o `Code.exe` novo sobe sem janela. O script tira todas as `VSCODE_*`, `ELECTRON_*` e `CHROME_CRASHPAD*`.
+  - **Comparar Mapa:** compara desde o merge-base, como um PR. Por isso o roteiro manda estar na `correcao` e comparar com a `main` (o contrário dá zero mudanças).
+  - **`npm run demo:verificar`:** percorre o roteiro num VS Code de teste (o do E2E), sem janela, e encerra tudo no fim, inclusive o portal (`taskkill /T` no Windows; matar só o pai deixava o servidor órfão). Passou nos 7 passos: login automático, grafo 100% provado (17 chamadas), as 2 colisões, o ciclo, o mapa com 6 achados, a correção com 0 achados e o mapa atualizando sozinho, e a comparação mostrando só a correção.
+  - **Incidente:** a máquina do usuário deu **tela azul** durante os testes. Eu tinha deixado vários VS Code (alguns presos, sem janela), Chrome headless, VS Codes de teste e o portal rodando ao mesmo tempo, e encerrado processos à força. Daí em diante: uma coisa pesada por vez, sempre encerrada no fim.
+  - Suíte **326**, E2E **27/27**; o README da raiz virou a porta de entrada da demo.
+  - **Ajustes depois do primeiro teste do usuário:**
+    - a demo mora **fora do repositório** (`~/ShielDepy-demo` ou `DEMO_DIR`);
+    - abre numa **janela nova do VS Code já aberto** (`--extensionDevelopmentPath`, pelo CLI oficial `cli.js`). Uma instância com perfil separado não abria com a atualização do VS Code pendente;
+    - o token da demo vai em `shieldepy.demoToken`, no `.vscode/settings.json` do sistema da demo, aceito só com portal em localhost.
+- 2026-10-08: **A extensão no controle (pedido do usuário: "botão 1 para ver o grafo, botão 2 para rodar os testes e acusar os erros, com o grafo final").**
+  - **Botões:** no painel do escudo, "◇ Ver grafo do sistema" e "⚡ Rodar testes de caos" (que vira "Rodando os testes de caos…" e fica desabilitado enquanto roda). Os mesmos dois aparecem como ícones no título do painel (`view/title`). Textos nos 4 idiomas do i18n. Conferido em screenshot do CSS real.
+  - **`shieldepy.runChaos`** (`ChaosController`):
+    - roda o pipeline inteiro pela **CLI empacotada junto da extensão** (`dist/shieldepy-cli.mjs`, um segundo build do esbuild, em ESM para o `defaultWasmDir` achar `<extensão>/wasm`; o banner dá `require`, `__dirname` e `__filename`). O LangGraph fica fora do `extension.js`, que continua com ~636 KB;
+    - roda num processo à parte, com o Node do sistema (ou o do VS Code, com `ELECTRON_RUN_AS_NODE`), com progresso por etapa, cancelamento (`taskkill /T` no Windows) e o log na Saída → ShielDepy;
+    - escolhe o projeto pelo `shieldepy.chaos.config.ts` (com mais de um, pergunta).
+  - **Erros na linha certa:** `chaosToFindings` transforma cada teste que quebrou em achado (grupo novo `caos`, fonte "ShielDepy (caos)"), na operação atingida, lida da topologia que vem no `chaos-results.json`:
+    - corrida: a escrita na tabela;
+    - falha parcial: a gravação depois da API;
+    - rede: a chamada à API.
+
+    O teste que provou a falha e a rota vão como pontos relacionados. Um resultado que já esteja no disco (CLI, CI) também é publicado, e o observador do arquivo mantém tudo em dia.
+  - **O grafo final** abre sozinho no fim da rodada (o painel do mapa já lia o `chaos-results.json` desde a V2).
+  - **Bug de Windows achado e corrigido:** o VS Code entrega o caminho com o drive em minúscula (`c:\...`), e o Node resolve o `node_modules` com `C:\...`. Com isso, o Vitest carregava duas cópias de si mesmo e nenhum teste rodava ("Vitest failed to find the current suite"). A rodada usa o caminho real do disco (`realpathSync.native`), e a leitura do resultado continua com o caminho do VS Code, para não duplicar achados.
+  - **Demo:** abre **sem resultado de caos** (quem roda é o botão, na frente da banca). O histórico do portal continua sendo gerado (`--sem-historico` pula essa parte). O `ROTEIRO.md` foi reescrito em torno dos botões. O `demo:verificar` percorre o roteiro pelos comandos dos botões: os 6 passos passam, incluindo 6 falhas, a falha parcial como erro no Problems em `OrderRepository.ts:14`, a `correcao` com 0 falhas e os erros de caos sumindo.
+  - Suíte **329** (3 novos em `apps/vscode/test/chaos.test.ts`), E2E **27/27**.
 - 2026-10-09: **R1 concluída (modo local).**
   - **Portão:** o motor só depende de `shieldepy.backgroundAnalysis.enabled`. Saíram o `setPathGate`/`isAllowedPath` (filtro por pasta liberada), o `requireAccess` dos comandos e o contexto `shieldepy.unlocked` (o chat fica sempre na barra lateral).
   - **A conta só decide a IA:** `AuthService.companyAiBlock()` devolve `suspended`, `repoBlocked`, `aiDisabled` ou `null`. Sem conta é sempre `null` e vale a chave do usuário; `hasAiAccess()` virou "a empresa não bloqueia".
@@ -848,6 +963,19 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
   - Suíte **357** (+2 em `apps/vscode/test/mapSummary.test.ts`).
   - `dist/extension.js`: 672 KB (era ~640 KB, pelas regras novas do core; o LangGraph continua fora).
   - **Não conferido num VS Code real** (combinado de não abrir VS Code sem perguntar): falta rodar o E2E (`npm run test:e2e -w shieldepy`) e abrir um projeto à mão para ver o aviso.
+- 2026-10-16: **Integração das duas linhas na `main`** (pedido do usuário: "que a main não tenha dúvidas").
+  - A `feat/demo-tcc` (que contém a `feat/db-chaos`) entrou por merge na `feat/mapa-projetos-reais`, que já estava sobre a `main`.
+  - **Conflitos e decisões:**
+    1. **Conta:** fica o modo local da R1. Saíram o portão por login (`setPathGate`, `requireAccess`, o contexto `shieldepy.unlocked`) que a demo ainda tinha, por ter saído de uma base antiga. Ficou o `shieldepy.demoToken` da demo, que só entra com portal em localhost.
+    2. **Caos:** havia duas implementações de `shieldepy.runChaos`.
+       - Quem roda é o `ChaosCommand` da R3: contrato, pacotes, escopo e motor/IA, coberto pelo E2E.
+       - O `ChaosController` da demo virou só o publicador do resultado: cada `chaos-results.json` vira erro na linha do código.
+       - O `ChaosCommand` ganhou o evento de "rodando" (o botão do painel fica desabilitado) e o caminho real do disco (`realpathSync.native`), a correção de Windows da demo contra o Vitest duplicado.
+       - Saíram a CLI empacotada à parte (`dist/shieldepy-cli.mjs`, `apps/cli/src/bundle-entry.ts`) e o comando duplicado no `package.json`.
+    3. **Painel:** os botões "Ver grafo do sistema" e "Rodar testes de caos" da demo, mais o aviso de IA e o walkthrough da `main`. Os ícones do título do painel não dependem mais do login.
+    4. **`npm run demo:verificar`:** chama `api.chaos.execute(<checkout>, { offline: true })`, o mesmo que o botão roda, sem as perguntas.
+  - Suíte **365** (357 + os da E6 e da demo). O `build:vscode` passa (`extension.js` com 679 KB).
+  - **Não conferido num VS Code real:** o E2E e o `demo:verificar`.
 - Decisão: nada de regex para ler código. O grafo e os extratores novos são 100% Tree-sitter, e os extratores de regras que ainda usam regex migram no marco 1d.
 - Confirmado com o usuário: o motor marca os nós críticos; o Threat Modeler é o 1º nó do LangGraph e roteia hipóteses para especialistas por tipo de erro.
 
@@ -1273,7 +1401,7 @@ Hoje o mapa completo (símbolos, imports, chamadas resolvidas por tipo, pacotes)
 
 Isso dá **+3 a 5 dias por framework**. O formato da topologia não muda.
 
-**Recomendação:** fazer **depois da E2 em TS**, quando o pipeline estiver provado de ponta a ponta. Ordem sugerida: Java/Spring (melhor retorno; stack comum em empresas) → C#/ASP.NET → Python. Fica como **E6 — outras linguagens** (era a E5; renumerada em 2026-10-08).
+**Recomendação:** fazer **depois da E2 em TS**, quando o pipeline estiver provado de ponta a ponta. Ordem sugerida: Java/Spring (melhor retorno; stack comum em empresas) → C#/ASP.NET → Python. Fica como **E7 — outras linguagens** (era a E5, depois E6; renumerada em 2026-10-08).
 
 ## Custo estimado da IA (E3), preços conferidos em 2026-10-08
 
@@ -1502,6 +1630,65 @@ Medido no vulnerável:
 - Mudar o corpo do `StripeGateway.charge` → só `POST /checkout` afetada; `GET /orders/:id` fica de fora.
 - Renomear um método sem mudar o corpo → aparece como `renamed`, não como remoção mais adição.
 - A medição de custo fica registrada no plano (se o usuário autorizar a chamada paga).
+
+## E6 — DB_Chaos: falha do banco depois da chamada externa (escrito em 2026-10-08, antes de começar)
+
+> Branch `feat/db-chaos`, criada a partir da `main` (`297c964`, já com E4, E5, V2 e V3). A antiga E6 (outras linguagens) virou **E7**. Esta etapa fecha a última falha do catálogo que aparece como "sem teste no MVP".
+
+### O problema que ele prova
+`partial_failure_after_external_call`: a API externa já foi chamada (ex.: o Stripe **cobrou**) e a gravação seguinte no banco falha. Se o código não compensa, o sistema fica inconsistente: **cliente cobrado sem pedido**, estoque reservado para sempre.
+
+**Achado já visível no código (vai virar a aceitação):**
+- o **exemplo corrigido também tem essa falha**. O `CheckoutService` do `checkout-express-fixed` reserva o estoque, cobra e só depois faz `orders.insert`. Se o `insert` falhar, a cobrança fica sem pedido e a reserva não é devolvida (o `release` só acontece quando o Stripe falha);
+- hoje ele "aguenta tudo" porque nenhum teste injeta falha no banco.
+
+O DB_Chaos tem que **pegar isso no corrigido** (e no vulnerável). Depois o corrigido ganha a compensação (estorno no Stripe + devolver a reserva + responder 502) e passa a aguentar. Isso dá um bom roteiro para o TCC.
+
+### O que já existe e é reaproveitado
+- **Catálogo:** a entrada `partial_failure_after_external_call` já existe (agente `db_chaos`, habilitada pela tag `write-after-api-call`, alvo = cada tabela gravada depois da API, na lista-base), com `testable: false`.
+- **Severidade:** já sai Crítico.
+- **Relatório, visualizador e portal:** já mostram a hipótese como "sem teste" e o rótulo "Falha parcial". Quando ela virar teste, aparece como achado sem mudança estrutural.
+- **Topologia:** cada operação traz `kind`, `target` (tabela), `via` (`pg`, `prisma`), a ordem e o `arquivo:linha`. A tag `write-after-api-call` traz as tabelas.
+- **Template de rede (MSW):** já intercepta a API externa com uma resposta saudável (`apis` do config). O DB_Chaos usa o mesmo servidor para **saber quando a API foi chamada**.
+
+### Desenho (decisões tomadas; registrar o porquê se mudar)
+1. **Onde injetar a falha (MVP: `pg`):**
+   - o teste gerado espiona `Pool.prototype.query` e `Client.prototype.query` do módulo `pg`, como o app o enxerga (com o `vi.mock('pg')` do projeto, são as classes do banco de teste; sem mock, as do `pg` de verdade);
+   - a espiã deixa tudo passar **até a API externa ser chamada** (evento `request:end` do MSW para um host da rota);
+   - depois disso, falha a **primeira gravação na tabela alvo** (`INSERT INTO`, `UPDATE` ou `DELETE FROM` naquela tabela) com um erro de conexão simulado.
+   - Comparar o SQL em tempo de execução, por tokens (minúsculas, sem regex), é casar o texto que o app manda ao banco, e não ler código, então respeita a regra do projeto.
+   - **Prisma fica para depois** (anotado): exigiria espionar o model no cliente gerado.
+2. **Como saber se ficou inconsistente: invariantes com contexto.**
+   - Hoje os invariantes do config são `() => boolean`. Passam a receber um contexto opcional: `(ctx) => boolean`, com `ctx.apiCalls` = as chamadas que o app fez às APIs externas durante o teste (`{ host, method, path }`, registradas pelo MSW).
+   - O exemplo ganha `noChargeWithoutOrder(ctx)`: cobranças (`POST /v1/charges`) − estornos (`POST /v1/refunds`) ≤ pedidos gravados.
+   - Quem não usa o contexto continua funcionando. O `readChaosConfig` (AST) não muda: só lê os nomes.
+3. **Invariantes padrão do DB_Chaos:**
+   - `noUnhandledError` (a falha não pode virar 500 sem tratamento);
+   - `statusIn([500, 502, 503])` (a rota tem que responder, e com erro);
+   - `respondsWithin` (não pode ficar pendurada);
+   - todos os `stateCheck` do projeto, com o contexto.
+4. **Especialista DB_Chaos** (tier `fast`, igual aos outros): preenche uma `DbSpec { kind: 'db', target, op: 'insert' | 'update' | 'delete' | 'any', error: 'connection' | 'constraint' | 'timeout', expect }`, validada por `parseSpec`, com padrão do motor e offline. O grafo LangGraph ganha o ramo `db` no fan-out por `Send`.
+5. **Controle:** igual aos outros templates. A mesma requisição, sem falha, tem que passar; senão o resultado é `invalid`.
+
+### Tarefas
+- ✅ **D1. Contrato com contexto.** Invariantes `(ctx?)`, o tipo `ChaosInvariantContext`, os templates passando `ctx.apiCalls` (o MSW já está em todos), a doc do contrato (`docs/chaos-ci.md`, README, `CONFIG_TEMPLATE` da CLI) e `noChargeWithoutOrder` nos dois exemplos. Teste: os testes de rede e de corrida que já existem continuam passando nos dois exemplos.
+- ✅ **D2. Catálogo, spec e especialista.** `testable: true`, `DbSpec` + `parseSpec` + o padrão do motor, o `specialistSystem('db')`, o ramo `db` no grafo. Testes no estilo do `specialists.test.ts`.
+- ✅ **D3. Template `db`.** Espiã no `pg` (Pool e Client), ligada pelo `request:end` do MSW, a primeira gravação na tabela alvo falhando, invariantes com contexto, e o teste compilando contra os exemplos (teste de compilação da 3e).
+- ✅ **D4. Exemplos:**
+  - **vulnerável:** continua sem compensação → achados Crítico (`orders`, `stock`);
+  - **corrigido:** **antes de corrigir**, rodar e registrar que o DB_Chaos pega a falha (o "achado no corrigido"). Depois implementar a compensação (`StripeGateway.refund`, `release` da reserva, 502) e conferir que passa;
+  - atualizar os testes de topologia da E2 (o corrigido ganha o `api_call` do estorno) e os de fumaça (`npm test` no exemplo).
+- ✅ **D5. Superfícies:** CLI (o texto e o JSON já servem; conferir), relatório markdown, visualizador e portal (sem "sem teste no MVP" para a falha parcial; o rótulo do achado já existe); o `self-test` do CI passa a exigir também a falha parcial no vulnerável; e o `RELATORIO-CUSTO-IA.md`, se o número de chamadas mudar (um especialista a mais por hipótese).
+- ✅ **D6. Aceitação e docs:** README, `docs/chaos-ci.md` e o registro no plano.
+
+### Aceitação do DB_Chaos
+- `chaos examples/checkout-express --offline` → os achados de antes **mais** a falha parcial em `orders` e em `stock` (Crítico), com a invariante `noChargeWithoutOrder` violada.
+- `chaos examples/checkout-express-fixed --offline` **antes da compensação** → a falha parcial em `orders` é achada (o corrigido não estava 100%). **Depois da compensação** → exit 0, tudo aguenta.
+- Os testes gerados compilam contra os exemplos; a suíte, o E2E e o CI ficam verdes; o portal mostra a falha parcial na operação certa (`grava orders`).
+
+### Fora do escopo (anotado)
+- Prisma, TypeORM e Knex: precisam de espiãs próprias.
+- Falha no meio de uma transação (`BEGIN … COMMIT`) e rollback: o exemplo não usa transação; entra quando houver um exemplo que use.
 
 ## Fase 2 — LangGraph + Threat Modeler (`packages/agent/src/chaos/`)
 

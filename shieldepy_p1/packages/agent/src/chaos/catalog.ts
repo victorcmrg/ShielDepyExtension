@@ -12,7 +12,7 @@ export type FailureId =
   | 'retry_storm'
   | 'partial_failure_after_external_call';
 
-/** Quem escreve o teste: rede (MSW), concorrência (requisições em paralelo) ou banco (depois do MVP). */
+/** Quem escreve o teste: rede (MSW), concorrência (requisições em paralelo) ou banco (falha injetada no `pg`). */
 export type ChaosAgent = 'network' | 'concurrency' | 'db_chaos';
 
 export interface CatalogEntry {
@@ -26,6 +26,10 @@ export interface CatalogEntry {
   baseline: boolean;
   /** Há template de teste no MVP. Sem template, a hipótese vai para o relatório sem teste. */
   testable: boolean;
+  /** Restrição por alvo (ex.: o DB_Chaos só injeta falha no `pg`). Ausente = todo alvo serve. */
+  testableOn?(route: SurfaceRoute, target: string): boolean;
+  /** Por que uma hipótese desta falha ficou sem teste (relatório, mapa e portal). */
+  untestedReason: string;
 }
 
 /** Hosts das chamadas de API que dá pra interceptar (host `dynamic` não dá: não se sabe qual mockar). */
@@ -51,6 +55,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     targets: (r) => apiHosts(r, true),
     baseline: true,
     testable: true,
+    untestedReason: 'sem template de teste no MVP',
   },
   {
     id: 'http_5xx_intermittent',
@@ -59,6 +64,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     targets: (r) => apiHosts(r),
     baseline: true,
     testable: true,
+    untestedReason: 'sem template de teste no MVP',
   },
   {
     id: 'malformed_response',
@@ -67,6 +73,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     targets: (r) => apiHosts(r),
     baseline: true,
     testable: true,
+    untestedReason: 'sem template de teste no MVP',
   },
   {
     id: 'race_condition',
@@ -75,6 +82,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     targets: (r) => tagTargets(r, 'read-then-write', 'multi-write-same-target'),
     baseline: true,
     testable: true,
+    untestedReason: 'sem template de teste no MVP',
   },
   {
     id: 'retry_storm',
@@ -83,6 +91,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     targets: (r) => apiHosts(r),
     baseline: false,
     testable: false,
+    untestedReason: 'sem template de teste no MVP',
   },
   {
     id: 'partial_failure_after_external_call',
@@ -90,10 +99,18 @@ export const CATALOG: readonly CatalogEntry[] = [
     description: 'A API externa já foi chamada (ex.: cobrou) e a gravação seguinte falha; o sistema fica inconsistente.',
     targets: (r) => tagTargets(r, 'write-after-api-call'),
     baseline: true,
-    testable: false,
+    testable: true,
+    // a espiã do teste fica no `pg`; Prisma, TypeORM e Knex precisam de espiãs próprias (depois)
+    testableOn: (r, table) => r.operations.some((o) => o.kind === 'db_write' && o.target === table && o.via === 'pg'),
+    untestedReason: 'a falha no banco só é injetada no pg (Prisma e outros, depois)',
   },
 ];
 
 export function catalogEntry(id: string): CatalogEntry | undefined {
   return CATALOG.find((e) => e.id === id);
+}
+
+/** A falha tem teste para este alvo desta rota. */
+export function isTestable(entry: CatalogEntry, route: SurfaceRoute, target: string): boolean {
+  return entry.testable && (entry.testableOn?.(route, target) ?? true);
 }

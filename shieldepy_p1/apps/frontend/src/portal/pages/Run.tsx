@@ -91,8 +91,8 @@ export default function Run() {
       <section className="run-metrics" aria-label="Resumo">
         <Metric tone="danger" value={run.failed} label="achados" hint={run.hits === 0 ? 'nenhum no portão' : run.failOn === 'Baixo' ? 'todos contam no portão' : run.hits + ' no portão (' + run.failOn + ' ou pior)'} />
         <Metric tone="ok" value={run.passed} label="aguentaram" hint="o código resistiu à falha" />
-        <Metric tone="warn" value={run.invalid} label="inválidos" hint="o controle, sem caos, falhou" />
-        <Metric tone="muted" value={run.untested} label="sem teste" hint="hipóteses fora do MVP" />
+        <Metric tone="warn" value={run.invalid} label="inválidos" hint="o controle falhou, ou a falha não disparou" />
+        <Metric tone="muted" value={run.untested} label="sem teste" hint="sem template, ou banco fora do pg" />
       </section>
 
       {results.scope && <ScopeCard scope={results.scope} />}
@@ -187,7 +187,9 @@ function RouteCard({ route, results, index }: { route: SurfaceRoute; results: Ch
   const untested = results.untested.filter((u) => u.routeId === route.id);
   const outOfScope = results.scope && !results.scope.all && !results.scope.tested.includes(route.id);
   const tone: Tone = failed.length ? (failed.some((o) => o.severity === 'Crítico') ? 'danger' : 'warn') : passed.length ? 'ok' : 'muted';
-  const hitsOn = (target: string) => failed.filter((o) => o.target === target);
+  // a falha parcial é injetada numa gravação: a leitura da mesma tabela não foi atingida
+  const hitsOn = (op: SurfaceRoute['operations'][number]) =>
+    failed.filter((o) => o.target === op.target && (o.failure !== 'partial_failure_after_external_call' || op.kind === 'db_write'));
 
   return (
     <article className={'route-card enter tone-' + tone + (outOfScope ? ' out-of-scope' : '')} style={staggerStyle(index)}>
@@ -232,7 +234,7 @@ function RouteCard({ route, results, index }: { route: SurfaceRoute; results: Ch
             {route.at && <span className="flow-at mono">{breakable(route.at, '/')}</span>}
           </li>
           {route.operations.map((op) => {
-            const hits = hitsOn(op.target);
+            const hits = hitsOn(op);
             const worst = hits.some((h) => h.severity === 'Crítico') ? 'Crítico' : hits[0]?.severity;
             return (
               <li key={op.order} className={'flow-node' + (hits.length ? ' hit tone-' + severityTone(worst) : '')}>
@@ -280,7 +282,7 @@ function RouteCard({ route, results, index }: { route: SurfaceRoute; results: Ch
           {invalid.map((o) => (
             <span key={o.hypothesisId} className="foot-chip tone-warn" title={o.message}>
               <Icon name="alert" />
-              {failureLabel(o.failure)}: inválido
+              {failureLabel(o.failure)} em {o.target}: inválido
             </span>
           ))}
           {untested.map((u) => (

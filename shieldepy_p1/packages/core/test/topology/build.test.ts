@@ -119,8 +119,12 @@ describe('E2/2d — topologia', () => {
       'api_call api.stripe.com charge',
       'db_write stock release',
       'db_write orders insert',
+      // E6: a compensação quando o pedido não grava — estorna (com timeout) e devolve a reserva
+      'api_call api.stripe.com refund',
+      'db_write stock release',
     ]);
     expect(checkout.operations[1]).toMatchObject({ timeout: 'yes' });
+    expect(checkout.operations[4]).toMatchObject({ timeout: 'yes' });
     // sobram só as tags verdadeiras: a compensação escreve de novo no estoque, depois da API
     expect(tagNames(checkout)).toEqual(['external-io(api.stripe.com)', 'multi-write-same-target(stock)', 'write-after-api-call(orders,stock)']);
     expect(t.stats).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });

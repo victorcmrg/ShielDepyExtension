@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { attackSurface, buildSystemGraph, buildTopology, CHAOS_CONFIG_FILE, CHAOS_CONFIG_TODO, chaosConfigPending } from '@shieldepy/core';
@@ -41,6 +41,13 @@ export interface ChaosRunOptions {
 export class ChaosCommand implements vscode.Disposable {
   private terminal: vscode.Terminal | undefined;
   private running = false;
+  private readonly runningEmitter = new vscode.EventEmitter<boolean>();
+  /** Começou/terminou uma rodada (o botão "Rodar testes de caos" do painel fica desabilitado enquanto roda). */
+  readonly onDidChangeRunning = this.runningEmitter.event;
+
+  get isRunning(): boolean {
+    return this.running;
+  }
 
   constructor(
     private readonly extensionPath: string,
@@ -140,6 +147,7 @@ export class ChaosCommand implements vscode.Disposable {
   /** Roda o caos (já com contrato e pacotes) num terminal próprio e devolve o código de saída. */
   async execute(root: string, options: ChaosRunOptions): Promise<number | undefined> {
     this.running = true;
+    this.runningEmitter.fire(true);
     try {
       const write = await this.openTerminal();
       const where = options.base ? `só o que mudou desde ${options.base}` : 'todas as rotas sensíveis';
@@ -158,6 +166,7 @@ export class ChaosCommand implements vscode.Disposable {
       return undefined;
     } finally {
       this.running = false;
+      this.runningEmitter.fire(false);
     }
   }
 
@@ -166,7 +175,9 @@ export class ChaosCommand implements vscode.Disposable {
     // Caminho calculado: o esbuild não embute este require (o bundle do caos é outro arquivo).
     const bundle = path.join(this.extensionPath, 'dist', 'chaos.js');
     const { runChaos } = require(bundle) as typeof import('./run-chaos');
-    return runChaos({ json: false, noRun: false, offline: true, ...args, wasmDir: path.join(this.extensionPath, 'wasm') }, io);
+    // O caminho real do disco: o VS Code (e os ids do grafo) dão o drive em minúscula (`c:\...`), o Node resolve o
+    // node_modules com `C:\...`, e o Vitest carregava duas cópias de si mesmo ("failed to find the current suite").
+    return runChaos({ json: false, noRun: false, offline: true, ...args, target: canonical(args.target), wasmDir: path.join(this.extensionPath, 'wasm') }, io);
   }
 
   private async pickProject(): Promise<ChaosProject | undefined> {
@@ -277,6 +288,15 @@ export class ChaosCommand implements vscode.Disposable {
 
   dispose(): void {
     this.terminal?.dispose();
+    this.runningEmitter.dispose();
+  }
+}
+
+function canonical(dir: string): string {
+  try {
+    return realpathSync.native(dir);
+  } catch {
+    return dir;
   }
 }
 

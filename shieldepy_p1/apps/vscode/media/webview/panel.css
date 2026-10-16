@@ -7,6 +7,26 @@ body { padding: 14px 12px 16px; }
 .guard-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--sd-muted); }
 .guard-sub { font-size: 11.5px; color: var(--sd-muted); min-height: 1em; }
 
+/* --- Ações principais: o grafo e os testes de caos ------------------------------------------- */
+.actions { display: grid; gap: 8px; margin-top: 14px; }
+.action {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: none; border-radius: var(--sd-radius);
+  cursor: pointer; text-align: left; background: var(--sd-fill); color: var(--vscode-foreground);
+  transition: transform 0.45s var(--sd-spring), background 0.25s var(--sd-ease), opacity 0.25s var(--sd-ease);
+}
+.action:hover { background: color-mix(in srgb, var(--vscode-foreground) 10%, var(--sd-fill)); }
+.action:active { transform: scale(0.98); }
+.action:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.action.primary { background: color-mix(in srgb, var(--sd-red) 16%, var(--sd-fill)); }
+.action.primary:hover { background: color-mix(in srgb, var(--sd-red) 24%, var(--sd-fill)); }
+.action[disabled] { cursor: progress; opacity: 0.7; }
+.action-icon { flex: none; width: 22px; text-align: center; font-size: 15px; line-height: 1; }
+.action-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.action-text b { font-size: 12.5px; font-weight: 600; }
+.action-text small { font-size: 11px; color: var(--sd-muted); }
+.action.primary[disabled] .action-icon { animation: action-pulse 1.1s ease-in-out infinite; }
+@keyframes action-pulse { 50% { opacity: 0.35; } }
+
 .analyzing {
   display: flex; align-items: center; gap: 8px; height: 0; overflow: hidden; opacity: 0;
   font-size: 11.5px; color: var(--sd-muted); transition: height 0.3s var(--sd-ease), opacity 0.2s ease, margin 0.3s var(--sd-ease);

@@ -13,7 +13,7 @@ import { ChaosCommand, type ChaosRunOptions } from './chaos/ChaosCommand';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
 import { explainWorkspaceCollisions, exportTopology, login, logout, refreshAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
-import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
+import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, SECRET_AUTH_TOKEN, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
 import { InlineSuggestionProvider } from './inline/InlineSuggestionProvider';
 import { AiService } from './services/AiService';
 import { AuthService } from './services/AuthService';
@@ -22,6 +22,7 @@ import { ShieldepyViewProvider } from './views/ShieldepyViewProvider';
 import { StatusBar } from './views/StatusBar';
 import { ConflictBalloon, openLocation } from './views/ConflictBalloon';
 import { ExplorerDecorations } from './views/ExplorerDecorations';
+import { ChaosController } from './chaos/ChaosController';
 import { MapPanel } from './views/MapPanel';
 import { indexWorkspace, isAnalyzable, reindexFromDisk, warnIfTruncated, type IndexReport } from './workspace/files';
 import { summarizeMap } from './workspace/mapSummary';
@@ -40,6 +41,8 @@ interface TestApi {
   signInWithToken(token: string): Promise<unknown>;
   /** Por que a empresa desliga a IA agora (null = não desliga). */
   aiBlock(): string | null;
+  /** Achados publicados num arquivo (Problems + Lista de erros). */
+  findingsOf(fsPath: string): { source: string; severity: string; line: number; message: string }[];
   decorationFor(fsPath: string): { badge?: string; tooltip?: string; color?: string; propagate?: boolean } | undefined;
   /** Estatísticas do grafo em memória (cobertura, imports quebrados). */
   graphStats(): unknown;
@@ -81,6 +84,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
       if (e.affectsConfiguration('shieldepy.webBaseUrl')) void syncPortal();
     })
   );
+  // Demo local (`npm run demo`): o script cria um token no portal local e o entrega pelo
+  // .vscode/settings.json do sistema da demo (ou pela variável, no VS Code de teste). Ainda passa
+  // pelo /api/me do servidor, como qualquer token; só poupa o login no navegador. O portal da demo
+  // é recriado a cada execução, então um token guardado de antes já não vale.
+  const demoToken = process.env.SHIELDEPY_DEMO_TOKEN || config.demoToken();
+  if (demoToken && (await context.secrets.get(SECRET_AUTH_TOKEN)) !== demoToken) await auth.signInWithToken(demoToken);
 
   // vscode://<publisher>.<name>/callback — recebe o retorno do navegador depois de
   // "Confiar" no /device-confirm (ver AuthService.completeLogin). A authority vem
@@ -147,15 +156,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
 
   // --- views ----------------------------------------------------------------------------
   const chat = new ChatViewProvider(context.extensionUri, ai, workspace, findings, analyzer, auth, log);
+  const panelView = new ShieldepyViewProvider(context.extensionUri, findings, workspace, analyzing, ai, auth);
   const mapPanel = new MapPanel(context.extensionUri, workspace, path.join(context.extensionPath, 'wasm'));
   push(mapPanel);
   const chaosCommand = new ChaosCommand(context.extensionPath, workspace, ai, log);
   push(chaosCommand);
+  // o resultado (.shieldepy/chaos-results.json, da extensão, da CLI ou do CI) vira erro na linha do código
+  const chaosResults = new ChaosController(findings);
+  push(chaosResults, panelView.bindChaos(chaosCommand));
   let exported: TopologyGraph | undefined;
   push(
     // retainContextWhenHidden: trocar de aba não descarta o rascunho não enviado do chat.
     vscode.window.registerWebviewViewProvider(VIEW_CHAT, chat, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.window.registerWebviewViewProvider(VIEW_PANEL, new ShieldepyViewProvider(context.extensionUri, findings, workspace, analyzing, ai, auth)),
+    vscode.window.registerWebviewViewProvider(VIEW_PANEL, panelView),
     vscode.window.registerWebviewViewProvider(VIEW_SETTINGS, new SettingsViewProvider(context.extensionUri, ai, auth))
   );
 
@@ -310,6 +323,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
       collisions.publish();
       for (const doc of vscode.workspace.textDocuments) analyzer.runNow(doc);
       announceMap();
+      void chaosResults.loadExisting();
     })
     .catch((err) => log(`[ShielDepy] indexação inicial falhou: ${err}`));
 
@@ -331,6 +345,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
     lastTopology: () => exported ?? mapPanel.lastTopology,
     lastOverlay: () => mapPanel.lastOverlay,
     compareMap: (ref) => mapPanel.compare(ref),
+    findingsOf: (fsPath) => findings.get(fsPath).map((f) => ({ source: f.source, severity: f.severity, line: f.startLine, message: f.message })),
     reindex: () => indexWorkspace(workspace, log),
     chaos: {
       projects: () => chaosCommand.projects(),

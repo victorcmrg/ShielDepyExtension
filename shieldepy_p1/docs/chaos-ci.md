@@ -1,6 +1,6 @@
 # Caos no CI: o ShielDepy como portão de PR
 
-O ShielDepy lê o código (Tree-sitter, sem executar nada), acha as rotas HTTP que fazem I/O arriscado e gera testes de caos **só para elas**. Depois roda esses testes com o Vitest do seu projeto e bloqueia o PR quando o código quebra sob uma falha física: corrida entre requisições, API externa lenta, fora do ar ou respondendo lixo.
+O ShielDepy lê o código (Tree-sitter, sem executar nada), acha as rotas HTTP que fazem I/O arriscado e gera testes de caos **só para elas**. Depois roda esses testes com o Vitest do seu projeto e bloqueia o PR quando o código quebra sob uma falha física: corrida entre requisições, API externa lenta, fora do ar ou respondendo lixo, e o banco caindo logo depois de a API cobrar.
 
 Um achado só conta quando o **controle** (a mesma requisição, sem falha injetada) passou. Se o controle falha, o problema é do ambiente ou do teste: o resultado sai como inválido e não bloqueia.
 
@@ -11,7 +11,7 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
 1. **`shieldepy.chaos.config.ts` na raiz do app.** É o contrato: só o projeto sabe subir o app sem abrir porta, zerar o estado, dizer o que nunca pode acontecer e montar uma requisição válida. Para começar, `shieldepy chaos . --init` (ou **ShielDepy: Testar Caos** no VS Code) gera o arquivo a partir do mapa, com as rotas sensíveis e as APIs; complete as linhas marcadas com `TODO(shieldepy)`.
 
    ```ts
-   import { minStock, resetDb } from './chaos/db';
+   import { minStock, orderCount, resetDb } from './chaos/db';
    import { createApp } from './src/app';
 
    export default {
@@ -24,6 +24,11 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
        async stockNeverNegative() {
          return (await minStock()) >= 0;
        },
+       // com o contexto: as chamadas às APIs que deram certo no teste (ex.: nenhuma cobrança sem pedido)
+       async noChargeWithoutOrder(ctx?: { apiCalls: { host: string; method: string; path: string }[] }) {
+         const charges = ctx?.apiCalls.filter((c) => c.path === '/v1/charges').length ?? 0;
+         return charges <= (await orderCount());
+       },
      },
      apis: {                           // resposta SAUDÁVEL de cada API externa (o MSW responde isso)
        'api.stripe.com': () => ({ id: 'ch_test', status: 'succeeded' }),
@@ -33,6 +38,8 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
      },
    };
    ```
+
+   Cada invariante recebe um contexto opcional, `ctx.apiCalls`: as chamadas às APIs externas que receberam a resposta saudável de `apis` durante o teste (`{ host, method, path }`, em ordem). Uma chamada com falha injetada não entra. Quem não precisa do contexto ignora o parâmetro.
 
    O ShielDepy lê esse arquivo pela AST (só os nomes) e só o executa dentro dos testes gerados. Exemplo completo: [`examples/checkout-express`](../examples/checkout-express).
 
@@ -106,5 +113,7 @@ Sem o secret, o workflow roda `--offline`: só o motor, custo zero, com os mesmo
 ## Limites conhecidos
 
 - Só Express. NestJS, Fastify e Next.js ainda não.
-- `partial_failure_after_external_call` (falhar o banco depois da cobrança) e `retry_storm` aparecem no relatório como "sem teste no MVP" e não bloqueiam.
+- A falha no banco depois da chamada externa (`partial_failure_after_external_call`, o DB_Chaos) só é injetada no `pg`. Com Prisma, TypeORM ou Knex, ela aparece como hipótese sem teste e não bloqueia. Falha no meio de uma transação (`BEGIN … COMMIT`) ainda não é testada.
+- Quando a gravação alvo do DB_Chaos não acontece depois da API (ex.: só existe no caminho de erro, como devolver a reserva), o resultado sai inválido ("a falha não disparou"), não achado.
+- `retry_storm` aparece no relatório como hipótese sem teste e não bloqueia.
 - O teste de timeout espera a paciência inteira (6 s), e uma rota que fica pendurada custa 10 s por teste. Os arquivos rodam em paralelo.

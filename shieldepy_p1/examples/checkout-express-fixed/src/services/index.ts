@@ -1,1 +1,1 @@
-export { CheckoutService, OutOfStockError, type CheckoutInput } from './CheckoutService';
+export { CheckoutService, OrderNotSavedError, OutOfStockError, type CheckoutInput } from './CheckoutService';

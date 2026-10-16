@@ -6,11 +6,12 @@
 #
 # Neste repositório:
 #   - chaos-gate: o portão de verdade, no exemplo CORRIGIDO (checkout-express-fixed). Tem que ficar
-#     verde; um PR que reintroduza a corrida ou tire o timeout do Stripe é barrado e comentado.
+#     verde; um PR que reintroduza a corrida, tire o timeout do Stripe ou a compensação (estorno quando
+#     o pedido não grava) é barrado e comentado.
 #     Em PR que só mexe nos exemplos, roda com --base (só as rotas que o PR tocou); em PR que mexe
 #     no motor (packages/ ou apps/), roda completo, porque o que está em teste é o próprio motor.
-#   - self-test: o exemplo VULNERÁVEL (checkout-express) tem que ser barrado (exit 1, com a corrida
-#     e o timeout no relatório). Garante que o detector não ficou cego.
+#   - self-test: o exemplo VULNERÁVEL (checkout-express) tem que ser barrado (exit 1, com a corrida,
+#     o timeout e a falha parcial no relatório). Garante que o detector não ficou cego.
 #   - check: typecheck + testes unitários, com os exemplos instalados (os testes que compilam e
 #     rodam os testes gerados são pulados sem o npm install dos exemplos).
 #
@@ -150,11 +151,12 @@ jobs:
             if [ "$CODE" = "2" ]; then echo "::error::ShielDepy: erro de ambiente, nada foi provado (ver o log)."; fi
             exit "$CODE"
           fi
-          # self-test: o vulnerável TEM que ser barrado, com a corrida e o timeout
+          # self-test: o vulnerável TEM que ser barrado, com a corrida, o timeout e a falha parcial (DB_Chaos)
           if [ "$CODE" != "1" ]; then echo "::error::self-test: o exemplo vulnerável deveria sair com 1, saiu com $CODE"; exit 1; fi
           grep -q '`race_condition` | `stock`' "$REPORT" || { echo "::error::self-test: a corrida em stock não apareceu"; exit 1; }
           grep -q '`timeout` | `api.stripe.com`' "$REPORT" || { echo "::error::self-test: o timeout do Stripe não apareceu"; exit 1; }
-          echo "self-test ok: o vulnerável foi barrado pela corrida e pelo timeout"
+          grep -q '`partial_failure_after_external_call` | `orders`' "$REPORT" || { echo "::error::self-test: a falha parcial em orders (DB_Chaos) não apareceu"; exit 1; }
+          echo "self-test ok: o vulnerável foi barrado pela corrida, pelo timeout e pela falha parcial"
 
   check:
     name: typecheck + testes

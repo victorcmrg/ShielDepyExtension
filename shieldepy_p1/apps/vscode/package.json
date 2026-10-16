@@ -72,6 +72,12 @@
         }
       ]
     },
+    "menus": {
+      "view/title": [
+        { "command": "shieldepy.showMap", "when": "view == shieldepy.panel", "group": "navigation@1" },
+        { "command": "shieldepy.runChaos", "when": "view == shieldepy.panel", "group": "navigation@2" }
+      ]
+    },
     "commands": [
       {
         "command": "shieldepy.reviewImpact",
@@ -91,7 +97,15 @@
       },
       {
         "command": "shieldepy.showMap",
-        "title": "ShielDepy: Ver Mapa do Sistema"
+        "title": "ShielDepy: Ver Mapa do Sistema",
+        "shortTitle": "Ver grafo do sistema",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "shieldepy.runChaos",
+        "title": "ShielDepy: Testar Caos",
+        "shortTitle": "Rodar testes de caos",
+        "icon": "$(beaker)"
       },
       {
         "command": "shieldepy.exportTopology",
@@ -100,10 +114,6 @@
       {
         "command": "shieldepy.compareMap",
         "title": "ShielDepy: Comparar Mapa com uma Branch"
-      },
-      {
-        "command": "shieldepy.runChaos",
-        "title": "ShielDepy: Testar Caos"
       },
       {
         "command": "shieldepy.gettingStarted",
@@ -336,6 +346,12 @@
           "type": "string",
           "default": "",
           "description": "Endereço do portal da conta da empresa (login, confirmação de dispositivo, política de IA). Vazio = sem portal: a extensão roda em modo local e a área da conta fica escondida. Em desenvolvimento: http://localhost:3000."
+        },
+        "shieldepy.demoToken": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Uso interno da demo local (npm run demo): token do portal da demo. Só é aceito quando o webBaseUrl é localhost."
         }
       }
     }
