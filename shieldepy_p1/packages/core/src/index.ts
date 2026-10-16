@@ -6,6 +6,7 @@ export * from './interactions/validate';
 
 export * from './code-graph/types';
 export * from './code-graph/CodeGraph';
+export * from './code-graph/frontend';
 export * from './code-graph/parser';
 export * from './code-graph/cycles';
 export * from './code-graph/resolve-import';

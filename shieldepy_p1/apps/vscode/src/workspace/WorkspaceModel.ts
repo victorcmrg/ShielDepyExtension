@@ -34,8 +34,9 @@ export class WorkspaceModel {
     /** Caminho relativo à raiz do workspace (dá nome legível às regras). */
     private readonly relative: (fsPath: string) => string = (p) => path.basename(p)
   ) {
-    graph.onParsed(({ id, root }) => {
-      this.pendingTsRules = { id, rules: extractEventHandlers(root) };
+    graph.onParsed(({ id, language, root }) => {
+      // a árvore do grafo só serve ao extrator de TS; as outras linguagens têm o seu no registro
+      if (language === 'ts') this.pendingTsRules = { id, rules: extractEventHandlers(root) };
     });
   }
 

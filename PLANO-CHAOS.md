@@ -1153,7 +1153,7 @@ O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só exist
   - Dapper e SQL cru (`ExecuteAsync`/`QueryAsync` com SQL literal) pelo analisador léxico.
 
 ### Tarefas
-- **L1. Motor por linguagem.** `LanguageFrontend`; o TS passa a ser uma implementação; os 365 testes passam sem mudança.
+- **L1. Motor por linguagem.** ✅ Concluída em 2026-10-16. `LanguageFrontend` (`code-graph/frontend.ts`: extensões, `parse`, `extract → { símbolos, módulo, valueCalls, chamadas, topHash }`); o `tsFrontend` embrulha os extratores de antes; o `CodeGraph` escolhe pela extensão; o `onParsed` diz a linguagem (a extensão só tira regras de TS da árvore de TS). Os 365 testes passam sem mudança.
 - **L2. C#: símbolos, namespaces e chamadas.**
   - Classes, interfaces, structs e records, métodos, construtores, campos e propriedades com tipo, e parâmetros.
   - Receptor por tipo: campo, parâmetro, `var x = new X()`, `this`/`base`, estático `Tipo.M()`, chamada sem receptor dentro da classe.

@@ -3,10 +3,10 @@ import Graph from 'graphology';
 import type { Host } from '../host';
 import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
-import { extractModuleInfo, type ImportBinding, type ModuleInfo } from './extract-module';
-import { topLevelHash } from './fingerprint';
+import type { ImportBinding, ModuleInfo } from './extract-module';
 import { looksGenerated } from './generated';
-import { extractCalls, extractSymbols, extractValueCalls, type CallDesc, type RawArg, type RawCall, type Scope, type TypeRef } from './extract-ts';
+import type { CallDesc, RawArg, RawCall, Scope, TypeRef } from './extract-ts';
+import { tsFrontend, type LanguageFrontend, type LanguageId } from './frontend';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
 import { ModuleResolver } from './resolve-import';
@@ -31,7 +31,7 @@ import {
 } from './types';
 
 /** Chamado com a árvore de cada arquivo de código recém-parseado, antes de ela ser liberada. */
-export type ParsedListener = (file: { id: string; fsPath: string; root: import('./parser').SyntaxNode }) => void;
+export type ParsedListener = (file: { id: string; fsPath: string; language: LanguageId; root: import('./parser').SyntaxNode }) => void;
 
 export const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.html', '.htm', '.css'];
 
@@ -116,6 +116,8 @@ export class CodeGraph {
   private interfaceDependents = new Map<string, Set<string>>();
   private readonly parsedListeners = new Set<ParsedListener>();
   private readonly resolver: ModuleResolver;
+  /** Uma linguagem por extensão (TS/JS hoje); HTML e CSS têm caminho próprio (`web`). */
+  private readonly frontends: LanguageFrontend[];
   // Valores (`arquivo|nome`) sendo resolvidos pelo retorno da chamada que os produz — corta o laço.
   private readonly valueCallStack = new Set<string>();
 
@@ -126,6 +128,7 @@ export class CodeGraph {
     private readonly web: WebParsers = {}
   ) {
     this.resolver = new ModuleResolver(host);
+    this.frontends = parser ? [tsFrontend(parser)] : [];
   }
 
   static async create(wasmDir: string, host: Host): Promise<CodeGraph> {
@@ -267,7 +270,10 @@ export class CodeGraph {
       } else if (ext === '.html' || ext === '.htm') {
         if (this.web.html) this.updateHtmlFile(fsPath, text, this.web.html);
       }
-      else if (this.parser) this.updateCodeFile(fsPath, text);
+      else {
+        const frontend = this.frontends.find((f) => f.extensions.includes(ext));
+        if (frontend) this.updateCodeFile(fsPath, text, frontend);
+      }
     } catch (err) {
       this.host.log(`[CodeGraph] falha inesperada atualizando o grafo de ${fsPath}: ${err}`);
     }
@@ -528,12 +534,12 @@ export class CodeGraph {
   // ---------------------------------------------------------------------------------------
   // Atualização por tipo de arquivo
 
-  private updateCodeFile(fsPath: string, text: string): void {
+  private updateCodeFile(fsPath: string, text: string, frontend: LanguageFrontend): void {
     const fileId = toFileId(fsPath);
 
     let tree;
     try {
-      tree = this.parser!.parse(text, TsParser.isJsxPath(fsPath));
+      tree = frontend.parse(text, fsPath);
     } catch (err) {
       this.host.log(`[CodeGraph] erro de parse em ${fsPath}: ${err}`);
       return;
@@ -542,8 +548,8 @@ export class CodeGraph {
     try {
       const root = tree.rootNode;
       const implementedBefore = this.implementedNames(fileId);
-      const symbols = extractSymbols(root, fileId);
-      this.resetFileNode(fileId, { kind: 'file', path: fsPath, topHash: topLevelHash(root, symbols) });
+      const { symbols, module, valueCalls, calls, topHash } = frontend.extract(root, fileId);
+      this.resetFileNode(fileId, { kind: 'file', path: fsPath, topHash });
       for (const sym of symbols) {
         this.graph.mergeNode(sym.id, {
           kind: sym.kind,
@@ -565,11 +571,11 @@ export class CodeGraph {
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
 
-      const info: FileModule = { ...extractModuleInfo(root), valueCalls: extractValueCalls(root, symbols) };
+      const info: FileModule = { ...module, valueCalls };
       this.moduleInfo.set(fileId, info);
       this.linkImports(fileId, fsPath, info.specs);
 
-      this.rawCalls.set(fileId, extractCalls(root, symbols, fileId));
+      this.rawCalls.set(fileId, calls);
       this.relinkCalls(fileId);
       // Os símbolos deste arquivo acabaram de ser recriados (com ids novos se as linhas mudaram) —
       // quem importa este arquivo (direto ou via barrel) precisa religar as chamadas que apontavam pra cá.
@@ -579,7 +585,7 @@ export class CodeGraph {
 
       for (const listener of this.parsedListeners) {
         try {
-          listener({ id: fileId, fsPath, root });
+          listener({ id: fileId, fsPath, language: frontend.language, root });
         } catch (err) {
           this.host.log(`[CodeGraph] listener falhou em ${fsPath}: ${err}`);
         }
