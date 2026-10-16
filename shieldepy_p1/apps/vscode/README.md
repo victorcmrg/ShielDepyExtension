@@ -62,4 +62,4 @@ A chave fica criptografada no Secret Storage do VS Code.
 | `shieldepy.language` | português, inglês, espanhol ou russo |
 
 ## Linguagens
-O mapa completo (chamadas, imports, rotas) é de **JavaScript e TypeScript**. Java, Python e C# entram só nas colisões entre regras.
+O mapa completo (chamadas, imports, rotas, banco e APIs) é de **JavaScript, TypeScript e C#** (ASP.NET Core com EF Core, Dapper e `HttpClient`). Java e Python entram só nas colisões entre regras. O teste de caos é só de JavaScript e TypeScript.

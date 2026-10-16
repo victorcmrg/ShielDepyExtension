@@ -260,6 +260,12 @@ export class CodeGraph {
     this.parsedListeners.clear();
   }
 
+  /** O grafo parseia este arquivo de código (há frontend e a gramática dele carregou)? HTML/CSS não contam. */
+  parsesCode(fsPath: string): boolean {
+    const ext = extOf(fsPath);
+    return this.frontends.some((f) => f.extensions.includes(ext));
+  }
+
   static isSupported(fsPath: string): boolean {
     return SUPPORTED_EXTENSIONS.includes(extOf(fsPath));
   }

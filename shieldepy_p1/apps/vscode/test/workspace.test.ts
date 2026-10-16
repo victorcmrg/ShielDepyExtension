@@ -57,6 +57,26 @@ describe('WorkspaceModel — grafo estrutural + grafo de interações num parse 
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('C# entra no grafo (classe e método) e as regras do MediatR saem da MESMA árvore, sem o extrator do registro', () => {
+    const parse = vi.fn();
+    const registry = {
+      extractors: [],
+      forPath: (p: string) => (p.endsWith('.cs') ? { language: 'csharp' as const, extensions: ['.cs'], parse } : undefined),
+      forLanguage: () => undefined,
+    };
+    const csModel = new WorkspaceModel(model.graph.fork(), registry, (p) => path.relative(dir, p));
+    const full = path.join(dir, 'tax', 'TaxHandler.cs');
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    const text = 'public class TaxHandler : INotificationHandler<OrderUpdated> {\n  public Task Handle(OrderUpdated n, CancellationToken ct) { n.Total = n.Subtotal * 2; return Task.CompletedTask; }\n}\n';
+    fs.writeFileSync(full, text);
+    csModel.updateFile(full, text);
+    expect(parse).not.toHaveBeenCalled();
+    expect(csModel.rules[0]).toMatchObject({ resource: 'Order', event: 'OrderUpdated', reads: ['subtotal'], writes: ['total'] });
+    const kinds = csModel.graph.ownedSymbols(toFileId(full)).map((s) => csModel.graph.nodeAttributes(s)?.kind).sort();
+    expect(kinds).toEqual(['class', 'method']);
+    csModel.dispose();
+  });
+
   it('remover o arquivo remove as regras e desfaz a colisão', () => {
     write('pricing/handlers.ts', PRICING);
     const tax = write('tax/handlers.ts', TAX);

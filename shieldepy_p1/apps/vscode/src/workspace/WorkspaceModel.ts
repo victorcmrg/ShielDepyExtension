@@ -10,33 +10,33 @@ import {
   type Collision,
   type Rule,
 } from '@shieldepy/core';
-import { extractEventHandlers, type ParsedRule, type Registry } from '@shieldepy/extractors';
+import { extractEventHandlers, extractMediatrHandlers, type ParsedRule, type Registry } from '@shieldepy/extractors';
 
-const TS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
 /**
  * O estado analisável do workspace — SEM `vscode` (testável direto):
  *   - o grafo estrutural (`CodeGraph`: imports, chamadas, ciclos)
  *   - as regras reativas de cada arquivo e as colisões entre elas (Grafo de Interações)
- * TS/JS é parseado UMA vez: a árvore do CodeGraph alimenta o extrator de regras via `onParsed`.
+ * TS/JS e C# são parseados UMA vez: a árvore do CodeGraph alimenta o extrator de regras via `onParsed`.
  */
 export class WorkspaceModel {
   private rulesByFile = new Map<string, Rule[]>();
   private collisionsMemo: Collision[] | undefined;
   private readonly listeners = new Set<() => void>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
-  private pendingTsRules: { id: string; rules: ParsedRule[] } | undefined;
+  private pendingRules: { id: string; rules: ParsedRule[] } | undefined;
 
   constructor(
     readonly graph: CodeGraph,
-    /** Registro de extratores SEM Tree-sitter — só pra Java/Python/C# e pro fallback de TS. */
+    /** Registro de extratores — pra Java/Python e pro fallback de TS/C# (gramática do grafo indisponível). */
     private readonly registry: Registry,
     /** Caminho relativo à raiz do workspace (dá nome legível às regras). */
     private readonly relative: (fsPath: string) => string = (p) => path.basename(p)
   ) {
     graph.onParsed(({ id, language, root }) => {
-      // a árvore do grafo só serve ao extrator de TS; as outras linguagens têm o seu no registro
-      if (language === 'ts') this.pendingTsRules = { id, rules: extractEventHandlers(root) };
+      // a árvore do grafo serve aos extratores de TS (event bus) e de C# (MediatR); Java e Python têm o seu no registro
+      if (language === 'ts') this.pendingRules = { id, rules: extractEventHandlers(root) };
+      else if (language === 'csharp') this.pendingRules = { id, rules: extractMediatrHandlers(root) };
     });
   }
 
@@ -55,11 +55,13 @@ export class WorkspaceModel {
   updateFile(fsPath: string, text: string): void {
     const id = toFileId(fsPath);
     this.cancelScheduled(id);
-    this.pendingTsRules = undefined;
+    this.pendingRules = undefined;
     this.graph.updateFile(fsPath, text);
 
     let parsed = this.takeParsedRules(id);
-    if (parsed === undefined && (!TS_EXTENSIONS.has(extOf(fsPath)) || !this.graph.isReady)) {
+    // a árvore não veio do grafo (Java/Python, ou a gramática de TS/C# não carregou): o registro lê o arquivo.
+    // Um minificado que o grafo pulou não entra (Q1).
+    if (parsed === undefined && !this.graph.parsesCode(fsPath)) {
       try {
         parsed = this.registry.forPath(fsPath)?.parse(text, fsPath);
       } catch {
@@ -69,10 +71,10 @@ export class WorkspaceModel {
     if (parsed !== undefined) this.setRules(id, this.toRules(fsPath, id, parsed));
   }
 
-  /** Regras que o `onParsed` capturou durante o `graph.updateFile` deste arquivo (se era TS/JS). */
+  /** Regras que o `onParsed` capturou durante o `graph.updateFile` deste arquivo (se era TS/JS ou C#). */
   private takeParsedRules(id: string): ParsedRule[] | undefined {
-    const pending = this.pendingTsRules;
-    this.pendingTsRules = undefined;
+    const pending = this.pendingRules;
+    this.pendingRules = undefined;
     return pending?.id === id ? pending.rules : undefined;
   }
 

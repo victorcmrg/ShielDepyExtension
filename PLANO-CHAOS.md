@@ -17,7 +17,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
 - **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
-- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). Faltam a L5 (projetos C# reais) e a L6 (extensão); em seguida, o Java (etapa J, a escrever).
+- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). **L6 ✅** (extensão; falta conferir num VS Code real). Falta a L5 (projetos C# reais); em seguida, o Java (etapa J, a escrever).
 - Para a L2 foi lida a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator usa:
   - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
   - `class_declaration` com `bases: base_list` e `attribute_list`;
@@ -1014,6 +1014,14 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-16: **L6 concluída (a extensão com C#).**
+  - O grafo da extensão já indexa `.cs` (o `CodeGraph.create` carrega a gramática de C#, e o `esbuild.mjs` copia todos os `.wasm`). O `FILE_GLOB` já tinha `cs`.
+  - **Um parse só:** o `WorkspaceModel` tira as regras do MediatR da árvore de C# do grafo (`onParsed` com `language: 'csharp'`), como já fazia com o TS. O registro só lê o arquivo quando o grafo não o parseia (Java, Python, ou a gramática não carregou): `CodeGraph.parsesCode(fsPath)`.
+  - Textos: o aviso "nenhuma rota reconhecida" cita o ASP.NET Core (4 idiomas); o README da extensão diz que o mapa completo é de JS, TS e C#, e o caos só de JS/TS.
+  - `dist/extension.js`: 707 KB (era 679 KB; +28 KB do extrator de C#; o LangGraph continua fora).
+  - **Avisos do build que já existiam** (não são desta etapa): `import.meta` vazio em `packages/core/src/wasm-path.ts` e `packages/viewer/src/index.ts`, e a **chave `menus` duplicada no `apps/vscode/package.json`** (linha 212): no JSON, a segunda apaga a primeira, então algum menu pode estar sumindo. Não corrigido (fora do escopo; avisar o usuário).
+  - **Não conferido num VS Code real** (o combinado é perguntar antes de abrir o VS Code ou rodar o E2E).
+  - Suíte **381** (+1 em `apps/vscode/test/workspace.test.ts`).
 - 2026-10-16: **L4 concluída (I/O do C#).** Em `topology/io.ts`, pela regra de sempre: a operação sai do pacote para o qual a chamada resolveu no grafo, nunca do nome da variável.
   - **EF Core** (`via: 'efcore'`): leitura só no que materializa (`ToListAsync`, `First*`, `Single*`, `Any`, `Count`, `FindAsync`...; `Where`/`Include`/`OrderBy` só montam a consulta); escrita em `Add`/`Update`/`Remove`/`Attach` e `ExecuteUpdate`/`ExecuteDelete`; o alvo é a entidade do `DbSet<T>`, inclusive no fim de uma consulta encadeada (o `entityOf` segue o `receiverCall` em C#/Java). `SaveChanges` vira `db_tx` (`SaveChanges`); `BeginTransaction`/`Commit`/`Rollback` viram `startTransaction`/`commitTransaction`/`abortTransaction`, os nomes que o `sensitivityTags` já entende. SQL cru (`FromSqlRaw`, `ExecuteSqlRaw`...) pelo `classifySql`, com `FOR UPDATE`; o materializador depois de um `FromSqlRaw` não conta de novo.
   - **Dapper** (`via: 'dapper'`): `Query*`/`Execute*` numa conexão ADO.NET (`IDbConnection`, Npgsql, SqlClient, MySqlConnector, Sqlite), com o SQL literal classificado; SQL que não é literal vira `db_unknown`.
@@ -1210,7 +1218,7 @@ O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só exist
 - **L3. Rotas do ASP.NET Core** (controllers e minimal APIs). ✅ Concluída em 2026-10-16 (ver o registro).
 - **L4. I/O do C#** (EF Core, `HttpClient`, Dapper). ✅ Concluída em 2026-10-16 (ver o registro).
 - **L5. Projetos C# reais no `mapa:reais`:** 3 a 5 do GitHub, fixados por commit, na tabela.
-- **L6. Extensão:** indexar `.cs` no grafo (hoje só regras), o mapa e o resumo da M6. O caos em C# **não** entra nesta etapa: os testes gerados são Vitest/supertest, e para C# seriam xUnit/`WebApplicationFactory`, outra etapa.
+- **L6. Extensão:** indexar `.cs` no grafo (hoje só regras), o mapa e o resumo da M6. ✅ Concluída em 2026-10-16 (ver o registro); falta conferir num VS Code real. O caos em C# **não** entra nesta etapa: os testes gerados são Vitest/supertest, e para C# seriam xUnit/`WebApplicationFactory`, outra etapa.
 
 ## M — mapeamento em projetos reais (escrito em 2026-10-13)
 
