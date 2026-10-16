@@ -15,6 +15,16 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Decisão do usuário (2026-10-16), que substitui a de 2026-10-09 ("só JS/TS; Java e C# fora"):** a próxima linguagem é **C#**, depois **Python**. O motor continua nosso (Tree-sitter), sem o Graphify. O Graphify entra só como comparação no TCC: ele faz um grafo geral para a IA, sem chamadas em ordem com argumentos, sem tipo do receptor e sem rotas e I/O por framework.
 
+**Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
+- **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
+- **L2 (C#) não começou**: o usuário vai fazer depois. O único estudo feito foi ler a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator vai usar:
+  - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
+  - `class_declaration` com `bases: base_list` e `attribute_list`;
+  - `field_declaration` → `variable_declaration` (`type`); `property_declaration`; `constructor_declaration` / `method_declaration` com `parameters`;
+  - `invocation_expression` (`function`: `identifier` ou `member_access_expression` com `expression`/`name`); `object_creation_expression`; `this_expression` / `base_expression`;
+  - `local_declaration_statement` com `implicit_type "var"`; `attribute` com `attribute_argument_list` (as rotas `[HttpGet("{id}")]`).
+- Próximo passo, quando o usuário quiser: a L2 conforme o desenho abaixo.
+
 **O que vem antes (etapa M e a integração), para contexto:**
 
 **Etapa atual (2026-10-13): M — mapeamento em grafos nos projetos reais**, na branch `feat/mapa-projetos-reais`, criada a partir da `origin/main` (`60bf07a`, depois da C1 parcial). Pedido do usuário: "o foco agora é deixar 100% a parte de mapeamento em grafos", testando em apps Express do GitHub; depois, um plugin que só se instala e roda (mapeia o sistema e diagnostica). Leia a seção **"M — mapeamento em projetos reais"** (por que existe, os projetos, as tarefas M1–M6) e o fim do Registro.
