@@ -42,6 +42,10 @@ export interface SymbolNodeAttrs {
   returns?: string[];
   /** Classe de C#/Java: namespace (ou package) onde é declarada. */
   namespace?: string;
+  /** Método de extensão do C#: o tipo do parâmetro `this`. */
+  extensionOf?: string[];
+  /** Classe de C#: as mensagens do MediatR que ela trata (`Create.Command`). */
+  handles?: string[];
 }
 
 /** Dependência externa (`pg`, `@prisma/client`, `node:fs`) — id `pkg:<nome>`. */

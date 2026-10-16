@@ -37,6 +37,11 @@ const PROJECTS: Project[] = [
   { id: 'jwt-auth-mongodb', repo: 'bezkoder/node-js-jwt-auth-mongodb', commit: '90a2d72d81392ba53f093c9d12a08bc2d822c969', stack: 'JS (CJS), Express, Mongoose' },
   { id: 'mern-memories', repo: 'adrianhajdin/project_mern_memories', commit: '9c2c4166ea359ef07417d112cb4b892ef47cb198', stack: 'JS (ESM), Express, Mongoose, React' },
   { id: 'nest-realworld', repo: 'lujakob/nestjs-realworld-example-app', commit: 'c1c2cc4e448b279ff083272df1ac50d20c3304fa', stack: 'TS, NestJS, TypeORM' },
+  // C# (etapa L5, 2026-10-16)
+  { id: 'todoapi', repo: 'davidfowl/TodoApi', commit: '307a1eadbbd77a3004c318f2377e4818bc400af6', stack: 'C#, minimal APIs, EF Core' },
+  { id: 'aspnet-realworld', repo: 'gothinkster/aspnetcore-realworld-example-app', commit: '8aa617abed5dd645f8f9d99578a3e07b4e2e52e7', stack: 'C#, controllers, MediatR, EF Core' },
+  { id: 'clean-architecture', repo: 'jasontaylordev/CleanArchitecture', commit: '1bc2b07ce75864b0c399e8e3d481de5e17aad509', stack: 'C#, minimal APIs, MediatR, EF Core' },
+  { id: 'eshoponweb', repo: 'NimblePros/eShopOnWeb', commit: 'f21d6233b851897371c25c5e7ffa67bb8552dba8', stack: 'C#, controllers + endpoints, EF Core' },
 ];
 
 function arg(name: string): string | undefined {

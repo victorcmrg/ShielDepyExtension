@@ -39,6 +39,10 @@ export interface SymbolInfo {
   returns?: TypeRef;
   /** Classe de C#/Java: o namespace (ou package) onde ela é declarada — a resolução é por ele, não por import de arquivo. */
   namespace?: string;
+  /** Método de extensão do C# (`static void Validate(this Order o)`): o tipo do `this`. */
+  extensionOf?: TypeRef;
+  /** Classe de C#: as mensagens que ela trata no MediatR (`IRequestHandler<Create.Command, R>` → `Create.Command`). */
+  handles?: string[];
 }
 
 /**
@@ -95,6 +99,8 @@ export interface RawCall {
   decorates?: string;
   /** C#/Java: `new X()` — o alvo é o construtor de `X` (ou a própria classe, sem construtor declarado). O tipo vem em `receiver`. */
   ctor?: true;
+  /** C#: `Send(msg)`/`Publish(msg)` do MediatR — o tipo da mensagem (`Create.Command`); o alvo é o `Handle` de quem a trata. */
+  message?: string;
   /**
    * Receptor que é o resultado de uma cadeia (`Router().use(a).use(b)`): quem guarda a cadeia
    * inteira (`const api = ...` → `api`; `export default ...` → `default`) ou, solta, a posição

@@ -69,7 +69,8 @@ function accessOn(body: SyntaxNode | null, param: string): { reads: string[]; wr
     const isTarget = parent?.type === 'assignment_expression' && parent.childForFieldName('left')?.id === n.id;
     if (isTarget) {
       access.write(field);
-      const op = parent.namedChildren.find((c) => c.type === 'assignment_operator')?.text;
+      // o operador é um nó `assignment_operator` na gramática antiga e um token anônimo (`+=`) na nova
+      const op = parent.namedChildren.find((c) => c.type === 'assignment_operator')?.text ?? parent.children.find((c) => !c.isNamed && c.type.endsWith('='))?.type;
       if (op !== undefined && op !== '=') access.read(field); // `+=` também lê
     } else if (parent?.type === 'prefix_unary_expression' || parent?.type === 'postfix_unary_expression') {
       access.write(field); // `n.Count++`

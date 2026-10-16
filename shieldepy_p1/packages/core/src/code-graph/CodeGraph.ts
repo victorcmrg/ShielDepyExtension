@@ -98,7 +98,16 @@ interface ResolutionContext {
   typesNamed(name: string): string[];
   /** C#/Java: os `global using` de todos os arquivos. */
   globalUsings(): string[];
+  /** C#: os métodos de extensão do projeto com esse nome (registra a dependência). */
+  extensionsNamed(name: string): string[];
+  /** C#: as classes que tratam (MediatR) uma mensagem com esse nome simples (registra a dependência). */
+  handlersOf(name: string): string[];
 }
+
+/** Chave dos métodos de extensão no `typeDependents` (o nome do método, não de uma classe). */
+const EXTENSION_KEY = 'ext:';
+/** Chave das mensagens do MediatR no `typeDependents` (quem despachou `Command` religa quando um handler dela muda). */
+const MESSAGE_KEY = 'msg:';
 
 const EMPTY_COVERAGE: FileCoverage = { callsResolved: 0, callsHeuristic: 0, callsUnresolved: 0, callsExternal: 0 };
 
@@ -604,6 +613,8 @@ export class CodeGraph {
           ...(sym.properties !== undefined && { properties: sym.properties }),
           ...(sym.returns !== undefined && { returns: sym.returns }),
           ...(sym.namespace !== undefined && { namespace: sym.namespace }),
+          ...(sym.extensionOf !== undefined && { extensionOf: sym.extensionOf }),
+          ...(sym.handles !== undefined && { handles: sym.handles }),
         });
         this.graph.mergeEdgeWithKey(`${fileId}->defines->${sym.id}`, fileId, sym.id, { type: 'defines' });
       }
@@ -838,6 +849,8 @@ export class CodeGraph {
     let legacyScope: Map<string, string[]> | undefined;
     let implementers: Map<string, string[]> | undefined;
     let typeIndex: Map<string, string[]> | undefined;
+    let extensionIndex: Map<string, string[]> | undefined;
+    let handlerIndex: Map<string, string[]> | undefined;
     let globals: string[] | undefined;
     return {
       bindings: (file) => {
@@ -885,10 +898,80 @@ export class CodeGraph {
         return typeIndex.get(name) ?? [];
       },
       globalUsings: () => (globals ??= [...new Set([...this.scopes.values()].flatMap((s) => s.global ?? []))]),
+      extensionsNamed: (name) => {
+        const key = `${EXTENSION_KEY}${name}`;
+        let dependents = this.typeDependents.get(key);
+        if (!dependents) this.typeDependents.set(key, (dependents = new Set()));
+        dependents.add(fileId);
+        if (!extensionIndex) {
+          extensionIndex = new Map();
+          this.graph.forEachNode((id, attrs) => {
+            if (attrs.kind !== 'method' || !attrs.extensionOf) return;
+            const list = extensionIndex!.get(attrs.name);
+            if (list) list.push(id);
+            else extensionIndex!.set(attrs.name, [id]);
+          });
+        }
+        return extensionIndex.get(name) ?? [];
+      },
+      handlersOf: (name) => {
+        const key = `${MESSAGE_KEY}${name}`;
+        let dependents = this.typeDependents.get(key);
+        if (!dependents) this.typeDependents.set(key, (dependents = new Set()));
+        dependents.add(fileId);
+        if (!handlerIndex) {
+          handlerIndex = new Map();
+          this.graph.forEachNode((id, attrs) => {
+            if (attrs.kind !== 'class') return;
+            for (const m of attrs.handles ?? []) {
+              const simple = m.slice(m.lastIndexOf('.') + 1);
+              const list = handlerIndex!.get(simple);
+              if (list) list.push(id);
+              else handlerIndex!.set(simple, [id]);
+            }
+          });
+        }
+        return handlerIndex.get(name) ?? [];
+      },
     };
   }
 
   private resolveCall(fileId: string, call: CallDesc, ctx: ResolutionContext, depth = 0): CallResolution {
+    const r = this.resolveCallBy(fileId, call, ctx, depth);
+    return call.message ? this.dispatched(fileId, r, call.message, ctx) : r;
+  }
+
+  /**
+   * C#: `_mediator.Send(new Create.Command())` resolve para o pacote do MediatR, mas quem roda é o `Handle` de
+   * quem trata `Create.Command`. Nome igual → provado; só o nome simples igual (`Command` × `Create.Command`) → por nome.
+   */
+  private dispatched(fileId: string, r: CallResolution, message: string, ctx: ResolutionContext): CallResolution {
+    if (r.outcome !== 'callsExternal' || r.package !== 'MediatR') return r;
+    const simple = message.slice(message.lastIndexOf('.') + 1);
+    const handlers = ctx.handlersOf(simple);
+    // a mensagem e a de cada handler resolvidas pelo índice de tipos, cada uma no arquivo onde está escrita:
+    // `Create.Command` de Articles e o de Comments são classes diferentes
+    const wanted = new Set(this.resolveType(fileId, message.split('.'), ctx, false).classes);
+    const exact = handlers.filter((id) => {
+      const a = this.graph.getNodeAttributes(id);
+      if (!isSymbolNode(a)) return false;
+      return (a.handles ?? []).some((m) => this.resolveType(a.file, m.split('.'), ctx, false).classes.some((c) => wanted.has(c)));
+    });
+    // sem a classe da mensagem (tipo não resolvido), só o nome simples: palpite
+    const chosen = exact.length > 0 ? exact : wanted.size > 0 ? [] : handlers;
+    const targets = chosen.flatMap((cls) => {
+      const a = this.graph.getNodeAttributes(cls);
+      if (!isSymbolNode(a)) return [];
+      return this.ownedSymbols(a.file).filter((id) => {
+        const m = this.graph.getNodeAttributes(id);
+        return isSymbolNode(m) && m.kind === 'method' && m.container === a.name && m.name === 'Handle';
+      });
+    });
+    if (targets.length === 0) return r;
+    return { outcome: exact.length > 0 ? 'callsResolved' : 'callsHeuristic', targets };
+  }
+
+  private resolveCallBy(fileId: string, call: CallDesc, ctx: ResolutionContext, depth = 0): CallResolution {
     // `f()` com `f` variável local (parâmetro, callback) não é nenhum símbolo do projeto;
     // `obj.m()` com `obj` local sem tipo ainda pode cair no fallback por nome.
     if (call.shadowed) return call.object && !call.opaque ? this.guess(call, ctx) : NATIVE;
@@ -914,6 +997,18 @@ export class CodeGraph {
         const model = this.modelOf(fileId, call, 'caller' in call ? (call.caller as string) : undefined, ctx);
         const own = model?.document ? this.modelMember(model.file, model.produced, 'methods', [], call.name) : undefined;
         if (own) return own;
+      }
+      // C#: receptor de tipo de fora (`List<Order>`, `IEndpointRouteBuilder`) com um método de extensão do projeto para
+      // esse tipo declarado: a chamada é dele (o método da instância venceria, mas um tipo de fora não tem o do projeto)
+      if (byType && (byType.outcome === 'callsExternal' || byType.outcome === 'unbound') && 'type' in call.receiver && this.scopes.has(fileId)) {
+        const typeName = this.receiverTypeName(fileId, call.receiver, ctx);
+        const own = typeName
+          ? ctx.extensionsNamed(call.name).filter((id) => {
+              const m = this.graph.getNodeAttributes(id);
+              return isSymbolNode(m) && m.extensionOf?.at(-1) === typeName;
+            })
+          : [];
+        if (own.length > 0) return { outcome: 'callsResolved', targets: own };
       }
       if (byType) return byType;
     }
@@ -1357,7 +1452,64 @@ export class CodeGraph {
     if (ids.size > 0) return { outcome: 'callsResolved', targets: [...ids] };
     if (external) return this.external(external);
     // método herdado de uma base fora do projeto (`extends Error`) ou função guardada num campo — não é falha do mapa
-    return unknownBase ? NATIVE : UNRESOLVED;
+    if (unknownBase) return NATIVE;
+    // C#: método de extensão do projeto para a classe, uma base ou uma interface dela (`order.Validate()`)
+    const extensions = this.extensionsFor(current, method, ctx);
+    return extensions.length > 0 ? { outcome: 'callsResolved', targets: extensions } : UNRESOLVED;
+  }
+
+  /** Métodos de extensão `method` cujo `this` é uma das classes, uma base delas ou uma interface que implementam. */
+  private extensionsFor(classes: string[], method: string, ctx: ResolutionContext): string[] {
+    const candidates = ctx.extensionsNamed(method);
+    if (candidates.length === 0) return [];
+    const names = new Set<string>();
+    const seen = new Set<string>();
+    let level = classes;
+    while (level.length > 0) {
+      const next: string[] = [];
+      for (const id of level) {
+        const a = this.graph.hasNode(id) ? this.graph.getNodeAttributes(id) : undefined;
+        if (!a || !isSymbolNode(a) || seen.has(id)) continue;
+        seen.add(id);
+        names.add(a.name);
+        for (const i of a.implements ?? []) names.add(i);
+        if (a.extends) {
+          names.add(a.extends.at(-1)!);
+          next.push(...this.resolveType(a.file, a.extends, ctx, false).classes);
+        }
+      }
+      level = next;
+    }
+    return candidates.filter((id) => {
+      const m = this.graph.getNodeAttributes(id);
+      return isSymbolNode(m) && !!m.extensionOf && names.has(m.extensionOf.at(-1)!);
+    });
+  }
+
+  /**
+   * O nome do tipo DECLARADO do receptor (`List` em `List<Order> list; list.ToDto()`), seguindo campos.
+   * É o que liga um método de extensão do projeto a um tipo de fora sem adivinhar.
+   */
+  private receiverTypeName(fileId: string, receiver: { type: TypeRef; rest: string[] }, ctx: ResolutionContext): string | undefined {
+    if (receiver.rest.length === 0) return receiver.type.at(-1);
+    let classes = this.resolveType(fileId, receiver.type, ctx).classes;
+    for (const [i, field] of receiver.rest.entries()) {
+      const declared = classes.map((c) => this.declaredField(c, field, new Set())).find((d) => d);
+      if (!declared) return undefined;
+      if (i === receiver.rest.length - 1) return declared.type.at(-1);
+      classes = this.resolveType(declared.file, declared.type, ctx).classes;
+    }
+    return undefined;
+  }
+
+  /** O tipo como está escrito no campo `field` da classe (ou de uma base do projeto) e o arquivo onde está escrito. */
+  private declaredField(classId: string, field: string, seen: Set<string>): { type: TypeRef; file: string } | undefined {
+    const attrs = this.graph.hasNode(classId) ? this.graph.getNodeAttributes(classId) : undefined;
+    if (!attrs || !isSymbolNode(attrs) || seen.has(classId)) return undefined;
+    seen.add(classId);
+    const own = attrs.fields?.[field];
+    if (own) return { type: own, file: attrs.file };
+    return undefined;
   }
 
   /** Métodos `name` da classe, subindo pela cadeia de `extends`. */
@@ -1398,6 +1550,8 @@ export class CodeGraph {
     seen.add(classId);
     const declared = attrs.fields?.[field];
     if (declared) return this.resolveType(attrs.file, declared, ctx);
+    // C#/Java: declarado na classe com tipo nativo (`string[]`, `List<T>`, `int`): não é do projeto nem da base de pacote
+    if (attrs.properties?.includes(field) && this.scopes.has(attrs.file)) return { classes: [] };
     if (!attrs.extends) return undefined;
     const base = this.resolveType(attrs.file, attrs.extends, ctx, false);
     // C#/Java: campo herdado de uma base de pacote (`_db.Database` com `Db : DbContext`) é do pacote
@@ -1448,10 +1602,16 @@ export class CodeGraph {
     const qualifier = full.slice(0, -1).join('.');
     const roots = alias ? [''] : ['', ...scope.visible, ...ctx.globalUsings()];
     const wanted = new Set(qualifier ? roots.map((r) => (r ? `${r}.${qualifier}` : qualifier)) : roots);
-    const classes = ctx.typesNamed(name).filter((id) => {
+    // o caminho de uma classe é o namespace + as classes de fora (aninhada: `App.Create` + `Command`)
+    const pathOf = (attrs: SymbolNodeAttrs) => (attrs.container ? `${attrs.namespace ? `${attrs.namespace}.` : ''}${attrs.container}` : attrs.namespace!);
+    const candidates = ctx.typesNamed(name).flatMap((id) => {
       const attrs = this.graph.getNodeAttributes(id);
-      return isSymbolNode(attrs) && attrs.namespace !== undefined && wanted.has(attrs.namespace);
+      return isSymbolNode(attrs) && attrs.namespace !== undefined ? [{ id, attrs }] : [];
     });
+    let classes = candidates.filter((c) => wanted.has(pathOf(c.attrs))).map((c) => c.id);
+    // sem qualificar, um tipo aninhado é visível dentro da classe de fora — e o arquivo não diz de qual classe veio o
+    // nome: vale o aninhado de um namespace visível (como antes de o grafo saber das classes de fora)
+    if (classes.length === 0 && !qualifier) classes = candidates.filter((c) => c.attrs.container && wanted.has(c.attrs.namespace!)).map((c) => c.id);
     if (classes.length > 0 || !implementers || full.length > 1) return { classes };
     return { classes: ctx.implementers(name) };
   }
@@ -1641,6 +1801,8 @@ export class CodeGraph {
     for (const id of this.ownedSymbols(fileId)) {
       const attrs = this.graph.getNodeAttributes(id);
       if (attrs.kind === 'class') names.add(attrs.name);
+      else if (attrs.kind === 'method' && attrs.extensionOf) names.add(`${EXTENSION_KEY}${attrs.name}`);
+      if (attrs.kind === 'class') for (const m of attrs.handles ?? []) names.add(`${MESSAGE_KEY}${m.slice(m.lastIndexOf('.') + 1)}`);
     }
     return names;
   }

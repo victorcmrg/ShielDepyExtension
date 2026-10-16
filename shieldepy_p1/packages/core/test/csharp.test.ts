@@ -83,7 +83,7 @@ describe('L2 — C#: símbolos, namespaces e chamadas', () => {
     );
     const symbols = graph.ownedSymbols(f).map((id) => graph.nodeAttributes(id)).filter((a) => a && isSymbolNode(a)) as SymbolNodeAttrs[];
     const names = symbols.map((s) => `${s.kind}:${s.container ? s.container + '.' : ''}${s.name}`).sort();
-    expect(names).toEqual(['class:Circle', 'class:Inner', 'class:OrderDto', 'class:Point', 'function:Sq', 'method:Circle.Area', 'method:Circle.Circle', 'method:Inner.Z']);
+    expect(names).toEqual(['class:Circle', 'class:Circle.Inner', 'class:OrderDto', 'class:Point', 'function:Sq', 'method:Circle.Area', 'method:Circle.Circle', 'method:Inner.Z']);
     expect(classAttrs(graph, 'Circle', f)).toMatchObject({ namespace: 'App.Models', implements: ['IShape'] });
     expect(classAttrs(graph, 'OrderDto', f).properties).toEqual(['Id', 'Name']);
   });
@@ -249,6 +249,91 @@ public class OrdersController : ControllerBase { public object Get() { return Ok
     expect(graph.hasEdge(run, methodId(graph, 'Tool', 'Use', lib), 'calls')).toBe(false);
     indexFile(graph, fx, 'GlobalUsings.cs', 'global using Lib;\n');
     expect(graph.hasEdge(run, methodId(graph, 'Tool', 'Use', lib), 'calls')).toBe(true);
+  });
+
+  it('C# moderno: construtor primário (C# 12) e lambda com tipo de retorno (C# 10)', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'Modern.cs',
+      `namespace App;
+public class Repo { public Task<int> CountAsync() => Task.FromResult(1); }
+public class Svc(Repo repo)
+{
+    private readonly Repo _copy = repo;
+    public Task<int> Run() => repo.CountAsync();
+    public Task<int> Copy() => _copy.CountAsync();
+}
+public static class Endpoints
+{
+    public static void Map(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/count", async Task<int> (Repo r) => await r.CountAsync());
+    }
+}
+`
+    );
+    const count = methodId(graph, 'Repo', 'CountAsync', f);
+    expect(graph.hasEdge(methodId(graph, 'Svc', 'Run', f), count, 'calls')).toBe(true);
+    expect(graph.hasEdge(methodId(graph, 'Svc', 'Copy', f), count, 'calls')).toBe(true);
+    // o handler com tipo de retorno vira símbolo e chega no repositório; a rota aparece
+    expect(findExpressRoutes(graph).routes.map((r) => r.id)).toEqual(['GET /count']);
+    const handler = findExpressRoutes(graph).routes[0]!.handlers[0]!.symbols[0]!;
+    expect(graph.hasEdge(handler, count, 'calls')).toBe(true);
+    expect(graph.fileCoverage(f)).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
+  });
+
+  it('métodos de extensão do projeto: na classe, pela interface e num tipo de fora declarado — mas não roubam o EF Core', () => {
+    const ext = indexFile(
+      graph,
+      fx,
+      'Ext.cs',
+      `namespace App;
+public static class OrderExtensions
+{
+    public static string ToDto(this Order o) => "";
+    public static int Total(this IPriced p) => 0;
+    public static int Sum(this List<Order> list) => 0;
+    public static void Add(this HashSet<Order> set, Order o) { }
+}
+`
+    );
+    const f = indexFile(
+      graph,
+      fx,
+      'Use.cs',
+      `using Microsoft.EntityFrameworkCore;
+namespace App;
+public interface IPriced { }
+public class Order : IPriced { }
+public class Db : DbContext { public DbSet<Order> Orders { get; set; } }
+public class U
+{
+    private readonly Db _db;
+    private readonly List<Order> _all;
+    public void Run(Order o, IPriced p)
+    {
+        o.ToDto();
+        p.Total();
+        _all.Sum();
+        _db.Orders.Add(o);
+    }
+}
+`
+    );
+    const sites = graph.callsOf(methodId(graph, 'U', 'Run', f));
+    expect(sites.map((c) => [c.name, c.outcome])).toEqual([
+      ['ToDto', 'resolved'],
+      ['Total', 'resolved'],
+      ['Sum', 'resolved'],
+      ['Add', 'external'],
+    ]);
+    expect(sites[0]!.targets).toEqual([methodId(graph, 'OrderExtensions', 'ToDto', ext)]);
+    expect(sites[2]!.targets).toEqual([methodId(graph, 'OrderExtensions', 'Sum', ext)]);
+    expect(sites[3]!.package).toBe('Microsoft.EntityFrameworkCore');
+    // o método de extensão sai: a ligação também (religa pelo nome do método)
+    indexFile(graph, fx, 'Ext.cs', 'namespace App;\npublic static class OrderExtensions { }\n');
+    expect(graph.callsOf(methodId(graph, 'U', 'Run', f))[0]).toMatchObject({ name: 'ToDto', outcome: 'unresolved' });
   });
 
   it('variáveis locais com tipo, `var` de `new`, lambda tipada, delegate e `nameof` (que não é chamada)', () => {
@@ -599,5 +684,147 @@ public class Io
     ]);
     expect(checkout.confidence).toBe('proven');
     expect(topology.routes.find((r) => r.id === 'GET /api/orders/{id}')!.operations.map((o) => `${o.kind} ${o.target}`)).toEqual(['db_read Order']);
+  });
+});
+
+describe('L5 — o que os projetos C# reais pediram (MediatR, Ardalis.Specification, FastEndpoints, genéricos da BCL)', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  /** `Create.Command` e o handler dele, num namespace por feature (o padrão do realworld). */
+  const feature = (ns: string, table: string) => `using MediatR;
+using Microsoft.EntityFrameworkCore;
+namespace App.Features.${ns};
+public class Create
+{
+    public record Command(string Name) : IRequest<int>;
+    public class Handler : IRequestHandler<Command, int>
+    {
+        private readonly Db _db;
+        public Handler(Db db) { _db = db; }
+        public async Task<int> Handle(Command message, CancellationToken ct)
+        {
+            _db.${table}.Add(new App.${table.slice(0, -1)}());
+            return await _db.SaveChangesAsync(ct);
+        }
+    }
+}
+`;
+
+  it('MediatR: `Send(new Create.Command())` e `Send(command)` vão ao `Handle` de quem trata ESSA mensagem (não a homônima de outra feature)', () => {
+    indexFile(graph, fx, 'Db.cs', 'using Microsoft.EntityFrameworkCore;\nnamespace App;\npublic class Article { }\npublic class Comment { }\npublic class Db : DbContext { public DbSet<Article> Articles { get; set; } public DbSet<Comment> Comments { get; set; } }\n');
+    const articles = indexFile(graph, fx, 'Features/Articles/Create.cs', feature('Articles', 'Articles'));
+    indexFile(graph, fx, 'Features/Comments/Create.cs', feature('Comments', 'Comments'));
+    const ctrl = indexFile(
+      graph,
+      fx,
+      'Features/Articles/ArticlesController.cs',
+      `using MediatR;
+using Microsoft.AspNetCore.Mvc;
+namespace App.Features.Articles;
+[Route("articles")]
+public class ArticlesController : ControllerBase
+{
+    private readonly IMediator _mediator;
+    public ArticlesController(IMediator mediator) { _mediator = mediator; }
+    [HttpPost]
+    public Task<int> Create([FromBody] Create.Command command) => _mediator.Send(command);
+    [HttpPut]
+    public Task<int> Again() => _mediator.Send(new Create.Command("x"));
+}
+`
+    );
+    const handle = methodId(graph, 'Handler', 'Handle', articles);
+    for (const action of ['Create', 'Again']) {
+      const site = graph.callsOf(methodId(graph, 'ArticlesController', action, ctrl)).find((c) => c.name === 'Send')!;
+      expect(site).toMatchObject({ name: 'Send', outcome: 'resolved', targets: [handle] });
+    }
+    // e a rota chega ao banco pelo handler certo (Article, não Comment)
+    const topology = buildTopology(graph, buildSystemGraph(graph, [], fx.dir), fx.dir);
+    expect(topology.routes.find((r) => r.id === 'POST /articles')!.operations.map((o) => `${o.kind} ${o.target}`)).toEqual(['db_write Article', 'db_tx transaction']);
+  });
+
+  it('Ardalis.Specification: o repositório genérico vai ao banco, na entidade do `IRepository<T>` injetado', () => {
+    indexFile(
+      graph,
+      fx,
+      'Infra.cs',
+      `using Ardalis.Specification.EntityFrameworkCore;
+namespace App;
+public interface IRepository<T> : IRepositoryBase<T> where T : class { }
+public class EfRepository<T> : RepositoryBase<T>, IRepository<T> where T : class { public EfRepository(Db db) : base(db) { } }
+public class Basket { }
+`
+    );
+    const svc = indexFile(
+      graph,
+      fx,
+      'BasketService.cs',
+      `namespace App;
+public class BasketService(IRepository<Basket> baskets)
+{
+    public async Task Run(int id)
+    {
+        var b = await baskets.GetByIdAsync(id);
+        await baskets.UpdateAsync(b!);
+    }
+}
+`
+    );
+    const ops = graph
+      .callsOf(methodId(graph, 'BasketService', 'Run', svc))
+      .map((c) => ioOperationOf(c, svc))
+      .filter((o) => o)
+      .map((o) => `${o!.kind} ${o!.target} (${o!.operation})`);
+    expect(ops).toEqual(['db_read Basket (GetByIdAsync)', 'db_write Basket (UpdateAsync)']);
+  });
+
+  it('FastEndpoints: `Get("api/x")` no `Configure()` de `X : Endpoint<Req, Res>` é rota, com o `ExecuteAsync` como handler', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'GetItem.cs',
+      `using FastEndpoints;
+namespace App;
+public class GetItem : Endpoint<Req, Res>
+{
+    public override void Configure() { Get("api/items/{id}", "api/v2/items/{id}"); AllowAnonymous(); }
+    public override Task<Res> ExecuteAsync(Req r, CancellationToken ct) => Task.FromResult(new Res());
+}
+`
+    );
+    const routes = findExpressRoutes(graph).routes;
+    expect(routes.map((r) => r.id)).toEqual(['GET /api/items/{id}', 'GET /api/v2/items/{id}']);
+    expect(routes[0]!.handlers[0]!.symbols).toEqual([methodId(graph, 'GetItem', 'ExecuteAsync', f)]);
+  });
+
+  it('genérico da BCL não é a classe homônima do projeto, e campo de tipo nativo num DbContext não é do EF Core', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'Gen.cs',
+      `using Microsoft.EntityFrameworkCore;
+namespace App;
+public class List { public void Add(int x) { } }
+public class Ctx : DbContext
+{
+    private static readonly string[] Fields = ["a"];
+    public string? Find(string s) => Fields.FirstOrDefault(f => f == s);
+}
+public class U { public void Run() { var tags = new List<string>(); tags.Add("x"); } }
+`
+    );
+    expect(graph.callsOf(methodId(graph, 'U', 'Run', f)).map((c) => [c.name, c.outcome])).toEqual([
+      ['List', 'unbound'],
+      ['Add', 'unbound'],
+    ]);
+    expect(graph.callsOf(methodId(graph, 'Ctx', 'Find', f))[0]).toMatchObject({ name: 'FirstOrDefault', outcome: 'unbound' });
   });
 });

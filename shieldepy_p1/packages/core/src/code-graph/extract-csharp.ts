@@ -3,6 +3,10 @@
 // com o tipo do receptor e os atributos (que viram chamadas `decorates`, como os decorators do TS).
 // Etapa L do plano. Funções puras, sem regex: tudo vem dos nós da AST.
 //
+// Gramática: `tree-sitter-c-sharp` 0.23.1 (ver `scripts/copy-wasm.cjs`). Onde a árvore mudou em relação à
+// do `tree-sitter-wasms` (`this`/`base` anônimos, valor direto no `variable_declarator`, alias de `using`
+// no campo `name`), as duas formas são aceitas.
+//
 // O C# não importa arquivos: `using App.Services;` torna visíveis os tipos de um namespace, que se
 // espalha por vários arquivos. Por isso o arquivo devolve o seu `NamespaceScope` e o CodeGraph
 // resolve os nomes de tipo por um índice de classes (ver `CodeGraph.resolveScopedType`).
@@ -19,6 +23,12 @@ const HTTP = 'System.Net.Http';
 const MVC = 'Microsoft.AspNetCore.Mvc';
 const BUILDER = 'Microsoft.AspNetCore.Builder';
 const ROUTING = 'Microsoft.AspNetCore.Routing';
+/** Ardalis.Specification: repositório genérico sobre o EF Core (`EfRepository<T> : RepositoryBase<T>`), comum em Clean Architecture. */
+const ARDALIS = 'Ardalis.Specification.EntityFrameworkCore';
+/** Interfaces de handler do MediatR: o 1º argumento de tipo é a mensagem tratada. */
+const MEDIATR_HANDLERS = new Set(['IRequestHandler', 'INotificationHandler', 'IStreamRequestHandler']);
+/** Métodos do MediatR que despacham uma mensagem para quem a trata. */
+const MEDIATR_DISPATCH = new Set(['Send', 'Publish', 'CreateStream']);
 
 /**
  * Tipos de fora do projeto que importam para o mapa e para o caos, pelo nome simples → o "pacote".
@@ -49,6 +59,14 @@ export const CSHARP_EXTERNAL_TYPES: Readonly<Record<string, string>> = {
   IApplicationBuilder: BUILDER,
   IEndpointRouteBuilder: ROUTING,
   RouteGroupBuilder: ROUTING,
+  Endpoint: 'FastEndpoints',
+  EndpointWithoutRequest: 'FastEndpoints',
+  IMediator: 'MediatR',
+  ISender: 'MediatR',
+  IPublisher: 'MediatR',
+  RepositoryBase: ARDALIS,
+  IRepositoryBase: ARDALIS,
+  IReadRepositoryBase: ARDALIS,
   IDbConnection: 'System.Data',
   IDbTransaction: 'System.Data',
   DbConnection: 'System.Data',
@@ -86,6 +104,30 @@ const OPAQUE_VALUES = new Set([
   'array_creation_expression',
   'implicit_array_creation_expression',
 ]);
+/**
+ * Genéricos da BCL: nunca são classe do projeto. Sem isto, `new List<Tag>()` num projeto com uma classe `List`
+ * (a feature "List" do realworld) ligava ao projeto — o C# separa os dois pela aridade, que o mapa não guarda.
+ */
+const BCL_GENERICS = new Set([
+  'List', 'IList', 'IReadOnlyList', 'ICollection', 'IReadOnlyCollection', 'IEnumerable', 'IAsyncEnumerable', 'IEnumerator',
+  'Dictionary', 'IDictionary', 'IReadOnlyDictionary', 'HashSet', 'ISet', 'IReadOnlySet', 'Queue', 'Stack', 'LinkedList',
+  'SortedList', 'SortedDictionary', 'SortedSet', 'ConcurrentDictionary', 'ConcurrentBag', 'ConcurrentQueue', 'ObservableCollection',
+  'Span', 'ReadOnlySpan', 'Memory', 'ReadOnlyMemory', 'Nullable', 'Func', 'Action', 'Lazy', 'Tuple', 'ValueTuple', 'KeyValuePair',
+  'Predicate', 'Comparison', 'IComparer', 'IEqualityComparer', 'EventHandler', 'ImmutableArray', 'ImmutableList', 'ImmutableDictionary',
+]);
+
+/**
+ * O tipo de uma declaração, com os genéricos da BCL qualificados em `System` (`List<Tag>` → `System.List`):
+ * nenhuma classe do projeto mora lá, então o grafo os trata como nativos, mas o nome continua (é o `this` de
+ * um método de extensão `Sum(this List<Order> l)`).
+ */
+function declaredType(type: SyntaxNode | null | undefined): TypeRef | undefined {
+  const generic = type?.type === 'nullable_type' ? type.namedChildren[0] : type?.type === 'qualified_name' ? type.namedChildren.at(-1) : type;
+  const name = generic?.type === 'generic_name' ? generic.namedChildren[0]?.text : undefined;
+  if (name && BCL_GENERICS.has(name)) return ['System', name];
+  return csType(type);
+}
+
 /** Tipos de tarefa: quem usa o valor faz `await`, então o retorno é o tipo de dentro. */
 const TASK_TYPES = new Set(['Task', 'ValueTask']);
 /** Endpoints das minimal APIs: o callback passado vira símbolo (é o handler da rota). */
@@ -173,12 +215,19 @@ function describeText(node: SyntaxNode): { kind: 'string'; value: string } | { k
   const text = literalText(node);
   if (text !== undefined) return { kind: 'string', value: text };
   if (node.type !== 'interpolated_string_expression') return undefined;
-  const open = node.children[0];
-  const start = open ? open.endIndex - node.startIndex : 0;
-  const interp = node.namedChildren.find((c) => c.type === 'interpolation');
-  const end = interp ? interp.startIndex - node.startIndex : node.text.length - 1;
-  const literal = node.text.slice(start, end).split('{{').join('{').split('}}').join('}');
-  return interp ? { kind: 'template', prefix: literal } : { kind: 'string', value: literal };
+  // o texto literal antes da 1ª interpolação: `string_content` (gramática nova) / `interpolated_string_text` (antiga)
+  let literal = '';
+  let interpolated = false;
+  for (const c of node.namedChildren) {
+    if (c.type === 'interpolation') {
+      interpolated = true;
+      break;
+    }
+    if (c.type === 'escape_sequence') literal += ESCAPES[c.text[1] ?? ''] ?? c.text.slice(1);
+    else if (c.type !== 'interpolation_start' && c.type !== 'interpolation_quote') literal += c.text;
+  }
+  literal = literal.split('{{').join('{').split('}}').join('}');
+  return interpolated ? { kind: 'template', prefix: literal } : { kind: 'string', value: literal };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -224,10 +273,13 @@ function namespaceScope(root: SyntaxNode): { scope: NamespaceScope; fileScoped?:
     } else if (n.type === 'using_directive') {
       // `using static X.Y;` abre os membros de um tipo, não um namespace: fica de fora
       if (n.children.some((c) => c.type === 'static')) return false;
-      const alias = n.namedChildren.find((c) => c.type === 'name_equals');
-      const target = qualifiedText(n.namedChildren.find((c) => c.type !== 'name_equals'));
+      // `using Svc = X.Y;`: o alias no `name_equals` (gramática antiga) ou no campo `name` (nova)
+      const equals = n.namedChildren.find((c) => c.type === 'name_equals');
+      const named = n.namedChildren.filter((c) => c.type !== 'name_equals');
+      const aliasNode = equals?.namedChildren[0] ?? (named.length >= 2 ? n.childForFieldName('name') : null);
+      const target = qualifiedText(named.find((c) => c.startIndex !== aliasNode?.startIndex || c.endIndex !== aliasNode?.endIndex));
       if (!target) return false;
-      if (alias) aliases[alias.namedChildren[0]?.text ?? ''] = target;
+      if (aliasNode) aliases[aliasNode.text] = target;
       else {
         visible.add(target);
         if (n.children.some((c) => c.type === 'global')) global.push(target);
@@ -255,6 +307,12 @@ function baseTypes(cls: SyntaxNode): SyntaxNode[] {
   return (list?.namedChildren ?? []).filter((c) => c.type !== 'argument_list');
 }
 
+/** Parâmetros do record ou do construtor primário (o `parameter_list` da própria declaração). */
+function primaryParameters(cls: SyntaxNode): SyntaxNode[] {
+  const list = cls.childForFieldName('parameters') ?? cls.namedChildren.find((c) => c.type === 'parameter_list');
+  return (list?.namedChildren ?? []).filter((p) => p.type === 'parameter');
+}
+
 interface ClassShape {
   fields: Record<string, TypeRef>;
   fieldArgs: Record<string, string>;
@@ -266,8 +324,10 @@ function declarators(declaration: SyntaxNode | undefined): Array<{ name: string;
     .filter((d) => d.type === 'variable_declarator')
     .flatMap((d) => {
       const id = d.childForFieldName('name') ?? d.namedChildren.find((c) => c.type === 'identifier');
+      // o valor: dentro do `equals_value_clause` (gramática antiga) ou direto depois do nome (nova)
       const clause = d.namedChildren.find((c) => c.type === 'equals_value_clause');
-      return id ? [{ name: id.text, value: clause?.namedChildren[0] }] : [];
+      const value = clause ? clause.namedChildren[0] : d.namedChildren.find((c) => c.startIndex > (id?.startIndex ?? -1) && c.type !== 'bracketed_argument_list');
+      return id ? [{ name: id.text, value: value ?? undefined }] : [];
     });
 }
 
@@ -278,13 +338,14 @@ function classShape(cls: SyntaxNode): ClassShape {
   const properties = new Set<string>();
   const add = (name: string, type: SyntaxNode | null | undefined, value?: SyntaxNode) => {
     properties.add(name);
-    const t = csType(type) ?? (value?.type === 'object_creation_expression' ? csType(value.childForFieldName('type')) : undefined);
+    const t = declaredType(type) ?? (value?.type === 'object_creation_expression' ? declaredType(value.childForFieldName('type')) : undefined);
     if (t && !fields[name]) fields[name] = t;
     const arg = firstTypeArg(type);
     if (arg && !fieldArgs[name]) fieldArgs[name] = arg;
   };
-  // record com parâmetros: `record Order(int Id, Customer Customer)` — cada parâmetro é uma propriedade
-  for (const p of cls.childForFieldName('parameters')?.namedChildren ?? []) {
+  // record com parâmetros (`record Order(int Id, Customer Customer)`) e construtor primário (`class Svc(IRepo repo)`):
+  // cada parâmetro é visível nos membros, com o tipo
+  for (const p of primaryParameters(cls)) {
     const name = p.childForFieldName('name')?.text;
     if (p.type === 'parameter' && name) add(name, p.childForFieldName('type'));
   }
@@ -306,7 +367,7 @@ function classShape(cls: SyntaxNode): ClassShape {
       walk(member.childForFieldName('body') ?? member, (n) => {
         if (n.type !== 'assignment_expression') return;
         const left = n.childForFieldName('left');
-        const field = left?.type === 'identifier' ? left.text : left?.type === 'member_access_expression' && left.childForFieldName('expression')?.type === 'this_expression' ? left.childForFieldName('name')?.text : undefined;
+        const field = left?.type === 'identifier' ? left.text : left?.type === 'member_access_expression' && isThis(left.childForFieldName('expression')) ? left.childForFieldName('name')?.text : undefined;
         const right = n.childForFieldName('right');
         if (!field) return;
         properties.add(field);
@@ -327,7 +388,7 @@ type LocalType = TypeRef | null | 'opaque' | { call: CallDesc };
 function typeOfDeclared(type: SyntaxNode | null | undefined, value: SyntaxNode | undefined): LocalType {
   if (type && type.type !== 'implicit_type') {
     if (type.type === 'predefined_type' || type.type === 'array_type' || type.type === 'tuple_type') return 'opaque';
-    return csType(type) ?? null;
+    return declaredType(type) ?? null;
   }
   return value ? valueType(value) : null;
 }
@@ -338,7 +399,7 @@ function valueType(value: SyntaxNode): LocalType {
   while (v && (v.type === 'await_expression' || v.type === 'parenthesized_expression')) v = v.namedChildren[0];
   if (!v) return null;
   if (OPAQUE_VALUES.has(v.type)) return 'opaque';
-  if (v.type === 'object_creation_expression') return csType(v.childForFieldName('type')) ?? null;
+  if (v.type === 'object_creation_expression') return declaredType(v.childForFieldName('type')) ?? null;
   if (v.type === 'cast_expression') return csType(v.childForFieldName('type')) ?? null;
   if (v.type === 'as_expression') return csType(v.childForFieldName('right')) ?? null;
   if (v.type === 'invocation_expression') {
@@ -350,10 +411,14 @@ function valueType(value: SyntaxNode): LocalType {
 
 /** `name` como parâmetro de uma função/lambda: o tipo (ou `null` sem tipo). `undefined` = não é parâmetro dela. */
 function paramIn(fn: SyntaxNode, name: string): LocalType | undefined {
-  // lambda de um parâmetro sem parênteses: `x => ...`
-  const single = fn.namedChildren.find((c) => c.type === 'identifier');
-  if (LAMBDA_TYPES.has(fn.type) && single?.text === name && !fn.childForFieldName('parameters')) return null;
-  const list = fn.childForFieldName('parameters') ?? fn.namedChildren.find((c) => c.type === 'parameter_list');
+  // lambda de um parâmetro sem parênteses: `x => ...` (`implicit_parameter` na gramática nova, `identifier` na antiga)
+  const params = fn.childForFieldName('parameters');
+  if (LAMBDA_TYPES.has(fn.type)) {
+    if (params?.type === 'implicit_parameter') return params.text === name ? null : undefined;
+    const single = fn.namedChildren.find((c) => c.type === 'identifier');
+    if (!params && single?.text === name) return null;
+  }
+  const list = params ?? fn.namedChildren.find((c) => c.type === 'parameter_list');
   for (const p of list?.namedChildren ?? []) {
     if (p.childForFieldName('name')?.text !== name) continue;
     return typeOfDeclared(p.childForFieldName('type'), undefined);
@@ -453,12 +518,17 @@ function shapeOf(cls: SyntaxNode, cache: Map<number, ClassShape>): ClassShape {
 // ---------------------------------------------------------------------------------------------
 // Chamadas
 
+/** `this` é nó próprio na gramática antiga e token anônimo na nova. */
+function isThis(node: SyntaxNode | null | undefined): boolean {
+  return node?.type === 'this_expression' || node?.type === 'this';
+}
+
 /** `a`, `this`, `base`, `a.b.c` → segmentos; qualquer outra expressão → undefined. */
 function memberChain(node: SyntaxNode | null | undefined): string[] | undefined {
   if (!node) return undefined;
   if (node.type === 'identifier') return [node.text];
-  if (node.type === 'this_expression') return ['this'];
-  if (node.type === 'base_expression') return ['base'];
+  if (isThis(node)) return ['this'];
+  if (node.type === 'base_expression' || node.type === 'base') return ['base'];
   if (node.type === 'generic_name') return csType(node);
   if (node.type !== 'member_access_expression') return undefined;
   const name = node.childForFieldName('name');
@@ -577,23 +647,25 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>, shapes:
     return symbolId ? { kind: 'function', symbolId } : { kind: 'function' };
   }
   if (arg.type === 'anonymous_object_creation_expression') {
+    // `new { id = 1, name }`: `id` `=` valor, ou só o nome (o membro leva o nome dele). A gramática antiga
+    // embrulha a chave num `name_equals`; a nova deixa o `=` solto entre os filhos.
     const keys: string[] = [];
     const texts: Record<string, { kind: 'string'; value: string } | { kind: 'template'; prefix: string }> = {};
-    const named = arg.namedChildren;
-    for (let i = 0; i < named.length; i++) {
-      const n = named[i]!;
-      if (n.type === 'name_equals') {
-        const key = n.namedChildren[0]?.text;
-        const value = named[i + 1];
-        if (!key) continue;
+    const kids = arg.children.filter((c) => c.isNamed || c.type === '=' || c.type === ',');
+    for (let i = 0; i < kids.length; i++) {
+      const n = kids[i]!;
+      if (!n.isNamed) continue;
+      const key = n.type === 'name_equals' ? n.namedChildren[0]?.text : kids[i + 1]?.type === '=' ? n.text : undefined;
+      if (key) {
+        const value = n.type === 'name_equals' ? kids[i + 1] : kids[i + 2];
         keys.push(key);
-        const t = value ? describeText(value) : undefined;
+        const t = value?.isNamed ? describeText(value) : undefined;
         if (t) texts[key] = t;
-        i++;
-      } else {
-        const chain = memberChain(n);
-        if (chain) keys.push(chain.at(-1)!);
+        i += n.type === 'name_equals' ? 1 : 2;
+        continue;
       }
+      const chain = memberChain(n);
+      if (chain) keys.push(chain.at(-1)!);
     }
     return { kind: 'object', keys, ...(Object.keys(texts).length > 0 && { texts }) };
   }
@@ -649,6 +721,53 @@ function callbackOf(lambda: SyntaxNode): { name: string; label: string } | undef
   return { name: c.name, label: `${chain}(${literal})` };
 }
 
+/**
+ * Nome de uma mensagem como o código a escreve, qualificado pelas classes de fora quando é um tipo aninhado
+ * delas: `Command` dentro de `class Create { class Command; class Handler : IRequestHandler<Command, R> }` → `Create.Command`.
+ */
+function messageName(type: SyntaxNode | null | undefined, from: SyntaxNode): string | undefined {
+  const ref = csType(type);
+  if (!ref) return undefined;
+  if (ref.length > 1) return ref.join('.');
+  for (let n = enclosingClass(from) ?? null; n; n = enclosingClass(n) ?? null) {
+    const nested = (n.childForFieldName('body')?.namedChildren ?? []).some((m) => CLASS_TYPES.has(m.type) && m.childForFieldName('name')?.text === ref[0]);
+    if (nested) {
+      const outer: string[] = [];
+      for (let o: SyntaxNode | undefined = n; o; o = enclosingClass(o)) outer.unshift(className(o));
+      return [...outer, ref[0]].join('.');
+    }
+  }
+  return ref[0];
+}
+
+/** As mensagens que a classe trata no MediatR (`IRequestHandler<TMsg, TRes>`, `INotificationHandler<TMsg>`). */
+function handledMessages(cls: SyntaxNode, bases: SyntaxNode[]): string[] | undefined {
+  const out = bases.flatMap((b) => {
+    const generic = b.type === 'qualified_name' ? b.namedChildren.at(-1) : b;
+    if (generic?.type !== 'generic_name' || !MEDIATR_HANDLERS.has(generic.namedChildren[0]?.text ?? '')) return [];
+    const arg = generic.namedChildren.find((c) => c.type === 'type_argument_list')?.namedChildren[0];
+    // o tipo do argumento é escrito dentro do handler: a busca de aninhados começa nele
+    const name = arg ? messageName(arg, cls.childForFieldName('body') ?? cls) : undefined;
+    return name ? [name] : [];
+  });
+  return out.length > 0 ? out : undefined;
+}
+
+/** Método de extensão: o tipo do 1º parâmetro, quando ele tem o modificador `this`. */
+function extensionTarget(method: SyntaxNode): TypeRef | undefined {
+  if (method.type !== 'method_declaration') return undefined;
+  const first = (method.childForFieldName('parameters')?.namedChildren ?? []).find((p) => p.type === 'parameter');
+  const isThis = first?.namedChildren.some((c) => (c.type === 'modifier' || c.type === 'parameter_modifier') && c.text === 'this');
+  return isThis ? csType(first!.childForFieldName('type')) : undefined;
+}
+
+/** `Create.Inner` para uma classe aninhada em `Inner`, que está em `Create`; nada para uma de topo. */
+function outerClasses(cls: SyntaxNode): string | undefined {
+  const outer: string[] = [];
+  for (let o = enclosingClass(cls); o; o = enclosingClass(o)) outer.unshift(className(o));
+  return outer.length > 0 ? outer.join('.') : undefined;
+}
+
 /** Convenção do .NET para interface: `I` + maiúscula (`IOrderRepository`, não `Item`). */
 function looksLikeInterface(name: string): boolean {
   return name.length > 1 && name[0] === 'I' && startsUpper(name.slice(1));
@@ -696,12 +815,15 @@ function extractSymbols(root: SyntaxNode, fileId: string, fileScoped: string | u
         className(node),
         {
           namespace: namespaceOf(node, fileScoped),
+          // classe aninhada: as de fora (`Create` em `Create.Command`) — o nome qualificado é namespace + contêiner + nome
+          container: outerClasses(node),
           extends: ext,
           extendsArg: ext ? firstTypeArg(bases[0]) : undefined,
           implements: implemented.length > 0 ? implemented : undefined,
           fields: Object.keys(shape.fields).length > 0 ? shape.fields : undefined,
           fieldArgs: Object.keys(shape.fieldArgs).length > 0 ? shape.fieldArgs : undefined,
           properties: shape.properties.length > 0 ? shape.properties : undefined,
+          handles: handledMessages(node, bases),
         },
         node.childForFieldName('name')
       );
@@ -713,7 +835,7 @@ function extractSymbols(root: SyntaxNode, fileId: string, fileScoped: string | u
       const name = node.childForFieldName('name')?.text;
       if (!cls || !name) return;
       const returns = node.type === 'method_declaration' ? returnType(node.childForFieldName('type') ?? node.childForFieldName('returns')) : undefined;
-      push(node, 'method', name, { container: className(cls), returns }, node.childForFieldName('name'));
+      push(node, 'method', name, { container: className(cls), returns, extensionOf: extensionTarget(node) }, node.childForFieldName('name'));
       return;
     }
     if (node.type === 'local_function_statement') {
@@ -755,7 +877,8 @@ function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId: string, s
       if (!desc) return;
       const argNodes = argumentsOf(node);
       const args = argNodes.map((a) => describeArg(a, symbolAt, shapes));
-      results.push({ caller, ...desc, ...position(node), args });
+      const message = MEDIATR_DISPATCH.has(desc.name) && desc.receiver && argNodes[0] ? messageOf(argNodes[0], shapes) : undefined;
+      results.push({ caller, ...desc, ...position(node), args, ...(message && { message }) });
       // callback e grupo de métodos passados como valor (`app.MapPost("/x", Handlers.Checkout)`): referência, como no TS
       args.forEach((arg, i) => {
         if (arg.kind === 'function' && arg.symbolId) results.push({ caller, name: symbolAt.get(argNodes[i]!.startIndex)!.name, kind: 'ref', symbolId: arg.symbolId });
@@ -764,7 +887,7 @@ function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId: string, s
       return;
     }
     if (node.type === 'object_creation_expression' || node.type === 'implicit_object_creation_expression') {
-      const type = node.type === 'object_creation_expression' ? csType(node.childForFieldName('type')) : implicitType(node);
+      const type = node.type === 'object_creation_expression' ? declaredType(node.childForFieldName('type')) : implicitType(node);
       if (!type) return;
       const caller = enclosing(node.startIndex) ?? fileId;
       results.push({
@@ -788,7 +911,8 @@ function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId: string, s
         const args = (attr.namedChildren.find((c) => c.type === 'attribute_argument_list')?.namedChildren ?? [])
           .filter((a) => a.type === 'attribute_argument')
           .flatMap((a): RawArg[] => {
-            if (a.namedChildren.some((c) => c.type === 'name_equals' || c.type === 'name_colon')) return [];
+            // argumento nomeado (`Name = "x"`): `name_equals` na gramática antiga, `assignment_expression` na nova
+            if (a.namedChildren.some((c) => c.type === 'name_equals' || c.type === 'name_colon' || c.type === 'assignment_expression')) return [];
             const value = a.namedChildren.at(-1);
             return value ? [describeArg(value, symbolAt, shapes)] : [];
           });
@@ -798,6 +922,17 @@ function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId: string, s
     }
   });
   return results;
+}
+
+/** O tipo estático da mensagem passada ao MediatR: `new Create.Command(...)`, variável/parâmetro tipado ou campo. */
+function messageOf(arg: SyntaxNode, shapes: Map<number, ClassShape>): string | undefined {
+  if (arg.type === 'object_creation_expression') return messageName(arg.childForFieldName('type'), arg);
+  if (arg.type !== 'identifier') return undefined;
+  const local = localOf(arg, arg.text);
+  if (local) return Array.isArray(local.type) ? local.type.join('.') : undefined;
+  const cls = enclosingClass(arg);
+  const field = cls ? shapeOf(cls, shapes).fields[arg.text] : undefined;
+  return field?.join('.');
 }
 
 /** `Order o = new();` / `private Repo _r = new();`: o tipo vem da declaração. */

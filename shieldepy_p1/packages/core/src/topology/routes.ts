@@ -290,6 +290,7 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   routes.push(...decoratorRoutes(graph, all, skipped));
   routes.push(...aspNetControllerRoutes(graph, all, skipped));
   routes.push(...minimalApiRoutes(graph, all, skipped));
+  routes.push(...fastEndpointsRoutes(graph, all, skipped));
   routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
   return { routes, skipped };
 }
@@ -450,6 +451,35 @@ function minimalApiRoutes(graph: CodeGraph, all: Array<{ file: string; site: Cal
     const path = slashJoin(...prefixes, first.value);
     const handlers = rest.map((a) => handlerOf(graph, a)).filter((h): h is RouteHandler => !!h);
     routes.push({ id: `${method} ${path}`, method, path, file, line: site.line, handlers });
+  }
+  return routes;
+}
+
+/** FastEndpoints: `Get("api/x")` / `Post(...)` (do pacote) dentro do `Configure()` da classe `X : Endpoint<Req, Res>`. */
+const FAST_VERBS: Record<string, HttpMethod> = { Get: 'GET', Post: 'POST', Put: 'PUT', Patch: 'PATCH', Delete: 'DELETE' };
+const FAST_HANDLERS = new Set(['HandleAsync', 'ExecuteAsync']);
+
+function fastEndpointsRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSite }>, skipped: SkippedRoute[]): Route[] {
+  const routes: Route[] = [];
+  for (const { file, site } of all) {
+    const method = FAST_VERBS[site.name];
+    if (!method || site.outcome !== 'external' || site.package !== 'FastEndpoints' || site.object) continue;
+    const configure = graph.nodeAttributes(site.caller);
+    if (!configure || !isSymbolNode(configure) || configure.name !== 'Configure' || !configure.container) continue;
+    // o handler é o `HandleAsync`/`ExecuteAsync` da mesma classe
+    const handlers = graph.ownedSymbols(configure.file).filter((id) => {
+      const m = graph.nodeAttributes(id);
+      return m && isSymbolNode(m) && m.kind === 'method' && m.container === configure.container && FAST_HANDLERS.has(m.name);
+    });
+    const paths = site.args.filter((a) => a.kind === 'string');
+    if (paths.length === 0 || paths.length !== site.args.length) {
+      skipped.push({ file, line: site.line, reason: `${site.name}: caminho não literal` });
+      continue;
+    }
+    for (const p of paths) {
+      const path = slashJoin(p.kind === 'string' ? p.value : '');
+      routes.push({ id: `${method} ${path}`, method, path, file, line: site.line, handlers: [{ symbols: handlers, label: `${configure.container}.${handlers.length ? graph.getLabel(handlers[0]!) : 'HandleAsync'}` }] });
+    }
   }
   return routes;
 }

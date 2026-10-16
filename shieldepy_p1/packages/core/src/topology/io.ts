@@ -237,6 +237,20 @@ function efCoreOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 
   return { kind: read ? 'db_read' : 'db_write', target: site.model ?? 'dynamic', via: 'efcore', operation: site.name };
 }
 
+/**
+ * Ardalis.Specification (`RepositoryBase<T>`, sobre o EF Core): cada método do repositório genérico já vai ao banco
+ * (o `AddAsync`/`UpdateAsync`/`DeleteAsync` dele chamam o `SaveChangesAsync`). A entidade é a do `IRepository<T>` injetado.
+ */
+const ARDALIS_READ = new Set(['GetByIdAsync', 'GetBySpecAsync', 'FirstOrDefaultAsync', 'FirstAsync', 'SingleOrDefaultAsync', 'SingleAsync', 'ListAsync', 'CountAsync', 'AnyAsync', 'AsAsyncEnumerable']);
+const ARDALIS_WRITE = new Set(['AddAsync', 'AddRangeAsync', 'UpdateAsync', 'UpdateRangeAsync', 'DeleteAsync', 'DeleteRangeAsync']);
+
+function ardalisOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  if (site.name === 'SaveChangesAsync') return { kind: 'db_tx', target: 'transaction', via: 'efcore', operation: 'SaveChanges' };
+  const read = ARDALIS_READ.has(site.name);
+  if (!read && !ARDALIS_WRITE.has(site.name)) return undefined;
+  return { kind: read ? 'db_read' : 'db_write', target: site.model ?? 'dynamic', via: 'efcore', operation: site.name };
+}
+
 /** Pacotes das conexões ADO.NET (onde o Dapper pendura os métodos de extensão). */
 const ADO_PACKAGES = new Set(['System.Data', 'Microsoft.Data.SqlClient', 'Npgsql', 'MySqlConnector', 'Microsoft.Data.Sqlite']);
 const DAPPER_METHODS = new Set(
@@ -272,6 +286,7 @@ export function ioOperationOf(site: CallSite, file: string): IoOperation | undef
   else if (site.outcome === 'external' && site.package === 'mongoose') op = mongooseOperation(site);
   else if (site.outcome === 'external' && site.package === 'typeorm') op = typeormOperation(site);
   else if (site.outcome === 'external' && site.package === 'Microsoft.EntityFrameworkCore') op = efCoreOperation(site);
+  else if (site.outcome === 'external' && site.package === 'Ardalis.Specification.EntityFrameworkCore') op = ardalisOperation(site);
   else if (site.outcome === 'external' && site.package === 'System.Net.Http') op = httpClientOperation(site);
   else if (site.outcome === 'external' && ADO_PACKAGES.has(site.package!)) op = dapperOperation(site);
   else op = fetchOperation(site);

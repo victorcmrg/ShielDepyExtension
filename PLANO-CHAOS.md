@@ -17,7 +17,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
 - **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
-- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). **L6 ✅** (extensão; falta conferir num VS Code real). Falta a L5 (projetos C# reais); em seguida, o Java (etapa J, a escrever).
+- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). **L5 ✅** (4 projetos C# reais) e **L6 ✅** (extensão; falta conferir num VS Code real). **A etapa L está completa.** Em seguida, o Java (etapa J, a escrever).
 - Para a L2 foi lida a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator usa:
   - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
   - `class_declaration` com `bases: base_list` e `attribute_list`;
@@ -1014,6 +1014,31 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-16: **L5 concluída (4 projetos C# reais no `mapa:reais`).** Clonados fora do repositório (`--dir`), sem instalar nem executar nada deles (autorização de 2026-10-09).
+  - **A 1ª medição, sem ajuste nenhum, já dava 95–98% das chamadas provadas**, mas a topologia mostrou o que faltava. Cada correção abaixo saiu de um caso real:
+    1. **Gramática do C#.** A do `tree-sitter-wasms` 0.1.13 (a última dele) não lê lambda com tipo de retorno (C# 10: `async Task<Results<...>> (Db db) => ...`) nem construtor primário (C# 12): rotas do TodoApi sumiam num nó de erro. Agora o `wasm/tree-sitter-c_sharp.wasm` versionado é o do pacote oficial **`tree-sitter-c-sharp@0.23.1`** (MIT, sha256 `d7fe0bf8…46e3`), a última com o formato de gramática 14 que o `web-tree-sitter` 0.22 aceita (a 0.23.5 é formato 15). Não virou dependência (o pacote tem script de instalação nativo): o `copy-wasm.cjs` não copia mais o C#, para não sobrescrever. O extrator aceita as duas árvores (`this`/`base` anônimos, valor direto no `variable_declarator`, alias de `using` no campo `name`, parâmetro implícito de lambda, operador `+=` como token). O extrator de regras do MediatR também (o `+=`). +1,9 MB no `.wasm`.
+    2. **Métodos de extensão do projeto** (`todo.AsTodoItem()`): `SymbolNodeAttrs.extensionOf`. Num tipo do projeto (a classe, uma base ou uma interface dela) a chamada é provada; num tipo de fora, só quando o tipo DECLARADO do receptor é o do `this` (`List<Order> _all; _all.Sum()`) — e `_db.Orders.Add()` continua do EF Core mesmo com um `Add(this HashSet<T>)` no projeto. Religa pelo nome do método (`typeDependents` com `ext:`).
+    3. **MediatR** (aspnet-realworld e clean-architecture: 0 rotas sensíveis, porque o controller só faz `_mediator.Send(...)`): `Send`/`Publish` com o tipo estático da mensagem (`new Create.Command()`, parâmetro ou campo tipado) vão ao `Handle` de quem a trata (`SymbolNodeAttrs.handles`, de `IRequestHandler<TMsg, R>`/`INotificationHandler<TMsg>`). A mensagem e a de cada handler são resolvidas pelo índice de tipos, cada uma no arquivo dela: o `Create.Command` de Articles e o de Comments são classes diferentes (a 1ª versão comparava o texto e ligava as três features; 258 operações viraram 87). Sem a classe da mensagem, o nome simples dá palpite (`heuristic`).
+    4. **Classe aninhada** guarda as de fora (`container: 'Create'`): `Create.Command` resolve qualificado; sem qualificar, o aninhado de um namespace visível continua valendo (o arquivo não diz de dentro de qual classe veio o nome).
+    5. **Ardalis.Specification** (eShopOnWeb: 0 sensíveis): `RepositoryBase<T>`/`IRepositoryBase<T>` → pacote `Ardalis.Specification.EntityFrameworkCore`; `GetByIdAsync`/`ListAsync`/... leitura, `AddAsync`/`UpdateAsync`/`DeleteAsync` escrita (eles já salvam), na entidade do `IRepository<T>` injetado, `via: 'efcore'`.
+    6. **FastEndpoints** (as rotas do `PublicApi` do eShopOnWeb): `Get("api/x")`/`Post(...)` do pacote dentro do `Configure()` de `X : Endpoint<Req, Res>`; o handler é o `ExecuteAsync`/`HandleAsync` da classe. eShopOnWeb: 25 → 48 rotas.
+    7. **Genéricos da BCL** (`List<T>`, `Dictionary<K,V>`, `IEnumerable<T>`, `Func<T>`...) viram `System.<nome>`: nativos (o realworld tem uma classe `List`, e `new List<Tag>()` ligava a ela; o C# separa pela aridade, que o mapa não guarda), mas com o nome para os métodos de extensão.
+    8. **Campo declarado com tipo nativo** (`static readonly string[] Fields` num `DbContext`) é nativo, não do pacote da base (só C#/Java).
+  - **Tabela (2026-10-16):**
+
+    | Projeto | Pilha | Arquivos | Provadas | Por nome | Sem alvo | Rotas | Sensíveis | Operações |
+    |---|---|---|---|---|---|---|---|---|
+    | todoapi | C#, minimal APIs, EF Core | 40 | 99,1% | 0 | 1 | 11 | 8 | 9 |
+    | aspnet-realworld | C#, controllers, MediatR, EF Core | 105 | 99,0% | 0 | 4 | 19 | 18 | 87 |
+    | clean-architecture | C#, minimal APIs, MediatR, EF Core | 163 | 95,6% | 4 | 8 | 0 | 0 | 0 |
+    | eshoponweb | C#, controllers + FastEndpoints, Ardalis, EF Core | 391 | 99,2% | 1 | 4 | 48 | 9 | 14 |
+
+  - **O que sobra (anotado, não é bug):**
+    - clean-architecture: as rotas são registradas por uma DSL do próprio projeto (`groupBuilder.MapPost(Handler, "{id}")`, um método de extensão dele) com o grupo saindo do nome da classe por reflexão (`app.MapGroup(GetType().Name)`); não dá para ler sem executar. O `MapPost` de verdade fica dentro do método de extensão, com o caminho num parâmetro;
+    - as chamadas sem alvo que sobram: `PasswordHasher<object>` (do ASP.NET Identity) contra a classe `PasswordHasher` do projeto (aridade, de novo), `AsTask`, `Expect` (Playwright) e extensões de teste;
+    - `ManageController` (Identity) e Razor Pages não têm operação: o `UserManager` não é banco no mapa.
+  - **TS não mudou:** os 12 projetos da etapa M deram os mesmos números da tabela de 2026-10-13.
+  - Suíte **387** (+6).
 - 2026-10-16: **L6 concluída (a extensão com C#).**
   - O grafo da extensão já indexa `.cs` (o `CodeGraph.create` carrega a gramática de C#, e o `esbuild.mjs` copia todos os `.wasm`). O `FILE_GLOB` já tinha `cs`.
   - **Um parse só:** o `WorkspaceModel` tira as regras do MediatR da árvore de C# do grafo (`onParsed` com `language: 'csharp'`), como já fazia com o TS. O registro só lê o arquivo quando o grafo não o parseia (Java, Python, ou a gramática não carregou): `CodeGraph.parsesCode(fsPath)`.
@@ -1217,7 +1242,7 @@ O mapa completo (símbolos, chamadas resolvidas pelo tipo, rotas, I/O) só exist
   - Testes de unidade e um exemplo `examples/pedidos-aspnet`.
 - **L3. Rotas do ASP.NET Core** (controllers e minimal APIs). ✅ Concluída em 2026-10-16 (ver o registro).
 - **L4. I/O do C#** (EF Core, `HttpClient`, Dapper). ✅ Concluída em 2026-10-16 (ver o registro).
-- **L5. Projetos C# reais no `mapa:reais`:** 3 a 5 do GitHub, fixados por commit, na tabela.
+- **L5. Projetos C# reais no `mapa:reais`:** 3 a 5 do GitHub, fixados por commit, na tabela. ✅ Concluída em 2026-10-16 (ver o registro).
 - **L6. Extensão:** indexar `.cs` no grafo (hoje só regras), o mapa e o resumo da M6. ✅ Concluída em 2026-10-16 (ver o registro); falta conferir num VS Code real. O caos em C# **não** entra nesta etapa: os testes gerados são Vitest/supertest, e para C# seriam xUnit/`WebApplicationFactory`, outra etapa.
 
 ## M — mapeamento em projetos reais (escrito em 2026-10-13)
