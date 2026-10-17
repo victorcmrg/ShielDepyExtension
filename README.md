@@ -84,4 +84,7 @@ Concluído, etapa por etapa (detalhes em [`PLANO-CHAOS.md`](PLANO-CHAOS.md)):
 - **V1–V3:** o mapa interativo e o portal com o histórico;
 - **E6:** a falha no banco depois da chamada externa (DB_Chaos).
 
-A **E7** (outras linguagens) está parada.
+- **L:** C# no mapa completo (ASP.NET Core, EF Core, Dapper, MediatR), com o exemplo `pedidos-aspnet`;
+- **J:** Java no mapa completo (Spring MVC, Spring Data JPA, JdbcTemplate, clientes HTTP), com o exemplo `pedidos-springboot`.
+
+O caos (os testes gerados) continua só para JS/TS; C# e Java têm o mapa, as rotas e as operações de risco.

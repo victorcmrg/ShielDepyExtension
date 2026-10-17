@@ -30,7 +30,7 @@ O sistema mantém dois grafos em memória, construídos a partir do mesmo códig
 |---|---|---|
 | **Pergunta que responde** | Quem importa e quem chama quem? | Quem lê e quem escreve qual campo, em qual evento? |
 | **Nós** | arquivos, funções, métodos, classes, seletores CSS, pacotes externos | regras reativas (um handler, listener, signal ou trigger) |
-| **Como é lido** | Tree-sitter (a árvore sintática real) no TS/JS, HTML e CSS | Tree-sitter no TS/JS, Java, Python e C#; analisador léxico no PL/pgSQL |
+| **Como é lido** | Tree-sitter (a árvore sintática real) no TS/JS, C#, Java, HTML e CSS | Tree-sitter no TS/JS, Java, Python e C#; analisador léxico no PL/pgSQL |
 | **O que prova** | ciclos de chamada; cadeia de chamadas (rota → serviço → repositório → pacote); classe do HTML sem CSS correspondente | colisões write-write e read-after-write |
 | **Onde vive** | `packages/core/src/code-graph/` | `packages/core/src/interactions/` |
 
@@ -283,7 +283,8 @@ apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode
 | Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
 | O que é lido de HTML/CSS (AST Tree-sitter) | `packages/core/src/code-graph/extract-web.ts` |
 | Como um handler TS/JS vira regra | `packages/extractors/src/treesitter/event-handlers.ts` |
-| Suporte a Java / Python / C# | `packages/extractors/src/treesitter/*` (gramáticas em `packages/core/wasm`) |
+| O mapa completo de C# e Java (símbolos, namespaces/packages, chamadas) | `packages/core/src/code-graph/extract-csharp.ts`, `extract-java.ts`; a resolução por namespace em `CodeGraph.ts` (`resolveScopedType`) |
+| Regras reativas de Java / Python / C# | `packages/extractors/src/treesitter/*` (gramáticas em `packages/core/wasm`) |
 | Triggers do Postgres (PL/pgSQL) | `packages/extractors/src/postgres/*` (tokenizador em `lexer.ts`) |
 | Qual extrator atende qual extensão de arquivo | `packages/extractors/src/registry.ts` |
 | Claude ou Gemini (chamada HTTP, modelo, retry) | `packages/agent/src/providers/*` |
@@ -311,7 +312,14 @@ apps/vscode   apps/cli   apps/frontend   ← interfaces (só aqui existe `vscode
 
 ### Como estender
 
-**Nova linguagem** (ex.: Go):
+**Nova linguagem no mapa completo** (símbolos, chamadas, rotas, I/O — como foram o C# e o Java, etapas L e J do plano):
+1. Um `LanguageFrontend` em `packages/core/src/code-graph/frontend.ts` e o extrator `extract-<linguagem>.ts`, que devolve
+   símbolos, chamadas (com o tipo do receptor) e, se a linguagem resolve nomes por namespace/package, o `NamespaceScope`.
+2. Os tipos de fora que importam para o caos (banco, HTTP, rotas) viram ligações de import para um "pacote".
+3. As rotas em `topology/routes.ts` e o I/O em `topology/io.ts`, sempre pelo pacote para o qual a chamada resolveu.
+4. Um exemplo em `examples/` com o checkout e os mesmos defeitos, e projetos reais no `scripts/measure-real-projects.ts`.
+
+**Nova linguagem só nas regras reativas** (ex.: Go):
 1. Inclua a gramática (`tree-sitter-go.wasm`, do `tree-sitter-wasms`) em `packages/core/scripts/copy-wasm.cjs` e em `GrammarName` (`packages/core/src/code-graph/parser.ts`).
 2. Crie `packages/extractors/src/treesitter/go.ts`, que percorre a AST e devolve `ParsedRule[]`. Nada de regex sobre o texto.
 3. Registre em `registry.ts` (`createRegistry`/`loadRegistry`).

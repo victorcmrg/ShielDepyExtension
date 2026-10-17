@@ -1,6 +1,6 @@
 # O motor prova, sem conta e sem IA
 
-Ao abrir um projeto JavaScript ou TypeScript, o ShielDepy lê o código com Tree-sitter e monta o mapa sozinho. Não precisa de configuração.
+Ao abrir um projeto JavaScript, TypeScript, C# ou Java, o ShielDepy lê o código com Tree-sitter e monta o mapa sozinho. Não precisa de configuração.
 
 **O que aparece:**
 

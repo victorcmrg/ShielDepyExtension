@@ -17,7 +17,7 @@ Princípio mantido do projeto: *o motor prova, a IA propõe*. Toda saída da IA 
 
 **Onde paramos (2026-10-16), a pedido do usuário ("calma", "não começa"):**
 - **L1 ✅** (o motor por linguagem), commitada (`f3c78d2`).
-- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). **L5 ✅** (4 projetos C# reais) e **L6 ✅** (extensão; falta conferir num VS Code real). **A etapa L está completa.** Em seguida, o Java: leia a seção **"J — Java no motor"**.
+- **L2 ✅ (2026-10-16, pedido do usuário: "crie os adaptadores para C# e após isso Java")**: símbolos, namespaces e chamadas do C#, com o exemplo `examples/pedidos-aspnet`. Ver o registro de 2026-10-16. **L3 ✅** (rotas do ASP.NET Core) e **L4 ✅** (I/O do C#). **L5 ✅** (4 projetos C# reais) e **L6 ✅** (extensão; falta conferir num VS Code real). **A etapa L está completa.** **A etapa J (Java) também, em 2026-10-17** (J1–J6; ver a seção "J — Java no motor" e o registro). Falta, das duas: conferir a extensão num VS Code real (E2E) e subir a branch.
 - Para a L2 foi lida a árvore do Tree-sitter de um controller ASP.NET de exemplo, que confirma os nós que o extrator usa:
   - `file_scoped_namespace_declaration` / `namespace_declaration`, `using_directive` (com `name_equals` no alias);
   - `class_declaration` com `bases: base_list` e `attribute_list`;
@@ -123,7 +123,7 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
 | E6. **DB_Chaos** (falha do banco depois da chamada externa), tarefas D1–D6 | `feat/db-chaos` | concluído, integrado à `main` em 2026-10-16 |
 | Demo do TCC (`npm run demo`, botões "Ver grafo" e "Rodar testes de caos") | `feat/demo-tcc` | concluído, integrado à `main` em 2026-10-16 |
 | L. Motor por linguagem e C# (frontend por linguagem, namespaces, ASP.NET Core, EF Core), tarefas L1–L6 | `feat/motor-linguagens` | concluído (L1–L6) |
-| J. Java no motor (Spring Boot: rotas, Spring Data, JdbcTemplate, clientes HTTP), tarefas J1–J6 | `feat/motor-linguagens` | em andamento |
+| J. Java no motor (Spring Boot: rotas, Spring Data, JdbcTemplate, clientes HTTP), tarefas J1–J6 | `feat/motor-linguagens` | concluído (J1–J6); falta o E2E num VS Code real |
 
 ### Registro
 - 2026-10-07: plano aprovado. Branch `feat/chaos-grafo` criada a partir de `main` (`79366d9`).
@@ -1015,6 +1015,10 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-17: **J6 concluída (a extensão com Java) — a etapa J está completa.**
+  - O grafo da extensão indexa `.java` (a gramática já vinha no `wasm/`), e as regras do `@EventListener` saem da mesma árvore (feito junto da J1).
+  - Textos: o aviso "nenhuma rota reconhecida" cita o Spring (4 idiomas); o README da extensão, o walkthrough, o README do `shieldepy_p1` (com o passo a passo de "linguagem nova no mapa completo") e o da raiz dizem o que cada linguagem tem. O caos continua só JS/TS.
+  - **Não conferido num VS Code real** (perguntar antes de abrir o VS Code ou rodar o E2E).
 - 2026-10-17: **J5 concluída (4 projetos Java reais no `mapa:reais`).** Clonados fora do repositório, sem instalar nem executar nada.
   - **A 1ª medição deu 45–84% das chamadas provadas**, com centenas sem alvo. Quase tudo era uma coisa só:
     1. **`import static`** (`assertThat`, `status()`, `given`, `joining`): a chamada sem receptor ia para a própria classe. Agora o frontend guarda os imports estáticos (`RawCall.statics`): sem alvo na classe, o grafo tenta a classe do import (do projeto → provado; de fora → nativo). `import static x.Y.*;` tenta cada uma.
@@ -1311,7 +1315,7 @@ Pedido do usuário: "crie os adaptadores para C# e após isso Java". A etapa L d
 - **J3. I/O do Java** (Spring Data, JdbcTemplate, `EntityManager`, `@Transactional`, `RestTemplate`/`WebClient`/`RestClient`). ✅ Concluída em 2026-10-17 (ver o registro).
 - **J4. Exemplo `examples/pedidos-springboot`:** o checkout do `checkout-express` em Spring Boot, com os mesmos defeitos. ✅ Concluída em 2026-10-17.
 - **J5. Projetos Java reais no `mapa:reais`.** ✅ Concluída em 2026-10-17 (ver o registro).
-- **J6. Extensão:** `.java` no grafo, as regras do `@EventListener` da mesma árvore, textos.
+- **J6. Extensão:** `.java` no grafo, as regras do `@EventListener` da mesma árvore, textos. ✅ Concluída em 2026-10-17; falta conferir num VS Code real.
 
 ## M — mapeamento em projetos reais (escrito em 2026-10-13)
 

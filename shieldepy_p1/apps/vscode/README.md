@@ -1,6 +1,6 @@
 # ShielDepy — Guardião de Arquitetura
 
-O ShielDepy lê o seu projeto JavaScript/TypeScript, monta o **mapa do sistema** e **prova** problemas de arquitetura antes do commit: ciclos de chamada, colisões entre regras e rotas que quebram quando uma API ou o banco falham.
+O ShielDepy lê o seu projeto JavaScript/TypeScript, C# ou Java, monta o **mapa do sistema** e **prova** problemas de arquitetura antes do commit: ciclos de chamada, colisões entre regras e rotas que quebram quando uma API ou o banco falham.
 
 **O motor prova, a IA propõe.** Tudo o que aparece como achado foi provado pelo código ou por um teste. A IA é opcional.
 
@@ -62,4 +62,9 @@ A chave fica criptografada no Secret Storage do VS Code.
 | `shieldepy.language` | português, inglês, espanhol ou russo |
 
 ## Linguagens
-O mapa completo (chamadas, imports, rotas, banco e APIs) é de **JavaScript, TypeScript e C#** (ASP.NET Core com EF Core, Dapper e `HttpClient`). Java e Python entram só nas colisões entre regras. O teste de caos é só de JavaScript e TypeScript.
+O mapa completo (chamadas, imports, rotas, banco e APIs) é de:
+- **JavaScript e TypeScript** (Express, NestJS, routing-controllers; pg, Prisma, Mongoose, TypeORM; `fetch`, axios);
+- **C#** (ASP.NET Core: controllers, minimal APIs e FastEndpoints; EF Core, Dapper, Ardalis.Specification, MediatR; `HttpClient`);
+- **Java** (Spring MVC; Spring Data JPA, JdbcTemplate, `EntityManager`, `@Transactional`; `RestTemplate`, `WebClient`, `RestClient`).
+
+Python entra só nas colisões entre regras. O teste de caos é só de JavaScript e TypeScript.
