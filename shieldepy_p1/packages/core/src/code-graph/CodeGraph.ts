@@ -1643,7 +1643,8 @@ export class CodeGraph {
     // sem qualificar, um tipo aninhado é visível dentro da classe de fora — e o arquivo não diz de qual classe veio o
     // nome: vale o aninhado de um namespace visível (como antes de o grafo saber das classes de fora)
     if (classes.length === 0 && !qualifier) classes = candidates.filter((c) => c.attrs.container && wanted.has(c.attrs.namespace!)).map((c) => c.id);
-    if (classes.length > 0 || !implementers || full.length > 1) return { classes };
+    // interface (sem símbolo): as classes que a implementam — também pelo nome qualificado, que no Java é todo import
+    if (classes.length > 0 || !implementers) return { classes };
     return { classes: ctx.implementers(name) };
   }
 

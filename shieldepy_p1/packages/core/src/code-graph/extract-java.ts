@@ -493,6 +493,11 @@ function describeArg(arg: SyntaxNode, shapes: Map<number, ClassShape>): RawArg {
   const text = literalText(arg);
   if (text !== undefined) return { kind: 'string', value: text };
   if (arg.type === 'lambda_expression') return { kind: 'function' };
+  // `Order.class`: a classe como valor (o `em.find(Order.class, id)` diz a entidade)
+  if (arg.type === 'class_literal') {
+    const type = javaType(arg.namedChildren[0]);
+    if (type) return { kind: 'constant', chain: [...type, 'class'] };
+  }
   if (arg.type === 'method_invocation') {
     const callee = memberChain(arg.childForFieldName('object'));
     const name = arg.childForFieldName('name')?.text;

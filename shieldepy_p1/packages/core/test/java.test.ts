@@ -1,6 +1,7 @@
+import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { findExpressRoutes, isSymbolNode, packageNodeId, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
-import { createGraph, Fixture, indexFile } from './helpers';
+import { buildSystemGraph, buildTopology, findExpressRoutes, indexFiles, ioOperationOf, isSymbolNode, listSourceFiles, packageNodeId, silentHost, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
+import { createGraph, Fixture, indexFile, REPO_ROOT } from './helpers';
 
 /** Id do método `name` da classe `container` no arquivo. */
 function methodId(graph: CodeGraph, container: string, name: string, fileId: string): string {
@@ -308,5 +309,145 @@ class HealthController {
     const scan = findExpressRoutes(graph);
     expect(scan.routes).toEqual([]);
     expect(scan.skipped.map((s) => s.reason)).toEqual(['@GetMapping: caminho não literal']);
+  });
+});
+
+describe('J3 — I/O do Java (Spring Data, JdbcTemplate, EntityManager, @Transactional, clientes HTTP)', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const opsOf = (container: string, name: string, fileId: string) =>
+    graph
+      .callsOf(methodId(graph, container, name, fileId))
+      .map((c) => ioOperationOf(c, fileId))
+      .filter((o) => o !== undefined)
+      .map((o) => `${o!.kind} ${o!.target} (${o!.via} · ${o!.operation ?? ''}${o!.lock ? ' · lock' : ''})`);
+
+  it('Spring Data pelo nome do método (derivados inclusive), na entidade; `findAll().stream()` é uma leitura só; `@Transactional` abre transação', () => {
+    indexFile(graph, fx, 'repo/OrderRepository.java', REPO);
+    const f = indexFile(
+      graph,
+      fx,
+      'Svc.java',
+      `package com.acme.service;
+import com.acme.model.Order;
+import com.acme.repo.OrderRepository;
+import org.springframework.transaction.annotation.Transactional;
+public class Svc {
+    private final OrderRepository repo;
+    public Svc(OrderRepository repo) { this.repo = repo; }
+    @Transactional
+    public void run(Order o) {
+        repo.findByStatus("x");
+        repo.findAll().stream().count();
+        repo.existsById(1L);
+        repo.save(o);
+        repo.deleteById(1L);
+        repo.recalculateTotals();
+    }
+}
+`
+    );
+    expect(opsOf('Svc', 'run', f)).toEqual([
+      'db_tx transaction (jpa · startTransaction)',
+      'db_read Order (springdata · findByStatus)',
+      'db_read Order (springdata · findAll)',
+      'db_read Order (springdata · existsById)',
+      'db_write Order (springdata · save)',
+      'db_write Order (springdata · deleteById)',
+      'db_unknown Order (springdata · recalculateTotals)',
+    ]);
+  });
+
+  it('JdbcTemplate e JdbcClient (SQL literal), EntityManager (find pela classe, persist, consulta nativa, transação)', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'Dao.java',
+      `package com.acme;
+import jakarta.persistence.EntityManager;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
+public class Dao {
+    private final JdbcTemplate jdbc;
+    private final JdbcClient client;
+    private final EntityManager em;
+    public Dao(JdbcTemplate jdbc, JdbcClient client, EntityManager em) { this.jdbc = jdbc; this.client = client; this.em = em; }
+    void run(Object order) {
+        jdbc.queryForObject("SELECT quantity FROM stock WHERE product_id = ? FOR UPDATE", Integer.class, "p");
+        jdbc.update("UPDATE stock SET quantity = quantity - 1 WHERE product_id = ?", "p");
+        client.sql("SELECT * FROM orders WHERE id = :id").param("id", 1).query(Object.class).list();
+        em.getTransaction().begin();
+        em.find(Order.class, 1L);
+        em.persist(order);
+        em.createNativeQuery("DELETE FROM carts").executeUpdate();
+        em.getTransaction().commit();
+    }
+}
+`
+    );
+    expect(opsOf('Dao', 'run', f)).toEqual([
+      'db_read stock (jdbctemplate · SELECT · lock)',
+      'db_write stock (jdbctemplate · UPDATE)',
+      'db_read orders (jdbctemplate · SELECT)',
+      'db_tx transaction (jpa · startTransaction)',
+      'db_read Order (jpa · find)',
+      'db_write dynamic (jpa · persist)',
+      'db_write carts (jpa · DELETE)',
+      'db_tx transaction (jpa · commitTransaction)',
+    ]);
+  });
+
+  it('RestTemplate (host da URL) e WebClient/RestClient (host do `.uri()` da cadeia, contado no `retrieve`)', () => {
+    const f = indexFile(
+      graph,
+      fx,
+      'Http.java',
+      `package com.acme;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
+public class Http {
+    private final RestTemplate rest;
+    private final WebClient web;
+    private final RestClient client;
+    public Http(RestTemplate rest, WebClient web, RestClient client) { this.rest = rest; this.web = web; this.client = client; }
+    void run() {
+        rest.postForObject("https://api.stripe.com/v1/charges", null, String.class);
+        web.post().uri("https://api.correios.com.br/frete").bodyValue("x").retrieve().bodyToMono(String.class);
+        client.get().uri("/relativo").retrieve().body(String.class);
+    }
+}
+`
+    );
+    expect(opsOf('Http', 'run', f)).toEqual([
+      'api_call api.stripe.com (resttemplate · postForObject)',
+      'api_call api.correios.com.br (webclient · retrieve)',
+      'api_call dynamic (resttemplate · retrieve)',
+    ]);
+  });
+
+  it('o exemplo pedidos-springboot: as mesmas tags do checkout-express e do pedidos-aspnet', async () => {
+    const root = path.join(REPO_ROOT, 'examples', 'pedidos-springboot');
+    await indexFiles(graph, await listSourceFiles(root), silentHost);
+    const topology = buildTopology(graph, buildSystemGraph(graph, [], root), root);
+    expect(topology.routes.map((r) => r.id).sort()).toEqual(['GET /api/orders/{id}', 'POST /api/checkout']);
+    const checkout = topology.routes.find((r) => r.id === 'POST /api/checkout')!;
+    expect(checkout.operations.map((o) => `${o.kind} ${o.target}`)).toEqual(['db_read StockItem', 'api_call api.stripe.com', 'db_write StockItem', 'db_write Order']);
+    expect(checkout.tags).toEqual([
+      { tag: 'external-io', targets: ['api.stripe.com'] },
+      { tag: 'no-transaction', targets: ['StockItem'] },
+      { tag: 'read-then-write', targets: ['StockItem'] },
+      { tag: 'write-after-api-call', targets: ['Order', 'StockItem'] },
+    ]);
+    expect(checkout.confidence).toBe('proven');
+    expect(graph.stats).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
   });
 });

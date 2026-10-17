@@ -277,6 +277,75 @@ function httpClientOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file
   return { kind: 'api_call', target: hostOf(url), via: 'httpclient', operation: site.name, timeout: 'unknown' };
 }
 
+// --- Java (etapa J3) -----------------------------------------------------------------------------
+
+/** Spring Data: a operação vem do nome do método (os métodos derivados — `findByStatus`, `deleteByEmail` — inclusive). */
+const SPRING_DATA_WRITE = ['save', 'delete', 'remove', 'insert', 'update'];
+const SPRING_DATA_READ = ['find', 'get', 'read', 'query', 'search', 'stream', 'count', 'exists'];
+/** `deleteById` começa pela palavra `delete`; `deleted` não. */
+function startsWord(name: string, prefix: string): boolean {
+  if (name === prefix) return true;
+  const next = name[prefix.length];
+  return name.startsWith(prefix) && next !== undefined && next !== next.toLowerCase();
+}
+
+function springDataOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  // só a chamada no próprio repositório: `repo.findAll().stream()` é uma leitura, não duas
+  if (site.receiverCall) return undefined;
+  const target = site.model ?? 'dynamic';
+  if (site.name === 'flush') return { kind: 'db_tx', target: 'transaction', via: 'springdata', operation: 'flush' };
+  if (SPRING_DATA_WRITE.some((p) => startsWord(site.name, p))) return { kind: 'db_write', target, via: 'springdata', operation: site.name };
+  if (SPRING_DATA_READ.some((p) => startsWord(site.name, p))) return { kind: 'db_read', target, via: 'springdata', operation: site.name };
+  // método de repositório com outro nome (um `@Query` próprio): fala com o banco, mas não se sabe o quê
+  return { kind: 'db_unknown', target, via: 'springdata', operation: site.name };
+}
+
+/** O argumento de texto da chamada `name` mais próxima na cadeia que produziu o receptor (`.sql("...")`, `.uri("...")`). */
+function chainText(site: CallSite, name: string): CallArg | undefined {
+  for (let rc = site.receiverCall; rc; rc = rc.receiverCall) if (rc.name === name) return rc.args[0];
+  return undefined;
+}
+
+const JDBC_METHODS = new Set(['query', 'queryForObject', 'queryForList', 'queryForMap', 'queryForRowSet', 'queryForStream', 'update', 'batchUpdate', 'execute']);
+/** `JdbcClient`: `jdbcClient.sql("SELECT ...").param(..).query(..).list()` — a ida ao banco é o terminal. */
+const JDBC_CLIENT_TERMINALS = new Set(['list', 'single', 'optional', 'set', 'stream', 'update', 'listOfRows', 'singleRow', 'singleValue']);
+
+function jdbcOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  const fromClient = site.receiverCall ? chainText(site, 'sql') : undefined;
+  if (fromClient && JDBC_CLIENT_TERMINALS.has(site.name)) return sqlOperation(fromClient, 'jdbctemplate', site.name);
+  // `jdbcClient.sql(...).query(...)` sem terminal ainda não foi ao banco; no `JdbcTemplate`, o SQL é o 1º argumento
+  if (site.receiverCall || !JDBC_METHODS.has(site.name)) return undefined;
+  return sqlOperation(site.args[0], 'jdbctemplate', site.name);
+}
+
+const JPA_WRITE = new Set(['persist', 'merge', 'remove']);
+const JPA_TX: Record<string, string> = { begin: 'startTransaction', commit: 'commitTransaction', rollback: 'abortTransaction' };
+
+function jpaOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  const tx = Object.hasOwn(JPA_TX, site.name) ? JPA_TX[site.name] : undefined;
+  if (tx && site.receiverCall?.name === 'getTransaction') return { kind: 'db_tx', target: 'transaction', via: 'jpa', operation: tx };
+  if (site.receiverCall) return undefined; // `em.createQuery(...).getResultList()`: a operação é a do `createQuery`
+  if (site.name === 'createNativeQuery' || site.name === 'createQuery') return sqlOperation(site.args[0], 'jpa', site.name);
+  // `em.find(Order.class, id)`: a entidade é a classe do 1º argumento
+  const entity = site.args[0]?.kind === 'constant' && site.args[0].chain.at(-1) === 'class' ? site.args[0].chain.at(-2)! : 'dynamic';
+  if (site.name === 'find' || site.name === 'getReference') return { kind: 'db_read', target: entity, via: 'jpa', operation: site.name };
+  if (JPA_WRITE.has(site.name)) return { kind: 'db_write', target: 'dynamic', via: 'jpa', operation: site.name };
+  return undefined;
+}
+
+const REST_TEMPLATE_METHODS = new Set(['getForObject', 'getForEntity', 'postForObject', 'postForEntity', 'postForLocation', 'put', 'delete', 'patchForObject', 'exchange', 'execute', 'headForHeaders', 'optionsForAllow']);
+/** `WebClient`/`RestClient`: a requisição sai no `retrieve()`/`exchange*()`; a URL está no `.uri("...")` da cadeia. */
+const FLUENT_TERMINALS = new Set(['retrieve', 'exchange', 'exchangeToMono', 'exchangeToFlux']);
+
+function springHttpOperation(site: CallSite): Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined {
+  // os clientes do Spring têm o timeout no builder (configuração fora da chamada): não dá para ler daqui
+  if (FLUENT_TERMINALS.has(site.name)) {
+    return { kind: 'api_call', target: hostOf(chainText(site, 'uri')), via: site.package === 'spring-webclient' ? 'webclient' : 'resttemplate', operation: site.name, timeout: 'unknown' };
+  }
+  if (site.package !== 'spring-web-client' || site.receiverCall || !REST_TEMPLATE_METHODS.has(site.name)) return undefined;
+  return { kind: 'api_call', target: hostOf(site.args[0]), via: 'resttemplate', operation: site.name, timeout: 'unknown' };
+}
+
 /** A operação de I/O que esta chamada faz, ou `undefined` se ela não é I/O reconhecido. */
 export function ioOperationOf(site: CallSite, file: string): IoOperation | undefined {
   let op: Omit<IoOperation, 'symbol' | 'file' | 'line'> | undefined;
@@ -289,6 +358,16 @@ export function ioOperationOf(site: CallSite, file: string): IoOperation | undef
   else if (site.outcome === 'external' && site.package === 'Ardalis.Specification.EntityFrameworkCore') op = ardalisOperation(site);
   else if (site.outcome === 'external' && site.package === 'System.Net.Http') op = httpClientOperation(site);
   else if (site.outcome === 'external' && ADO_PACKAGES.has(site.package!)) op = dapperOperation(site);
+  else if (site.outcome === 'external' && site.package === 'spring-data') op = springDataOperation(site);
+  else if (site.outcome === 'external' && site.package === 'spring-jdbc') op = jdbcOperation(site);
+  else if (site.outcome === 'external' && site.package === 'jpa') op = jpaOperation(site);
+  else if (site.outcome === 'external' && (site.package === 'spring-web-client' || site.package === 'spring-webclient')) op = springHttpOperation(site);
+  else if (site.outcome === 'external' && site.package === 'java.net.http' && (site.name === 'send' || site.name === 'sendAsync')) {
+    op = { kind: 'api_call', target: 'dynamic', via: 'httpclient', operation: site.name, timeout: 'unknown' };
+  } else if (site.outcome === 'external' && site.package === 'spring-tx' && site.decorates && site.name === 'Transactional') {
+    // `@Transactional` no método: tudo o que ele faz roda numa transação (aberta na entrada)
+    op = { kind: 'db_tx', target: 'transaction', via: 'jpa', operation: 'startTransaction' };
+  }
   else op = fetchOperation(site);
   return op && { ...op, symbol: site.caller, file, line: site.line };
 }

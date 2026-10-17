@@ -1015,6 +1015,15 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-17: **J3 e J4 concluídas (I/O do Java e o exemplo `pedidos-springboot`).** Em `topology/io.ts`, pelo pacote para o qual a chamada resolveu.
+  - **Spring Data** (`via: 'springdata'`): pelo nome do método, inclusive os derivados — `save*`/`delete*`/`remove*`/`insert*`/`update*` escrita, `find*`/`get*`/`read*`/`query*`/`search*`/`stream*`/`count*`/`exists*` leitura, outro nome (um `@Query` próprio) `db_unknown`; o alvo é a entidade do repositório (`extendsArg`). Só a chamada no próprio repositório conta (`repo.findAll().stream()` é uma leitura).
+  - **JdbcTemplate/NamedParameterJdbcTemplate** (`via: 'jdbctemplate'`): o SQL literal do 1º argumento, pelo `classifySql` (com `FOR UPDATE`). **JdbcClient:** o SQL do `.sql("...")` da cadeia, contado no terminal (`list`/`single`/`update`...).
+  - **EntityManager** (`via: 'jpa'`): `find(Order.class, id)` leitura da entidade (o `Order.class` chega como `constant`), `persist`/`merge`/`remove` escrita (`dynamic`: o tipo do objeto não se lê daqui), `createQuery`/`createNativeQuery` pelo SQL; `getTransaction().begin()/commit()/rollback()` como transação.
+  - **`@Transactional`** no método: um `db_tx startTransaction` na entrada (a anotação é a 1ª chamada do método), então leitura e escrita lá dentro não saem `no-transaction`. Não há o fechamento: o que vier depois do método na mesma rota conta como dentro (anotado).
+  - **Clientes HTTP:** `RestTemplate` (`getForObject`/`postForObject`/`exchange`..., host da URL) e `WebClient`/`RestClient` (o host vem do `.uri("...")` da cadeia; a operação é o `retrieve`/`exchange*`); `java.net.http.HttpClient.send` com host `dynamic`. Timeout `unknown` (é do cliente, configurado no builder).
+  - **Correção no CodeGraph:** interface importada pelo nome qualificado (no Java, todo `import`) não caía nas implementações; agora cai, como a de nome simples.
+  - **Exemplo `examples/pedidos-springboot`:** o checkout em Spring Boot + Spring Data JPA + Lombok + `RestTemplate`. `POST /api/checkout` sai com as mesmas tags do `checkout-express` e do `pedidos-aspnet` (`external-io`, `no-transaction` e `read-then-write` em `StockItem`, `write-after-api-call` em `Order` e `StockItem`), tudo `proven`, 100% das chamadas provadas.
+  - Suíte **399** (+4).
 - 2026-10-17: **J2 concluída (rotas do Spring MVC).** Em `topology/routes.ts`, pela regra de sempre (só conta a anotação que resolve para o pacote do Spring, `spring-web`).
   - `@RequestMapping` na classe dá os prefixos; no método, `@GetMapping`/`@PostMapping`/`@PutMapping`/`@PatchMapping`/`@DeleteMapping` ou `@RequestMapping(method = RequestMethod.X)` (sem `method`: `ALL`). O caminho vem do valor posicional ou de `value`/`path`, texto ou lista (`{"/a", "/b"}` vira duas rotas). Sem caminho, vale o da classe.
   - Os argumentos das anotações chegam pelo `CallArg` novo: `object.values` (os pares) e `constant` (`RequestMethod.PUT`).
@@ -1279,8 +1288,8 @@ Pedido do usuário: "crie os adaptadores para C# e após isso Java". A etapa L d
 ### Tarefas
 - **J1. Java: símbolos, packages e chamadas** (classes, records, enums, métodos, construtores, campos com tipo, injeção por construtor/campo, Lombok, repositórios do Spring Data), com testes. ✅ Concluída em 2026-10-16 (ver o registro).
 - **J2. Rotas do Spring MVC.** ✅ Concluída em 2026-10-17 (ver o registro).
-- **J3. I/O do Java** (Spring Data, JdbcTemplate, `EntityManager`, `@Transactional`, `RestTemplate`/`WebClient`/`RestClient`).
-- **J4. Exemplo `examples/pedidos-springboot`:** o checkout do `checkout-express` em Spring Boot, com os mesmos defeitos.
+- **J3. I/O do Java** (Spring Data, JdbcTemplate, `EntityManager`, `@Transactional`, `RestTemplate`/`WebClient`/`RestClient`). ✅ Concluída em 2026-10-17 (ver o registro).
+- **J4. Exemplo `examples/pedidos-springboot`:** o checkout do `checkout-express` em Spring Boot, com os mesmos defeitos. ✅ Concluída em 2026-10-17.
 - **J5. Projetos Java reais no `mapa:reais`.**
 - **J6. Extensão:** `.java` no grafo, as regras do `@EventListener` da mesma árvore, textos.
 
