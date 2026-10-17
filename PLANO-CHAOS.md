@@ -1015,6 +1015,11 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-17: **J2 concluída (rotas do Spring MVC).** Em `topology/routes.ts`, pela regra de sempre (só conta a anotação que resolve para o pacote do Spring, `spring-web`).
+  - `@RequestMapping` na classe dá os prefixos; no método, `@GetMapping`/`@PostMapping`/`@PutMapping`/`@PatchMapping`/`@DeleteMapping` ou `@RequestMapping(method = RequestMethod.X)` (sem `method`: `ALL`). O caminho vem do valor posicional ou de `value`/`path`, texto ou lista (`{"/a", "/b"}` vira duas rotas). Sem caminho, vale o da classe.
+  - Os argumentos das anotações chegam pelo `CallArg` novo: `object.values` (os pares) e `constant` (`RequestMethod.PUT`).
+  - Caminho não literal (`@GetMapping(P)`, com `P` constante) vai para `skipped`. Uma anotação `GetMapping` do próprio projeto não é rota.
+  - Suíte **395** (+2).
 - 2026-10-16: **J1 concluída (Java: símbolos, packages e chamadas).** `extract-java.ts`, só Tree-sitter, no mesmo molde do C#.
   - **Símbolos:** classes, records (os componentes são campos e acessores), enums (com `values`/`valueOf`/`name`/`ordinal`), métodos e construtores (o nome é o da classe); classe aninhada guarda as de fora. Interface comum e anotação não viram símbolo; **repositório do Spring Data vira** (estende um repositório do Spring, ou se chama `*Repository` e estende outro), sem os métodos declarados (o Spring os gera), com a base e a entidade no `extendsArg`.
   - **Resolução por package** (o `NamespaceScope` do C#): o próprio package e os `import x.*;` visíveis; `import x.y.Tipo;` é alias; `import static` fica de fora. Nome totalmente qualificado com raiz minúscula (`com.other.Fmt.go()`): se não é campo da classe, o grafo tenta a cadeia como tipo (`qualifiedMember`).
@@ -1273,7 +1278,7 @@ Pedido do usuário: "crie os adaptadores para C# e após isso Java". A etapa L d
 
 ### Tarefas
 - **J1. Java: símbolos, packages e chamadas** (classes, records, enums, métodos, construtores, campos com tipo, injeção por construtor/campo, Lombok, repositórios do Spring Data), com testes. ✅ Concluída em 2026-10-16 (ver o registro).
-- **J2. Rotas do Spring MVC.**
+- **J2. Rotas do Spring MVC.** ✅ Concluída em 2026-10-17 (ver o registro).
 - **J3. I/O do Java** (Spring Data, JdbcTemplate, `EntityManager`, `@Transactional`, `RestTemplate`/`WebClient`/`RestClient`).
 - **J4. Exemplo `examples/pedidos-springboot`:** o checkout do `checkout-express` em Spring Boot, com os mesmos defeitos.
 - **J5. Projetos Java reais no `mapa:reais`.**

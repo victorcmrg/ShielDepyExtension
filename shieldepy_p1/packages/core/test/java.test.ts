@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isSymbolNode, packageNodeId, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
+import { findExpressRoutes, isSymbolNode, packageNodeId, type CodeGraph, type SymbolNodeAttrs } from '../src/index';
 import { createGraph, Fixture, indexFile } from './helpers';
 
 /** Id do método `name` da classe `container` no arquivo. */
@@ -229,5 +229,84 @@ public class Clients {
     const other = await createGraph();
     for (const [rel, text] of [...files].reverse()) indexFile(other, fx, rel, text);
     expect(edges(other)).toEqual(edges(graph));
+  });
+});
+
+describe('J2 — rotas do Spring MVC', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const summary = () =>
+    findExpressRoutes(graph)
+      .routes.map((r) => `${r.id} → ${r.handlers.map((h) => h.label).join(', ')}`)
+      .sort();
+
+  it('`@RequestMapping` na classe; verbos com e sem caminho, `value`/`path`, listas e `@RequestMapping(method = ...)`', () => {
+    indexFile(
+      graph,
+      fx,
+      'OrderController.java',
+      `package com.acme.web;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+    @GetMapping
+    public String list() { return ""; }
+
+    @GetMapping("/{id}")
+    public String get(@PathVariable Long id) { return ""; }
+
+    @PostMapping(value = {"/a", "/b"}, consumes = "application/json")
+    public void create() { }
+
+    @RequestMapping(path = "/x", method = RequestMethod.PUT)
+    public void put() { }
+
+    @RequestMapping(value = "/any")
+    public void any() { }
+
+    @DeleteMapping(path = "{id}")
+    public void delete(@PathVariable Long id) { }
+}
+
+@RestController
+class HealthController {
+    @GetMapping("/health")
+    public String ping() { return "ok"; }
+}
+`
+    );
+    expect(summary()).toEqual([
+      'ALL /api/orders/any → OrderController.any',
+      'DELETE /api/orders/{id} → OrderController.delete',
+      'GET /api/orders → OrderController.list',
+      'GET /api/orders/{id} → OrderController.get',
+      'GET /health → HealthController.ping',
+      'POST /api/orders/a → OrderController.create',
+      'POST /api/orders/b → OrderController.create',
+      'PUT /api/orders/x → OrderController.put',
+    ]);
+  });
+
+  it('anotação `GetMapping` do próprio projeto (sem o import do Spring) não é rota; caminho não literal vai para `skipped`', () => {
+    indexFile(graph, fx, 'Fake.java', 'package com.acme;\n@interface GetMapping { String value(); }\nclass C { @GetMapping("/x") void m() { } }\n');
+    indexFile(
+      graph,
+      fx,
+      'Dyn.java',
+      'package com.acme;\nimport org.springframework.web.bind.annotation.GetMapping;\nclass D { static final String P = "/p"; @GetMapping(P) void m() { } }\n'
+    );
+    const scan = findExpressRoutes(graph);
+    expect(scan.routes).toEqual([]);
+    expect(scan.skipped.map((s) => s.reason)).toEqual(['@GetMapping: caminho não literal']);
   });
 });

@@ -291,6 +291,7 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   routes.push(...aspNetControllerRoutes(graph, all, skipped));
   routes.push(...minimalApiRoutes(graph, all, skipped));
   routes.push(...fastEndpointsRoutes(graph, all, skipped));
+  routes.push(...springRoutes(graph, all, skipped));
   routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
   return { routes, skipped };
 }
@@ -479,6 +480,80 @@ function fastEndpointsRoutes(graph: CodeGraph, all: Array<{ file: string; site: 
     for (const p of paths) {
       const path = slashJoin(p.kind === 'string' ? p.value : '');
       routes.push({ id: `${method} ${path}`, method, path, file, line: site.line, handlers: [{ symbols: handlers, label: `${configure.container}.${handlers.length ? graph.getLabel(handlers[0]!) : 'HandleAsync'}` }] });
+    }
+  }
+  return routes;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Spring MVC (etapa J2): `@RequestMapping` na classe e `@GetMapping`/`@PostMapping`/... ou
+// `@RequestMapping(method = ...)` no método. Só conta a anotação que resolve para o pacote do Spring.
+
+const SPRING_VERBS: Record<string, HttpMethod> = { GetMapping: 'GET', PostMapping: 'POST', PutMapping: 'PUT', PatchMapping: 'PATCH', DeleteMapping: 'DELETE' };
+const REQUEST_METHODS = new Set<string>(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+
+/** Os caminhos de uma anotação de rota: o valor posicional, ou `value`/`path`; texto ou lista. `undefined` = não literal. */
+function springPaths(site: CallSite): string[] | undefined {
+  const pairs = site.args.find((a) => a.kind === 'object');
+  const raw = site.args.find((a) => a.kind !== 'object') ?? (pairs?.kind === 'object' ? pairs.values?.value ?? pairs.values?.path : undefined);
+  if (!raw) return [''];
+  const items = raw.kind === 'array' ? raw.items : [raw];
+  const out: string[] = [];
+  for (const i of items) {
+    if (i.kind !== 'string') return undefined;
+    out.push(i.value);
+  }
+  return out.length > 0 ? out : [''];
+}
+
+/** Os verbos de um `@RequestMapping(method = RequestMethod.POST)` (ou lista); sem `method`, qualquer um. */
+function springMethods(site: CallSite): HttpMethod[] {
+  const pairs = site.args.find((a) => a.kind === 'object');
+  const raw = pairs?.kind === 'object' ? pairs.values?.method : undefined;
+  if (!raw) return ['ALL'];
+  const items = raw.kind === 'array' ? raw.items : [raw];
+  const verbs = items.flatMap((i) => (i.kind === 'constant' && REQUEST_METHODS.has(i.chain.at(-1)!) ? [i.chain.at(-1)! as HttpMethod] : []));
+  return verbs.length > 0 ? verbs : ['ALL'];
+}
+
+function springRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSite }>, skipped: SkippedRoute[]): Route[] {
+  const annotations = all.filter(({ site }) => site.decorates && site.outcome === 'external' && site.package === 'spring-web');
+  if (annotations.length === 0) return [];
+  const attrsOf = (id: string) => {
+    const a = graph.nodeAttributes(id);
+    return a && isSymbolNode(a) ? a : undefined;
+  };
+  const classPrefixes = new Map<string, string[]>();
+  for (const { file, site } of annotations) {
+    if (site.name !== 'RequestMapping' || attrsOf(site.decorates!)?.kind !== 'class') continue;
+    const paths = springPaths(site);
+    if (paths) classPrefixes.set(site.decorates!, paths);
+    else skipped.push({ file, line: site.line, reason: `@${site.name}: caminho não literal` });
+  }
+  const routes: Route[] = [];
+  for (const { file, site } of annotations) {
+    const method = attrsOf(site.decorates!);
+    if (method?.kind !== 'method') continue;
+    const verbs = SPRING_VERBS[site.name] ? [SPRING_VERBS[site.name]!] : site.name === 'RequestMapping' ? springMethods(site) : undefined;
+    if (!verbs) continue;
+    const paths = springPaths(site);
+    if (!paths) {
+      skipped.push({ file, line: site.line, reason: `@${site.name}: caminho não literal` });
+      continue;
+    }
+    // o id da classe dona do método: arquivo#[de fora.]Classe
+    const owner = graph.ownedSymbols(method.file).find((id) => {
+      const c = attrsOf(id);
+      return c?.kind === 'class' && c.name === method.container;
+    });
+    const prefixes = (owner && classPrefixes.get(owner)) ?? [''];
+    for (const verb of verbs) {
+      for (const prefix of prefixes) {
+        for (const p of paths) {
+          const path = slashJoin(prefix, p);
+          routes.push({ id: `${verb} ${path}`, method: verb, path, file, line: site.line, handlers: [{ symbols: [site.decorates!], label: `${method.container}.${method.name}` }] });
+        }
+      }
     }
   }
   return routes;
