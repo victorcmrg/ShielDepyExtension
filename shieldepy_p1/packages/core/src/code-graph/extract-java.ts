@@ -83,6 +83,14 @@ const OPAQUE_VALUES = new Set(['string_literal', 'decimal_integer_literal', 'hex
 /** Lombok: anotações de classe que geram os acessores. */
 const LOMBOK_ACCESSORS = new Set(['Data', 'Getter', 'Setter', 'Value', 'Builder', 'SuperBuilder']);
 const ENUM_MEMBERS = ['values', 'valueOf', 'name', 'ordinal', 'compareTo'];
+/** Herdados de `Object` por toda classe: chamá-los sem receptor é nativo (`getClass()`, `equals(o)`). */
+const OBJECT_METHODS = new Set(['getClass', 'equals', 'hashCode', 'toString', 'notify', 'notifyAll', 'wait', 'clone', 'finalize']);
+
+/** Os `import static`: membro com nome → a classe dele; `import static x.Y.*;` → as classes possíveis. */
+export interface StaticImports {
+  members: Map<string, TypeRef>;
+  wildcards: TypeRef[];
+}
 
 // ---------------------------------------------------------------------------------------------
 // Tipos e nomes
@@ -160,6 +168,18 @@ function literalText(node: SyntaxNode): string | undefined {
 
 // ---------------------------------------------------------------------------------------------
 // Package, imports e classes
+
+function staticImports(root: SyntaxNode): StaticImports {
+  const members = new Map<string, TypeRef>();
+  const wildcards: TypeRef[] = [];
+  for (const imp of root.namedChildren.filter((c) => c.type === 'import_declaration' && c.children.some((t) => t.type === 'static'))) {
+    const ref = javaType(imp.namedChildren.find((c) => c.type === 'scoped_identifier' || c.type === 'identifier'));
+    if (!ref) continue;
+    if (imp.namedChildren.some((c) => c.type === 'asterisk')) wildcards.push(ref);
+    else if (ref.length > 1) members.set(ref.at(-1)!, ref.slice(0, -1));
+  }
+  return { members, wildcards };
+}
 
 function packageScope(root: SyntaxNode): { scope: NamespaceScope; pkg: string; imports: Array<{ qualified: string; wildcard: boolean }> } {
   const pkgNode = root.namedChildren.find((c) => c.type === 'package_declaration');
@@ -456,14 +476,29 @@ function receiverOf(node: SyntaxNode, chain: string[], shapes: Map<number, Class
   return { receiver: { type: chain, rest: [] } };
 }
 
-function describeInvocation(node: SyntaxNode, shapes = new Map<number, ClassShape>()): CallDesc | undefined {
+/** A classe anônima em volta de `node` (`new HashMap<>() {{ put(..) }}`), antes da classe nomeada: o tipo dela. */
+function anonymousBase(node: SyntaxNode): TypeRef | undefined {
+  for (let n = node.parent; n; n = n.parent) {
+    if (CLASS_TYPES.has(n.type) || isRepositoryInterface(n)) return undefined;
+    if (n.type === 'class_body' && n.parent?.type === 'object_creation_expression') return declaredType(n.parent.childForFieldName('type')) ?? [];
+  }
+  return undefined;
+}
+
+function describeInvocation(node: SyntaxNode, shapes = new Map<number, ClassShape>(), statics?: StaticImports): CallDesc | undefined {
   const name = node.childForFieldName('name')?.text;
   if (!name) return undefined;
   const object = node.childForFieldName('object');
   if (!object) {
-    // sem receptor: método da própria classe (ou herdado); no Java não há função solta
+    // sem receptor: método da própria classe (ou herdado) — ou de um `import static`; no Java não há função solta
+    const anonymous = anonymousBase(node);
+    if (anonymous) return anonymous.length > 0 ? { name, receiver: { type: anonymous, rest: [] } } : { name, shadowed: true, opaque: true };
+    const fromImport = statics?.members.get(name);
+    const candidates = fromImport ? [fromImport] : statics?.wildcards ?? [];
     const cls = enclosingClass(node);
-    return cls ? { name, receiver: { type: [className(cls)], rest: [] } } : { name };
+    if (!cls) return { name, ...(candidates.length > 0 && { statics: candidates }) };
+    if (OBJECT_METHODS.has(name) && !declaresMethod(cls, name)) return { name, shadowed: true, opaque: true };
+    return { name, receiver: { type: [className(cls)], rest: [] }, ...(candidates.length > 0 && { statics: candidates }) };
   }
   const chain = memberChain(object);
   if (chain) return { name, object: chain, ...receiverOf(node, chain, shapes) };
@@ -478,6 +513,11 @@ function describeInvocation(node: SyntaxNode, shapes = new Map<number, ClassShap
     if (type) return { name, receiver: { type, rest: [] } };
   }
   return { name, dynamic: true };
+}
+
+/** A classe declara um método com esse nome (no próprio corpo)? */
+function declaresMethod(cls: SyntaxNode, name: string): boolean {
+  return (cls.childForFieldName('body')?.namedChildren ?? []).some((m) => m.type === 'method_declaration' && m.childForFieldName('name')?.text === name);
 }
 
 function withArgs(node: SyntaxNode, desc: CallDesc): CallDesc {
@@ -617,7 +657,7 @@ function extractSymbols(root: SyntaxNode, fileId: string, pkg: string, shapes: M
   return results;
 }
 
-function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId: string, shapes: Map<number, ClassShape>): RawCall[] {
+function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId: string, shapes: Map<number, ClassShape>, statics: StaticImports): RawCall[] {
   const enclosing = (index: number): string | undefined => {
     let best: SymbolInfo | undefined;
     for (const s of symbols) {
@@ -633,7 +673,7 @@ function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId: string, s
   walk(root, (node) => {
     if (node.type === 'method_invocation') {
       const caller = enclosing(node.startIndex) ?? fileId;
-      const desc = describeInvocation(node, shapes);
+      const desc = describeInvocation(node, shapes, statics);
       if (!desc) return;
       const args = argumentsOf(node).map((a) => describeArg(a, shapes));
       results.push({ caller, ...desc, ...position(node), args });
@@ -719,7 +759,7 @@ export function extractJava(root: SyntaxNode, fileId: string): FileExtraction {
     symbols,
     module: moduleInfo(root, imports),
     valueCalls: new Map(),
-    calls: extractCalls(root, symbols, fileId, shapes),
+    calls: extractCalls(root, symbols, fileId, shapes, staticImports(root)),
     topHash: topLevelHash(root, symbols),
     scope,
   };

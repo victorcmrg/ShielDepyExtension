@@ -41,7 +41,12 @@ const PROJECTS: Project[] = [
   { id: 'todoapi', repo: 'davidfowl/TodoApi', commit: '307a1eadbbd77a3004c318f2377e4818bc400af6', stack: 'C#, minimal APIs, EF Core' },
   { id: 'aspnet-realworld', repo: 'gothinkster/aspnetcore-realworld-example-app', commit: '8aa617abed5dd645f8f9d99578a3e07b4e2e52e7', stack: 'C#, controllers, MediatR, EF Core' },
   { id: 'clean-architecture', repo: 'jasontaylordev/CleanArchitecture', commit: '1bc2b07ce75864b0c399e8e3d481de5e17aad509', stack: 'C#, minimal APIs, MediatR, EF Core' },
-  { id: 'eshoponweb', repo: 'NimblePros/eShopOnWeb', commit: 'f21d6233b851897371c25c5e7ffa67bb8552dba8', stack: 'C#, controllers + endpoints, EF Core' },
+  { id: 'eshoponweb', repo: 'NimblePros/eShopOnWeb', commit: 'f21d6233b851897371c25c5e7ffa67bb8552dba8', stack: 'C#, controllers + FastEndpoints, Ardalis, EF Core' },
+  // Java (etapa J5, 2026-10-17)
+  { id: 'petclinic', repo: 'spring-projects/spring-petclinic', commit: '500158f732419217507c7656904b8e6aa1bcc0d6', stack: 'Java, Spring MVC, Spring Data JPA' },
+  { id: 'petclinic-rest', repo: 'spring-petclinic/spring-petclinic-rest', commit: 'afc8fc1d3b8ec8de69414482b3bd70a1da78cb95', stack: 'Java, Spring REST, JPA/JDBC/Spring Data' },
+  { id: 'spring-realworld', repo: 'gothinkster/spring-boot-realworld-example-app', commit: 'ee17e31aafe733d98c4853c8b9a74d7f2f6c924a', stack: 'Java, Spring MVC, MyBatis' },
+  { id: 'petclinic-microservices', repo: 'spring-petclinic/spring-petclinic-microservices', commit: '1d76b00d683e86b62867a6bf59530f8ab301244f', stack: 'Java, Spring Cloud, WebClient, Spring Data' },
 ];
 
 function arg(name: string): string | undefined {

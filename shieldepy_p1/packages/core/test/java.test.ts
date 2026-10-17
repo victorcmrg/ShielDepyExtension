@@ -451,3 +451,50 @@ public class Http {
     expect(graph.stats).toMatchObject({ callsHeuristic: 0, callsUnresolved: 0 });
   });
 });
+
+describe('J5 — o que os projetos Java reais pediram (`import static`, classe anônima, métodos de `Object`)', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  it('`import static` de classe do projeto (provado) e de fora (nativo); double brace; `getClass()`', () => {
+    const util = indexFile(graph, fx, 'util/Texts.java', 'package com.acme.util;\npublic final class Texts { public static String slug(String s) { return s; } }\n');
+    const f = indexFile(
+      graph,
+      fx,
+      'web/Api.java',
+      `package com.acme.web;
+import static com.acme.util.Texts.slug;
+import static org.assertj.core.api.Assertions.assertThat;
+import static java.util.stream.Collectors.*;
+import java.util.HashMap;
+public class Api {
+    Object run(String s) {
+        slug(s);
+        assertThat(s);
+        joining(",");
+        getClass();
+        return new HashMap<String, Object>() {{ put("a", 1); }};
+    }
+}
+`
+    );
+    const run = methodId(graph, 'Api', 'run', f);
+    expect(graph.callsOf(run).map((c) => [c.name, c.outcome])).toEqual([
+      ['slug', 'resolved'],
+      ['assertThat', 'unbound'],
+      ['joining', 'unbound'],
+      ['getClass', 'unbound'],
+      ['put', 'unbound'],
+      ['HashMap', 'unbound'],
+    ]);
+    expect(graph.callsOf(run)[0]!.targets).toEqual([methodId(graph, 'Texts', 'slug', util)]);
+    expect(graph.fileCoverage(f)).toMatchObject({ callsUnresolved: 0, callsHeuristic: 0 });
+  });
+});

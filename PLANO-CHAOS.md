@@ -1015,6 +1015,26 @@ Este arquivo é atualizado a cada tarefa concluída, no mesmo commit da mudança
     - partial class funciona (as partes são classes de mesmo nome), mas classe aninhada é procurada pelo nome simples no namespace de fora;
     - os tipos de fora são uma lista por nome: sem o compilador não há como saber o pacote de um tipo qualquer.
   - Suíte **372** (+11 em `packages/core/test/csharp.test.ts`).
+- 2026-10-17: **J5 concluída (4 projetos Java reais no `mapa:reais`).** Clonados fora do repositório, sem instalar nem executar nada.
+  - **A 1ª medição deu 45–84% das chamadas provadas**, com centenas sem alvo. Quase tudo era uma coisa só:
+    1. **`import static`** (`assertThat`, `status()`, `given`, `joining`): a chamada sem receptor ia para a própria classe. Agora o frontend guarda os imports estáticos (`RawCall.statics`): sem alvo na classe, o grafo tenta a classe do import (do projeto → provado; de fora → nativo). `import static x.Y.*;` tenta cada uma.
+    2. **Classe anônima** (`new HashMap<>() {{ put(...) }}`): o `put` é da base da anônima, não da classe de fora.
+    3. **Métodos de `Object`** sem receptor (`getClass()`, `equals`) são nativos quando a classe não os declara.
+  - **Tabela (2026-10-17):**
+
+    | Projeto | Pilha | Arquivos | Provadas | Por nome | Sem alvo | Rotas | Sensíveis | Operações |
+    |---|---|---|---|---|---|---|---|---|
+    | petclinic | Java, Spring MVC, Spring Data JPA | 63 | 100% | 0 | 0 | 17 | 9 | 9 |
+    | petclinic-rest | Java, Spring REST, JPA/JDBC/Spring Data | 109 | 100% | 0 | 0 | 1 | 0 | 0 |
+    | spring-realworld | Java, Spring MVC, MyBatis | 116 | 100% | 0 | 0 | 19 | 2 | 2 |
+    | petclinic-microservices | Java, Spring Cloud, WebClient, Spring Data | 90 | 100% | 0 | 0 | 16 | 13 | 19 |
+
+  - **O que sobra (anotado, não é bug):**
+    - petclinic-rest: as rotas estão em interfaces que o `openapi-generator` gera no build (em `target/`, fora do repositório); os controllers só as implementam. Sem o build, não há o que ler;
+    - spring-realworld: o banco é MyBatis (`@Mapper` com SQL em XML), que o mapa ainda não lê como banco;
+    - `@Transactional` abre a transação sem fechar (o que vem depois do método na mesma rota conta como dentro).
+  - **Nada mudou no resto:** os 12 projetos JS/TS e os 4 C# deram os mesmos números.
+  - Suíte **400** (+1).
 - 2026-10-17: **J3 e J4 concluídas (I/O do Java e o exemplo `pedidos-springboot`).** Em `topology/io.ts`, pelo pacote para o qual a chamada resolveu.
   - **Spring Data** (`via: 'springdata'`): pelo nome do método, inclusive os derivados — `save*`/`delete*`/`remove*`/`insert*`/`update*` escrita, `find*`/`get*`/`read*`/`query*`/`search*`/`stream*`/`count*`/`exists*` leitura, outro nome (um `@Query` próprio) `db_unknown`; o alvo é a entidade do repositório (`extendsArg`). Só a chamada no próprio repositório conta (`repo.findAll().stream()` é uma leitura).
   - **JdbcTemplate/NamedParameterJdbcTemplate** (`via: 'jdbctemplate'`): o SQL literal do 1º argumento, pelo `classifySql` (com `FOR UPDATE`). **JdbcClient:** o SQL do `.sql("...")` da cadeia, contado no terminal (`list`/`single`/`update`...).
@@ -1290,7 +1310,7 @@ Pedido do usuário: "crie os adaptadores para C# e após isso Java". A etapa L d
 - **J2. Rotas do Spring MVC.** ✅ Concluída em 2026-10-17 (ver o registro).
 - **J3. I/O do Java** (Spring Data, JdbcTemplate, `EntityManager`, `@Transactional`, `RestTemplate`/`WebClient`/`RestClient`). ✅ Concluída em 2026-10-17 (ver o registro).
 - **J4. Exemplo `examples/pedidos-springboot`:** o checkout do `checkout-express` em Spring Boot, com os mesmos defeitos. ✅ Concluída em 2026-10-17.
-- **J5. Projetos Java reais no `mapa:reais`.**
+- **J5. Projetos Java reais no `mapa:reais`.** ✅ Concluída em 2026-10-17 (ver o registro).
 - **J6. Extensão:** `.java` no grafo, as regras do `@EventListener` da mesma árvore, textos.
 
 ## M — mapeamento em projetos reais (escrito em 2026-10-13)

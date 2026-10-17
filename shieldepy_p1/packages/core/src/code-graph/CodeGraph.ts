@@ -1016,6 +1016,8 @@ export class CodeGraph {
           : [];
         if (own.length > 0) return { outcome: 'callsResolved', targets: own };
       }
+      // Java: sem alvo na própria classe, a chamada sem receptor pode ser de um `import static`
+      if (byType?.outcome === 'callsUnresolved' && call.statics) return this.staticImported(fileId, call.statics, call.name, ctx) ?? byType;
       if (byType) return byType;
       // C#/Java: `com.other.Fmt.go()` — a raiz minúscula não era campo da classe: a cadeia é um nome qualificado de tipo
       const qualified = call.object && this.scopes.has(fileId) && call.object[0] !== 'this' && call.object[0] !== 'super' && call.object[0] !== 'base' ? this.qualifiedMember(fileId, call.object, call.name, ctx) : undefined;
@@ -1646,6 +1648,25 @@ export class CodeGraph {
     // interface (sem símbolo): as classes que a implementam — também pelo nome qualificado, que no Java é todo import
     if (classes.length > 0 || !implementers) return { classes };
     return { classes: ctx.implementers(name) };
+  }
+
+  /**
+   * Java: `m` vindo de um `import static` de um destes tipos. Um tipo do projeto com o método → ele; senão, se algum
+   * tipo não é do projeto (`org.assertj...Assertions`), é nativo (não se sabe o que ele tem, mas não é falha do mapa).
+   */
+  private staticImported(fileId: string, types: TypeRef[], method: string, ctx: ResolutionContext): CallResolution | undefined {
+    let outside = false;
+    for (const type of types) {
+      const r = this.resolveType(fileId, type, ctx, false);
+      if (r.external) return this.external(r.external);
+      if (r.classes.length === 0) {
+        outside = true;
+        continue;
+      }
+      const m = this.membersOf(r.classes, [], method, ctx);
+      if (m && m.outcome === 'callsResolved') return m;
+    }
+    return outside ? NATIVE : undefined;
   }
 
   /** C#/Java: `m` no tipo que o maior prefixo de `chain` nomeia (`com.other.Fmt` + `go`); o resto da cadeia são membros. */

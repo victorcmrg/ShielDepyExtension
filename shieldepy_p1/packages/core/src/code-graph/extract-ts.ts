@@ -104,6 +104,11 @@ export interface RawCall {
   /** C#: `Send(msg)`/`Publish(msg)` do MediatR — o tipo da mensagem (`Create.Command`); o alvo é o `Handle` de quem a trata. */
   message?: string;
   /**
+   * Java: chamada sem receptor que pode vir de um `import static` (`assertThat(x)`, `joining(",")`): os tipos de
+   * onde ela pode ter vindo. O grafo tenta a própria classe primeiro; sem alvo nela, tenta estes.
+   */
+  statics?: TypeRef[];
+  /**
    * Receptor que é o resultado de uma cadeia (`Router().use(a).use(b)`): quem guarda a cadeia
    * inteira (`const api = ...` → `api`; `export default ...` → `default`) ou, solta, a posição
    * da chamada que a começa (`@linha:coluna`). Dá ao valor sem nome a mesma identidade que um
