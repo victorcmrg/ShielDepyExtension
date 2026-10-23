@@ -1,9 +1,9 @@
 // Dados de demonstração pra testar cada tipo de conta. Pode rodar de novo: recria a empresa demo.
 //   npm run seed:demo -w @shieldepy/api
 // Senhas fixas e públicas — só pra ambiente local, nunca em produção.
-import { db } from './db';
+import { db } from '../shared/db/sqlite';
 import { addEmailAssignment, createCompany, createUserFromAssignment, deleteCompany, getAssignment, setCompanyPermission } from './companies';
-import { hashPassword } from './passwords';
+import { hashPassword } from '../shared/crypto/passwords';
 import { addProjectMember, addRepo, createProject } from './projects';
 import { normalizeRemote } from './remotes';
 

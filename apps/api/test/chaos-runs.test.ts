@@ -80,7 +80,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   // no Windows, o arquivo do banco aberto não deixa apagar a pasta
-  (await import('../src/auth/db')).db.close();
+  (await import('../src/shared/db/sqlite')).db.close();
   rmSync(dataDir, { recursive: true, force: true });
 });
 

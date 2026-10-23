@@ -4,7 +4,7 @@
 //
 // Rodar uma vez, depois de definir ADMIN_EMAIL no .env da raiz:
 //   npm run bootstrap -w @shieldepy/api
-import { db } from './db';
+import { db } from '../shared/db/sqlite';
 import { createCompany, addEmailAssignment, setCompanyPermission } from './companies';
 
 const adminEmail = process.env.ADMIN_EMAIL;

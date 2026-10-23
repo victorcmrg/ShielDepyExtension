@@ -1,5 +1,5 @@
-// Banco SQLite nativo (node:sqlite) do sistema de autenticação multi-tenant.
-// Um único arquivo, sem ORM — os módulos em apps/api/src/auth/*.ts fazem as queries diretamente.
+// Banco SQLite nativo (node:sqlite) da API: a conexão e o esquema. A P1 troca por Postgres com migrations.
+// Um único arquivo, sem ORM; hoje os módulos em apps/api/src/auth/*.ts fazem as queries diretamente.
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 // SHIELDEPY_DATA_DIR: outro lugar para o banco (os testes usam uma pasta temporária).
-const DATA_DIR = process.env.SHIELDEPY_DATA_DIR ?? fileURLToPath(new URL('../../data', import.meta.url));
+const DATA_DIR = process.env.SHIELDEPY_DATA_DIR ?? fileURLToPath(new URL('../../../data', import.meta.url));
 mkdirSync(DATA_DIR, { recursive: true });
 
 // node:sqlite pelo require do Node: o Vite (Vitest) não conhece esse builtin e tentaria resolver o pacote "sqlite".

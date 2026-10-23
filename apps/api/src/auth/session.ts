@@ -2,8 +2,8 @@
 // opaco; só o hash SHA-256 dele fica no banco — um vazamento da tabela não expõe
 // credenciais utilizáveis.
 import type { IncomingMessage } from 'node:http';
-import { db } from './db';
-import { randomToken, sha256Hex } from './tokens';
+import { db } from '../shared/db/sqlite';
+import { randomToken, sha256Hex } from '../shared/crypto/tokens';
 
 const COOKIE_NAME = 'shieldepy_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias

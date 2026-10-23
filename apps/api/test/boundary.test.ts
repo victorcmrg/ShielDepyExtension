@@ -65,6 +65,66 @@ function violations(app: keyof typeof APPS): string[] {
   return out;
 }
 
+// --- camadas da API (decisão 0013) -------------------------------------------------------------
+const API_SRC = path.join(ROOT, 'apps', 'api', 'src');
+const DRIVERS = ['node:sqlite', 'node:http', 'node:https', 'node:net', 'node:fs', 'node:fs/promises'];
+
+/** Onde um arquivo de apps/api/src fica: { domain, layer } em domains/<domain>/<layer>/, ou 'shared'. */
+function placeOf(file: string): { domain: string; layer: string } | 'shared' | null {
+  const parts = path.relative(API_SRC, file).split(path.sep);
+  if (parts[0] === 'shared') return 'shared';
+  if (parts[0] === 'domains' && parts.length >= 4) return { domain: parts[1]!, layer: parts[2]! };
+  return null;
+}
+
+/** Por que `spec`, importado de `file`, quebra as camadas (ou null se pode). */
+function layerViolation(file: string, spec: string): string | null {
+  const from = placeOf(file);
+  if (!from) return null;
+  const target = spec.startsWith('.') ? placeOf(path.resolve(path.dirname(file), spec)) : null;
+  if (from === 'shared') return target && target !== 'shared' ? 'shared não importa domínio' : null;
+  if (from.layer === 'domain') {
+    if (DRIVERS.includes(spec)) return 'domain não faz I/O';
+    if (target === 'shared') return 'domain não importa shared';
+    if (target && (target.domain !== from.domain || target.layer !== 'domain')) return 'domain só importa o próprio domain';
+    return null;
+  }
+  if (target && target !== 'shared' && target.domain !== from.domain && target.layer !== 'application') {
+    return 'outro domínio só pela application dele';
+  }
+  return null;
+}
+
+function layerViolations(): string[] {
+  return codeFiles(API_SRC).flatMap((file) =>
+    moduleSpecifiers(file, readFileSync(file, 'utf8')).flatMap((spec) => {
+      const why = layerViolation(file, spec);
+      return why ? [`${path.relative(ROOT, file)}: '${spec}' (${why})`] : [];
+    })
+  );
+}
+
+describe('camadas da API (S7, decisão 0013)', () => {
+  it('apps/api/src respeita as camadas', () => {
+    expect(layerViolations()).toEqual([]);
+  });
+
+  it('cada regra pega o que deve e deixa passar o resto', () => {
+    const at = (rel: string) => path.join(API_SRC, ...rel.split('/'));
+    const domain = at('domains/projects/domain/project.ts');
+    const app = at('domains/projects/application/projects.ts');
+    expect(layerViolation(domain, 'node:sqlite')).toBe('domain não faz I/O');
+    expect(layerViolation(domain, '../../../shared/db/sqlite')).toBe('domain não importa shared');
+    expect(layerViolation(domain, '../infra/SqliteProjectRepository')).toBe('domain só importa o próprio domain');
+    expect(layerViolation(domain, '../../companies/domain/company')).toBe('domain só importa o próprio domain');
+    expect(layerViolation(domain, './remote')).toBeNull();
+    expect(layerViolation(app, '../../companies/infra/SqliteCompanyRepository')).toBe('outro domínio só pela application dele');
+    expect(layerViolation(app, '../../companies/application/companies')).toBeNull();
+    expect(layerViolation(app, '../domain/project')).toBeNull();
+    expect(layerViolation(at('shared/http/http.ts'), '../../domains/projects/domain/project')).toBe('shared não importa domínio');
+  });
+});
+
 describe('fronteira produto × empresa (S4)', () => {
   it.each(Object.keys(APPS) as (keyof typeof APPS)[])('apps/%s não declara o motor no package.json', (app) => {
     const pkg = JSON.parse(readFileSync(path.join(APPS[app].dir, 'package.json'), 'utf8'));

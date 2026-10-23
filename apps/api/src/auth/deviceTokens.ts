@@ -1,7 +1,7 @@
 // Token de longa duração usado pela extensão VS Code (header Authorization: Bearer).
 // Opaco (não JWT) para poder ser revogado na hora — basta marcar a linha no banco.
-import { db } from './db';
-import { randomToken, sha256Hex } from './tokens';
+import { db } from '../shared/db/sqlite';
+import { randomToken, sha256Hex } from '../shared/crypto/tokens';
 
 const DEVICE_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 dias, renovado a cada uso (sliding)
 

@@ -1,8 +1,8 @@
 // A cerimônia de "confiar" a extensão VS Code no navegador (device flow, estilo
 // `gh auth login`): a extensão gera um `state`, o navegador confirma logado e emite
 // um código de troca de uso único e vida curta, que a extensão troca por um token real.
-import { db } from './db';
-import { randomToken, sha256Hex } from './tokens';
+import { db } from '../shared/db/sqlite';
+import { randomToken, sha256Hex } from '../shared/crypto/tokens';
 import { createDeviceToken } from './deviceTokens';
 
 const CEREMONY_TTL_MS = 5 * 60 * 1000; // 5 minutos para completar a cerimônia inteira

@@ -1,9 +1,9 @@
 // Execuções do caos enviadas pelo CI (V3): tokens de CI por projeto e o histórico por repositório.
 // O payload é o `ChaosRunUpload` do `shieldepy publish` — só fatos (rotas, operações, tabelas, hosts,
 // arquivo:linha), nenhum código-fonte. Guardamos as últimas MAX_RUNS_PER_REPO execuções por repositório.
-import { db } from './db';
+import { db } from '../shared/db/sqlite';
 import { normalizeRemote } from './remotes';
-import { randomToken, sha256Hex } from './tokens';
+import { randomToken, sha256Hex } from '../shared/crypto/tokens';
 
 /**
  * O contrato do upload, do lado da API: espelha o `ChaosResults`/`ChaosRunUpload` de

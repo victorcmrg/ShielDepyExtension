@@ -1,7 +1,7 @@
 // Rotas do fluxo pós-login: projetos, repositórios, pessoas e equipe da empresa, mais o
 // "posso usar este repositório?" da extensão. routes.ts junta esta tabela à dele.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { HttpError, readBody, sendJson } from '../app';
+import { HttpError, readBody, sendJson } from '../shared/http/http';
 import { addEmailAssignment, countOwners, deleteUser, findUserByEmail, getCompanyById, getCompanyPermissions, getRole, listCompanyMembers, removeEmailAssignment, setRole, type Role } from './companies';
 import { isAdmin, requireDeviceToken, requireSession } from './middleware';
 import {

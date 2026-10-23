@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHandler } from '../src/app';
-import { RateLimiter } from '../src/rateLimiter';
+import { RateLimiter } from '../src/shared/http/rateLimiter';
 
 let server: Server;
 let base: string;

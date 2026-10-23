@@ -1,8 +1,8 @@
 // Login social (Google/GitHub). Client OAuth confidencial — client_secret e a troca
 // do código nunca saem do servidor, então `state` sozinho basta contra CSRF (PKCE
 // existe pra proteger clientes públicos, que não é o nosso caso).
-import { randomToken } from './tokens';
-import { db } from './db';
+import { randomToken } from '../shared/crypto/tokens';
+import { db } from '../shared/db/sqlite';
 
 export type OAuthProvider = 'google' | 'github';
 

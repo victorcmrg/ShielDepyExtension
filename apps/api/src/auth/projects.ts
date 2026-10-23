@@ -1,7 +1,7 @@
 // Projetos da empresa. O dono cria projetos, conecta repositórios (identificados pelo remote do
 // .git) e escolhe quem trabalha em cada um. A extensão só liga num repositório que esteja num
 // projeto da pessoa — e cada vez que liga, registra o uso (quem, qual branch, quando).
-import { db } from './db';
+import { db } from '../shared/db/sqlite';
 import { normalizeRemote, remoteLabel } from './remotes';
 
 export interface ProjectRow {

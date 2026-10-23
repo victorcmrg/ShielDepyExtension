@@ -2,9 +2,9 @@
 // função — handleAuthRoute — que app.ts chama antes do dispatch de /analyze e /chat;
 // ela devolve `true` se tiver tratado a requisição, `false` caso contrário.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { HttpError, sendJson, readBody } from '../app';
-import { RateLimiter } from '../rateLimiter';
-import { verifyPassword } from './passwords';
+import { HttpError, sendJson, readBody } from '../shared/http/http';
+import { RateLimiter } from '../shared/http/rateLimiter';
+import { verifyPassword } from '../shared/crypto/passwords';
 import { requireSession, requireDeviceToken, isAdmin } from './middleware';
 import { createWebSession, destroySession, type AuthUser } from './session';
 import { listDevices, revokeAllDevices, revokeDeviceById, revokeDeviceToken } from './deviceTokens';

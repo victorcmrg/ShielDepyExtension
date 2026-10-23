@@ -1,8 +1,8 @@
 // Modelo multi-tenant: empresas ("caixas"), permissões por empresa, allow-list de
 // e-mails atribuídos a uma empresa (pré-cadastro pelo admin — sem auto-registro),
 // e os usuários reais (criados só no primeiro login bem-sucedido).
-import { db } from './db';
-import { hashPassword } from './passwords';
+import { db } from '../shared/db/sqlite';
+import { hashPassword } from '../shared/crypto/passwords';
 
 export interface Company {
   id: number;

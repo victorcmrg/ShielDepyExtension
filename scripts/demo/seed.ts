@@ -4,7 +4,7 @@
 //   uso: tsx scripts/demo/seed.ts <remote do workspace> <arquivo de saída .json>
 import { writeFileSync } from 'node:fs';
 import { createCiToken } from '../../apps/api/src/auth/chaosRuns';
-import { db } from '../../apps/api/src/auth/db';
+import { db } from '../../apps/api/src/shared/db/sqlite';
 import { createDeviceToken } from '../../apps/api/src/auth/deviceTokens';
 import { addProjectMember, addRepo, createProject } from '../../apps/api/src/auth/projects';
 import { createWebSession } from '../../apps/api/src/auth/session';
