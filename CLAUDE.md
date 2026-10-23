@@ -1,6 +1,8 @@
 # ShielDepy — combinados para o Claude (vale em qualquer máquina)
 
-O estado do trabalho fica no `PLANO-CHAOS.md`: **num chat novo, leia primeiro a seção "Como retomar num chat novo"** e a seção da etapa atual, antes de propor qualquer coisa.
+O estado do trabalho fica em dois planos. **Num chat novo, leia primeiro a seção "Como retomar num chat novo"** do plano da etapa atual, antes de propor qualquer coisa:
+- `PLANO.md`: o produto e a empresa (separação `apps/api`/`apps/web`, distribuição, licença, cobrança, produção) e o resto do caos;
+- `PLANO-CHAOS.md`: o motor (grafo, linguagens, topologia, caos), com o Registro detalhado.
 
 ## Como trabalhar
 - **Responder em português (pt-BR)**, inclusive commits e o plano.
