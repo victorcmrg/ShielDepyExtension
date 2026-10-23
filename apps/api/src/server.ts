@@ -15,10 +15,10 @@ if (registry.failed.length > 0) log(`[web] gramáticas indisponíveis (linguagen
 const provider = providerFromEnv(process.env, log);
 
 // O site é o build do Vite (React). Em dev quem serve as páginas é o Vite (npm run dev), com proxy pra cá.
-// A API serve o build do front (apps/frontend/dist); SHIELDEPY_STATIC_DIR troca a pasta.
-const staticDir = process.env.SHIELDEPY_STATIC_DIR ?? fileURLToPath(new URL('../../frontend/dist', import.meta.url));
+// A API serve o build do front (apps/web/dist); SHIELDEPY_STATIC_DIR troca a pasta.
+const staticDir = process.env.SHIELDEPY_STATIC_DIR ?? fileURLToPath(new URL('../../web/dist', import.meta.url));
 if (!existsSync(join(staticDir, 'index.html'))) {
-  log(`[web] build do site não encontrado (${staticDir}): rode \`npm run build -w @shieldepy/frontend\`, ou \`npm run web:dev\` para desenvolver.`);
+  log(`[web] build do site não encontrado (${staticDir}): rode \`npm run build -w @shieldepy/web\`, ou \`npm run web:dev\` para desenvolver.`);
 }
 
 const handler = createHandler({

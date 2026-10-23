@@ -1,6 +1,6 @@
 // Endereços antigos (páginas .html soltas, antes do React) → rotas novas. A extensão do VS Code e
 // favoritos antigos ainda podem abrir /device-confirm.html?state=…; o redirect preserva a query.
-// Usado pelo servidor (build) e pelo Vite (dev), pra os dois se comportarem igual.
+// Só o servidor usa (o Vite deixou de usar na S2); sai inteiro na S5.
 
 const LEGACY_PAGES: Record<string, string> = {
   '/index.html': '/',

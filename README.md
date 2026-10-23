@@ -9,7 +9,7 @@ quebra sob essas falhas. A IA é opcional: ela propõe e explica, e o motor prov
 ```
 ShielDepyExtension/
 ├── packages/     ← o motor: core, extractors, agent (IA), viewer (o mapa)
-├── apps/         ← vscode (o plugin), cli, api (contas e portal), frontend (site e portal)
+├── apps/         ← vscode (o plugin), cli, api (contas, projetos, tokens), web (site e portal)
 ├── examples/     ← sistemas de exemplo usados nos testes e na demo
 ├── docs/         ← como funciona, decisões, pesquisa e histórico
 └── PLANO.md      ← o que está sendo feito agora e o que vem depois

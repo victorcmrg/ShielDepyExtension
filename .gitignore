@@ -11,7 +11,7 @@ out/
 # gerados no build
 apps/vscode/wasm/
 apps/vscode/media/vendor/
-apps/frontend/dist-ssr/
+apps/web/dist-ssr/
 
 # banco local do portal
 apps/api/data/

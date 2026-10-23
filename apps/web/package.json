@@ -1,5 +1,5 @@
 {
-  "name": "@shieldepy/frontend",
+  "name": "@shieldepy/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",

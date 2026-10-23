@@ -198,11 +198,11 @@ function build(force) {
     npm(['run', 'build', '-w', 'shieldepy']);
   }
   ok('extensão compilada (apps/vscode/dist)');
-  if (force || stale(join(ROOT, 'apps', 'frontend', 'dist', 'app.html'), [join(ROOT, 'apps', 'frontend', 'src')])) {
+  if (force || stale(join(ROOT, 'apps', 'web', 'dist', 'app.html'), [join(ROOT, 'apps', 'web', 'src')])) {
     console.log(dim('  compilando o portal...'));
-    npm(['run', 'build', '-w', '@shieldepy/frontend']);
+    npm(['run', 'build', '-w', '@shieldepy/web']);
   }
-  ok('portal compilado (apps/frontend/dist)');
+  ok('portal compilado (apps/web/dist)');
 }
 
 // ---------------------------------------------------------------- o sistema da demo

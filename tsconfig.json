@@ -10,6 +10,6 @@
     "vitest.config.ts"
   ],
   "exclude": [
-    "apps/frontend/src/**"
+    "apps/web/src/**"
   ]
 }
