@@ -3,12 +3,12 @@
 // projeto do sistema da loja com o remote do workspace da demo, o token da extensão e o token de CI.
 //   uso: tsx scripts/demo/seed.ts <remote do workspace> <arquivo de saída .json>
 import { writeFileSync } from 'node:fs';
-import { createCiToken } from '../../apps/frontend/server/auth/chaosRuns';
-import { db } from '../../apps/frontend/server/auth/db';
-import { createDeviceToken } from '../../apps/frontend/server/auth/deviceTokens';
-import { addProjectMember, addRepo, createProject } from '../../apps/frontend/server/auth/projects';
-import { createWebSession } from '../../apps/frontend/server/auth/session';
-import { DEMO_ACCOUNTS } from '../../apps/frontend/server/auth/seedDemo';
+import { createCiToken } from '../../apps/api/src/auth/chaosRuns';
+import { db } from '../../apps/api/src/auth/db';
+import { createDeviceToken } from '../../apps/api/src/auth/deviceTokens';
+import { addProjectMember, addRepo, createProject } from '../../apps/api/src/auth/projects';
+import { createWebSession } from '../../apps/api/src/auth/session';
+import { DEMO_ACCOUNTS } from '../../apps/api/src/auth/seedDemo';
 
 const [remote, out] = process.argv.slice(2);
 if (!remote || !out) throw new Error('uso: tsx scripts/demo/seed.ts <remote> <saida.json>');

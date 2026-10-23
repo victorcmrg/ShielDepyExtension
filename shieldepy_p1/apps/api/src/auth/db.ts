@@ -1,5 +1,5 @@
 // Banco SQLite nativo (node:sqlite) do sistema de autenticação multi-tenant.
-// Um único arquivo, sem ORM — os módulos em apps/frontend/server/auth/*.ts fazem as queries diretamente.
+// Um único arquivo, sem ORM — os módulos em apps/api/src/auth/*.ts fazem as queries diretamente.
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';

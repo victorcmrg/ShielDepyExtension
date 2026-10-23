@@ -7,7 +7,7 @@
       "runtimeArgs": [
         "start",
         "-w",
-        "@shieldepy/frontend"
+        "@shieldepy/api"
       ],
       "port": 3001
     },
@@ -18,7 +18,7 @@
         "run",
         "dev",
         "-w",
-        "@shieldepy/frontend"
+        "@shieldepy/api"
       ],
       "port": 5173
     }

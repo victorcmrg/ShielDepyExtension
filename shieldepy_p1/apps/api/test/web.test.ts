@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry } from '@shieldepy/extractors';
-import { createHandler } from '../server/app';
-import { RateLimiter, SessionStore } from '../server/sessions';
+import { createHandler } from '../src/app';
+import { RateLimiter, SessionStore } from '../src/sessions';
 
 let server: Server;
 let base: string;

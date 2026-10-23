@@ -5,7 +5,7 @@ dist/
 apps/vscode/wasm/
 apps/vscode/media/vendor/
 .vscode-test/
-apps/frontend/data/
+apps/api/data/
 apps/frontend/dist-ssr/
 
 # saídas geradas pelo shieldepy (mapa, topologia, testes de caos)

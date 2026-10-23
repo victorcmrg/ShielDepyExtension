@@ -298,8 +298,8 @@ async function portalUp() {
 
 async function startPortal() {
   if (await portalUp()) fail(`a porta ${PORT} já está em uso. Feche o que está nela ou rode com outra porta: DEMO_PORT=3002 npm run demo`);
-  const server = spawn(process.execPath, [TSX, join('server', 'server.ts')], {
-    cwd: join(ROOT, 'apps', 'frontend'),
+  const server = spawn(process.execPath, [TSX, join('src', 'server.ts')], {
+    cwd: join(ROOT, 'apps', 'api'),
     env: { ...process.env, SHIELDEPY_DATA_DIR: PORTAL_DATA, PORT: String(PORT), PUBLIC_URL: PORTAL },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

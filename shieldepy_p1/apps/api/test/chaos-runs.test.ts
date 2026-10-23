@@ -36,19 +36,19 @@ let ownerCookie: string;
 let memberCookie: string;
 let outsiderCookie: string;
 let repoId: number;
-let insertRun: typeof import('../server/auth/chaosRuns').insertRun;
-let repoHistory: typeof import('../server/auth/chaosRuns').repoHistory;
+let insertRun: typeof import('../src/auth/chaosRuns').insertRun;
+let repoHistory: typeof import('../src/auth/chaosRuns').repoHistory;
 
 const cookieOf = (setCookie: string) => setCookie.split(';')[0]!;
 
 beforeAll(async () => {
-  const companies = await import('../server/auth/companies');
-  const projects = await import('../server/auth/projects');
-  const session = await import('../server/auth/session');
-  const runs = await import('../server/auth/chaosRuns');
+  const companies = await import('../src/auth/companies');
+  const projects = await import('../src/auth/projects');
+  const session = await import('../src/auth/session');
+  const runs = await import('../src/auth/chaosRuns');
   insertRun = runs.insertRun;
   repoHistory = runs.repoHistory;
-  const { createHandler } = await import('../server/app');
+  const { createHandler } = await import('../src/app');
 
   const acme = companies.createCompany('Acme');
   const other = companies.createCompany('Outra');
@@ -80,7 +80,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   // no Windows, o arquivo do banco aberto não deixa apagar a pasta
-  (await import('../server/auth/db')).db.close();
+  (await import('../src/auth/db')).db.close();
   rmSync(dataDir, { recursive: true, force: true });
 });
 

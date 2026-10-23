@@ -1,10 +1,11 @@
-// `npm run dev`: sobe a API (tsx watch, porta API_PORT, padrão 3001) e o Vite (porta PORT, padrão 5173)
+// `npm run dev`: sobe a API (apps/api, tsx watch, porta API_PORT, padrão 3001) e o Vite (porta PORT, padrão 5173)
 // juntos. Cada um recebe a porta explícita: um PORT herdado do ambiente não pode jogar os dois na mesma.
 // O Vite faz proxy de /api, /analyze e /chat pra API (vite.config.ts lê API_PORT).
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const cwd = fileURLToPath(new URL('..', import.meta.url));
+const apiCwd = fileURLToPath(new URL('../../api', import.meta.url));
 const API_PORT = process.env.API_PORT || '3001';
 const WEB_PORT = process.env.PORT || '5173';
 const bin = (spec) => fileURLToPath(import.meta.resolve(spec));
@@ -18,8 +19,8 @@ function stop(child) {
   if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
   else child.kill('SIGTERM');
 }
-function run(name, color, args, env) {
-  const child = spawn(process.execPath, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+function run(name, color, args, env, dir = cwd) {
+  const child = spawn(process.execPath, args, { cwd: dir, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   const tag = `\x1b[${color}m[${name}]\x1b[0m `;
   const pipe = (from, to) => from.on('data', (buf) => to.write(buf.toString().replace(/^(?=.)/gm, tag)));
   pipe(child.stdout, process.stdout);
@@ -32,7 +33,7 @@ function run(name, color, args, env) {
   procs.push(child);
 }
 
-run('api', 32, [bin('tsx/cli'), 'watch', '--env-file-if-exists=../../.env', 'server/server.ts'], { PORT: API_PORT });
+run('api', 32, [bin('tsx/cli'), 'watch', '--env-file-if-exists=../../.env', 'src/server.ts'], { PORT: API_PORT }, apiCwd);
 run('web', 36, [viteBin, '--port', WEB_PORT, '--strictPort'], { API_PORT });
 
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => procs.forEach(stop));

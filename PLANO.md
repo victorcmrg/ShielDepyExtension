@@ -38,7 +38,8 @@ O ShielDepy é vendido como **assinatura por empresa**. O produto roda na máqui
 - Separar **produto** e **empresa** dentro do mesmo monorepo. Separar em dois repositórios só se o produto virar open source ou se outra equipe cuidar da empresa.
 - O backend da empresa vira `apps/api`, separado do front (`apps/web`). A API **não importa** o motor (`core`, `extractors`, `agent`, `viewer`).
 - **TDD** em toda regra de negócio da empresa (licença, plano, assinatura, assentos, webhooks). Ver "Como testar".
-- Postgres com migrations antes do primeiro cliente pago. Os testes usam PGlite, que o projeto já usa no `checkout-express`.
+- **Postgres** (confirmado pelo usuário em 2026-10-23) com migrations, antes do primeiro cliente pago. Os testes usam PGlite, que o projeto já usa no `checkout-express`. A P1 vem logo depois da S, para a A e a B já nascerem no Postgres.
+- **`apps/api` em DDD, organizada por domínio** (pedido do usuário em 2026-10-23). Cada contexto (identidade, empresas, projetos, execuções de caos e, depois, licenças e cobrança) tem as camadas `domain` (entidades e regras puras, sem I/O), `application` (casos de uso), `infra` (repositórios SQL) e `http` (rotas). O domínio não importa banco nem HTTP, e o acesso a dados passa por interfaces de repositório. Por isso o TDD da A e da B testa o domínio sem banco, e a troca do SQLite pelo Postgres (P1) mexe só na `infra`. Ver S7.
 
 **Herdadas e ainda válidas:**
 - **Linguagens (decisão de 2026-10-16, que substituiu a de 2026-10-09 "só JS/TS"):** C# e Java estão no motor (mapa, rotas, I/O). A próxima linguagem é **Python**. O motor continua nosso (Tree-sitter).
@@ -68,7 +69,10 @@ shieldepy_p1/
 ├── apps/
 │   ├── vscode, cli      ← PRODUTO
 │   ├── api              ← EMPRESA: contas, empresas, projetos, device flow, tokens de CI, execuções de caos,
-│   │                      planos, assinaturas, webhooks de pagamento, licenças
+│   │   │                  planos, assinaturas, webhooks de pagamento, licenças
+│   │   └── src/
+│   │       ├── domains/<contexto>/{domain,application,infra,http}   ← DDD por domínio (S7)
+│   │       └── shared/  ← servidor HTTP, banco (conexão e migrations), config
 │   └── web              ← EMPRESA: landing pré-renderizada + portal (React/Vite); só front, fala com a api por HTTP
 ```
 
@@ -94,11 +98,11 @@ Na **regra de negócio da empresa** a ordem é: escrever o teste que falha, impl
 
 ## Etapas
 
-Ordem: **S → C (restante) → W → G → A → B → P**, com P1 adiantável. O motivo: a S destrava tudo sem mudar comportamento. A C e a W deixam o produto honesto e utilizável antes de alguém instalar. A G põe o produto na mão das pessoas, de graça. As etapas A, B e P só fazem sentido quando houver quem pague (validar com 5 a 10 times junto da G).
+Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**. A P1 (Postgres) vem logo depois da S7, que isola o banco na `infra`. O motivo: a S destrava tudo sem mudar comportamento. A C e a W deixam o produto honesto e utilizável antes de alguém instalar. A G põe o produto na mão das pessoas, de graça. As etapas A, B e P só fazem sentido quando houver quem pague (validar com 5 a 10 times junto da G).
 
 | Etapa | O que | Status |
 |---|---|---|
-| S | Separação produto × empresa | pendente |
+| S | Separação produto × empresa (+ DDD na API) | S1 ✅; em andamento na `feat/separacao-api` |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1: testes ✅; falta o `--init` e o `chaos` nos 3 projetos |
 | W | Landing honesta | pendente |
 | G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
@@ -116,7 +120,7 @@ Ordem: **S → C (restante) → W → G → A → B → P**, com P1 adiantável.
 
 **Por que existe:** hoje o backend da empresa (cerca de 2.700 linhas em `apps/frontend/server/`) e o front estão no mesmo pacote. O mesmo processo carrega as gramáticas do Tree-sitter e a IA para servir `/analyze` e `/chat`. Qualquer mudança de cobrança ou de licença mexeria no pacote que também roda o motor.
 
-- **S1. `apps/api`.** Mover `apps/frontend/server/` para `apps/api/src/` sem mudar comportamento: mesmas rotas e mesmo banco. Os testes `web.test.ts`, `chaos-runs.test.ts` e `remotes.test.ts` vão junto e continuam passando. Em dev, o Vite faz proxy de `/api` para ela.
+- **S1. `apps/api`.** ✅ Mover `apps/frontend/server/` para `apps/api/src/` sem mudar comportamento: mesmas rotas e mesmo banco. Os testes `web.test.ts`, `chaos-runs.test.ts` e `remotes.test.ts` vão junto e continuam passando. Em dev, o Vite faz proxy de `/api` para ela.
   - **Pronto quando:** `npm run check` verde, `npm run web:dev` abre o portal e o login, e o device flow da extensão funciona contra a API nova.
 - **S2. `apps/web`.** Renomear `apps/frontend` para `apps/web`, que fica só com o front e os scripts de build e prerender. Servir o build: a API serve os estáticos em produção (mais simples) ou um CDN (decidir na P2, conforme DP3).
 - **S3. Tirar o motor da API.** Remover `/analyze`, `/chat` e a página "Ferramenta" (`Tool.tsx`, `app.html`). Eles rodam o motor no servidor da empresa e duplicam o que a extensão e a CLI fazem. A seção `Demo` da landing continua: é animação, não chama o motor. Se uma demo ao vivo for pedida depois, ela vira um serviço à parte.
@@ -124,6 +128,10 @@ Ordem: **S → C (restante) → W → G → A → B → P**, com P1 adiantável.
 - **S4. Teste de fronteira.** Um teste que falha se `apps/api` ou `apps/web` passarem a depender de `core`, `extractors`, `agent` ou `viewer`, seja por `package.json` ou por import.
 - **S5. Remover `legacyRoutes.ts`.** Ele redireciona páginas `.html` antigas, e a extensão já usa `/device-confirm` (`AuthService.ts:184`). Nenhuma versão com os endereços antigos foi publicada.
 - **S6. Documentação.** Atualizar os READMEs, o `.vscode/launch.json`, os scripts do `package.json` da raiz e o `.env.example` com os nomes novos.
+- **S7. DDD por domínio na `apps/api`.** Reorganizar `src/` em `domains/<contexto>/{domain,application,infra,http}` e `shared/`. Os contextos são `identity` (contas, senhas, sessões web, OAuth, device flow e tokens da extensão), `companies` (empresas e membros), `projects` (projetos, repositórios, remotes e tokens de CI) e `chaos-runs` (execuções publicadas pelo CI). Depois vêm `licensing` (A) e `billing` (B).
+  - O domínio não importa `node:sqlite`, `http` nem `shared/`. Os casos de uso recebem os repositórios por interface. O SQL atual vira `infra/Sqlite*Repository`, que a P1 troca por Postgres.
+  - O teste de fronteira (S4) ganha a regra das camadas: `domain` não importa `infra`, `http` nem driver de banco; um domínio só usa outro pela `application` dele. A checagem lê os imports pela AST do TS.
+  - Sem mudar comportamento: as rotas e os testes de HTTP (`web.test.ts`, `chaos-runs.test.ts`) continuam passando. Uma fatia (e um commit) por contexto.
 
 ---
 
@@ -221,7 +229,7 @@ Ordem: **S → C (restante) → W → G → A → B → P**, com P1 adiantável.
 
 **Por que existe:** o portal só roda com `npm run web` em localhost.
 
-- **P1. Postgres e migrations** (pode vir antes da B). Trocar o `node:sqlite` por Postgres com migrations versionadas: SQL puro com um executor simples, para seguir o estilo atual sem ORM. Os testes usam PGlite. Script de migração dos dados de demo.
+- **P1. Postgres e migrations** (logo depois da S; Postgres confirmado em 2026-10-23). Trocar o `node:sqlite` por Postgres com migrations versionadas: SQL puro com um executor simples, para seguir o estilo atual sem ORM. Com a S7, a troca fica nos `infra/*Repository` de cada domínio. Os testes usam PGlite. Script de migração dos dados de demo.
 - **P2. Deploy (depende de DP3 e DP4).** Dockerfile da API, domínio, TLS, variáveis de ambiente e OAuth do Google e do GitHub com as URLs de produção. Workflow de deploy na `main`.
 - **P3. Segurança.** Rate limit no login e no device flow, cookies `Secure` e `SameSite`, CSP no site, chaves e segredos fora do repositório, rotação documentada. Revisar com `/security-review` antes de abrir para clientes.
 - **P4. Operação.** Backup diário do Postgres com restauração testada uma vez, logs estruturados, alerta de erro e uma página de status simples.
@@ -242,7 +250,7 @@ Ordem: **S → C (restante) → W → G → A → B → P**, com P1 adiantável.
 
 ## Como rodar (de `shieldepy_p1/`)
 
-- `npm run check`: typecheck + testes unitários (400 passando e 4 pulados em 2026-10-23, na linha com C# e Java).
+- `npm run check`: typecheck + testes unitários (404 passando em 2026-10-23, depois da S1).
 - `npm run mapa:reais`: clona os projetos reais fixados por commit (fora do repositório) e mede o mapa.
 - `npm run demo` / `npm run demo:verificar`: a demo do TCC (perguntar antes: abre o VS Code).
 - `npm run build:vscode`: gera `dist/extension.js` (~640 KB; se crescer muito, o LangGraph entrou nele) e `dist/chaos.js` (~1,9 MB, carregado só pelo "Testar Caos").
@@ -276,3 +284,5 @@ Ordem: **S → C (restante) → W → G → A → B → P**, com P1 adiantável.
   - **decidido:** a parte da empresa continua em TypeScript (ver "Decisões").
 
   Conferido nesta branch: `npm run check` com 400 testes passando e 4 pulados; `topology` no `pedidos-springboot` e no `pedidos-aspnet`. Nenhum código mudou.
+- 2026-10-23: **S1** (branch `feat/separacao-api`). `apps/frontend/server` virou `apps/api/src` (`@shieldepy/api`: `start`, `dev`, `bootstrap`, `seed:demo`) e os testes foram para `apps/api/test`, sem mudar comportamento. A API serve o build em `apps/frontend/dist` (ou em `SHIELDEPY_STATIC_DIR`). O banco agora fica em `apps/api/data`, ainda no `.gitignore`, e o `SHIELDEPY_DATA_DIR` continua valendo. O `dev.mjs` sobe a API com `cwd` em `apps/api`. A demo (`scripts/demo/seed.ts`, `demo.mjs`) e o `.claude/launch.json` apontam para o lugar novo. `npm run check`: 404 passando. A API subiu com `npm start -w @shieldepy/api` e respondeu em `/api/account`. Falta conferir o `web:dev` no navegador e o device flow no VS Code (pedir antes).
+  - **Decidido com o usuário:** DDD por domínio na `apps/api` (nova tarefa S7) e Postgres (P1 logo depois da S).

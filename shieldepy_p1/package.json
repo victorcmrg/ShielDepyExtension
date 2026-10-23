@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p apps/frontend/tsconfig.json",
     "check": "npm run typecheck && npm test",
     "cli": "node apps/cli/bin/shieldepy.js",
-    "web": "npm run build -w @shieldepy/frontend && npm start -w @shieldepy/frontend",
+    "web": "npm run build -w @shieldepy/frontend && npm start -w @shieldepy/api",
     "web:dev": "npm run dev -w @shieldepy/frontend",
     "demo": "node scripts/demo/demo.mjs",
     "demo:caos": "node scripts/demo/demo.mjs --caos",

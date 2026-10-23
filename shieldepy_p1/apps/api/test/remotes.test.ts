@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeRemote, remoteLabel } from '../server/auth/remotes';
+import { normalizeRemote, remoteLabel } from '../src/auth/remotes';
 
 describe('normalizeRemote', () => {
   it('https, ssh e scp-like do mesmo repositório viram a mesma identidade', () => {

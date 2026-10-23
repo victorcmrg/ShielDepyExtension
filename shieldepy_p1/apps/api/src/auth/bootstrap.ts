@@ -3,7 +3,7 @@
 // vinculado a uma empresa, que só esses mesmos endpoints poderiam criar).
 //
 // Rodar uma vez, depois de definir ADMIN_EMAIL no .env da raiz:
-//   npm run bootstrap -w @shieldepy/frontend
+//   npm run bootstrap -w @shieldepy/api
 import { db } from './db';
 import { createCompany, addEmailAssignment, setCompanyPermission } from './companies';
 
