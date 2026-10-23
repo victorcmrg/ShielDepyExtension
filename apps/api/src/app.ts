@@ -4,7 +4,6 @@
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
-import { legacyRedirect } from './legacyRoutes';
 
 // Import tardio (só quando uma /api/* de verdade chega): node:sqlite é um builtin
 // recente demais pra alguns pipelines de transform de teste reconhecerem no grafo
@@ -65,12 +64,6 @@ export function createHandler(deps: AppDeps): (req: IncomingMessage, res: Server
   const staticDir = path.resolve(deps.staticDir);
 
   async function serveStatic(res: ServerResponse, url: URL): Promise<void> {
-    const legacy = legacyRedirect(url);
-    if (legacy) {
-      res.writeHead(301, { ...SECURITY_HEADERS, location: legacy });
-      res.end();
-      return;
-    }
     let rel: string;
     try {
       rel = decodeURIComponent(url.pathname);

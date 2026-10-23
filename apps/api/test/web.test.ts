@@ -52,12 +52,10 @@ describe('estático', () => {
     }
   });
 
-  it('endereços .html antigos redirecionam pras rotas novas, preservando a query', async () => {
-    const go = (p: string) => fetch(base + p, { redirect: 'manual' });
-    expect((await go('/device-confirm.html?state=abc')).headers.get('location')).toBe('/device-confirm?state=abc');
-    expect((await go('/project.html?id=12')).headers.get('location')).toBe('/projects/12');
-    expect((await go('/projects.html')).status).toBe(301);
-    expect((await go('/app.html')).headers.get('location')).toBe('/projects');
+  it('endereços .html antigos não redirecionam mais (S5): são arquivos que não existem', async () => {
+    for (const old of ['/device-confirm.html?state=abc', '/project.html?id=12', '/projects.html']) {
+      expect((await fetch(base + old, { redirect: 'manual' })).status).toBe(404);
+    }
   });
 
   it('assets com hash ganham cache longo; HTML não', async () => {

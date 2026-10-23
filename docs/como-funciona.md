@@ -379,7 +379,7 @@ npm run web       # produção: build (landing pré-renderizada + portal) e serv
 A landing (`src/landing`) sai do build já renderizada em HTML e o React só hidrata; o portal
 (`src/portal`: login, projetos, equipe, conta, plataforma) é um SPA com React Router. A API não roda o
 motor: analisar código é na extensão ou na CLI (decisão 0008).
-Os endereços antigos (`/login.html`, `/project.html?id=…`) redirecionam para as rotas novas.
+Os endereços `.html` antigos (antes do React) não existem mais.
 
 Chaves da IA (para a CLI) e da API (OAuth, URLs): copie `.env.example` para `.env`.
 

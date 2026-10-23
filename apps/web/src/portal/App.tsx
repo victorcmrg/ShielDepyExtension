@@ -1,5 +1,5 @@
 // Rotas do portal. Cada página é um chunk separado (lazy): quem abre só o login não baixa o painel
-// admin nem a ferramenta. Endereços .html antigos são redirecionados pelo servidor (server/legacyRoutes.ts).
+// admin.
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Shell } from './layout/Shell';
