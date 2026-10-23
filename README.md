@@ -76,7 +76,7 @@ npm install && npm run check     # F5 no VS Code abre a extensão em desenvolvim
 
 ## Estado
 
-Concluído, etapa por etapa (detalhes em [`PLANO-CHAOS.md`](PLANO-CHAOS.md)):
+Concluído, etapa por etapa (detalhes em [`docs/historico/PLANO-CHAOS.md`](docs/historico/PLANO-CHAOS.md); o que vem agora está no [`PLANO.md`](PLANO.md)):
 
 - **E1:** o grafo do código, com cobertura;
 - **E2:** a topologia (rotas, operações de I/O e tags de risco);

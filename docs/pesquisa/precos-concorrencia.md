@@ -28,7 +28,7 @@ Três agentes, em 2026-10-16, sem alterar o repositório (`git status` limpo ao 
 - Nenhuma chamada paga à IA.
 - Não foram rodados: o E2E da extensão, o `npm run web`, o `report --pg` contra um banco real e o workflow no GitHub Actions (seção 9).
 - A comparação com a concorrência é **por categoria**. Os recursos dos concorrentes não foram testados, só os preços foram lidos.
-- Atenção ao câmbio: o `RELATORIO-CUSTO-IA.md` usa R$ 5,50, e este relatório usa R$ 5,03. Os valores de IA em R$ aqui vêm do Economista, já a R$ 5,03.
+- Atenção ao câmbio: o [`custo-ia.md`](custo-ia.md) usa R$ 5,50, e este relatório usa R$ 5,03. Os valores de IA em R$ aqui vêm do Economista, já a R$ 5,03.
 
 ## 3. O que o ShielDepy entrega hoje
 
@@ -313,7 +313,7 @@ Todas acessadas em 2026-10-16 (Economista, `eco.md`, seção 7). [T] = terceiro.
 39. dependency-cruiser: https://github.com/sverweij/dependency-cruiser
 40. Square Cloud: https://squarecloud.app/pt-br/pricing
 41. Conviso: https://www.convisoappsec.com/partners
-42. Custo de IA: `RELATORIO-CUSTO-IA.md` (seções 1, 5, 7 e 9)
+42. Custo de IA: [`custo-ia.md`](custo-ia.md) (seções 1, 5, 7 e 9)
 
 As fontes 33, 34 e 39 (repositórios OSS) foram citadas pela licença conhecida, sem acesso nesta sessão.
 

@@ -124,4 +124,4 @@ O script roda os dois exemplos com o Threat Modeler no Haiku 4.5 e no Sonnet 5.5
 
 ---
 
-*Reprodução: `npm run estimate:chaos` (grátis) gera `.shieldepy/estimate-chaos-cost.json` com cada chamada. Detalhes da implementação e do histórico em `PLANO-CHAOS.md`.*
+*Reprodução: `npm run estimate:chaos` (grátis) gera `.shieldepy/estimate-chaos-cost.json` com cada chamada. Detalhes da implementação e do histórico em [`docs/historico/PLANO-CHAOS.md`](../historico/PLANO-CHAOS.md).*

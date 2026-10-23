@@ -131,7 +131,7 @@ Não se adivinha quando o receptor é sabidamente de fora do projeto (`X[]`, `Ma
 - **pontos fracos** por arquivo;
 - **saída** em JSON determinístico (`--json`/`--out`, ids relativos e `contentHash`), com o grafo de código, os baldes de regras e as colisões.
 
-Esse artefato é a entrada das próximas etapas (veja `PLANO-CHAOS.md` na raiz).
+Esse artefato é a entrada das próximas etapas (veja o [`PLANO.md`](../PLANO.md) e o histórico em [`historico/PLANO-CHAOS.md`](historico/PLANO-CHAOS.md)).
 
 `--html mapa.html` gera um visualizador interativo autocontido: Cytoscape.js com o layout `fcose`, embutidos, sem CDN, e abre offline. Ele serve para **conferir o mapa**:
 - símbolos agrupados por arquivo, arestas por tipo e heurísticas destacadas;

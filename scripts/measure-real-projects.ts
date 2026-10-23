@@ -23,7 +23,7 @@ interface Project {
   stack: string;
 }
 
-/** Os projetos medidos em 2026-10-13 (tabela no registro da etapa M do PLANO-CHAOS.md). */
+/** Os projetos medidos em 2026-10-13 (tabela no registro da etapa M de docs/historico/PLANO-CHAOS.md). */
 const PROJECTS: Project[] = [
   { id: 'realworld', repo: 'gothinkster/node-express-realworld-example-app', commit: '30b68e1e881462b2f4164ea09ab4c4f5699c7b0b', stack: 'TS, Express, Prisma' },
   { id: 'prisma-express', repo: 'prisma/prisma-examples', commit: 'caa902a819be2e8fe1e0b0ec2f543e9220cf69cc', sub: 'orm/express', stack: 'TS, Express 5, Prisma 7' },
