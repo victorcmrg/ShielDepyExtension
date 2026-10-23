@@ -8,5 +8,14 @@ out/
 .env.*
 !.env.example
 
-# artefatos do ShielDepy (topologia exportada, testes de caos gerados)
+# gerados no build
+apps/vscode/wasm/
+apps/vscode/media/vendor/
+apps/frontend/dist-ssr/
+
+# banco local do portal
+apps/api/data/
+
+# saídas geradas pelo shieldepy (mapa, topologia, testes de caos)
+mapa*.html
 .shieldepy/

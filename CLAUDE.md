@@ -22,7 +22,7 @@ O estado do trabalho fica em dois planos. **Num chat novo, leia primeiro a seç�
 - Uma coisa pesada por vez; preferir checagens leves (typecheck, um arquivo de teste).
 - Se um processo travar, avisar em vez de matar e relançar várias vezes.
 
-## Comandos (de `shieldepy_p1/`)
+## Comandos (da raiz do repositório)
 - `npm run check`: typecheck + testes unitários.
 - `npm run build:vscode`: a extensão (`dist/extension.js` ~680 KB; se crescer muito, algo puxou o LangGraph).
 - `npm run cli -- graph|topology|chaos <pasta>`: o motor pela CLI.

@@ -1,4 +1,4 @@
-# ShielDepy P1
+# ShielDepy — como funciona
 
 ShielDepy é uma extensão do VS Code, com CLI e página web, que encontra **bugs de arquitetura
 antes do commit**. Ela acha principalmente dois tipos de problema que ninguém "escreveu" sozinho:
@@ -230,7 +230,7 @@ O `--report chaos-report.md` grava o relatório em markdown para o resumo do CI 
 - o custo da IA e o hash da topologia;
 - um parágrafo explicativo, escrito pela IA ou, sem ela, pelo motor.
 
-O workflow deste repositório fica em `.github/workflows/shieldepy-chaos.yml`, e o guia para um repositório-alvo em [`docs/chaos-ci.md`](docs/chaos-ci.md). Use `--no-run` para só gerar os testes.
+O workflow deste repositório fica em `.github/workflows/shieldepy-chaos.yml`, e o guia para um repositório-alvo em [`docs/chaos-ci.md`](chaos-ci.md). Use `--no-run` para só gerar os testes.
 
 **Visualizador com o resultado (V2).** `--html <arquivo>` no `chaos` e no `diff` grava o mapa interativo com o resultado por cima:
 - **caos:** rota com achado em vermelho (`✖`), aguentou em verde (`✓`), inválida tracejada, e a operação de I/O alvo com borda vermelha. A seção "Caos" traz os achados (invariante violada e arquivo do teste), que abrem o fluxo da rota;
@@ -238,7 +238,7 @@ O workflow deste repositório fica em `.github/workflows/shieldepy-chaos.yml`, e
 
 O `chaos` também grava `.shieldepy/chaos-results.json` a cada execução. Na extensão, o painel **"Ver Mapa do Sistema"** lê esse arquivo e se atualiza sozinho quando a CLI roda de novo. **"ShielDepy: Comparar Mapa com uma Branch"** mostra o diff contra o merge-base com uma branch.
 
-**Portal (V3).** `shieldepy publish <pasta> --portal <url>` (token de CI do projeto em `SHIELDEPY_PORTAL_TOKEN`) manda o resultado para o portal (`apps/frontend`). Lá, a página do projeto mostra o caos no CI de cada repositório, com o histórico. A página de cada execução mostra cada rota como uma linha do tempo das operações de I/O, com o ponto onde a falha injetada quebrou o código, a invariante violada e o teste. O token é criado pelo dono na página do projeto e só publica nos repositórios dele. O guia está em [`docs/chaos-ci.md`](docs/chaos-ci.md).
+**Portal (V3).** `shieldepy publish <pasta> --portal <url>` (token de CI do projeto em `SHIELDEPY_PORTAL_TOKEN`) manda o resultado para o portal (`apps/frontend`). Lá, a página do projeto mostra o caos no CI de cada repositório, com o histórico. A página de cada execução mostra cada rota como uma linha do tempo das operações de I/O, com o ponto onde a falha injetada quebrou o código, a invariante violada e o teste. O token é criado pelo dono na página do projeto e só publica nos repositórios dele. O guia está em [`docs/chaos-ci.md`](chaos-ci.md).
 
 **Só o que o PR tocou.** `--base <ref>` monta o mapa no merge-base com o ref (num `git worktree` temporário) e testa só as rotas sensíveis que o PR tocou: rota nova, cadeia de handlers, operações, tags, corpo de qualquer função no caminho ou código de topo de um arquivo do caminho. Mudança de config, dependência ou setup faz todas entrarem. Isso só funciona porque os ids de símbolo são estáveis (`arquivo#Contêiner.nome`, sem a linha) e cada símbolo tem um hash do corpo pela AST, que ignora comentários e espaço. `shieldepy diff <pasta> --base <ref>` mostra o diff de estrutura sozinho: símbolos novos, removidos, renomeados e com corpo alterado.
 

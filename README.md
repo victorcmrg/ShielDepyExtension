@@ -8,9 +8,11 @@ quebra sob essas falhas. A IA é opcional: ela propõe e explica, e o motor prov
 
 ```
 ShielDepyExtension/
-├── shieldepy_p1/           ← o sistema (plugin, CLI, portal, motor e exemplos)
-├── PLANO-CHAOS.md          ← o plano e o registro de cada etapa
-└── RELATORIO-CUSTO-IA.md   ← quanto a IA custa por execução
+├── packages/     ← o motor: core, extractors, agent (IA), viewer (o mapa)
+├── apps/         ← vscode (o plugin), cli, api (contas e portal), frontend (site e portal)
+├── examples/     ← sistemas de exemplo usados nos testes e na demo
+├── docs/         ← como funciona, decisões, pesquisa e histórico
+└── PLANO.md      ← o que está sendo feito agora e o que vem depois
 ```
 
 ## Ver funcionando (demo para a apresentação)
@@ -20,7 +22,7 @@ ShielDepyExtension/
 
 ```bash
 git clone https://github.com/victorcmrg/ShielDepyExtension.git
-cd ShielDepyExtension/shieldepy_p1
+cd ShielDepyExtension
 npm run demo
 ```
 
@@ -48,7 +50,7 @@ O `ROTEIRO.md` é o passo a passo da apresentação: os botões, as colisões, o
 
 Se o VS Code perguntar se você confia nos autores da pasta, clique **"Sim, confio"**. Deixe o terminal aberto enquanto apresenta (ele mantém o portal no ar). **Ctrl+C** encerra.
 
-| Comando (em `shieldepy_p1/`) | O que faz |
+| Comando | O que faz |
 |---|---|
 | `npm run demo` | prepara e abre a demo |
 | `npm run demo -- --do-zero` | apaga a demo e recria do zero |
@@ -65,11 +67,11 @@ Para apagar a demo, apague a pasta `ShielDepy-demo`. O `npm run demo -- --do-zer
 
 ## Para desenvolver
 
-O [README do `shieldepy_p1`](shieldepy_p1/README.md) explica como o sistema funciona, onde fica
+O [`docs/como-funciona.md`](docs/como-funciona.md) explica como o sistema funciona, onde fica
 cada coisa e como rodar os testes:
 
 ```bash
-cd shieldepy_p1 && npm install && npm run check     # F5 abrindo a pasta shieldepy_p1
+npm install && npm run check     # F5 no VS Code abre a extensão em desenvolvimento
 ```
 
 ## Estado

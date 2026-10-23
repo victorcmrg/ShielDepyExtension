@@ -63,7 +63,7 @@ jobs:
           node-version: 22
 
       - name: Instalar o ShielDepy
-        run: npm ci --prefix "$RUNNER_TEMP/shieldepy/shieldepy_p1"
+        run: npm ci --prefix "$RUNNER_TEMP/shieldepy"
 
       - name: Instalar o app
         run: npm ci --prefix "$APP_DIR"
@@ -78,7 +78,7 @@ jobs:
           scope=""
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then scope="--base origin/$GITHUB_BASE_REF"; fi
           set +e
-          node "$RUNNER_TEMP/shieldepy/shieldepy_p1/apps/cli/bin/shieldepy.js" chaos "$APP_DIR" --fail-on "$FAIL_ON" --report "$REPORT" --html "$MAP" $offline $scope
+          node "$RUNNER_TEMP/shieldepy/apps/cli/bin/shieldepy.js" chaos "$APP_DIR" --fail-on "$FAIL_ON" --report "$REPORT" --html "$MAP" $offline $scope
           echo "code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Mapa com o resultado (artefato)
@@ -95,7 +95,7 @@ jobs:
         if: always() && env.SHIELDEPY_PORTAL_TOKEN != '' && env.SHIELDEPY_PORTAL_URL != ''
         continue-on-error: true
         shell: bash
-        run: node "$RUNNER_TEMP/shieldepy/shieldepy_p1/apps/cli/bin/shieldepy.js" publish "$APP_DIR" --append-link "$REPORT"
+        run: node "$RUNNER_TEMP/shieldepy/apps/cli/bin/shieldepy.js" publish "$APP_DIR" --append-link "$REPORT"
 
       - name: Resumo do job
         if: always()

@@ -62,7 +62,7 @@ O ShielDepy é vendido como **assinatura por empresa**. O produto roda na máqui
 ## Arquitetura alvo
 
 ```
-shieldepy_p1/
+ShielDepyExtension/      ← a raiz do repositório
 ├── packages/            ← PRODUTO (vai para a máquina do cliente)
 │   ├── core, extractors, agent, viewer
 │   └── license          ← a única ponte: tipos do plano e do direito de uso; a verificação, se a A3 existir
@@ -248,7 +248,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**. A P1
 - Escolhas técnicas: decidir, registrar aqui o porquê e avisar no resumo.
 - Clonar projetos públicos para validar o motor: no scratchpad, fora do repositório. Rodar `npm install --ignore-scripts`.
 
-## Como rodar (de `shieldepy_p1/`)
+## Como rodar (da raiz)
 
 - `npm run check`: typecheck + testes unitários (404 passando em 2026-10-23, depois da S1).
 - `npm run mapa:reais`: clona os projetos reais fixados por commit (fora do repositório) e mede o mapa.

@@ -49,7 +49,7 @@ Um achado só conta quando o **controle** (a mesma requisição, sem falha injet
 Para conferir localmente antes de ligar o CI:
 
 ```bash
-node <shieldepy>/shieldepy_p1/apps/cli/bin/shieldepy.js chaos . --offline --report chaos-report.md
+node <shieldepy>/apps/cli/bin/shieldepy.js chaos . --offline --report chaos-report.md
 ```
 
 ## O workflow

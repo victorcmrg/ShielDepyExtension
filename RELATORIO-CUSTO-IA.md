@@ -15,7 +15,7 @@
 
 Não havia chave da API no ambiente, e a medição paga depende de autorização. Por isso a estimativa usa o pipeline de verdade, sem chamar a API:
 
-1. O script `npm run estimate:chaos` (`shieldepy_p1/scripts/estimate-chaos-cost.ts`) roda o pipeline real nos dois exemplos: topologia → superfície → Threat Modeler → especialistas → parágrafo do relatório.
+1. O script `npm run estimate:chaos` (`scripts/estimate-chaos-cost.ts`) roda o pipeline real nos dois exemplos: topologia → superfície → Threat Modeler → especialistas → parágrafo do relatório.
 2. Um provider falso **grava cada requisição**: o prompt de sistema e a mensagem reais, o tier e o `max_tokens`. Ele devolve respostas válidas, do tamanho de respostas reais, para o fluxo seguir igual (hipóteses com uma justificativa de 1–2 frases, specs com invariantes e um parágrafo de ~100 palavras).
 3. Os tokens saem dos caracteres, a **3,5 caracteres por token** (português com JSON), numa faixa de 2,8 a 4,2. O número exato só a API dá.
 4. **Raciocínio:** o Sonnet 5.5 e o Opus 5.5 raciocinam por padrão, e o raciocínio é cobrado como saída. A estimativa soma 0 / 1.000 / 3.000 tokens por chamada (faixa baixa, central e alta). O Haiku 4.5 não raciocina neste uso.
@@ -107,7 +107,6 @@ O `--base` (E5) é a maior alavanca: ele reduz o custo dos PRs em ~50×. O modo 
 Para trocar a estimativa por números exatos (tokens reais, raciocínio real e a qualidade das hipóteses), rode:
 
 ```bash
-cd shieldepy_p1
 ANTHROPIC_API_KEY=... npm run measure:chaos -- --sim-gastar
 ```
 
@@ -125,4 +124,4 @@ O script roda os dois exemplos com o Threat Modeler no Haiku 4.5 e no Sonnet 5.5
 
 ---
 
-*Reprodução: `npm run estimate:chaos` (grátis) gera `shieldepy_p1/.shieldepy/estimate-chaos-cost.json` com cada chamada. Detalhes da implementação e do histórico em `PLANO-CHAOS.md`.*
+*Reprodução: `npm run estimate:chaos` (grátis) gera `.shieldepy/estimate-chaos-cost.json` com cada chamada. Detalhes da implementação e do histórico em `PLANO-CHAOS.md`.*

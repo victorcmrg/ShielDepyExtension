@@ -1,6 +1,6 @@
 # Relatório de preços e concorrência do ShielDepy
 
-**Data:** 2026-10-16 · **Base:** branch `feat/caos-utilizavel` (`3799732`, C1 parcial) · **Preços da concorrência:** páginas acessadas em 2026-10-16 · **Câmbio:** R$ 5,03 por dólar (comercial de 14/10/2026) + IOF de 3,5% · **Planos avaliados:** `shieldepy_p1/apps/frontend/src/landing/sections/Pricing.tsx`
+**Data:** 2026-10-16 · **Base:** branch `feat/caos-utilizavel` (`3799732`, C1 parcial) · **Preços da concorrência:** páginas acessadas em 2026-10-16 · **Câmbio:** R$ 5,03 por dólar (comercial de 14/10/2026) + IOF de 3,5% · **Planos avaliados:** `apps/frontend/src/landing/sections/Pricing.tsx`
 
 ## 1. Resumo
 
@@ -32,7 +32,7 @@ Três agentes, em 2026-10-16, sem alterar o repositório (`git status` limpo ao 
 
 ## 3. O que o ShielDepy entrega hoje
 
-Fonte: `eng.md`, seção 1 (26 promessas), condensada. Caminhos relativos a `shieldepy_p1/`.
+Fonte: `eng.md`, seção 1 (26 promessas), condensada. Caminhos relativos à raiz do repositório (na época, a pasta `shieldepy_p1/`).
 
 | Promessa | Plano | Status | Evidência |
 |---|---|---|---|

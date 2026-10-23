@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** shieldepy_p1/ */
+/** raiz do repositório */
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 export const DEMO = resolve(process.env.DEMO_DIR || join(homedir(), 'ShielDepy-demo'));
 export const WORKSPACE = join(DEMO, 'sistema-loja');
