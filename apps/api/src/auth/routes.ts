@@ -3,7 +3,7 @@
 // ela devolve `true` se tiver tratado a requisição, `false` caso contrário.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, sendJson, readBody } from '../app';
-import { RateLimiter } from '../sessions';
+import { RateLimiter } from '../rateLimiter';
 import { verifyPassword } from './passwords';
 import { requireSession, requireDeviceToken, isAdmin } from './middleware';
 import { createWebSession, destroySession, type AuthUser } from './session';

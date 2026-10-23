@@ -13,7 +13,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
-- **Em andamento:** a etapa **S** (S1 e S2 ✅), na branch `feat/separacao-web`.
+- **Em andamento:** a etapa **S** (S1 a S3 ✅), na branch `feat/separacao-web`.
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -37,7 +37,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 
 | Etapa | O que | Status |
 |---|---|---|
-| S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | S1 e S2 ✅; próxima: S3 |
+| S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | S1 a S3 ✅; próxima: S4 |
 | P1 | Postgres e migrations ([0012](docs/decisoes/0012-postgres.md)) | depois da S |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1: testes ✅; falta o `--init` e o `chaos` nos 3 projetos |
 | W | Landing honesta | pendente |
@@ -58,8 +58,9 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 - **S1. `apps/api`.** ✅ Mover `apps/frontend/server/` para `apps/api/src/` sem mudar comportamento: mesmas rotas e mesmo banco. Os testes `web.test.ts`, `chaos-runs.test.ts` e `remotes.test.ts` vão junto e continuam passando. Em dev, o Vite faz proxy de `/api` para ela.
   - **Pronto quando:** `npm run check` verde, `npm run web:dev` abre o portal e o login, e o device flow da extensão funciona contra a API nova.
 - **S2. `apps/web`.** ✅ Renomear `apps/frontend` para `apps/web`, que fica só com o front e os scripts de build e prerender. Servir o build: a API serve os estáticos em produção (mais simples) ou um CDN (decidir na P2, conforme DP3).
-- **S3. Tirar o motor da API.** Remover `/analyze`, `/chat` e a página "Ferramenta" (`Tool.tsx`, `app.html`). Eles rodam o motor no servidor da empresa e duplicam o que a extensão e a CLI fazem. A seção `Demo` da landing continua: é animação, não chama o motor. Se uma demo ao vivo for pedida depois, ela vira um serviço à parte.
-  - **Antes de remover:** conferir se algum link do portal ou da landing aponta para `/tool` e trocar pelo de "Instalar a extensão".
+- **S3. Tirar o motor da API.** ✅ Remover `/analyze`, `/chat` e a página "Ferramenta" (`Tool.tsx`, rota `/tool`). Eles rodam o motor no servidor da empresa e duplicam o que a extensão e a CLI fazem. A seção `Demo` da landing continua: é animação, não chama o motor. Se uma demo ao vivo for pedida depois, ela vira um serviço à parte.
+  - Feito: o `app.html` **ficou**, porque é a entrada do portal inteiro, não só da ferramenta (o plano antigo errava aqui). O único link para `/tool` era o item "Analisar no navegador" do menu, que saiu sem substituto: ainda não há para onde mandar um "Instalar a extensão" (a página "Downloads" é a B4, e o Marketplace é a G4). O upload do CI passou a ter um contrato próprio na API (`ChaosResults`/`ChaosRunUpload` em `chaosRuns.ts`), em vez de importar do `agent`. Saíram as dependências `core`, `agent` e `extractors` da API, o `SessionStore` (o `sessions.ts` virou `rateLimiter.ts`) e o CSS que só a ferramenta usava.
+  - **Falta conferir:** um screenshot do portal sem o item do menu (pedir antes de abrir o Chrome).
 - **S4. Teste de fronteira.** Um teste que falha se `apps/api` ou `apps/web` passarem a depender de `core`, `extractors`, `agent` ou `viewer`, seja por `package.json` ou por import.
 - **S5. Remover `legacyRoutes.ts`.** Ele redireciona páginas `.html` antigas, e a extensão já usa `/device-confirm` (`AuthService.ts:184`). Nenhuma versão com os endereços antigos foi publicada.
 - **S6. Documentação.** Atualizar os READMEs, o `.vscode/launch.json`, os scripts do `package.json` da raiz e o `.env.example` com os nomes novos.

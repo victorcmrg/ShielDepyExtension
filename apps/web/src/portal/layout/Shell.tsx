@@ -12,7 +12,7 @@ import { initial } from '../format';
 import type { Me } from '../types';
 import { Icon, type IconName } from '../ui/Icon';
 
-export type PageKey = 'projects' | 'project' | 'team' | 'account' | 'platform' | 'tool';
+export type PageKey = 'projects' | 'project' | 'team' | 'account' | 'platform';
 
 const ROLE_LABEL: Record<string, string> = { owner: 'Dono da empresa', member: 'Membro' };
 
@@ -155,10 +155,6 @@ function Sidebar({ me, page, onLogout }: { me: Me; page: PageKey; onLogout: () =
         {me.role === 'owner' && <NavItem to="/team" label="Equipe" icon="users" active={page === 'team'} />}
         <NavItem to="/account" label="Minha conta" icon="user" active={page === 'account'} />
         {me.isAdmin && <NavItem to="/admin" label="Plataforma" icon="globe" active={page === 'platform'} />}
-      </nav>
-
-      <nav className="side-nav side-nav-secondary" aria-label="Outros">
-        <NavItem to="/tool" label="Analisar no navegador" icon="code" active={page === 'tool'} />
       </nav>
 
       <div className="side-spacer" />

@@ -10,7 +10,7 @@ const LEGACY_PAGES: Record<string, string> = {
   '/team.html': '/team',
   '/account.html': '/account',
   '/admin.html': '/admin',
-  '/app.html': '/tool',
+  '/app.html': '/projects',
 };
 
 /** Para onde redirecionar um endereço antigo, ou null se não for um. */

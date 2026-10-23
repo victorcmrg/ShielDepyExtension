@@ -1,10 +1,39 @@
 // Execuções do caos enviadas pelo CI (V3): tokens de CI por projeto e o histórico por repositório.
 // O payload é o `ChaosRunUpload` do `shieldepy publish` — só fatos (rotas, operações, tabelas, hosts,
 // arquivo:linha), nenhum código-fonte. Guardamos as últimas MAX_RUNS_PER_REPO execuções por repositório.
-import type { ChaosResults, ChaosRunUpload } from '@shieldepy/agent/chaos';
 import { db } from './db';
 import { normalizeRemote } from './remotes';
 import { randomToken, sha256Hex } from './tokens';
+
+/**
+ * O contrato do upload, do lado da API: espelha o `ChaosResults`/`ChaosRunUpload` de
+ * packages/agent/src/chaos/results.ts sem importá-lo (a API não depende do motor, decisão 0008).
+ * Só os campos que a API lê têm tipo; o resto é guardado como veio e devolvido ao portal.
+ */
+export interface ChaosResults {
+  version: 1;
+  ran: boolean;
+  runError?: string;
+  failOn?: string;
+  engine?: string;
+  hits: number;
+  scope?: { tested: string[] };
+  outcomes: { status: 'passed' | 'failed' | 'invalid' }[];
+  untested: unknown[];
+  cost?: { usd?: number };
+  [field: string]: unknown;
+}
+
+export interface ChaosRunUpload {
+  version: 1;
+  remote: string;
+  commit: string;
+  branch?: string;
+  pr?: number;
+  prUrl?: string;
+  runUrl?: string;
+  results: ChaosResults;
+}
 
 export const MAX_RUNS_PER_REPO = 100;
 const HISTORY = 24;

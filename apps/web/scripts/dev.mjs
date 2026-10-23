@@ -1,6 +1,6 @@
 // `npm run dev`: sobe a API (apps/api, tsx watch, porta API_PORT, padrão 3001) e o Vite (porta PORT, padrão 5173)
 // juntos. Cada um recebe a porta explícita: um PORT herdado do ambiente não pode jogar os dois na mesma.
-// O Vite faz proxy de /api, /analyze e /chat pra API (vite.config.ts lê API_PORT).
+// O Vite faz proxy de /api pra API (vite.config.ts lê API_PORT).
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 

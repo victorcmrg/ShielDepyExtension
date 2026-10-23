@@ -1,8 +1,6 @@
 // Sessão web (cookie httpOnly + Secure + SameSite=Lax). O cookie carrega um token
 // opaco; só o hash SHA-256 dele fica no banco — um vazamento da tabela não expõe
-// credenciais utilizáveis. Chamado "session.ts" (singular) pra não colidir com o
-// SessionStore de análise em ../sessions.ts (conceito diferente: aquele é sessão de
-// chat/análise anônima, este é sessão de login de verdade).
+// credenciais utilizáveis.
 import type { IncomingMessage } from 'node:http';
 import { db } from './db';
 import { randomToken, sha256Hex } from './tokens';

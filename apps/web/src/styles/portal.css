@@ -392,14 +392,6 @@ footer { border-top: 1px solid var(--border); }
   letter-spacing: 0.2em; color: var(--muted); margin-bottom: 8px;
 }
 
-.examples { display: flex; flex-wrap: wrap; gap: 8px; }
-button.ex {
-  background: var(--surface-2); color: var(--foreground); border: 1px solid var(--border);
-  border-radius: 999px; padding: 8px 14px; cursor: pointer; font-size: 0.85rem; font-weight: 500;
-}
-button.ex:hover { border-color: color-mix(in srgb, var(--brand-to) 60%, transparent); }
-button.ex.active { border-color: var(--brand-to); background: color-mix(in srgb, var(--brand-from) 15%, var(--surface-2)); }
-
 select, textarea, input[type="text"], input[type="email"], input[type="password"] {
   width: 100%;
   background: var(--surface-2);
@@ -413,26 +405,6 @@ select, textarea, input[type="text"], input[type="email"], input[type="password"
 select:focus, textarea:focus, input:focus { outline: none; border-color: color-mix(in srgb, var(--brand-to) 60%, transparent); }
 select { width: auto; margin-bottom: 8px; }
 textarea { min-height: 120px; resize: vertical; font-family: var(--font-mono); }
-
-.drop {
-  border: 1.5px dashed var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-.drop.over { border-color: var(--brand-to); background: color-mix(in srgb, var(--brand-from) 10%, transparent); color: var(--foreground); }
-.drop code { font-family: var(--font-mono); color: var(--foreground); }
-.drop a { color: var(--foreground); font-weight: 600; text-decoration: underline; }
-
-.file-list { list-style: none; padding: 0; margin: 10px 0 0; }
-.file-list li {
-  display: flex; justify-content: space-between; align-items: center;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 6px 12px; margin-bottom: 6px; font-size: 0.85rem;
-}
-.file-list button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; }
 
 button.primary {
   width: 100%;
@@ -452,7 +424,6 @@ button.primary:disabled { opacity: 0.55; cursor: default; transform: none; }
 .msg { font-size: 0.85rem; color: var(--muted); min-height: 1.2em; margin: 8px 0 0; }
 .muted { color: var(--muted); }
 .small { font-size: 0.82rem; }
-.summary { margin-top: 0; }
 .hidden { display: none; }
 .gated-hidden { visibility: hidden; }
 
@@ -473,43 +444,6 @@ button.primary:disabled { opacity: 0.55; cursor: default; transform: none; }
 .card .pill { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
 .card .row { font-size: 0.88rem; margin: 4px 0; }
 .card .row b { color: var(--muted); font-weight: 600; }
-
-.engine-tag { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); margin: 4px 0 14px; }
-
-/* chat */
-.chat {
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-2);
-  padding: 14px;
-  height: 300px;
-  overflow-y: auto;
-  margin-bottom: 10px;
-}
-.bubble { margin-bottom: 10px; max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 0.9rem; white-space: pre-wrap; }
-.bubble.user { background-image: linear-gradient(90deg, var(--brand-from), var(--brand-to)); color: #08130d; margin-left: auto; border-bottom-right-radius: 4px; }
-.bubble.bot { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-.bubble.bot .who { display: block; font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); margin-bottom: 3px; }
-.chat-form { display: flex; gap: 8px; }
-.chat-form button {
-  background-image: linear-gradient(90deg, var(--brand-from), var(--brand-to));
-  color: #08130d; border: none; border-radius: 999px; padding: 0 20px; cursor: pointer; font-weight: 600;
-}
-.chat-form button:disabled { opacity: 0.55; }
-
-/* indicador "digitando" — três bolinhas que se mexem */
-.typing { display: inline-flex; gap: 5px; align-items: center; padding: 2px 0; }
-.typing span {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--muted);
-  animation: typing-bounce 1.3s infinite ease-in-out both;
-}
-.typing span:nth-child(2) { animation-delay: 0.18s; }
-.typing span:nth-child(3) { animation-delay: 0.36s; }
-@keyframes typing-bounce {
-  0%, 70%, 100% { opacity: 0.35; transform: translateY(0); }
-  35% { opacity: 1; transform: translateY(-5px); }
-}
 
 /* ============================================================================
    Painéis (admin.html / account.html / app.html logado)
@@ -780,7 +714,6 @@ main.blocked-wrap { display: flex; align-items: center; justify-content: center;
 .side-company-text strong { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-company-text span { font-size: 12px; color: var(--muted); }
 .side-nav { display: flex; flex-direction: column; gap: 2px; }
-.side-nav-secondary { padding-top: 12px; border-top: 1px solid var(--border); }
 .side-link {
   display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-radius: 10px;
   color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: background .15s ease, color .15s ease;

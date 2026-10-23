@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 // porta da API em dev (scripts/dev.mjs sobe a API nela e repassa pra cá)
 const API_PORT = Number(process.env.API_PORT) || 3001;
-const API_PREFIXES = ['/api/', '/analyze', '/chat'];
+const API_PREFIXES = ['/api/'];
 
 /**
  * Dev: o Vite é um app de duas páginas (index.html = landing, app.html = portal). As rotas do portal

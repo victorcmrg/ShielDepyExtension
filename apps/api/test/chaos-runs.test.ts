@@ -71,7 +71,7 @@ beforeAll(async () => {
 
   const staticDir = mkdtempSync(join(tmpdir(), 'shieldepy-dist-'));
   writeFileSync(join(staticDir, 'app.html'), '<!doctype html><title>portal</title>');
-  const handler = createHandler({ registry: { forPath: () => undefined } as never, provider: undefined, staticDir, examplesDir: staticDir });
+  const handler = createHandler({ staticDir });
   server = createServer((req, res) => void handler(req, res));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

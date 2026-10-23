@@ -12,7 +12,6 @@ const Run = lazy(() => import('./pages/Run'));
 const Team = lazy(() => import('./pages/Team'));
 const Account = lazy(() => import('./pages/Account'));
 const Admin = lazy(() => import('./pages/Admin'));
-const Tool = lazy(() => import('./pages/Tool'));
 
 export function App() {
   return (
@@ -65,14 +64,6 @@ export function App() {
           element={
             <Shell page="platform" title="Plataforma" docTitle="Painel admin — ShielDepy" requireAdmin>
               <Admin />
-            </Shell>
-          }
-        />
-        <Route
-          path="/tool"
-          element={
-            <Shell page="tool" title="Analisar no navegador" docTitle="ShielDepy — Guardião de Arquitetura" mainClassName="" requireAccess>
-              <Tool />
             </Shell>
           }
         />
