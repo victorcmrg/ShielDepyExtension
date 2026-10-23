@@ -45,6 +45,7 @@ import {
   touchLastLogin,
 } from './companies';
 import { PROJECT_ROUTES } from './projectRoutes';
+import { CHAOS_RUN_ROUTES } from '../domains/chaos-runs';
 
 const loginLimiter = new RateLimiter(8, 60_000);
 const passwordLimiter = new RateLimiter(6, 60_000);
@@ -471,6 +472,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ['DELETE', /^\/api\/admin\/users\/(\d+)$/, (req, res, p) => handleAdminDeleteUser(req, res, id(p))],
   ['POST', /^\/api\/admin\/users\/(\d+)\/revoke-devices$/, (req, res, p) => handleAdminRevokeDevices(req, res, id(p))],
   ...PROJECT_ROUTES,
+  ...CHAOS_RUN_ROUTES,
 ];
 
 export async function handleAuthRoute(req: IncomingMessage, res: ServerResponse, pathname: string, url: URL): Promise<boolean> {

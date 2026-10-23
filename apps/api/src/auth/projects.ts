@@ -34,6 +34,14 @@ export interface RepoView {
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/** Repositório do projeto com este remote (comparado normalizado), ou null. */
+export function repoIdByRemote(projectId: number, remote: string): number | null {
+  const normalized = normalizeRemote(remote);
+  if (!normalized) return null;
+  const row = db.prepare(`SELECT id FROM project_repos WHERE project_id = ? AND remote = ?`).get(projectId, normalized) as { id: number } | undefined;
+  return row?.id ?? null;
+}
+
 export function getProject(id: number): ProjectRow | null {
   const row = db
     .prepare(`SELECT id, company_id as companyId, name, description, created_at as createdAt FROM projects WHERE id = ?`)

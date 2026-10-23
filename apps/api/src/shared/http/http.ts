@@ -13,6 +13,13 @@ export const SECURITY_HEADERS = {
     "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
 };
 
+/** Uma rota: método, padrão do caminho (os grupos viram `params`) e o handler. */
+export type Route = [
+  method: string,
+  pattern: RegExp,
+  handler: (req: IncomingMessage, res: ServerResponse, params: string[], url: URL) => void | Promise<void>,
+];
+
 export class HttpError extends Error {
   constructor(
     readonly status: number,

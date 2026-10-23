@@ -74,6 +74,8 @@ function placeOf(file: string): { domain: string; layer: string } | 'shared' | n
   const parts = path.relative(API_SRC, file).split(path.sep);
   if (parts[0] === 'shared') return 'shared';
   if (parts[0] === 'domains' && parts.length >= 4) return { domain: parts[1]!, layer: parts[2]! };
+  // domains/<domain>/index.ts: a montagem do contexto (para o app.ts, os testes e a demo)
+  if (parts[0] === 'domains' && (parts.length === 2 || parts.length === 3)) return { domain: parts[1]!, layer: 'index' };
   return null;
 }
 
@@ -121,6 +123,8 @@ describe('camadas da API (S7, decisão 0013)', () => {
     expect(layerViolation(app, '../../companies/infra/SqliteCompanyRepository')).toBe('outro domínio só pela application dele');
     expect(layerViolation(app, '../../companies/application/companies')).toBeNull();
     expect(layerViolation(app, '../domain/project')).toBeNull();
+    expect(layerViolation(app, '../../companies')).toBe('outro domínio só pela application dele');
+    expect(layerViolation(at('domains/projects/http/routes.ts'), '../../companies/index')).toBe('outro domínio só pela application dele');
     expect(layerViolation(at('shared/http/http.ts'), '../../domains/projects/domain/project')).toBe('shared não importa domínio');
   });
 });

@@ -36,8 +36,7 @@ let ownerCookie: string;
 let memberCookie: string;
 let outsiderCookie: string;
 let repoId: number;
-let insertRun: typeof import('../src/auth/chaosRuns').insertRun;
-let repoHistory: typeof import('../src/auth/chaosRuns').repoHistory;
+let chaosRuns: typeof import('../src/domains/chaos-runs').chaosRuns;
 
 const cookieOf = (setCookie: string) => setCookie.split(';')[0]!;
 
@@ -45,9 +44,8 @@ beforeAll(async () => {
   const companies = await import('../src/auth/companies');
   const projects = await import('../src/auth/projects');
   const session = await import('../src/auth/session');
-  const runs = await import('../src/auth/chaosRuns');
-  insertRun = runs.insertRun;
-  repoHistory = runs.repoHistory;
+  chaosRuns = (await import('../src/domains/chaos-runs')).chaosRuns;
+
   const { createHandler } = await import('../src/app');
 
   const acme = companies.createCompany('Acme');
@@ -178,8 +176,8 @@ describe('V3b — leitura no portal', () => {
 
   it('retenção: só as últimas 100 execuções por repositório', () => {
     const body = { version: 1 as const, remote: 'x', commit: 'c', results: { ...RESULTS, hits: 0, outcomes: [] } as never };
-    for (let i = 0; i < 105; i++) insertRun(repoId, body, Date.now() + i);
-    expect(repoHistory(repoId, 500)).toHaveLength(100);
-    expect(repoHistory(repoId, 1)[0]!.status).toBe('passed');
+    for (let i = 0; i < 105; i++) chaosRuns.record(repoId, body, Date.now() + i);
+    expect(chaosRuns.history(repoId, 500)).toHaveLength(100);
+    expect(chaosRuns.history(repoId, 1)[0]!.status).toBe('passed');
   });
 });

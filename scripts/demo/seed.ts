@@ -3,7 +3,7 @@
 // projeto do sistema da loja com o remote do workspace da demo, o token da extensão e o token de CI.
 //   uso: tsx scripts/demo/seed.ts <remote do workspace> <arquivo de saída .json>
 import { writeFileSync } from 'node:fs';
-import { createCiToken } from '../../apps/api/src/auth/chaosRuns';
+import { chaosRuns } from '../../apps/api/src/domains/chaos-runs';
 import { db } from '../../apps/api/src/shared/db/sqlite';
 import { createDeviceToken } from '../../apps/api/src/auth/deviceTokens';
 import { addProjectMember, addRepo, createProject } from '../../apps/api/src/auth/projects';
@@ -21,7 +21,7 @@ addRepo(project.id, remote);
 for (const a of DEMO_ACCOUNTS) if (a.role === 'member') addProjectMember(project.id, a.email);
 
 const deviceToken = createDeviceToken(user.id, 'VS Code da demo');
-const ciToken = createCiToken(project.id, 'demo local', owner.email).token;
+const ciToken = chaosRuns.createCiToken(project.id, 'demo local', owner.email).token;
 // sessão web do dono: o script confere por ela (/api/account) se o VS Code da demo já usou o token
 const ownerCookie = createWebSession(user.id).setCookie.split(';')[0];
 
