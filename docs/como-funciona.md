@@ -247,14 +247,20 @@ O `chaos` também grava `.shieldepy/chaos-results.json` a cada execução. Na ex
 As dependências andam numa direção só:
 
 ```
-apps/vscode   apps/cli   apps/api   apps/web   ← interfaces (só aqui existe `vscode`, http, argv)
-      └───────────┼───────────┘
-                  ▼
-      packages/agent   packages/extractors   ← IA plugável · tradutores código → regras
-                  └───────┬────────┘
-                          ▼
-                    packages/core           ← motor puro: sem vscode, sem rede
+PRODUTO (roda na máquina do cliente)                  EMPRESA (o nosso servidor)
+
+apps/vscode   apps/cli   ← interfaces (vscode, argv)   apps/web  ──HTTP──▶  apps/api
+      └────┬─────┘                                     (React)              (contas, projetos,
+           ▼                                                                  tokens, execuções)
+packages/agent   packages/extractors   packages/viewer
+           └───────┬────────┘
+                   ▼
+             packages/core          ← motor puro: sem vscode, sem rede
 ```
+
+A empresa não importa o motor, e o web só fala com a API por HTTP: o
+`apps/api/test/boundary.test.ts` garante as duas coisas (decisão 0008). O produto só conhece a
+empresa pela URL do portal (`shieldepy.webBaseUrl`) e pelo `shieldepy publish`.
 
 | Quero mudar… | Onde fica |
 |---|---|
@@ -277,7 +283,12 @@ apps/vscode   apps/cli   apps/api   apps/web   ← interfaces (só aqui existe `
 | Id estável de símbolo e hash do corpo/topo pela AST | `packages/core/src/code-graph/extract-ts.ts` (`stableIds`), `fingerprint.ts` |
 | Diff entre mapas e rotas tocadas por um PR | `packages/core/src/map-diff.ts`, `topology/affected.ts`; base pelo git em `packages/core/src/git-base.ts` |
 | Resultado do caos em disco (`chaos-results.json`) e o que vai para o portal (`ChaosRunUpload`) | `packages/agent/src/chaos/results.ts`; o envio em `apps/cli/src/publish.ts` |
-| Portal: execuções do CI (tokens, banco, rotas) | `apps/api/src/auth/chaosRuns.ts`, rotas em `projectRoutes.ts` |
+| API: servidor, estáticos e cabeçalhos de segurança | `apps/api/src/app.ts`, `server.ts` |
+| API: contas, senhas, sessões, OAuth, device flow da extensão | `apps/api/src/auth/*` (rotas em `routes.ts`) |
+| API: empresas, projetos, repositórios e membros | `apps/api/src/auth/companies.ts`, `projects.ts`, `projectRoutes.ts` |
+| Portal: execuções do CI (tokens, banco, rotas, contrato do upload) | `apps/api/src/auth/chaosRuns.ts`, rotas em `projectRoutes.ts` |
+| Portal: telas (login, projetos, equipe, conta, plataforma) | `apps/web/src/portal/pages/*`, rotas em `App.tsx` |
+| Landing (pré-renderizada) | `apps/web/src/landing/*` |
 | Portal: o caos na página do projeto e a página da execução | `apps/web/src/portal/chaos/*`, `pages/Run.tsx`; estilos no fim de `src/styles/portal.css` |
 | Caos e diff por cima do mapa (overlay do visualizador) | `packages/viewer/src/index.ts` (`ViewerOverlay`); painel da extensão em `apps/vscode/src/views/MapPanel.ts` |
 | Visualizador do mapa (CLI `--html` e painel da extensão) | `packages/viewer/src/index.ts` (bibliotecas em `libraries.json`) |
@@ -385,13 +396,14 @@ Chaves da IA (para a CLI) e da API (OAuth, URLs): copie `.env.example` para `.en
 
 ### O que os testes cobrem
 
-- **199 testes** (vitest), cobrindo:
+- **400 testes** (vitest, em 2026-10-23), cobrindo:
   - o motor
   - a resolução do grafo (imports, tipos do receptor, interfaces, ordem de indexação)
   - todos os extratores, incluindo os 4 stacks de exemplo
   - a IA com provedores falsos (sem rede)
   - o modelo do workspace, a verificação de correções e o cache
-  - a CLI e o servidor web (HTTP de verdade)
+  - a CLI e a API (HTTP de verdade, banco temporário)
+  - a fronteira produto × empresa (`apps/api/test/boundary.test.ts`)
 - **E2E da extensão** (`test-e2e/`): num VS Code real, confere que a extensão:
   - ativa e registra os comandos
   - mostra as colisões nas duas pontas e não acusa o controle

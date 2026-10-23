@@ -247,7 +247,7 @@ async function repoCheck(req: IncomingMessage, res: ServerResponse): Promise<voi
 function publicBase(req: IncomingMessage): string {
   const configured = process.env.PUBLIC_URL ?? process.env.OAUTH_REDIRECT_BASE;
   if (configured) return configured.replace(/\/+$/, '');
-  return 'http://' + (req.headers.host ?? 'localhost:3000');
+  return 'http://' + (req.headers.host ?? 'localhost:3001');
 }
 
 function listCiTokensRoute(req: IncomingMessage, res: ServerResponse, id: number): void {

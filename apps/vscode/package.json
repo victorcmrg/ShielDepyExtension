@@ -345,7 +345,7 @@
         "shieldepy.webBaseUrl": {
           "type": "string",
           "default": "",
-          "description": "Endereço do portal da conta da empresa (login, confirmação de dispositivo, política de IA). Vazio = sem portal: a extensão roda em modo local e a área da conta fica escondida. Em desenvolvimento: http://localhost:3000."
+          "description": "Endereço do portal da conta da empresa (login, confirmação de dispositivo, política de IA). Vazio = sem portal: a extensão roda em modo local e a área da conta fica escondida. Em desenvolvimento: http://localhost:3001 (npm run web) ou http://localhost:5173 (npm run web:dev)."
         },
         "shieldepy.demoToken": {
           "type": "string",

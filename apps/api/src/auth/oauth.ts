@@ -41,7 +41,7 @@ export function hasCredentials(provider: OAuthProvider): boolean {
 }
 
 function redirectBase(): string {
-  return process.env.OAUTH_REDIRECT_BASE ?? 'http://localhost:3000';
+  return process.env.OAUTH_REDIRECT_BASE ?? 'http://localhost:3001';
 }
 
 function callbackUrl(provider: OAuthProvider): string {

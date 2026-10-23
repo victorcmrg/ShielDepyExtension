@@ -18,7 +18,7 @@
         "run",
         "dev",
         "-w",
-        "@shieldepy/api"
+        "@shieldepy/web"
       ],
       "port": 5173
     }
