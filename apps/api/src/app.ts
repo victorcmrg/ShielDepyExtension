@@ -8,10 +8,10 @@ import { staticFiles } from './shared/http/static';
 // recente demais pra alguns pipelines de transform de teste reconhecerem no grafo
 // estático de import — carregar sob demanda evita puxar o banco (e node:sqlite)
 // pra dentro de suites que nunca tocam em rota nenhuma de autenticação.
-let authRoutes: typeof import('./auth/routes') | undefined;
-async function getAuthRoutes(): Promise<typeof import('./auth/routes')> {
-  authRoutes ??= await import('./auth/routes');
-  return authRoutes;
+let composition: typeof import('./composition') | undefined;
+async function getComposition(): Promise<typeof import('./composition')> {
+  composition ??= await import('./composition');
+  return composition;
 }
 
 export interface AppDeps {
@@ -30,8 +30,8 @@ export function createHandler(deps: AppDeps): (req: IncomingMessage, res: Server
       const url = parsedUrl.pathname;
 
       if (url.startsWith('/api/')) {
-        const { handleAuthRoute } = await getAuthRoutes();
-        const handled = await handleAuthRoute(req, res, url, parsedUrl);
+        const { handleApiRoute } = await getComposition();
+        const handled = await handleApiRoute(req, res, url, parsedUrl);
         if (handled) return;
         throw new HttpError(404, 'rota não encontrada');
       }

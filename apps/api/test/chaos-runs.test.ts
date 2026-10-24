@@ -38,12 +38,12 @@ let outsiderCookie: string;
 let repoId: number;
 let chaosRuns: typeof import('../src/composition').chaosRuns;
 
-const cookieOf = (setCookie: string) => setCookie.split(';')[0]!;
 
 beforeAll(async () => {
-  const users = await import('../src/auth/users');
-  const { companies, projects, chaosRuns: runs } = await import('../src/composition');
-  const session = await import('../src/auth/session');
+  const { companies, identity, projects, chaosRuns: runs } = await import('../src/composition');
+  const { SqliteUserRepository } = await import('../src/domains/identity/infra/SqliteIdentityRepositories');
+  const { db } = await import('../src/shared/db/sqlite');
+  const users = new SqliteUserRepository(db);
   chaosRuns = runs;
 
   const { createHandler } = await import('../src/app');
@@ -52,7 +52,7 @@ beforeAll(async () => {
   const other = companies.create('Outra');
   const user = (email: string, companyId: number, role: 'owner' | 'member') => {
     companies.assign(email, companyId, null, role);
-    return users.createUserFromAssignment(email, companyId, null);
+    return users.create(email, companyId, null, Date.now());
   };
   const owner = user('dono@acme.test', acme.id, 'owner');
   const member = user('ana@acme.test', acme.id, 'member');
@@ -63,9 +63,9 @@ beforeAll(async () => {
   projects.addRepo(projectId, 'git@github.com:Acme/Checkout.git');
   repoId = projects.listRepos(projectId)[0]!.id;
   projects.addMember(projectId, 'ana@acme.test');
-  ownerCookie = cookieOf(session.createWebSession(owner.id).setCookie);
-  memberCookie = cookieOf(session.createWebSession(member.id).setCookie);
-  outsiderCookie = cookieOf(session.createWebSession(outsider.id).setCookie);
+  ownerCookie = `shieldepy_session=${identity.createSession(owner.id).token}`;
+  memberCookie = `shieldepy_session=${identity.createSession(member.id).token}`;
+  outsiderCookie = `shieldepy_session=${identity.createSession(outsider.id).token}`;
 
   const staticDir = mkdtempSync(join(tmpdir(), 'shieldepy-dist-'));
   writeFileSync(join(staticDir, 'app.html'), '<!doctype html><title>portal</title>');

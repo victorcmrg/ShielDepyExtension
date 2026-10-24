@@ -1,15 +1,15 @@
 // Rotas da equipe da empresa (só o dono): listar, convidar, mudar o papel e remover pessoas.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { HttpError, sendJson, type Route } from '../../../shared/http/http';
-import { json, owner } from '../../../auth/guards';
-import { deleteUser, findUserByEmail } from '../../../auth/users';
+import { HttpError, readJson, sendJson, type Route } from '../../../shared/http/http';
+import type { IdentityService } from '../../identity/application/identity';
+import type { Access } from '../../../shared/http/access';
 import type { ProjectService } from '../../projects/application/projects';
 import type { CompanyService } from '../application/companies';
 import { MIN_PASSWORD, isAcceptableInitialPassword, isValidEmail, leavesNoOwner, roleFrom } from '../domain/company';
 
-export function teamRoutes(companies: CompanyService, projects: ProjectService): Route[] {
+export function teamRoutes(companies: CompanyService, projects: ProjectService, identity: IdentityService, access: Access): Route[] {
   function list(req: IncomingMessage, res: ServerResponse): void {
-    const u = owner(req);
+    const u = access.owner(req);
     const names = projects.projectNamesByEmail(u.companyId);
     sendJson(res, 200, {
       me: u.email,
@@ -19,11 +19,11 @@ export function teamRoutes(companies: CompanyService, projects: ProjectService):
   }
 
   async function invite(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const u = owner(req);
-    const body = await json<{ email?: string; initialPassword?: string; role?: string; projectIds?: unknown }>(req);
+    const u = access.owner(req);
+    const body = await readJson<{ email?: string; initialPassword?: string; role?: string; projectIds?: unknown }>(req);
     const email = (body.email ?? '').trim().toLowerCase();
     if (!isValidEmail(email)) throw new HttpError(400, 'e-mail inválido');
-    const existing = findUserByEmail(email);
+    const existing = identity.userByEmail(email);
     if (existing && existing.companyId !== u.companyId) throw new HttpError(409, 'esse e-mail já tem conta em outra empresa');
     if (!isAcceptableInitialPassword(body.initialPassword)) {
       throw new HttpError(400, `a senha inicial precisa ter pelo menos ${MIN_PASSWORD} caracteres`);
@@ -38,9 +38,9 @@ export function teamRoutes(companies: CompanyService, projects: ProjectService):
   }
 
   async function setRole(req: IncomingMessage, res: ServerResponse, rawEmail: string): Promise<void> {
-    const u = owner(req);
+    const u = access.owner(req);
     const email = decodeURIComponent(rawEmail).toLowerCase();
-    const body = await json<{ role?: string }>(req);
+    const body = await readJson<{ role?: string }>(req);
     const role = roleFrom(body.role);
     if (!companies.isMember(u.companyId, email)) throw new HttpError(404, 'pessoa não encontrada');
     if (leavesNoOwner(role, companies.role(email), companies.countOwners(u.companyId))) {
@@ -51,13 +51,13 @@ export function teamRoutes(companies: CompanyService, projects: ProjectService):
   }
 
   function remove(req: IncomingMessage, res: ServerResponse, rawEmail: string): void {
-    const u = owner(req);
+    const u = access.owner(req);
     const email = decodeURIComponent(rawEmail).toLowerCase();
     if (email === u.email.toLowerCase()) throw new HttpError(400, 'você não pode remover a própria conta');
     if (!companies.isMember(u.companyId, email)) throw new HttpError(404, 'pessoa não encontrada');
     projects.removeFromAllProjects(u.companyId, email);
-    const existing = findUserByEmail(email);
-    if (existing) deleteUser(existing.id);
+    const existing = identity.userByEmail(email);
+    if (existing) identity.deleteUser(existing.id);
     else companies.removeAssignment(email);
     sendJson(res, 200, { ok: true });
   }

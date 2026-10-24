@@ -283,10 +283,14 @@ empresa pela URL do portal (`shieldepy.webBaseUrl`) e pelo `shieldepy publish`.
 | Id estável de símbolo e hash do corpo/topo pela AST | `packages/core/src/code-graph/extract-ts.ts` (`stableIds`), `fingerprint.ts` |
 | Diff entre mapas e rotas tocadas por um PR | `packages/core/src/map-diff.ts`, `topology/affected.ts`; base pelo git em `packages/core/src/git-base.ts` |
 | Resultado do caos em disco (`chaos-results.json`) e o que vai para o portal (`ChaosRunUpload`) | `packages/agent/src/chaos/results.ts`; o envio em `apps/cli/src/publish.ts` |
-| API: servidor, estáticos e cabeçalhos de segurança | `apps/api/src/app.ts`, `server.ts` |
-| API: contas, senhas, sessões, OAuth, device flow da extensão | `apps/api/src/auth/*` (rotas em `routes.ts`) |
-| API: empresas, projetos, repositórios e membros | `apps/api/src/auth/companies.ts`, `projects.ts`, `projectRoutes.ts` |
-| Portal: execuções do CI (tokens, banco, rotas, contrato do upload) | `apps/api/src/auth/chaosRuns.ts`, rotas em `projectRoutes.ts` |
+| API: servidor, estáticos, cabeçalhos de segurança e o despacho de rotas | `apps/api/src/app.ts`, `server.ts`, `shared/http/*` |
+| API: onde os domínios se juntam (repositórios, serviços, rotas) | `apps/api/src/composition.ts` |
+| API: um domínio (DDD, decisão 0013) | `apps/api/src/domains/<domínio>/{domain,application,infra,http}`; o banco em `shared/db/sqlite.ts` |
+| API: contas, senhas, sessões, OAuth, device flow e tokens da extensão, quem pode chamar cada rota | `domains/identity/*` (o contrato `Access` em `shared/http/access.ts`) |
+| API: empresas, permissões, convites, papéis, equipe e admin de empresas | `domains/companies/*` |
+| API: projetos, repositórios, membros e o "posso usar este repositório?" da extensão | `domains/projects/*` |
+| Portal: execuções do CI (tokens, banco, rotas, contrato do upload) | `domains/chaos-runs/*` |
+| Scripts da API (primeiro admin, dados de demo) | `apps/api/src/scripts/*` |
 | Portal: telas (login, projetos, equipe, conta, plataforma) | `apps/web/src/portal/pages/*`, rotas em `App.tsx` |
 | Landing (pré-renderizada) | `apps/web/src/landing/*` |
 | Portal: o caos na página do projeto e a página da execução | `apps/web/src/portal/chaos/*`, `pages/Run.tsx`; estilos no fim de `src/styles/portal.css` |

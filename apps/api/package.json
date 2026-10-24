@@ -7,8 +7,8 @@
   "scripts": {
     "start": "tsx --env-file-if-exists=../../.env src/server.ts",
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
-    "bootstrap": "tsx --env-file-if-exists=../../.env src/auth/bootstrap.ts",
-    "seed:demo": "tsx --env-file-if-exists=../../.env src/auth/seedDemo.ts"
+    "bootstrap": "tsx --env-file-if-exists=../../.env src/scripts/bootstrap.ts",
+    "seed:demo": "tsx --env-file-if-exists=../../.env src/scripts/seedDemo.ts"
   },
   "dependencies": {
     "tsx": "^4.23.15"

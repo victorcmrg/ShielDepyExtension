@@ -1,13 +1,13 @@
 // Rotas do painel da plataforma (só o admin, ADMIN_EMAIL) que mexem em empresas: visão geral,
 // criar, renomear, excluir, permissões, membros e convites.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { HttpError, sendJson, type Route } from '../../../shared/http/http';
-import { admin, json } from '../../../auth/guards';
-import { findUserByEmail } from '../../../auth/users';
+import { HttpError, readJson, sendJson, type Route } from '../../../shared/http/http';
+import type { IdentityService } from '../../identity/application/identity';
+import type { Access } from '../../../shared/http/access';
 import type { CompanyService } from '../application/companies';
 import { MAX_COMPANY_NAME, MIN_PASSWORD, PERMISSION_KEYS, isAcceptableInitialPassword, isValidEmail, roleFrom, type Company } from '../domain/company';
 
-export function companyAdminRoutes(companies: CompanyService): Route[] {
+export function companyAdminRoutes(companies: CompanyService, identity: IdentityService, access: Access): Route[] {
   function requireCompany(id: number): Company {
     const company = companies.get(id);
     if (!company) throw new HttpError(404, 'empresa não encontrada');
@@ -22,14 +22,14 @@ export function companyAdminRoutes(companies: CompanyService): Route[] {
   }
 
   async function create(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    admin(req);
-    const body = await json<{ name?: string; aiEnabled?: boolean; ownerEmail?: string; ownerPassword?: string }>(req);
+    access.admin(req);
+    const body = await readJson<{ name?: string; aiEnabled?: boolean; ownerEmail?: string; ownerPassword?: string }>(req);
     const name = cleanName(body.name);
     // Dono opcional já na criação: é ele quem monta projetos, repositórios e equipe depois.
     const ownerEmail = body.ownerEmail?.trim().toLowerCase();
     if (ownerEmail) {
       if (!isValidEmail(ownerEmail)) throw new HttpError(400, 'e-mail do dono inválido');
-      if (findUserByEmail(ownerEmail)) throw new HttpError(409, 'esse e-mail já tem conta em outra empresa');
+      if (identity.userByEmail(ownerEmail)) throw new HttpError(409, 'esse e-mail já tem conta em outra empresa');
       if (!isAcceptableInitialPassword(body.ownerPassword)) {
         throw new HttpError(400, `a senha inicial precisa ter pelo menos ${MIN_PASSWORD} caracteres`);
       }
@@ -41,15 +41,15 @@ export function companyAdminRoutes(companies: CompanyService): Route[] {
   }
 
   async function rename(req: IncomingMessage, res: ServerResponse, id: number): Promise<void> {
-    admin(req);
+    access.admin(req);
     requireCompany(id);
-    const body = await json<{ name?: string }>(req);
+    const body = await readJson<{ name?: string }>(req);
     companies.rename(id, cleanName(body.name));
     sendJson(res, 200, { ok: true });
   }
 
   function remove(req: IncomingMessage, res: ServerResponse, id: number): void {
-    const a = admin(req);
+    const a = access.admin(req);
     requireCompany(id);
     if (companies.hasEmail(id, a.email)) throw new HttpError(400, 'não é possível excluir a empresa da própria conta admin');
     companies.delete(id);
@@ -57,9 +57,9 @@ export function companyAdminRoutes(companies: CompanyService): Route[] {
   }
 
   async function setPermission(req: IncomingMessage, res: ServerResponse, companyId: number): Promise<void> {
-    const a = admin(req);
+    const a = access.admin(req);
     requireCompany(companyId);
-    const body = await json<{ key?: string; value?: boolean }>(req);
+    const body = await readJson<{ key?: string; value?: boolean }>(req);
     if (!body.key || !PERMISSION_KEYS.has(body.key) || typeof body.value !== 'boolean') {
       throw new HttpError(400, "envie 'key' (accessEnabled | aiEnabled) e 'value' (boolean)");
     }
@@ -71,18 +71,18 @@ export function companyAdminRoutes(companies: CompanyService): Route[] {
   }
 
   function members(req: IncomingMessage, res: ServerResponse, companyId: number): void {
-    admin(req);
+    access.admin(req);
     requireCompany(companyId);
     sendJson(res, 200, companies.members(companyId));
   }
 
   async function addEmail(req: IncomingMessage, res: ServerResponse, companyId: number): Promise<void> {
-    admin(req);
+    access.admin(req);
     requireCompany(companyId);
-    const body = await json<{ email?: string; initialPassword?: string; role?: string }>(req);
+    const body = await readJson<{ email?: string; initialPassword?: string; role?: string }>(req);
     const email = body.email?.trim().toLowerCase();
     if (!email || !isValidEmail(email)) throw new HttpError(400, 'e-mail inválido');
-    const existing = findUserByEmail(email);
+    const existing = identity.userByEmail(email);
     if (existing && existing.companyId !== companyId) {
       throw new HttpError(409, 'esse e-mail já tem conta em outra empresa — remova de lá antes');
     }
@@ -94,15 +94,15 @@ export function companyAdminRoutes(companies: CompanyService): Route[] {
   }
 
   async function setRole(req: IncomingMessage, res: ServerResponse, email: string): Promise<void> {
-    admin(req);
-    const body = await json<{ role?: string }>(req);
+    access.admin(req);
+    const body = await readJson<{ role?: string }>(req);
     if (body.role !== 'owner' && body.role !== 'member') throw new HttpError(400, "envie 'role' (owner | member)");
     companies.setRole(decodeURIComponent(email), body.role);
     sendJson(res, 200, { ok: true });
   }
 
   function removeEmail(req: IncomingMessage, res: ServerResponse, email: string): void {
-    admin(req);
+    access.admin(req);
     const result = companies.removeAssignment(decodeURIComponent(email));
     if (!result.ok) throw new HttpError(409, 'já existe um usuário com esse e-mail — remova o usuário em vez do convite');
     sendJson(res, 200, { ok: true });
@@ -110,8 +110,8 @@ export function companyAdminRoutes(companies: CompanyService): Route[] {
 
   const id = (params: string[]) => Number(params[0]);
   return [
-    ['GET', /^\/api\/admin\/overview$/, (req, res) => (admin(req), sendJson(res, 200, companies.overview()))],
-    ['GET', /^\/api\/admin\/companies$/, (req, res) => (admin(req), sendJson(res, 200, companies.listWithPermissions()))],
+    ['GET', /^\/api\/admin\/overview$/, (req, res) => (access.admin(req), sendJson(res, 200, companies.overview()))],
+    ['GET', /^\/api\/admin\/companies$/, (req, res) => (access.admin(req), sendJson(res, 200, companies.listWithPermissions()))],
     ['POST', /^\/api\/admin\/companies$/, (req, res) => create(req, res)],
     ['PATCH', /^\/api\/admin\/companies\/(\d+)$/, (req, res, p) => rename(req, res, id(p))],
     ['DELETE', /^\/api\/admin\/companies\/(\d+)$/, (req, res, p) => remove(req, res, id(p))],

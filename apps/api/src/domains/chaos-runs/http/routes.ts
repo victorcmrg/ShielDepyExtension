@@ -1,9 +1,9 @@
 // Rotas do caos no CI (V3): tokens de CI (dono do projeto), a publicação pelo CI e a leitura no portal.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { HttpError, sendJson, type Route } from '../../../shared/http/http';
-import { cleanText, json, owner, projectFor, user } from '../../../auth/guards';
+import { HttpError, cleanText, readJson, sendJson, type Route } from '../../../shared/http/http';
 import type { CompanyService } from '../../companies/application/companies';
 import type { ProjectService } from '../../projects/application/projects';
+import type { Access, RequestUser } from '../../../shared/http/access';
 import type { ChaosRunService } from '../application/chaosRuns';
 import { UploadError } from '../domain/upload';
 
@@ -14,22 +14,29 @@ function publicBase(req: IncomingMessage): string {
   return 'http://' + (req.headers.host ?? 'localhost:3001');
 }
 
-export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService, companies: CompanyService): Route[] {
+export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService, companies: CompanyService, access: Access): Route[] {
+  /** Projeto da empresa do usuário — e, pra quem não é dono, só se participar dele (senão 404). */
+  function projectFor(u: RequestUser, id: number) {
+    const p = projects.visibleTo(id, { companyId: u.companyId, email: u.email, isOwner: companies.role(u.email) === 'owner' });
+    if (!p) throw new HttpError(404, 'projeto não encontrado');
+    return p;
+  }
+
   function listCiTokens(req: IncomingMessage, res: ServerResponse, id: number): void {
-    projectFor(owner(req), id);
+    projectFor(access.owner(req), id);
     sendJson(res, 200, { tokens: runs.listCiTokens(id) });
   }
 
   async function createCiToken(req: IncomingMessage, res: ServerResponse, id: number): Promise<void> {
-    const u = owner(req);
+    const u = access.owner(req);
     projectFor(u, id);
-    const body = await json<{ label?: string }>(req);
+    const body = await readJson<{ label?: string }>(req);
     const label = cleanText(body.label, 60, 'o nome', false) || 'GitHub Actions';
     sendJson(res, 200, runs.createCiToken(id, label, u.email));
   }
 
   function revokeCiToken(req: IncomingMessage, res: ServerResponse, id: number, tokenId: number): void {
-    projectFor(owner(req), id);
+    projectFor(access.owner(req), id);
     if (!runs.revokeCiToken(id, tokenId)) throw new HttpError(404, 'token não encontrado');
     sendJson(res, 200, { ok: true });
   }
@@ -44,7 +51,7 @@ export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService, 
     if (!companies.accessEnabled(project.companyId)) throw new HttpError(403, 'o acesso desta empresa está suspenso');
     let result;
     try {
-      result = runs.publish(projectId, await json<unknown>(req));
+      result = runs.publish(projectId, await readJson<unknown>(req));
     } catch (err) {
       if (err instanceof UploadError) throw new HttpError(400, err.message);
       throw err;
@@ -55,7 +62,7 @@ export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService, 
 
   /** Visão do caos no projeto: a última execução e o histórico curto de cada repositório. */
   function projectChaos(req: IncomingMessage, res: ServerResponse, id: number): void {
-    const u = user(req);
+    const u = access.user(req);
     projectFor(u, id);
     const repos = projects.listRepos(id).map((repo) => {
       const history = runs.history(repo.id);
@@ -65,7 +72,7 @@ export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService, 
   }
 
   function runDetail(req: IncomingMessage, res: ServerResponse, id: number, runId: number): void {
-    const project = projectFor(user(req), id);
+    const project = projectFor(access.user(req), id);
     const run = runs.getRun(id, runId);
     if (!run) throw new HttpError(404, 'execução não encontrada');
     const repo = projects.listRepos(id).find((r) => r.id === run.summary.repoId);

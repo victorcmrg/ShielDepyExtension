@@ -1,4 +1,4 @@
-// Formato das respostas da API (espelham apps/api/src/auth/*).
+// Formato das respostas da API (espelham as rotas de apps/api/src/domains/*/http).
 
 export type Role = 'owner' | 'member';
 export type MemberStatus = 'active' | 'pending';
@@ -109,7 +109,7 @@ export interface Company {
   pendingCount: number;
 }
 
-// --- caos no CI (V3): espelham apps/api/src/auth/chaosRuns.ts e o ChaosResults do @shieldepy/agent ---------
+// --- caos no CI (V3): espelham apps/api/src/domains/chaos-runs/domain/upload.ts e o ChaosResults do @shieldepy/agent ---------
 
 /** O resumo de uma execução numa palavra (a cor no portal). */
 export type RunStatus = 'blocked' | 'passed' | 'below_gate' | 'nothing' | 'not_run' | 'error' | 'invalid';

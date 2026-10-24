@@ -34,6 +34,36 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
   res.end(JSON.stringify(body));
 }
 
+/** O corpo como JSON; corpo quebrado vira 400. */
+export async function readJson<T>(req: IncomingMessage): Promise<T> {
+  try {
+    return JSON.parse(await readBody(req)) as T;
+  } catch {
+    throw new HttpError(400, 'corpo da requisição inválido');
+  }
+}
+
+/** Texto de formulário: aparado, obrigatório ou não, com tamanho máximo. */
+export function cleanText(raw: unknown, max: number, field: string, required: boolean): string {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (required && !value) throw new HttpError(400, `preencha ${field}`);
+  if (value.length > max) throw new HttpError(400, `${field} longo demais (máx. ${max})`);
+  return value;
+}
+
+/** Procura a rota do método e do caminho e chama; `false` se nenhuma casou. */
+export async function dispatch(routes: Route[], req: IncomingMessage, res: ServerResponse, pathname: string, url: URL): Promise<boolean> {
+  const method = req.method ?? 'GET';
+  for (const [routeMethod, pattern, handler] of routes) {
+    if (routeMethod !== method) continue;
+    const match = pathname.match(pattern);
+    if (!match) continue;
+    await handler(req, res, match.slice(1), url);
+    return true;
+  }
+  return false;
+}
+
 export function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];

@@ -1,21 +1,27 @@
 // Rotas de projetos: a visão geral do portal, o CRUD de projetos, repositórios e membros, e o
 // "posso usar este repositório?" da extensão.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { HttpError, sendJson, type Route } from '../../../shared/http/http';
-import { cleanText, json, owner, projectFor, user } from '../../../auth/guards';
-import { isAdmin, requireDeviceToken } from '../../../auth/middleware';
+import { HttpError, cleanText, readJson, sendJson, type Route } from '../../../shared/http/http';
 import type { CompanyService } from '../../companies/application/companies';
+import type { Access, RequestUser } from '../../../shared/http/access';
 import type { ProjectService } from '../application/projects';
 
-export function projectRoutes(projects: ProjectService, companies: CompanyService): Route[] {
+export function projectRoutes(projects: ProjectService, companies: CompanyService, access: Access): Route[] {
+  /** Projeto da empresa do usuário — e, pra quem não é dono, só se participar dele (senão 404). */
+  function projectFor(u: RequestUser, id: number) {
+    const p = projects.visibleTo(id, { companyId: u.companyId, email: u.email, isOwner: companies.role(u.email) === 'owner' });
+    if (!p) throw new HttpError(404, 'projeto não encontrado');
+    return p;
+  }
+
   function workspace(req: IncomingMessage, res: ServerResponse): void {
-    const u = user(req);
+    const u = access.user(req);
     const role = companies.role(u.email);
     sendJson(res, 200, {
       me: {
         email: u.email,
         role,
-        isPlatformAdmin: isAdmin(u),
+        isPlatformAdmin: access.isAdmin(u),
         companyName: companies.get(u.companyId)?.name ?? '',
         accessEnabled: companies.accessEnabled(u.companyId),
       },
@@ -24,13 +30,13 @@ export function projectRoutes(projects: ProjectService, companies: CompanyServic
   }
 
   async function create(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const u = owner(req);
-    const body = await json<{ name?: string; description?: string }>(req);
+    const u = access.owner(req);
+    const body = await readJson<{ name?: string; description?: string }>(req);
     sendJson(res, 200, projects.create(u.companyId, cleanText(body.name, 60, 'o nome', true), cleanText(body.description, 160, 'a descrição', false)));
   }
 
   function detail(req: IncomingMessage, res: ServerResponse, id: number): void {
-    const u = user(req);
+    const u = access.user(req);
     const p = projectFor(u, id);
     const isOwner = companies.role(u.email) === 'owner';
     const members = projects.listMembers(id);
@@ -51,21 +57,21 @@ export function projectRoutes(projects: ProjectService, companies: CompanyServic
   }
 
   async function update(req: IncomingMessage, res: ServerResponse, id: number): Promise<void> {
-    projectFor(owner(req), id);
-    const body = await json<{ name?: string; description?: string }>(req);
+    projectFor(access.owner(req), id);
+    const body = await readJson<{ name?: string; description?: string }>(req);
     projects.update(id, cleanText(body.name, 60, 'o nome', true), cleanText(body.description, 160, 'a descrição', false));
     sendJson(res, 200, { ok: true });
   }
 
   function remove(req: IncomingMessage, res: ServerResponse, id: number): void {
-    projectFor(owner(req), id);
+    projectFor(access.owner(req), id);
     projects.delete(id);
     sendJson(res, 200, { ok: true });
   }
 
   async function addRepo(req: IncomingMessage, res: ServerResponse, id: number): Promise<void> {
-    projectFor(owner(req), id);
-    const body = await json<{ url?: string }>(req);
+    projectFor(access.owner(req), id);
+    const body = await readJson<{ url?: string }>(req);
     const result = projects.addRepo(id, typeof body.url === 'string' ? body.url : '');
     if (!result.ok) {
       throw new HttpError(
@@ -79,15 +85,15 @@ export function projectRoutes(projects: ProjectService, companies: CompanyServic
   }
 
   function removeRepo(req: IncomingMessage, res: ServerResponse, id: number, repoId: number): void {
-    projectFor(owner(req), id);
+    projectFor(access.owner(req), id);
     if (!projects.removeRepo(id, repoId)) throw new HttpError(404, 'repositório não encontrado');
     sendJson(res, 200, { ok: true });
   }
 
   async function addMember(req: IncomingMessage, res: ServerResponse, id: number): Promise<void> {
-    const u = owner(req);
+    const u = access.owner(req);
     projectFor(u, id);
-    const body = await json<{ email?: string }>(req);
+    const body = await readJson<{ email?: string }>(req);
     const email = (body.email ?? '').trim().toLowerCase();
     if (!companies.members(u.companyId).some((m) => m.email.toLowerCase() === email)) {
       throw new HttpError(400, 'essa pessoa não está na equipe da empresa — convide em Equipe primeiro');
@@ -97,20 +103,20 @@ export function projectRoutes(projects: ProjectService, companies: CompanyServic
   }
 
   function removeMember(req: IncomingMessage, res: ServerResponse, id: number, email: string): void {
-    projectFor(owner(req), id);
+    projectFor(access.owner(req), id);
     if (!projects.removeMember(id, decodeURIComponent(email))) throw new HttpError(404, 'essa pessoa não está no projeto');
     sendJson(res, 200, { ok: true });
   }
 
   /** Extensão: "posso usar este repositório?". */
   async function repoCheck(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const u = requireDeviceToken(req);
+    const u = access.device(req);
     if (!u) throw new HttpError(401, 'token inválido ou expirado');
     if (!companies.accessEnabled(u.companyId)) {
       sendJson(res, 200, { repos: [] });
       return;
     }
-    const body = await json<{ repos?: Array<{ remote?: unknown; branch?: unknown }> }>(req);
+    const body = await readJson<{ repos?: Array<{ remote?: unknown; branch?: unknown }> }>(req);
     const repos = (Array.isArray(body.repos) ? body.repos : [])
       .filter((r) => r && typeof r.remote === 'string')
       .map((r) => ({ remote: r.remote as string, branch: typeof r.branch === 'string' ? r.branch : null }));

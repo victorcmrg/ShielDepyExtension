@@ -2,7 +2,7 @@
 //   npm run seed:demo -w @shieldepy/api
 // Senhas fixas e públicas — só pra ambiente local, nunca em produção.
 import { db } from '../shared/db/sqlite';
-import { createUserFromAssignment } from './users';
+import { SqliteUserRepository } from '../domains/identity/infra/SqliteIdentityRepositories';
 import { hashPassword } from '../shared/crypto/passwords';
 import { companies, projects } from '../composition';
 import { normalizeRemote } from '../domains/projects/domain/remote';
@@ -32,7 +32,7 @@ function seed(): void {
   for (const a of DEMO_ACCOUNTS) {
     companies.assign(a.email, company.id, a.password, a.role);
     if (a.login) {
-      const user = createUserFromAssignment(a.email, company.id, hashPassword(a.password));
+      const user = new SqliteUserRepository(db).create(a.email, company.id, hashPassword(a.password), now);
       db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).run(now - Math.floor(Math.random() * 3) * 3_600_000, user.id);
     }
   }
