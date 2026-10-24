@@ -3,10 +3,9 @@
 // projeto do sistema da loja com o remote do workspace da demo, o token da extensão e o token de CI.
 //   uso: tsx scripts/demo/seed.ts <remote do workspace> <arquivo de saída .json>
 import { writeFileSync } from 'node:fs';
-import { chaosRuns } from '../../apps/api/src/domains/chaos-runs';
+import { chaosRuns, projects } from '../../apps/api/src/composition';
 import { db } from '../../apps/api/src/shared/db/sqlite';
 import { createDeviceToken } from '../../apps/api/src/auth/deviceTokens';
-import { addProjectMember, addRepo, createProject } from '../../apps/api/src/auth/projects';
 import { createWebSession } from '../../apps/api/src/auth/session';
 import { DEMO_ACCOUNTS } from '../../apps/api/src/auth/seedDemo';
 
@@ -16,9 +15,9 @@ if (!remote || !out) throw new Error('uso: tsx scripts/demo/seed.ts <remote> <sa
 const owner = DEMO_ACCOUNTS.find((a) => a.role === 'owner')!;
 const user = db.prepare(`SELECT id, company_id AS companyId FROM users WHERE email = ?`).get(owner.email) as { id: number; companyId: number };
 
-const project = createProject(user.companyId, 'Sistema da loja (demo do TCC)', 'Checkout com Stripe e Postgres, microserviços de pedidos e relatórios.');
-addRepo(project.id, remote);
-for (const a of DEMO_ACCOUNTS) if (a.role === 'member') addProjectMember(project.id, a.email);
+const project = projects.create(user.companyId, 'Sistema da loja (demo do TCC)', 'Checkout com Stripe e Postgres, microserviços de pedidos e relatórios.');
+projects.addRepo(project.id, remote);
+for (const a of DEMO_ACCOUNTS) if (a.role === 'member') projects.addMember(project.id, a.email);
 
 const deviceToken = createDeviceToken(user.id, 'VS Code da demo');
 const ciToken = chaosRuns.createCiToken(project.id, 'demo local', owner.email).token;

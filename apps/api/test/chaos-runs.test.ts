@@ -36,15 +36,15 @@ let ownerCookie: string;
 let memberCookie: string;
 let outsiderCookie: string;
 let repoId: number;
-let chaosRuns: typeof import('../src/domains/chaos-runs').chaosRuns;
+let chaosRuns: typeof import('../src/composition').chaosRuns;
 
 const cookieOf = (setCookie: string) => setCookie.split(';')[0]!;
 
 beforeAll(async () => {
   const companies = await import('../src/auth/companies');
-  const projects = await import('../src/auth/projects');
+  const { projects, chaosRuns: runs } = await import('../src/composition');
   const session = await import('../src/auth/session');
-  chaosRuns = (await import('../src/domains/chaos-runs')).chaosRuns;
+  chaosRuns = runs;
 
   const { createHandler } = await import('../src/app');
 
@@ -57,12 +57,12 @@ beforeAll(async () => {
   const owner = user('dono@acme.test', acme.id, 'owner');
   const member = user('ana@acme.test', acme.id, 'member');
   const outsider = user('eve@outra.test', other.id, 'owner');
-  const project = projects.createProject(acme.id, 'Pedidos', '');
+  const project = projects.create(acme.id, 'Pedidos', '');
   projectId = project.id;
-  otherProjectId = projects.createProject(acme.id, 'Outro projeto', '').id;
+  otherProjectId = projects.create(acme.id, 'Outro projeto', '').id;
   projects.addRepo(projectId, 'git@github.com:Acme/Checkout.git');
   repoId = projects.listRepos(projectId)[0]!.id;
-  projects.addProjectMember(projectId, 'ana@acme.test');
+  projects.addMember(projectId, 'ana@acme.test');
   ownerCookie = cookieOf(session.createWebSession(owner.id).setCookie);
   memberCookie = cookieOf(session.createWebSession(member.id).setCookie);
   outsiderCookie = cookieOf(session.createWebSession(outsider.id).setCookie);

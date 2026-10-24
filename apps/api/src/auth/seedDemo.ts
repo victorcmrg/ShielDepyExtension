@@ -4,8 +4,8 @@
 import { db } from '../shared/db/sqlite';
 import { addEmailAssignment, createCompany, createUserFromAssignment, deleteCompany, getAssignment, setCompanyPermission } from './companies';
 import { hashPassword } from '../shared/crypto/passwords';
-import { addProjectMember, addRepo, createProject } from './projects';
-import { normalizeRemote } from './remotes';
+import { projects } from '../composition';
+import { normalizeRemote } from '../domains/projects/domain/remote';
 
 const DEMO_COMPANY = 'Acme Logística (demo)';
 const THIS_REPO = 'https://github.com/victorcmrg/ShielDepyExtension.git';
@@ -37,18 +37,18 @@ function seed(): void {
     }
   }
 
-  const pedidos = createProject(company.id, 'Pedidos', 'Microserviços de pedidos, preço e imposto.');
-  addRepo(pedidos.id, THIS_REPO);
-  addRepo(pedidos.id, 'git@github.com:acme/pedidos-api.git');
-  addProjectMember(pedidos.id, 'ana@acme.test');
-  addProjectMember(pedidos.id, 'bruno@acme.test');
-  addProjectMember(pedidos.id, 'carla@acme.test');
+  const pedidos = projects.create(company.id, 'Pedidos', 'Microserviços de pedidos, preço e imposto.');
+  projects.addRepo(pedidos.id, THIS_REPO);
+  projects.addRepo(pedidos.id, 'git@github.com:acme/pedidos-api.git');
+  projects.addMember(pedidos.id, 'ana@acme.test');
+  projects.addMember(pedidos.id, 'bruno@acme.test');
+  projects.addMember(pedidos.id, 'carla@acme.test');
 
-  const loja = createProject(company.id, 'Loja online', 'Site da loja em React e o checkout.');
-  addRepo(loja.id, 'https://github.com/acme/loja-web');
-  addProjectMember(loja.id, 'ana@acme.test');
+  const loja = projects.create(company.id, 'Loja online', 'Site da loja em React e o checkout.');
+  projects.addRepo(loja.id, 'https://github.com/acme/loja-web');
+  projects.addMember(loja.id, 'ana@acme.test');
 
-  createProject(company.id, 'Relatórios', 'Ainda sem repositório: o dono conecta quando o time começar.');
+  projects.create(company.id, 'Relatórios', 'Ainda sem repositório: o dono conecta quando o time começar.');
 
   // Uso que a extensão teria registrado (é o que vira "em uso por … há …" no painel).
   const activity = (projectId: number, remote: string, email: string, branch: string, minutesAgo: number) => {
@@ -70,8 +70,8 @@ function seed(): void {
       .prepare(`SELECT 1 FROM project_repos r JOIN projects p ON p.id = r.project_id WHERE p.company_id = ? AND r.remote = ?`)
       .get(adminAssignment.companyId, normalizeRemote(THIS_REPO));
     if (!has) {
-      const p = createProject(adminAssignment.companyId, 'ShielDepy', 'A própria extensão e o site.');
-      addRepo(p.id, THIS_REPO);
+      const p = projects.create(adminAssignment.companyId, 'ShielDepy', 'A própria extensão e o site.');
+      projects.addRepo(p.id, THIS_REPO);
     }
   }
 

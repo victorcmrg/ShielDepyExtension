@@ -2,9 +2,10 @@
 // visível para a pessoa, e a leitura do corpo. Vão para identity/projects nas fatias S7c–S7e.
 import type { IncomingMessage } from 'node:http';
 import { HttpError, readBody } from '../shared/http/http';
+import { projects } from '../composition';
+import type { Project } from '../domains/projects/domain/project';
 import { getRole } from './companies';
 import { requireSession } from './middleware';
-import { getProject, isProjectMember } from './projects';
 import type { AuthUser } from './session';
 
 export async function json<T>(req: IncomingMessage): Promise<T> {
@@ -28,10 +29,9 @@ export function owner(req: IncomingMessage): AuthUser {
 }
 
 /** Projeto da empresa do usuário — e, pra quem não é dono, só se participar dele. */
-export function projectFor(u: AuthUser, id: number) {
-  const p = getProject(id);
-  if (!p || p.companyId !== u.companyId) throw new HttpError(404, 'projeto não encontrado');
-  if (getRole(u.email) !== 'owner' && !isProjectMember(id, u.email)) throw new HttpError(404, 'projeto não encontrado');
+export function projectFor(u: AuthUser, id: number): Project {
+  const p = projects.visibleTo(id, { companyId: u.companyId, email: u.email, isOwner: getRole(u.email) === 'owner' });
+  if (!p) throw new HttpError(404, 'projeto não encontrado');
   return p;
 }
 

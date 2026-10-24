@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, sendJson, type Route } from '../../../shared/http/http';
 import { getCompanyPermissions, getRole } from '../../../auth/companies';
 import { cleanText, json, owner, projectFor, user } from '../../../auth/guards';
-import { getProject, listRepos } from '../../../auth/projects';
+import type { ProjectService } from '../../projects/application/projects';
 import type { ChaosRunService } from '../application/chaosRuns';
 import { UploadError } from '../domain/upload';
 
@@ -14,7 +14,7 @@ function publicBase(req: IncomingMessage): string {
   return 'http://' + (req.headers.host ?? 'localhost:3001');
 }
 
-export function chaosRunRoutes(runs: ChaosRunService): Route[] {
+export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService): Route[] {
   function listCiTokens(req: IncomingMessage, res: ServerResponse, id: number): void {
     projectFor(owner(req), id);
     sendJson(res, 200, { tokens: runs.listCiTokens(id) });
@@ -39,7 +39,7 @@ export function chaosRunRoutes(runs: ChaosRunService): Route[] {
     const auth = req.headers.authorization ?? '';
     const projectId = auth.startsWith('Bearer ') ? runs.projectForCiToken(auth.slice(7).trim()) : null;
     if (!projectId) throw new HttpError(401, 'token de CI inválido ou revogado');
-    const project = getProject(projectId);
+    const project = projects.get(projectId);
     if (!project) throw new HttpError(401, 'token de CI inválido ou revogado');
     if (getCompanyPermissions(project.companyId).accessEnabled === false) throw new HttpError(403, 'o acesso desta empresa está suspenso');
     let result;
@@ -57,7 +57,7 @@ export function chaosRunRoutes(runs: ChaosRunService): Route[] {
   function projectChaos(req: IncomingMessage, res: ServerResponse, id: number): void {
     const u = user(req);
     projectFor(u, id);
-    const repos = listRepos(id).map((repo) => {
+    const repos = projects.listRepos(id).map((repo) => {
       const history = runs.history(repo.id);
       return { repo: { id: repo.id, label: repo.label, remote: repo.remote }, latest: history[0] ?? null, history };
     });
@@ -68,7 +68,7 @@ export function chaosRunRoutes(runs: ChaosRunService): Route[] {
     const project = projectFor(user(req), id);
     const run = runs.getRun(id, runId);
     if (!run) throw new HttpError(404, 'execução não encontrada');
-    const repo = listRepos(id).find((r) => r.id === run.summary.repoId);
+    const repo = projects.listRepos(id).find((r) => r.id === run.summary.repoId);
     sendJson(res, 200, {
       project: { id: project.id, name: project.name },
       repo: repo ? { id: repo.id, label: repo.label, remote: repo.remote } : null,
