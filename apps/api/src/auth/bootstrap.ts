@@ -5,7 +5,7 @@
 // Rodar uma vez, depois de definir ADMIN_EMAIL no .env da raiz:
 //   npm run bootstrap -w @shieldepy/api
 import { db } from '../shared/db/sqlite';
-import { createCompany, addEmailAssignment, setCompanyPermission } from './companies';
+import { companies } from '../composition';
 
 const adminEmail = process.env.ADMIN_EMAIL;
 if (!adminEmail) {
@@ -20,9 +20,9 @@ if (existing) {
   process.exit(0);
 }
 
-const company = createCompany('ShielDepy (admin)');
-setCompanyPermission(company.id, 'aiEnabled', true);
-addEmailAssignment(adminEmail, company.id, null, 'owner');
+const company = companies.create('ShielDepy (admin)');
+companies.setPermission(company.id, 'aiEnabled', true);
+companies.assign(adminEmail, company.id, null, 'owner');
 
 console.log(`Empresa "${company.name}" criada (id ${company.id}) e ${adminEmail} atribuído, com aiEnabled=true.`);
 console.log('Entre pela primeira vez usando login social (Google/GitHub) ou peça uma senha inicial via /admin.');

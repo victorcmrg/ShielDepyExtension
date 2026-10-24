@@ -2,9 +2,9 @@
 //   npm run seed:demo -w @shieldepy/api
 // Senhas fixas e públicas — só pra ambiente local, nunca em produção.
 import { db } from '../shared/db/sqlite';
-import { addEmailAssignment, createCompany, createUserFromAssignment, deleteCompany, getAssignment, setCompanyPermission } from './companies';
+import { createUserFromAssignment } from './users';
 import { hashPassword } from '../shared/crypto/passwords';
-import { projects } from '../composition';
+import { companies, projects } from '../composition';
 import { normalizeRemote } from '../domains/projects/domain/remote';
 
 const DEMO_COMPANY = 'Acme Logística (demo)';
@@ -22,15 +22,15 @@ function seed(): void {
   if (old) {
     // Convites pendentes não têm usuário, então não saem em cascata — limpa antes.
     db.prepare(`DELETE FROM email_company_assignments WHERE company_id = ?`).run(old.id);
-    deleteCompany(old.id);
+    companies.delete(old.id);
   }
 
-  const company = createCompany(DEMO_COMPANY);
-  setCompanyPermission(company.id, 'aiEnabled', true);
+  const company = companies.create(DEMO_COMPANY);
+  companies.setPermission(company.id, 'aiEnabled', true);
 
   const now = Date.now();
   for (const a of DEMO_ACCOUNTS) {
-    addEmailAssignment(a.email, company.id, a.password, a.role);
+    companies.assign(a.email, company.id, a.password, a.role);
     if (a.login) {
       const user = createUserFromAssignment(a.email, company.id, hashPassword(a.password));
       db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).run(now - Math.floor(Math.random() * 3) * 3_600_000, user.id);
@@ -63,7 +63,7 @@ function seed(): void {
 
   // A empresa do admin da plataforma também ganha um projeto com este repositório, pra testar a extensão.
   const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-  const adminAssignment = adminEmail ? getAssignment(adminEmail) : null;
+  const adminAssignment = adminEmail ? companies.getAssignment(adminEmail) : null;
   if (adminEmail && adminAssignment) {
     db.prepare(`UPDATE email_company_assignments SET role = 'owner' WHERE email = ?`).run(adminEmail);
     const has = db

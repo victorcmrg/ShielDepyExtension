@@ -1,8 +1,8 @@
 // Rotas do caos no CI (V3): tokens de CI (dono do projeto), a publicação pelo CI e a leitura no portal.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, sendJson, type Route } from '../../../shared/http/http';
-import { getCompanyPermissions, getRole } from '../../../auth/companies';
 import { cleanText, json, owner, projectFor, user } from '../../../auth/guards';
+import type { CompanyService } from '../../companies/application/companies';
 import type { ProjectService } from '../../projects/application/projects';
 import type { ChaosRunService } from '../application/chaosRuns';
 import { UploadError } from '../domain/upload';
@@ -14,7 +14,7 @@ function publicBase(req: IncomingMessage): string {
   return 'http://' + (req.headers.host ?? 'localhost:3001');
 }
 
-export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService): Route[] {
+export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService, companies: CompanyService): Route[] {
   function listCiTokens(req: IncomingMessage, res: ServerResponse, id: number): void {
     projectFor(owner(req), id);
     sendJson(res, 200, { tokens: runs.listCiTokens(id) });
@@ -41,7 +41,7 @@ export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService):
     if (!projectId) throw new HttpError(401, 'token de CI inválido ou revogado');
     const project = projects.get(projectId);
     if (!project) throw new HttpError(401, 'token de CI inválido ou revogado');
-    if (getCompanyPermissions(project.companyId).accessEnabled === false) throw new HttpError(403, 'o acesso desta empresa está suspenso');
+    if (!companies.accessEnabled(project.companyId)) throw new HttpError(403, 'o acesso desta empresa está suspenso');
     let result;
     try {
       result = runs.publish(projectId, await json<unknown>(req));
@@ -61,7 +61,7 @@ export function chaosRunRoutes(runs: ChaosRunService, projects: ProjectService):
       const history = runs.history(repo.id);
       return { repo: { id: repo.id, label: repo.label, remote: repo.remote }, latest: history[0] ?? null, history };
     });
-    sendJson(res, 200, { repos, canManage: getRole(u.email) === 'owner' });
+    sendJson(res, 200, { repos, canManage: companies.role(u.email) === 'owner' });
   }
 
   function runDetail(req: IncomingMessage, res: ServerResponse, id: number, runId: number): void {

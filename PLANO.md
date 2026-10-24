@@ -13,7 +13,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
-- **Em andamento:** a etapa **S** (S1 a S6 e S7a a S7c ✅), na branch `feat/separacao-web`.
+- **Em andamento:** a etapa **S** (S1 a S6 e S7a a S7d ✅), na branch `feat/separacao-web`.
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -37,7 +37,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 
 | Etapa | O que | Status |
 |---|---|---|
-| S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | S1 a S6 e S7a a S7c ✅; próxima: S7d (`companies`) |
+| S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | S1 a S6 e S7a a S7d ✅; próxima: S7e (`identity`) |
 | P1 | Postgres e migrations ([0012](docs/decisoes/0012-postgres.md)) | depois da S |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1: testes ✅; falta o `--init` e o `chaos` nos 3 projetos |
 | W | Landing honesta | pendente |
@@ -68,7 +68,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
   - O domínio não importa `node:sqlite`, `http` nem `shared/`. Os casos de uso recebem os repositórios por interface. O SQL atual vira `infra/Sqlite*Repository`, que a P1 troca por Postgres.
   - O teste de fronteira (S4) ganha a regra das camadas: `domain` não importa `infra`, `http` nem driver de banco; um domínio só usa outro pela `application` dele. A checagem lê os imports pela AST do TS.
   - Sem mudar comportamento: as rotas e os testes de HTTP (`web.test.ts`, `chaos-runs.test.ts`) continuam passando. Uma fatia (e um commit) por contexto.
-  - Fatias: **S7a ✅ `shared/`** (`db/sqlite.ts`, `http/{http,static,rateLimiter}.ts`, `crypto/{tokens,passwords}.ts`; o `app.ts` só monta; as regras das camadas no `boundary.test.ts`) → **S7b ✅ `chaos-runs`** (domain: upload, execução e token de CI; application: `ChaosRunService` com portas; infra: `SqliteChaosRunRepository`, `SqliteCiTokenRepository`; http: as 6 rotas; teste do domínio com repositórios em memória; as checagens de acesso foram para `auth/guards.ts` até a S7c/S7e) → **S7c ✅ `projects`** (domain: projeto, visibilidade `canSee`, remote; application: `ProjectService`; infra: `SqliteProjectRepository`; http: CRUD, repositórios, membros, `workspace` e o `repos/check` da extensão; a montagem de todos os domínios passou para `src/composition.ts`, e as rotas de `chaos-runs` recebem o `ProjectService` pela application; as rotas de equipe ficam em `auth/teamRoutes.ts` até a S7d) → S7d `companies` → S7e `identity` (o que sobrar da `auth/`, que então some).
+  - Fatias: **S7a ✅ `shared/`** (`db/sqlite.ts`, `http/{http,static,rateLimiter}.ts`, `crypto/{tokens,passwords}.ts`; o `app.ts` só monta; as regras das camadas no `boundary.test.ts`) → **S7b ✅ `chaos-runs`** (domain: upload, execução e token de CI; application: `ChaosRunService` com portas; infra: `SqliteChaosRunRepository`, `SqliteCiTokenRepository`; http: as 6 rotas; teste do domínio com repositórios em memória; as checagens de acesso foram para `auth/guards.ts` até a S7c/S7e) → **S7c ✅ `projects`** (domain: projeto, visibilidade `canSee`, remote; application: `ProjectService`; infra: `SqliteProjectRepository`; http: CRUD, repositórios, membros, `workspace` e o `repos/check` da extensão; a montagem de todos os domínios passou para `src/composition.ts`, e as rotas de `chaos-runs` recebem o `ProjectService` pela application) → **S7d ✅ `companies`** (domain: empresa, papel, permissões com padrões, "pelo menos um dono", validação de convite; application: `CompanyService`; infra: `SqliteCompanyRepository`; http: equipe e admin de empresas; as funções de usuário foram para `auth/users.ts`) → S7e `identity` (o que sobrar da `auth/`, que então some).
 
 ---
 

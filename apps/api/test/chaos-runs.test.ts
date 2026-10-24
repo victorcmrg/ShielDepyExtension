@@ -41,18 +41,18 @@ let chaosRuns: typeof import('../src/composition').chaosRuns;
 const cookieOf = (setCookie: string) => setCookie.split(';')[0]!;
 
 beforeAll(async () => {
-  const companies = await import('../src/auth/companies');
-  const { projects, chaosRuns: runs } = await import('../src/composition');
+  const users = await import('../src/auth/users');
+  const { companies, projects, chaosRuns: runs } = await import('../src/composition');
   const session = await import('../src/auth/session');
   chaosRuns = runs;
 
   const { createHandler } = await import('../src/app');
 
-  const acme = companies.createCompany('Acme');
-  const other = companies.createCompany('Outra');
+  const acme = companies.create('Acme');
+  const other = companies.create('Outra');
   const user = (email: string, companyId: number, role: 'owner' | 'member') => {
-    companies.addEmailAssignment(email, companyId, null, role);
-    return companies.createUserFromAssignment(email, companyId, null);
+    companies.assign(email, companyId, null, role);
+    return users.createUserFromAssignment(email, companyId, null);
   };
   const owner = user('dono@acme.test', acme.id, 'owner');
   const member = user('ana@acme.test', acme.id, 'member');

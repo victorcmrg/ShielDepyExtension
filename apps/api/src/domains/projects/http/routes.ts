@@ -2,22 +2,22 @@
 // "posso usar este repositório?" da extensão.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, sendJson, type Route } from '../../../shared/http/http';
-import { getCompanyById, getCompanyPermissions, getRole, listCompanyMembers } from '../../../auth/companies';
 import { cleanText, json, owner, projectFor, user } from '../../../auth/guards';
 import { isAdmin, requireDeviceToken } from '../../../auth/middleware';
+import type { CompanyService } from '../../companies/application/companies';
 import type { ProjectService } from '../application/projects';
 
-export function projectRoutes(projects: ProjectService): Route[] {
+export function projectRoutes(projects: ProjectService, companies: CompanyService): Route[] {
   function workspace(req: IncomingMessage, res: ServerResponse): void {
     const u = user(req);
-    const role = getRole(u.email);
+    const role = companies.role(u.email);
     sendJson(res, 200, {
       me: {
         email: u.email,
         role,
         isPlatformAdmin: isAdmin(u),
-        companyName: getCompanyById(u.companyId)?.name ?? '',
-        accessEnabled: getCompanyPermissions(u.companyId).accessEnabled !== false,
+        companyName: companies.get(u.companyId)?.name ?? '',
+        accessEnabled: companies.accessEnabled(u.companyId),
       },
       projects: projects.listFor(u.companyId, u.email, role === 'owner'),
     });
@@ -32,7 +32,7 @@ export function projectRoutes(projects: ProjectService): Route[] {
   function detail(req: IncomingMessage, res: ServerResponse, id: number): void {
     const u = user(req);
     const p = projectFor(u, id);
-    const isOwner = getRole(u.email) === 'owner';
+    const isOwner = companies.role(u.email) === 'owner';
     const members = projects.listMembers(id);
     const inProject = new Set(members.map((m) => m.email.toLowerCase()));
     sendJson(res, 200, {
@@ -43,7 +43,7 @@ export function projectRoutes(projects: ProjectService): Route[] {
       // Pra o dono escolher quem entra: membros da empresa que ainda não estão no projeto
       // (donos ficam de fora — já têm acesso a todos os projetos).
       candidates: isOwner
-        ? listCompanyMembers(u.companyId)
+        ? companies.members(u.companyId)
             .filter((m) => m.role !== 'owner' && !inProject.has(m.email.toLowerCase()))
             .map((m) => m.email)
         : [],
@@ -89,7 +89,7 @@ export function projectRoutes(projects: ProjectService): Route[] {
     projectFor(u, id);
     const body = await json<{ email?: string }>(req);
     const email = (body.email ?? '').trim().toLowerCase();
-    if (!listCompanyMembers(u.companyId).some((m) => m.email.toLowerCase() === email)) {
+    if (!companies.members(u.companyId).some((m) => m.email.toLowerCase() === email)) {
       throw new HttpError(400, 'essa pessoa não está na equipe da empresa — convide em Equipe primeiro');
     }
     projects.addMember(id, email);
@@ -106,7 +106,7 @@ export function projectRoutes(projects: ProjectService): Route[] {
   async function repoCheck(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const u = requireDeviceToken(req);
     if (!u) throw new HttpError(401, 'token inválido ou expirado');
-    if (getCompanyPermissions(u.companyId).accessEnabled === false) {
+    if (!companies.accessEnabled(u.companyId)) {
       sendJson(res, 200, { repos: [] });
       return;
     }
@@ -114,7 +114,7 @@ export function projectRoutes(projects: ProjectService): Route[] {
     const repos = (Array.isArray(body.repos) ? body.repos : [])
       .filter((r) => r && typeof r.remote === 'string')
       .map((r) => ({ remote: r.remote as string, branch: typeof r.branch === 'string' ? r.branch : null }));
-    sendJson(res, 200, { repos: projects.checkRepos({ companyId: u.companyId, email: u.email, isOwner: getRole(u.email) === 'owner' }, repos) });
+    sendJson(res, 200, { repos: projects.checkRepos({ companyId: u.companyId, email: u.email, isOwner: companies.role(u.email) === 'owner' }, repos) });
   }
 
   const n = (s: string | undefined) => Number(s);
