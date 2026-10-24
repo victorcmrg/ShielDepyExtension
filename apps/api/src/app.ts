@@ -4,10 +4,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, sendJson } from './shared/http/http';
 import { staticFiles } from './shared/http/static';
 
-// Import tardio (só quando uma /api/* de verdade chega): node:sqlite é um builtin
-// recente demais pra alguns pipelines de transform de teste reconhecerem no grafo
-// estático de import — carregar sob demanda evita puxar o banco (e node:sqlite)
-// pra dentro de suites que nunca tocam em rota nenhuma de autenticação.
+// Import tardio (só quando uma /api/* de verdade chega): a composição abre o banco e aplica as
+// migrations ao carregar. Sob demanda, quem só serve o site (e os testes que nunca tocam numa
+// rota da API) não abre banco nenhum. O server.ts carrega antes de ouvir, para falhar cedo.
 let composition: typeof import('./composition') | undefined;
 async function getComposition(): Promise<typeof import('./composition')> {
   composition ??= await import('./composition');

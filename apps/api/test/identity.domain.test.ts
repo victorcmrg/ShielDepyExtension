@@ -78,49 +78,49 @@ function memory(clock = { t: 1000 }) {
     },
   } as unknown as IdentityRepositories;
   const invitations = new Map<string, { companyId: number; initialPasswordHash: string | null }>();
-  const service = new IdentityService(repos, {} as never, { getAssignment: (e) => invitations.get(e) ?? null }, () => clock.t);
+  const service = new IdentityService(repos, {} as never, { getAssignment: async (e) => invitations.get(e) ?? null }, () => clock.t);
   return { service, clock, invitations, users };
 }
 
 describe('IdentityService (repositórios em memória)', () => {
-  it('login por senha: sem convite 403; convite sem senha 401; senha errada 401; primeiro login cria a conta', () => {
+  it('login por senha: sem convite 403; convite sem senha 401; senha errada 401; primeiro login cria a conta', async () => {
     const { service, invitations, users } = memory();
-    expect(service.loginWithPassword('ana@acme.test', 'x')).toMatchObject({ ok: false, status: 403 });
+    expect(await service.loginWithPassword('ana@acme.test', 'x')).toMatchObject({ ok: false, status: 403 });
     invitations.set('ana@acme.test', { companyId: 1, initialPasswordHash: null });
-    expect(service.loginWithPassword('ana@acme.test', 'x')).toMatchObject({ ok: false, status: 401 });
+    expect(await service.loginWithPassword('ana@acme.test', 'x')).toMatchObject({ ok: false, status: 401 });
     invitations.set('ana@acme.test', { companyId: 1, initialPasswordHash: hashPassword('Senha-Inicial-1') });
-    expect(service.loginWithPassword('ana@acme.test', 'errada')).toMatchObject({ ok: false, status: 401, error: 'credenciais inválidas' });
-    const ok = service.loginWithPassword(' Ana@Acme.test ', 'Senha-Inicial-1');
+    expect(await service.loginWithPassword('ana@acme.test', 'errada')).toMatchObject({ ok: false, status: 401, error: 'credenciais inválidas' });
+    const ok = await service.loginWithPassword(' Ana@Acme.test ', 'Senha-Inicial-1');
     expect(ok).toMatchObject({ ok: true, user: { email: 'ana@acme.test', companyId: 1 } });
     expect(users).toHaveLength(1);
   });
 
-  it('troca de senha: mínimo de 8; com senha, exige a atual', () => {
+  it('troca de senha: mínimo de 8; com senha, exige a atual', async () => {
     const { service, invitations } = memory();
     invitations.set('ana@acme.test', { companyId: 1, initialPasswordHash: hashPassword('Senha-Inicial-1') });
-    const { user } = service.loginWithPassword('ana@acme.test', 'Senha-Inicial-1') as { user: User };
-    expect(service.changePassword(user.id, 'Senha-Inicial-1', 'curta')).toMatchObject({ ok: false, status: 400 });
-    expect(service.changePassword(user.id, 'errada', 'Nova-Senha-22')).toMatchObject({ ok: false, status: 401 });
-    expect(service.changePassword(user.id, 'Senha-Inicial-1', 'Nova-Senha-22')).toEqual({ ok: true });
-    expect(service.loginWithPassword('ana@acme.test', 'Nova-Senha-22').ok).toBe(true);
+    const { user } = (await service.loginWithPassword('ana@acme.test', 'Senha-Inicial-1')) as { user: User };
+    expect(await service.changePassword(user.id, 'Senha-Inicial-1', 'curta')).toMatchObject({ ok: false, status: 400 });
+    expect(await service.changePassword(user.id, 'errada', 'Nova-Senha-22')).toMatchObject({ ok: false, status: 401 });
+    expect(await service.changePassword(user.id, 'Senha-Inicial-1', 'Nova-Senha-22')).toEqual({ ok: true });
+    expect((await service.loginWithPassword('ana@acme.test', 'Nova-Senha-22')).ok).toBe(true);
   });
 
-  it('cerimônia ponta a ponta: pendente → confirmada → código vira token uma vez; o token vale até ser revogado', () => {
+  it('cerimônia ponta a ponta: pendente → confirmada → código vira token uma vez; o token vale até ser revogado', async () => {
     const { service, clock } = memory();
-    expect(service.ceremonyStatus('s1')).toBe('pending');
-    const code = service.confirmCeremony('s1', 7)!;
+    expect(await service.ceremonyStatus('s1')).toBe('pending');
+    const code = (await service.confirmCeremony('s1', 7))!;
     expect(code).toBeTruthy();
-    expect(service.confirmCeremony('s1', 7)).toBeNull();
-    const token = service.exchangeCode(code, 'VS Code do Ana')!;
+    expect(await service.confirmCeremony('s1', 7)).toBeNull();
+    const token = (await service.exchangeCode(code, 'VS Code do Ana'))!;
     expect(token.startsWith('sde_')).toBe(true);
-    expect(service.exchangeCode(code)).toBeNull();
-    expect(service.deviceUser(token)).toMatchObject({ id: 7 });
-    service.revokeDeviceToken(token);
-    expect(service.deviceUser(token)).toBeNull();
+    expect(await service.exchangeCode(code)).toBeNull();
+    expect(await service.deviceUser(token)).toMatchObject({ id: 7 });
+    await service.revokeDeviceToken(token);
+    expect(await service.deviceUser(token)).toBeNull();
     // cerimônia esquecida: depois de 5 minutos, expira
-    service.ceremonyStatus('s2');
+    await service.ceremonyStatus('s2');
     clock.t += 6 * 60 * 1000;
-    expect(service.ceremonyStatus('s2')).toBe('expired');
-    expect(service.confirmCeremony('s2', 7)).toBeNull();
+    expect(await service.ceremonyStatus('s2')).toBe('expired');
+    expect(await service.confirmCeremony('s2', 7)).toBeNull();
   });
 });

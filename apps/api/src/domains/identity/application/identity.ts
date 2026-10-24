@@ -31,20 +31,20 @@ export class IdentityService {
   // --- login -----------------------------------------------------------------------
 
   /** Primeiro login cria a conta a partir do convite (com a senha inicial dele). */
-  loginWithPassword(rawEmail: string, password: string): LoginResult {
+  async loginWithPassword(rawEmail: string, password: string): Promise<LoginResult> {
     const email = normalizeEmail(rawEmail);
-    let user = this.repos.users.byEmail(email);
+    let user = await this.repos.users.byEmail(email);
     if (!user) {
-      const assignment = this.invitations.getAssignment(email);
+      const assignment = await this.invitations.getAssignment(email);
       if (!assignment) return { ok: false, status: 403, error: 'e-mail não autorizado — peça ao admin para liberar seu acesso' };
       if (!assignment.initialPasswordHash) return { ok: false, status: 401, error: 'conta ainda sem senha configurada — use login social ou peça ao admin' };
       if (!verifyPassword(password, assignment.initialPasswordHash)) return { ok: false, status: 401, error: 'credenciais inválidas' };
-      user = this.repos.users.create(email, assignment.companyId, assignment.initialPasswordHash, this.now());
+      user = await this.repos.users.create(email, assignment.companyId, assignment.initialPasswordHash, this.now());
     } else {
       if (!user.passwordHash) return { ok: false, status: 401, error: 'esta conta usa login social — entre com Google ou GitHub' };
       if (!verifyPassword(password, user.passwordHash)) return { ok: false, status: 401, error: 'credenciais inválidas' };
     }
-    this.repos.users.touchLastLogin(user.id, this.now());
+    await this.repos.users.touchLastLogin(user.id, this.now());
     return { ok: true, user };
   }
 
@@ -53,17 +53,17 @@ export class IdentityService {
   }
 
   /** Começa o login social; `deviceState` volta no fim, para seguir para a cerimônia da extensão. */
-  startOAuth(provider: OAuthProvider, deviceState: string | null): string {
+  async startOAuth(provider: OAuthProvider, deviceState: string | null): Promise<string> {
     const state = randomToken(24);
     const now = this.now();
-    this.repos.oauthStates.create(state, provider, redirectContextFor(deviceState), now, now + OAUTH_STATE_TTL_MS);
+    await this.repos.oauthStates.create(state, provider, redirectContextFor(deviceState), now, now + OAUTH_STATE_TTL_MS);
     return this.oauth.authorizeUrl(provider, state);
   }
 
   async finishOAuth(provider: OAuthProvider, code: string, state: string): Promise<OAuthResult> {
-    const saved = this.repos.oauthStates.find(state);
+    const saved = await this.repos.oauthStates.find(state);
     if (!saved || !canConsumeState(saved, provider, this.now())) return { ok: false, error: 'oauth_expired' };
-    this.repos.oauthStates.consume(state, this.now());
+    await this.repos.oauthStates.consume(state, this.now());
 
     let profile;
     try {
@@ -72,20 +72,20 @@ export class IdentityService {
       return { ok: false, error: 'oauth_failed' };
     }
 
-    let user = this.repos.users.byOAuthIdentity(provider, profile.providerUserId);
+    let user = await this.repos.users.byOAuthIdentity(provider, profile.providerUserId);
     if (!user) {
-      const existing = this.repos.users.byEmail(profile.email);
+      const existing = await this.repos.users.byEmail(profile.email);
       if (existing) {
-        this.repos.users.linkOAuthIdentity(existing.id, provider, profile.providerUserId, profile.email, this.now());
+        await this.repos.users.linkOAuthIdentity(existing.id, provider, profile.providerUserId, profile.email, this.now());
         user = existing;
       } else {
-        const assignment = this.invitations.getAssignment(profile.email);
+        const assignment = await this.invitations.getAssignment(profile.email);
         if (!assignment) return { ok: false, error: 'not_assigned' };
-        user = this.repos.users.create(profile.email, assignment.companyId, null, this.now());
-        this.repos.users.linkOAuthIdentity(user.id, provider, profile.providerUserId, profile.email, this.now());
+        user = await this.repos.users.create(profile.email, assignment.companyId, null, this.now());
+        await this.repos.users.linkOAuthIdentity(user.id, provider, profile.providerUserId, profile.email, this.now());
       }
     }
-    this.repos.users.touchLastLogin(user.id, this.now());
+    await this.repos.users.touchLastLogin(user.id, this.now());
     const deviceState = deviceStateFrom(saved.redirectContext);
     return { ok: true, user, ...(deviceState && { deviceState }) };
   }
@@ -93,118 +93,118 @@ export class IdentityService {
   // --- sessão web ------------------------------------------------------------------
 
   /** Abre uma sessão; o valor cru vai só para o cookie. */
-  createSession(userId: number): { token: string; maxAgeSeconds: number } {
+  async createSession(userId: number): Promise<{ token: string; maxAgeSeconds: number }> {
     const token = randomToken();
     const now = this.now();
-    this.repos.sessions.create(sha256Hex(token), userId, now, now + SESSION_TTL_MS);
+    await this.repos.sessions.create(sha256Hex(token), userId, now, now + SESSION_TTL_MS);
     return { token, maxAgeSeconds: Math.floor(SESSION_TTL_MS / 1000) };
   }
 
-  sessionUser(rawToken: string): AuthUser | null {
+  async sessionUser(rawToken: string): Promise<AuthUser | null> {
     const hash = sha256Hex(rawToken);
-    const found = this.repos.sessions.find(hash);
+    const found = await this.repos.sessions.find(hash);
     if (!found || !isUsable(found, this.now())) return null;
-    this.repos.sessions.touch(hash, this.now());
+    await this.repos.sessions.touch(hash, this.now());
     return found.user;
   }
 
-  endSession(rawToken: string): void {
-    this.repos.sessions.delete(sha256Hex(rawToken));
+  endSession(rawToken: string): Promise<void> {
+    return this.repos.sessions.delete(sha256Hex(rawToken));
   }
 
   // --- tokens da extensão ------------------------------------------------------------
 
-  issueDeviceToken(userId: number, label?: string | null): string {
+  async issueDeviceToken(userId: number, label?: string | null): Promise<string> {
     const raw = DEVICE_TOKEN_PREFIX + randomToken(32);
     const now = this.now();
-    this.repos.devices.create(sha256Hex(raw), userId, now, now + DEVICE_TOKEN_TTL_MS, deviceLabel(label));
+    await this.repos.devices.create(sha256Hex(raw), userId, now, now + DEVICE_TOKEN_TTL_MS, deviceLabel(label));
     return raw;
   }
 
-  deviceUser(rawToken: string): AuthUser | null {
+  async deviceUser(rawToken: string): Promise<AuthUser | null> {
     const hash = sha256Hex(rawToken);
-    const found = this.repos.devices.find(hash);
+    const found = await this.repos.devices.find(hash);
     const now = this.now();
     if (!found || !isUsable(found, now)) return null;
-    this.repos.devices.slide(hash, now, now + DEVICE_TOKEN_TTL_MS);
+    await this.repos.devices.slide(hash, now, now + DEVICE_TOKEN_TTL_MS);
     return found.user;
   }
 
-  revokeDeviceToken(rawToken: string): void {
-    this.repos.devices.revokeByHash(sha256Hex(rawToken), this.now());
+  revokeDeviceToken(rawToken: string): Promise<void> {
+    return this.repos.devices.revokeByHash(sha256Hex(rawToken), this.now());
   }
 
   /** Dispositivos ainda válidos (não revogados, não expirados) de um usuário. */
-  devices(userId: number): DeviceInfo[] {
-    return this.repos.devices.listActive(userId, this.now()).map((d) => ({ ...d, label: d.label || DEFAULT_DEVICE_LABEL }));
+  async devices(userId: number): Promise<DeviceInfo[]> {
+    return (await this.repos.devices.listActive(userId, this.now())).map((d) => ({ ...d, label: d.label || DEFAULT_DEVICE_LABEL }));
   }
 
   /** Revoga um dispositivo — só se ele for mesmo deste usuário. */
-  revokeDevice(userId: number, deviceId: number): boolean {
+  revokeDevice(userId: number, deviceId: number): Promise<boolean> {
     return this.repos.devices.revokeById(userId, deviceId, this.now());
   }
 
-  revokeAllDevices(userId: number): number {
+  revokeAllDevices(userId: number): Promise<number> {
     return this.repos.devices.revokeAll(userId, this.now());
   }
 
   // --- cerimônia "confiar a extensão" ---------------------------------------------------
 
-  ceremonyStatus(state: string): CeremonyStatus {
+  async ceremonyStatus(state: string): Promise<CeremonyStatus> {
     const now = this.now();
-    const found = this.repos.ceremonies.find(state);
+    const found = await this.repos.ceremonies.find(state);
     if (!found) {
-      this.repos.ceremonies.create(state, now, now + CEREMONY_TTL_MS);
+      await this.repos.ceremonies.create(state, now, now + CEREMONY_TTL_MS);
       return 'pending';
     }
     const status = currentStatus(found, now);
-    if (status !== found.status) this.repos.ceremonies.markExpired(state);
+    if (status !== found.status) await this.repos.ceremonies.markExpired(state);
     return status;
   }
 
   /** O navegador logado confirma: sai o código de troca, de uso único e vida curta. */
-  confirmCeremony(state: string, userId: number): string | null {
+  async confirmCeremony(state: string, userId: number): Promise<string | null> {
     const now = this.now();
-    const found = this.repos.ceremonies.find(state);
+    const found = await this.repos.ceremonies.find(state);
     if (!found || !canConfirm(found, now)) return null;
     const code = randomToken(24);
-    this.repos.ceremonies.confirm(state, userId, sha256Hex(code), now + EXCHANGE_CODE_TTL_MS, now);
+    await this.repos.ceremonies.confirm(state, userId, sha256Hex(code), now + EXCHANGE_CODE_TTL_MS, now);
     return code;
   }
 
   /** A extensão troca o código pelo token de longa duração. */
-  exchangeCode(rawCode: string, label?: string | null): string | null {
+  async exchangeCode(rawCode: string, label?: string | null): Promise<string | null> {
     const now = this.now();
-    const found = this.repos.ceremonies.findByCode(sha256Hex(rawCode));
+    const found = await this.repos.ceremonies.findByCode(sha256Hex(rawCode));
     if (!found || !canExchange(found, now)) return null;
-    this.repos.ceremonies.markExchanged(found.state, now);
+    await this.repos.ceremonies.markExchanged(found.state, now);
     return this.issueDeviceToken(found.userId!, label);
   }
 
   // --- conta e administração -------------------------------------------------------------
 
-  user(id: number): User | null {
+  user(id: number): Promise<User | null> {
     return this.repos.users.byId(id);
   }
 
-  userByEmail(email: string): User | null {
+  userByEmail(email: string): Promise<User | null> {
     return this.repos.users.byEmail(email.toLowerCase());
   }
 
   /** Conta só com login social pode DEFINIR a primeira senha sem a atual; com senha, exige a atual. */
-  changePassword(userId: number, current: string, next: string): PasswordChange {
+  async changePassword(userId: number, current: string, next: string): Promise<PasswordChange> {
     if (next.length < MIN_PASSWORD) return { ok: false, status: 400, error: `a nova senha precisa ter pelo menos ${MIN_PASSWORD} caracteres` };
-    const stored = this.repos.users.byId(userId);
+    const stored = await this.repos.users.byId(userId);
     if (stored?.passwordHash && !verifyPassword(current, stored.passwordHash)) return { ok: false, status: 401, error: 'senha atual incorreta' };
-    this.repos.users.setPasswordHash(userId, hashPassword(next));
+    await this.repos.users.setPasswordHash(userId, hashPassword(next));
     return { ok: true };
   }
 
-  listUsers(): UserListing[] {
+  listUsers(): Promise<UserListing[]> {
     return this.repos.users.list();
   }
 
-  deleteUser(userId: number): void {
-    this.repos.users.delete(userId);
+  deleteUser(userId: number): Promise<void> {
+    return this.repos.users.delete(userId);
   }
 }

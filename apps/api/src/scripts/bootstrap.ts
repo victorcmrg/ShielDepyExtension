@@ -4,8 +4,7 @@
 //
 // Rodar uma vez, depois de definir ADMIN_EMAIL no .env da raiz:
 //   npm run bootstrap -w @shieldepy/api
-import { db } from '../shared/db/sqlite';
-import { companies } from '../composition';
+import { companies, database } from '../composition';
 
 const adminEmail = process.env.ADMIN_EMAIL;
 if (!adminEmail) {
@@ -13,16 +12,17 @@ if (!adminEmail) {
   process.exit(1);
 }
 
-const existing = db.prepare(`SELECT id FROM email_company_assignments WHERE email = ?`).get(adminEmail.toLowerCase());
-
-if (existing) {
-  console.log(`${adminEmail} já está atribuído a uma empresa — nada a fazer.`);
-  process.exit(0);
+try {
+  if (await companies.getAssignment(adminEmail)) {
+    console.log(`${adminEmail} já está atribuído a uma empresa — nada a fazer.`);
+  } else {
+    const company = await companies.create('ShielDepy (admin)');
+    await companies.setPermission(company.id, 'aiEnabled', true);
+    await companies.assign(adminEmail, company.id, null, 'owner');
+    console.log(`Empresa "${company.name}" criada (id ${company.id}) e ${adminEmail} atribuído, com aiEnabled=true.`);
+    console.log('Entre pela primeira vez usando login social (Google/GitHub) ou peça uma senha inicial via /admin.');
+  }
+} finally {
+  // o PGlite só grava no disco ao fechar
+  await database.close();
 }
-
-const company = companies.create('ShielDepy (admin)');
-companies.setPermission(company.id, 'aiEnabled', true);
-companies.assign(adminEmail, company.id, null, 'owner');
-
-console.log(`Empresa "${company.name}" criada (id ${company.id}) e ${adminEmail} atribuído, com aiEnabled=true.`);
-console.log('Entre pela primeira vez usando login social (Google/GitHub) ou peça uma senha inicial via /admin.');

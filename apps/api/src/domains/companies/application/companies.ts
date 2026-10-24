@@ -10,100 +10,100 @@ export class CompanyService {
     private readonly now: () => number = Date.now
   ) {}
 
-  create(name: string): Company {
+  create(name: string): Promise<Company> {
     return this.repo.create(name, this.now());
   }
 
-  get(id: number): Company | null {
+  get(id: number): Promise<Company | null> {
     return this.repo.get(id);
   }
 
-  rename(id: number, name: string): void {
-    this.repo.rename(id, name);
+  rename(id: number, name: string): Promise<void> {
+    return this.repo.rename(id, name);
   }
 
-  delete(id: number): void {
-    this.repo.delete(id);
+  delete(id: number): Promise<void> {
+    return this.repo.delete(id);
   }
 
-  hasEmail(companyId: number, email: string): boolean {
+  hasEmail(companyId: number, email: string): Promise<boolean> {
     return this.repo.hasEmail(companyId, email.toLowerCase());
   }
 
-  permissions(companyId: number): Permissions {
-    return permissionsFrom(this.repo.permissionRows(companyId));
+  async permissions(companyId: number): Promise<Permissions> {
+    return permissionsFrom(await this.repo.permissionRows(companyId));
   }
 
-  accessEnabled(companyId: number): boolean {
-    return isAccessEnabled(this.permissions(companyId));
+  async accessEnabled(companyId: number): Promise<boolean> {
+    return isAccessEnabled(await this.permissions(companyId));
   }
 
-  setPermission(companyId: number, key: string, value: boolean): void {
-    this.repo.setPermission(companyId, key, value);
+  setPermission(companyId: number, key: string, value: boolean): Promise<void> {
+    return this.repo.setPermission(companyId, key, value);
   }
 
-  listWithPermissions(): CompanyWithPermissions[] {
-    const { members, pending } = this.repo.memberCounts();
-    return this.repo.list().map((c) => ({
-      ...c,
-      permissions: this.permissions(c.id),
-      memberCount: members.get(c.id) ?? 0,
-      pendingCount: pending.get(c.id) ?? 0,
-    }));
+  async listWithPermissions(): Promise<CompanyWithPermissions[]> {
+    const { members, pending } = await this.repo.memberCounts();
+    const list: CompanyWithPermissions[] = [];
+    for (const c of await this.repo.list()) {
+      list.push({ ...c, permissions: await this.permissions(c.id), memberCount: members.get(c.id) ?? 0, pendingCount: pending.get(c.id) ?? 0 });
+    }
+    return list;
   }
 
-  members(companyId: number): Member[] {
+  members(companyId: number): Promise<Member[]> {
     return this.repo.members(companyId, this.now());
   }
 
   /** Colegas da mesma empresa — só o que um membro comum pode ver (e-mail + se já entrou). */
-  teammates(companyId: number): { email: string; status: 'active' | 'pending' }[] {
-    return this.members(companyId).map((m) => ({ email: m.email, status: m.status }));
+  async teammates(companyId: number): Promise<{ email: string; status: 'active' | 'pending' }[]> {
+    return (await this.members(companyId)).map((m) => ({ email: m.email, status: m.status }));
   }
 
-  isMember(companyId: number, email: string): boolean {
+  async isMember(companyId: number, email: string): Promise<boolean> {
     const e = email.toLowerCase();
-    return this.members(companyId).some((m) => m.email.toLowerCase() === e);
+    return (await this.members(companyId)).some((m) => m.email.toLowerCase() === e);
   }
 
-  overview(): Overview {
-    const perms = this.repo.list().map((c) => this.permissions(c.id));
+  async overview(): Promise<Overview> {
+    const perms: Permissions[] = [];
+    for (const c of await this.repo.list()) perms.push(await this.permissions(c.id));
     return {
       companies: perms.length,
       suspendedCompanies: perms.filter((p) => !p.accessEnabled).length,
       aiCompanies: perms.filter((p) => p.aiEnabled).length,
-      ...this.repo.totals(this.now()),
+      ...(await this.repo.totals(this.now())),
     };
   }
 
   /** Libera o e-mail na empresa (convite). Sem `role`, quem já tinha papel mantém; quem é novo vira membro. */
-  assign(email: string, companyId: number, initialPassword?: string | null, role?: Role): void {
+  assign(email: string, companyId: number, initialPassword?: string | null, role?: Role): Promise<void> {
     const hash = initialPassword ? hashPassword(initialPassword) : null;
-    this.repo.assign(email.toLowerCase(), companyId, hash, role ?? null, this.now());
+    return this.repo.assign(email.toLowerCase(), companyId, hash, role ?? null, this.now());
   }
 
-  getAssignment(email: string): Assignment | null {
+  getAssignment(email: string): Promise<Assignment | null> {
     return this.repo.getAssignment(email.toLowerCase());
   }
 
   /** Papel do e-mail na empresa dele ('member' se não houver registro). */
-  role(email: string): Role {
-    return this.repo.role(email.toLowerCase()) === 'owner' ? 'owner' : 'member';
+  async role(email: string): Promise<Role> {
+    return (await this.repo.role(email.toLowerCase())) === 'owner' ? 'owner' : 'member';
   }
 
-  setRole(email: string, role: Role): void {
-    this.repo.setRole(email.toLowerCase(), role);
+  setRole(email: string, role: Role): Promise<void> {
+    return this.repo.setRole(email.toLowerCase(), role);
   }
 
-  countOwners(companyId: number): number {
+  countOwners(companyId: number): Promise<number> {
     return this.repo.countOwners(companyId);
   }
 
   /** Tira o convite; quem já tem conta sai removendo o usuário, não o convite. */
-  removeAssignment(email: string): { ok: true } | { ok: false; reason: 'user_exists' } {
+  async removeAssignment(email: string): Promise<{ ok: true } | { ok: false; reason: 'user_exists' }> {
     const e = email.toLowerCase();
-    if (this.repo.hasUser(e)) return { ok: false, reason: 'user_exists' };
-    this.repo.removeAssignment(e);
+    if (await this.repo.hasUser(e)) return { ok: false, reason: 'user_exists' };
+    await this.repo.removeAssignment(e);
     return { ok: true };
   }
 }

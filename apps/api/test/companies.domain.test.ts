@@ -57,35 +57,35 @@ function memory() {
 }
 
 describe('CompanyService (repositório em memória)', () => {
-  it('convite: e-mail em minúsculas, senha guardada como hash, papel mantido quando não vem', () => {
+  it('convite: e-mail em minúsculas, senha guardada como hash, papel mantido quando não vem', async () => {
     const { service, assignments } = memory();
-    service.assign('Ana@Acme.test', 1, 'senha-inicial', 'owner');
+    await service.assign('Ana@Acme.test', 1, 'senha-inicial', 'owner');
     const stored = assignments.get('ana@acme.test')!;
     expect(stored.hash).toBeTruthy();
     expect(stored.hash).not.toContain('senha-inicial');
-    service.assign('ana@acme.test', 1);
-    expect(service.role('ANA@acme.test')).toBe('owner');
-    expect(service.role('ninguem@acme.test')).toBe('member');
+    await service.assign('ana@acme.test', 1);
+    expect(await service.role('ANA@acme.test')).toBe('owner');
+    expect(await service.role('ninguem@acme.test')).toBe('member');
   });
 
-  it('remover convite: quem já tem conta sai pelo usuário, não pelo convite', () => {
+  it('remover convite: quem já tem conta sai pelo usuário, não pelo convite', async () => {
     const { service, users } = memory();
-    service.assign('bruno@acme.test', 1);
+    await service.assign('bruno@acme.test', 1);
     users.add('bruno@acme.test');
-    expect(service.removeAssignment('Bruno@acme.test')).toEqual({ ok: false, reason: 'user_exists' });
+    expect(await service.removeAssignment('Bruno@acme.test')).toEqual({ ok: false, reason: 'user_exists' });
     users.clear();
-    expect(service.removeAssignment('bruno@acme.test')).toEqual({ ok: true });
+    expect(await service.removeAssignment('bruno@acme.test')).toEqual({ ok: true });
   });
 
-  it('visão geral conta empresas suspensas e com IA', () => {
+  it('visão geral conta empresas suspensas e com IA', async () => {
     const { service } = memory();
-    const a = service.create('A');
-    const b = service.create('B');
-    service.create('C');
-    service.setPermission(a.id, 'accessEnabled', false);
-    service.setPermission(b.id, 'aiEnabled', true);
-    expect(service.overview()).toMatchObject({ companies: 3, suspendedCompanies: 1, aiCompanies: 1 });
-    expect(service.accessEnabled(a.id)).toBe(false);
-    expect(service.accessEnabled(b.id)).toBe(true);
+    const a = await service.create('A');
+    const b = await service.create('B');
+    await service.create('C');
+    await service.setPermission(a.id, 'accessEnabled', false);
+    await service.setPermission(b.id, 'aiEnabled', true);
+    expect(await service.overview()).toMatchObject({ companies: 3, suspendedCompanies: 1, aiCompanies: 1 });
+    expect(await service.accessEnabled(a.id)).toBe(false);
+    expect(await service.accessEnabled(b.id)).toBe(true);
   });
 });

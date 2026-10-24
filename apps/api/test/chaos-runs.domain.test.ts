@@ -48,58 +48,58 @@ describe('recordOf: a linha do histórico', () => {
   });
 });
 
-/** Repositórios em memória: o caso de uso não sabe que existe SQLite. */
+/** Repositórios em memória: o caso de uso não sabe que existe banco. */
 function memory() {
   const runs: (RunSummary & { results: ChaosResults; projectId: number })[] = [];
   const tokens: (CiToken & { projectId: number; hash: string; revoked: boolean })[] = [];
   const runRepo: ChaosRunRepository = {
-    insert: (repoId, r: RunRecord, res) => (runs.push({ ...r, id: runs.length + 1, repoId, results: res, projectId: 1 }), runs.length),
-    prune: (repoId, keep) => {
+    insert: async (repoId, r: RunRecord, res) => (runs.push({ ...r, id: runs.length + 1, repoId, results: res, projectId: 1 }), runs.length),
+    prune: async (repoId, keep) => {
       const mine = runs.filter((r) => r.repoId === repoId).sort((a, b) => b.createdAt - a.createdAt);
       for (const old of mine.slice(keep)) runs.splice(runs.indexOf(old), 1);
     },
-    history: (repoId, limit) => runs.filter((r) => r.repoId === repoId).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit),
-    find: (projectId, runId) => {
+    history: async (repoId, limit) => runs.filter((r) => r.repoId === repoId).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit),
+    find: async (projectId, runId) => {
       const r = runs.find((x) => x.id === runId && x.projectId === projectId);
       return r ? { summary: r, results: r.results } : null;
     },
   };
   const tokenRepo: CiTokenRepository = {
-    create: (projectId, hash, label, createdBy, now) => (tokens.push({ id: tokens.length + 1, projectId, hash, label, createdBy, createdAt: now, lastUsedAt: null, revoked: false }), tokens.length),
-    listActive: (projectId) => tokens.filter((t) => t.projectId === projectId && !t.revoked),
-    revoke: (projectId, id) => {
+    create: async (projectId, hash, label, createdBy, now) => (tokens.push({ id: tokens.length + 1, projectId, hash, label, createdBy, createdAt: now, lastUsedAt: null, revoked: false }), tokens.length),
+    listActive: async (projectId) => tokens.filter((t) => t.projectId === projectId && !t.revoked),
+    revoke: async (projectId, id) => {
       const t = tokens.find((x) => x.id === id && x.projectId === projectId && !x.revoked);
       if (t) t.revoked = true;
       return !!t;
     },
-    findActive: (hash) => tokens.find((t) => t.hash === hash && !t.revoked) ?? null,
-    markUsed: (id, now) => void (tokens.find((t) => t.id === id)!.lastUsedAt = now),
+    findActive: async (hash) => tokens.find((t) => t.hash === hash && !t.revoked) ?? null,
+    markUsed: async (id, now) => void (tokens.find((t) => t.id === id)!.lastUsedAt = now),
   };
-  const service = new ChaosRunService(runRepo, tokenRepo, { repoIdByRemote: (projectId, remote) => (projectId === 1 && remote === 'acme/x' ? 10 : null) }, () => 1000);
+  const service = new ChaosRunService(runRepo, tokenRepo, { repoIdByRemote: async (projectId, remote) => (projectId === 1 && remote === 'acme/x' ? 10 : null) }, () => 1000);
   return { service, tokens };
 }
 
 describe('ChaosRunService (repositórios em memória)', () => {
-  it('token: o valor só sai na criação, o banco guarda o hash; revogado deixa de valer', () => {
+  it('token: o valor só sai na criação, o banco guarda o hash; revogado deixa de valer', async () => {
     const { service, tokens } = memory();
-    const { id, token } = service.createCiToken(1, 'Actions', 'dono@acme.test');
+    const { id, token } = await service.createCiToken(1, 'Actions', 'dono@acme.test');
     expect(token.startsWith('sdci_')).toBe(true);
     expect(tokens[0]!.hash).not.toBe(token);
-    expect(service.projectForCiToken(token)).toBe(1);
-    expect(service.listCiTokens(1)[0]!.lastUsedAt).toBe(1000);
-    expect(service.projectForCiToken('outro_formato')).toBeNull();
-    expect(service.revokeCiToken(1, id)).toBe(true);
-    expect(service.projectForCiToken(token)).toBeNull();
+    expect(await service.projectForCiToken(token)).toBe(1);
+    expect((await service.listCiTokens(1))[0]!.lastUsedAt).toBe(1000);
+    expect(await service.projectForCiToken('outro_formato')).toBeNull();
+    expect(await service.revokeCiToken(1, id)).toBe(true);
+    expect(await service.projectForCiToken(token)).toBeNull();
   });
 
-  it('publicar: só em repositório do projeto; grava e respeita a retenção', () => {
+  it('publicar: só em repositório do projeto; grava e respeita a retenção', async () => {
     const { service } = memory();
     const upload = { version: 1, remote: 'acme/x', commit: 'c', results: results() };
-    expect(service.publish(1, { ...upload, remote: 'acme/outro' })).toEqual({ ok: false, reason: 'repo_not_in_project' });
-    expect(() => service.publish(1, { version: 1 })).toThrow(UploadError);
-    const published = service.publish(1, upload);
+    expect(await service.publish(1, { ...upload, remote: 'acme/outro' })).toEqual({ ok: false, reason: 'repo_not_in_project' });
+    await expect(service.publish(1, { version: 1 })).rejects.toThrow(UploadError);
+    const published = await service.publish(1, upload);
     expect(published.ok).toBe(true);
-    for (let i = 0; i < MAX_RUNS_PER_REPO + 5; i++) service.record(10, parseUpload(upload), 2000 + i);
-    expect(service.history(10, 500)).toHaveLength(MAX_RUNS_PER_REPO);
+    for (let i = 0; i < MAX_RUNS_PER_REPO + 5; i++) await service.record(10, parseUpload(upload), 2000 + i);
+    expect(await service.history(10, 500)).toHaveLength(MAX_RUNS_PER_REPO);
   });
 });

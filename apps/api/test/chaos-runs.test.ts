@@ -1,5 +1,5 @@
 // V3: o CI publica execuções do caos no portal. Banco num diretório temporário (SHIELDEPY_DATA_DIR),
-// definido antes de qualquer módulo do servidor abrir o SQLite.
+// definido antes de a composição abrir o banco (PGlite em SHIELDEPY_DATA_DIR/pglite).
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -40,32 +40,31 @@ let chaosRuns: typeof import('../src/composition').chaosRuns;
 
 
 beforeAll(async () => {
-  const { companies, identity, projects, chaosRuns: runs } = await import('../src/composition');
-  const { SqliteUserRepository } = await import('../src/domains/identity/infra/SqliteIdentityRepositories');
-  const { db } = await import('../src/shared/db/sqlite');
-  const users = new SqliteUserRepository(db);
+  const { companies, database, identity, projects, chaosRuns: runs } = await import('../src/composition');
+  const { DrizzleUserRepository } = await import('../src/domains/identity/infra/DrizzleIdentityRepositories');
+  const users = new DrizzleUserRepository(database.db);
   chaosRuns = runs;
 
   const { createHandler } = await import('../src/app');
 
-  const acme = companies.create('Acme');
-  const other = companies.create('Outra');
-  const user = (email: string, companyId: number, role: 'owner' | 'member') => {
-    companies.assign(email, companyId, null, role);
+  const acme = await companies.create('Acme');
+  const other = await companies.create('Outra');
+  const user = async (email: string, companyId: number, role: 'owner' | 'member') => {
+    await companies.assign(email, companyId, null, role);
     return users.create(email, companyId, null, Date.now());
   };
-  const owner = user('dono@acme.test', acme.id, 'owner');
-  const member = user('ana@acme.test', acme.id, 'member');
-  const outsider = user('eve@outra.test', other.id, 'owner');
-  const project = projects.create(acme.id, 'Pedidos', '');
+  const owner = await user('dono@acme.test', acme.id, 'owner');
+  const member = await user('ana@acme.test', acme.id, 'member');
+  const outsider = await user('eve@outra.test', other.id, 'owner');
+  const project = await projects.create(acme.id, 'Pedidos', '');
   projectId = project.id;
-  otherProjectId = projects.create(acme.id, 'Outro projeto', '').id;
-  projects.addRepo(projectId, 'git@github.com:Acme/Checkout.git');
-  repoId = projects.listRepos(projectId)[0]!.id;
-  projects.addMember(projectId, 'ana@acme.test');
-  ownerCookie = `shieldepy_session=${identity.createSession(owner.id).token}`;
-  memberCookie = `shieldepy_session=${identity.createSession(member.id).token}`;
-  outsiderCookie = `shieldepy_session=${identity.createSession(outsider.id).token}`;
+  otherProjectId = (await projects.create(acme.id, 'Outro projeto', '')).id;
+  await projects.addRepo(projectId, 'git@github.com:Acme/Checkout.git');
+  repoId = (await projects.listRepos(projectId))[0]!.id;
+  await projects.addMember(projectId, 'ana@acme.test');
+  ownerCookie = `shieldepy_session=${(await identity.createSession(owner.id)).token}`;
+  memberCookie = `shieldepy_session=${(await identity.createSession(member.id)).token}`;
+  outsiderCookie = `shieldepy_session=${(await identity.createSession(outsider.id)).token}`;
 
   const staticDir = mkdtempSync(join(tmpdir(), 'shieldepy-dist-'));
   writeFileSync(join(staticDir, 'app.html'), '<!doctype html><title>portal</title>');
@@ -73,12 +72,12 @@ beforeAll(async () => {
   server = createServer((req, res) => void handler(req, res));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
+}, 60_000); // abrir o PGlite e aplicar as migrations passa dos 10 s padrão com a suíte inteira rodando
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
   // no Windows, o arquivo do banco aberto não deixa apagar a pasta
-  (await import('../src/shared/db/sqlite')).db.close();
+  await (await import('../src/composition')).database.close();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -174,10 +173,10 @@ describe('V3b — leitura no portal', () => {
     expect((await call('GET', `/api/projects/${projectId}/chaos/runs/999999`, { cookie: ownerCookie })).status).toBe(404);
   });
 
-  it('retenção: só as últimas 100 execuções por repositório', () => {
+  it('retenção: só as últimas 100 execuções por repositório', async () => {
     const body = { version: 1 as const, remote: 'x', commit: 'c', results: { ...RESULTS, hits: 0, outcomes: [] } as never };
-    for (let i = 0; i < 105; i++) chaosRuns.record(repoId, body, Date.now() + i);
-    expect(chaosRuns.history(repoId, 500)).toHaveLength(100);
-    expect(chaosRuns.history(repoId, 1)[0]!.status).toBe('passed');
+    for (let i = 0; i < 105; i++) await chaosRuns.record(repoId, body, Date.now() + i);
+    expect(await chaosRuns.history(repoId, 500)).toHaveLength(100);
+    expect((await chaosRuns.history(repoId, 1))[0]!.status).toBe('passed');
   });
 });

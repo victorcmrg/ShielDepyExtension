@@ -17,50 +17,50 @@ export class ChaosRunService {
   ) {}
 
   /** Cria um token para o CI publicar neste projeto. O valor só existe aqui: o banco guarda o hash. */
-  createCiToken(projectId: number, label: string, createdBy: string): { id: number; token: string } {
+  async createCiToken(projectId: number, label: string, createdBy: string): Promise<{ id: number; token: string }> {
     const token = CI_TOKEN_PREFIX + randomToken(32);
-    return { id: this.tokens.create(projectId, sha256Hex(token), label, createdBy, this.now()), token };
+    return { id: await this.tokens.create(projectId, sha256Hex(token), label, createdBy, this.now()), token };
   }
 
-  listCiTokens(projectId: number): CiToken[] {
+  listCiTokens(projectId: number): Promise<CiToken[]> {
     return this.tokens.listActive(projectId);
   }
 
-  revokeCiToken(projectId: number, tokenId: number): boolean {
+  revokeCiToken(projectId: number, tokenId: number): Promise<boolean> {
     return this.tokens.revoke(projectId, tokenId, this.now());
   }
 
   /** Projeto do token (e marca o uso). Revogado ou desconhecido: null. */
-  projectForCiToken(raw: string): number | null {
+  async projectForCiToken(raw: string): Promise<number | null> {
     if (!looksLikeCiToken(raw)) return null;
-    const found = this.tokens.findActive(sha256Hex(raw));
+    const found = await this.tokens.findActive(sha256Hex(raw));
     if (!found) return null;
-    this.tokens.markUsed(found.id, this.now());
+    await this.tokens.markUsed(found.id, this.now());
     return found.projectId;
   }
 
   /** Valida o upload (UploadError se vier quebrado) e grava, se o repositório for do projeto. */
-  publish(projectId: number, raw: unknown): PublishResult {
+  async publish(projectId: number, raw: unknown): Promise<PublishResult> {
     const upload = parseUpload(raw);
-    const repoId = this.repos.repoIdByRemote(projectId, upload.remote);
+    const repoId = await this.repos.repoIdByRemote(projectId, upload.remote);
     if (!repoId) return { ok: false, reason: 'repo_not_in_project' };
-    return { ok: true, runId: this.record(repoId, upload) };
+    return { ok: true, runId: await this.record(repoId, upload) };
   }
 
   /** Grava uma execução já validada e aplica a retenção do repositório. */
-  record(repoId: number, upload: ChaosRunUpload, createdAt = this.now()): number {
-    const id = this.runs.insert(repoId, recordOf(upload, createdAt), upload.results);
-    this.runs.prune(repoId, MAX_RUNS_PER_REPO);
+  async record(repoId: number, upload: ChaosRunUpload, createdAt = this.now()): Promise<number> {
+    const id = await this.runs.insert(repoId, recordOf(upload, createdAt), upload.results);
+    await this.runs.prune(repoId, MAX_RUNS_PER_REPO);
     return id;
   }
 
   /** As execuções mais recentes de um repositório (resumo, sem o resultado). */
-  history(repoId: number, limit = HISTORY): RunSummary[] {
+  history(repoId: number, limit = HISTORY): Promise<RunSummary[]> {
     return this.runs.history(repoId, limit);
   }
 
   /** Uma execução com o resultado completo; null se não existe ou não é deste projeto. */
-  getRun(projectId: number, runId: number): { summary: RunSummary; results: ChaosResults } | null {
+  getRun(projectId: number, runId: number): Promise<{ summary: RunSummary; results: ChaosResults } | null> {
     return this.runs.find(projectId, runId);
   }
 }

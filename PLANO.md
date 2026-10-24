@@ -9,12 +9,13 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 3. Ler as decisões que a etapa cita, em [`docs/decisoes/`](docs/decisoes/README.md).
 4. Rodar `git log --oneline -15` para ver as últimas tarefas feitas.
 
-## Onde estamos (2026-10-23)
+## Onde estamos (2026-10-24)
 
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) na branch `feat/separacao-web`, esperando o merge na `main` (usuário). A `apps/api` agora é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`.
-- **Em andamento: P1 (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md))** na branch `feat/postgres-drizzle`, criada a partir da `feat/separacao-web` (a S ainda não está na `main`). **P1a ✅**: esquema, primeira migration e a conexão, ainda sem uso. **Parado aqui em 2026-10-23, a pedido do usuário.** Para retomar, comece pela **P1b** (detalhe na tarefa P1, mais abaixo).
+- **Em andamento: P1 (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md))** na branch `feat/postgres-drizzle`, criada a partir da `feat/separacao-web` (a S ainda não está na `main`). **P1a ✅** (esquema, migration, conexão) e **P1b ✅** (2026-10-24): a API inteira roda no Postgres/PGlite, e o `node:sqlite` saiu. Próxima: **P1c** (scripts `db:migrate`, `.env.example` e documentação).
+  - **Para trabalhar nesta etapa noutra máquina:** a `main` não tem a S nem a P1. Um `git pull` na `main` não traz nada disso: rode `git fetch` e `git switch feat/postgres-drizzle`, e depois `npm install` na raiz (a pasta `shieldepy_p1/` é do layout antigo; se ainda existir aí, é resto de `node_modules` e arquivos gerados, e pode ser apagada).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -39,7 +40,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 | Etapa | O que | Status |
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
-| P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | P1a ✅; próxima: P1b (branch `feat/postgres-drizzle`) |
+| P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | P1a ✅, P1b ✅; próxima: P1c (branch `feat/postgres-drizzle`) |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1: testes ✅; falta o `--init` e o `chaos` nos 3 projetos |
 | W | Landing honesta | pendente |
 | G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
@@ -174,19 +175,14 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
     - `src/shared/db/postgres.ts` (`openDatabase`): escolhe PGlite ou `pg` e aplica as migrations.
     - `drizzle.config.ts`, o script `db:generate` e a primeira migration `drizzle/0000_inicial.sql`.
     - O `test/db.test.ts` confere que as migrations criam todas as tabelas do esquema e que reabrir o banco não reaplica nada.
-    - **Ainda nada usa o Postgres:** os repositórios seguem no `node:sqlite` (`shared/db/sqlite.ts`).
-  - **P1b — próxima: trocar os repositórios para Drizzle.** Tem que ser uma fatia só, porque há consultas que cruzam tabelas de domínios diferentes.
-    1. **`composition.ts`:** abrir o banco com `await openDatabase()` (top-level await; o `app.ts` já importa a composição de forma tardia) e exportar `database` para os testes e os scripts fecharem.
-    2. **Portas assíncronas:** as portas de cada domínio (`domains/*/application/ports.ts`) passam a devolver `Promise`, e os serviços viram `async`.
-    3. **Rotas:** os handlers viram `async` e esperam os serviços. O `Access` (`shared/http/access.ts`) também vira assíncrono (`session`, `device`, `user`, `owner`, `admin`), porque a sessão está no banco. O `projectFor` local de `projects/http` e `chaos-runs/http` também.
-    4. **Repositórios Drizzle no lugar dos `Sqlite*Repository`:** `domains/*/infra/*`, mesmo comportamento. Atenção:
-       - `ORDER BY name COLLATE NOCASE` vira `lower(name)`;
-       - os `ON CONFLICT` (convite, membro, atividade, identidade social) passam para `onConflictDoUpdate` ou `onConflictDoNothing`;
-       - as transações (excluir empresa ou usuário) usam `db.transaction`;
-       - o `payload` volta como objeto (`jsonb`), sem `JSON.parse`.
-    5. **Saem** o `shared/db/sqlite.ts`, o `SHIELDEPY_DATA_DIR/auth.db` e o `createRequire('node:sqlite')`.
-    6. **Testes:** o `chaos-runs.test.ts` e os scripts passam a usar a composição assíncrona, com o PGlite numa pasta temporária pelo `SHIELDEPY_DATA_DIR`. Os testes de domínio (repositórios em memória) ganham `async`.
-    7. **Conferência:** `npm run check` verde, e as mesmas fumaças da S7c, S7d e S7e contra a API. Os scripts ficaram no scratchpad da sessão e não estão no repositório: refazer pelos comandos descritos nos commits da S7.
+  - **P1b ✅ Os repositórios no Drizzle** (uma fatia só: há consultas que cruzam tabelas de domínios diferentes).
+    - `composition.ts` abre o banco com top-level await (`openDatabase()`) e exporta `database`; testes e scripts o fecham no fim. O PGlite só grava no disco ao fechar, então o `server.ts` fecha no `SIGINT`/`SIGTERM`. O `server.ts` também carrega a composição antes de ouvir: banco fora do ar derruba na subida, não na primeira requisição.
+    - Portas, serviços, rotas e o `Access` (`shared/http/access.ts`) ficaram assíncronos.
+    - `domains/*/infra/Drizzle*Repository` no lugar dos `Sqlite*` (renomeados com `git mv`), mesmo comportamento: `lower(name)` no lugar do `COLLATE NOCASE` (com o `id` desempatando), `onConflictDoUpdate`/`onConflictDoNothing`, `db.transaction` ao excluir empresa e usuário, o `payload` volta como objeto, e os `count()` do Drizzle já devolvem número (o Postgres devolve `bigint` como texto).
+    - Saíram o `shared/db/sqlite.ts`, o `auth.db` e o `createRequire('node:sqlite')`. O teste de fronteira proíbe `drizzle-orm`, `pg` e o PGlite no `domain`.
+    - Os dados de demonstração viraram uma função (`src/scripts/demoData.ts`): antes, a demo do TCC dependia de importar o `seedDemo.ts` só para ele rodar. O `seedDemo.ts` e o `scripts/demo/seed.ts` chamam a função e fecham o banco.
+    - **Teste novo, `apps/api/test/portal.test.ts`** (no lugar das fumaças da S7, que estavam só no scratchpad): login e conta, equipe, projetos e repositórios, device flow e o painel do admin, pelo HTTP contra o PGlite. Os dois testes que abrem o banco dão 60 s ao `beforeAll`: com a suíte inteira, subir o PGlite passa dos 10 s padrão.
+    - Conferido: `npm run check` (440 passando); `bootstrap` duas vezes (a segunda acha o admin, ou seja, gravou), `seed:demo` duas vezes, o `scripts/demo/seed.ts`, e a API no ar com login da conta demo.
   - **P1c — scripts e documentação.**
     - Comandos `db:generate` e `db:migrate` (este só aplica, para o deploy).
     - `.env.example` com `DATABASE_URL`.

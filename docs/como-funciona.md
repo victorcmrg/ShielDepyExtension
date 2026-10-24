@@ -285,7 +285,7 @@ empresa pela URL do portal (`shieldepy.webBaseUrl`) e pelo `shieldepy publish`.
 | Resultado do caos em disco (`chaos-results.json`) e o que vai para o portal (`ChaosRunUpload`) | `packages/agent/src/chaos/results.ts`; o envio em `apps/cli/src/publish.ts` |
 | API: servidor, estáticos, cabeçalhos de segurança e o despacho de rotas | `apps/api/src/app.ts`, `server.ts`, `shared/http/*` |
 | API: onde os domínios se juntam (repositórios, serviços, rotas) | `apps/api/src/composition.ts` |
-| API: um domínio (DDD, decisão 0013) | `apps/api/src/domains/<domínio>/{domain,application,infra,http}`; o banco em `shared/db/sqlite.ts` |
+| API: um domínio (DDD, decisão 0013) | `apps/api/src/domains/<domínio>/{domain,application,infra,http}`; o banco (Postgres com Drizzle, decisão 0015) em `shared/db/{schema,postgres}.ts` e as migrations em `apps/api/drizzle/` |
 | API: contas, senhas, sessões, OAuth, device flow e tokens da extensão, quem pode chamar cada rota | `domains/identity/*` (o contrato `Access` em `shared/http/access.ts`) |
 | API: empresas, permissões, convites, papéis, equipe e admin de empresas | `domains/companies/*` |
 | API: projetos, repositórios, membros e o "posso usar este repositório?" da extensão | `domains/projects/*` |

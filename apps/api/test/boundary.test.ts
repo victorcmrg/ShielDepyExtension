@@ -67,7 +67,9 @@ function violations(app: keyof typeof APPS): string[] {
 
 // --- camadas da API (decisão 0013) -------------------------------------------------------------
 const API_SRC = path.join(ROOT, 'apps', 'api', 'src');
-const DRIVERS = ['node:sqlite', 'node:http', 'node:https', 'node:net', 'node:fs', 'node:fs/promises'];
+const DRIVERS = ['drizzle-orm', 'pg', '@electric-sql/pglite', 'node:http', 'node:https', 'node:net', 'node:fs', 'node:fs/promises'];
+/** O pacote ou um subcaminho dele (drizzle-orm/pg-core). */
+const isDriver = (spec: string) => DRIVERS.some((d) => spec === d || spec.startsWith(d + '/'));
 
 /** Onde um arquivo de apps/api/src fica: { domain, layer } em domains/<domain>/<layer>/, ou 'shared'. */
 function placeOf(file: string): { domain: string; layer: string } | 'shared' | null {
@@ -86,7 +88,7 @@ function layerViolation(file: string, spec: string): string | null {
   const target = spec.startsWith('.') ? placeOf(path.resolve(path.dirname(file), spec)) : null;
   if (from === 'shared') return target && target !== 'shared' ? 'shared não importa domínio' : null;
   if (from.layer === 'domain') {
-    if (DRIVERS.includes(spec)) return 'domain não faz I/O';
+    if (isDriver(spec)) return 'domain não faz I/O';
     if (target === 'shared') return 'domain não importa shared';
     if (target && (target.domain !== from.domain || target.layer !== 'domain')) return 'domain só importa o próprio domain';
     return null;
@@ -115,12 +117,15 @@ describe('camadas da API (S7, decisão 0013)', () => {
     const at = (rel: string) => path.join(API_SRC, ...rel.split('/'));
     const domain = at('domains/projects/domain/project.ts');
     const app = at('domains/projects/application/projects.ts');
-    expect(layerViolation(domain, 'node:sqlite')).toBe('domain não faz I/O');
-    expect(layerViolation(domain, '../../../shared/db/sqlite')).toBe('domain não importa shared');
-    expect(layerViolation(domain, '../infra/SqliteProjectRepository')).toBe('domain só importa o próprio domain');
+    expect(layerViolation(domain, 'drizzle-orm')).toBe('domain não faz I/O');
+    expect(layerViolation(domain, 'drizzle-orm/pg-core')).toBe('domain não faz I/O');
+    expect(layerViolation(domain, 'pg')).toBe('domain não faz I/O');
+    expect(layerViolation(domain, 'pgx')).toBeNull();
+    expect(layerViolation(domain, '../../../shared/db/postgres')).toBe('domain não importa shared');
+    expect(layerViolation(domain, '../infra/DrizzleProjectRepository')).toBe('domain só importa o próprio domain');
     expect(layerViolation(domain, '../../companies/domain/company')).toBe('domain só importa o próprio domain');
     expect(layerViolation(domain, './remote')).toBeNull();
-    expect(layerViolation(app, '../../companies/infra/SqliteCompanyRepository')).toBe('outro domínio só pela application dele');
+    expect(layerViolation(app, '../../companies/infra/DrizzleCompanyRepository')).toBe('outro domínio só pela application dele');
     expect(layerViolation(app, '../../companies/application/companies')).toBeNull();
     expect(layerViolation(app, '../domain/project')).toBeNull();
     expect(layerViolation(app, '../../companies')).toBe('outro domínio só pela application dele');

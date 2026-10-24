@@ -43,27 +43,27 @@ function memory() {
 }
 
 describe('ProjectService (repositório em memória)', () => {
-  it('addRepo normaliza o remote e recusa o inválido e o repetido', () => {
+  it('addRepo normaliza o remote e recusa o inválido e o repetido', async () => {
     const { service } = memory();
-    expect(service.addRepo(1, 'git@github.com:Acme/Checkout.git')).toEqual({ ok: true, remote: 'github.com/acme/checkout' });
-    expect(service.addRepo(1, 'https://github.com/acme/checkout')).toEqual({ ok: false, reason: 'duplicate' });
-    expect(service.addRepo(1, 'não é remote')).toEqual({ ok: false, reason: 'invalid' });
-    expect(service.repoIdByRemote(1, 'HTTPS://github.com/Acme/checkout.git')).toBe(1);
+    expect(await service.addRepo(1, 'git@github.com:Acme/Checkout.git')).toEqual({ ok: true, remote: 'github.com/acme/checkout' });
+    expect(await service.addRepo(1, 'https://github.com/acme/checkout')).toEqual({ ok: false, reason: 'duplicate' });
+    expect(await service.addRepo(1, 'não é remote')).toEqual({ ok: false, reason: 'invalid' });
+    expect(await service.repoIdByRemote(1, 'HTTPS://github.com/Acme/checkout.git')).toBe(1);
   });
 
-  it('visibleTo: membro por e-mail, sem diferença de maiúsculas', () => {
+  it('visibleTo: membro por e-mail, sem diferença de maiúsculas', async () => {
     const { service } = memory();
-    service.addMember(1, 'Ana@Acme.test');
-    expect(service.visibleTo(1, { companyId: 10, email: 'ana@acme.test', isOwner: false })).toEqual(acme);
-    expect(service.visibleTo(1, { companyId: 10, email: 'bruno@acme.test', isOwner: false })).toBeNull();
+    await service.addMember(1, 'Ana@Acme.test');
+    expect(await service.visibleTo(1, { companyId: 10, email: 'ana@acme.test', isOwner: false })).toEqual(acme);
+    expect(await service.visibleTo(1, { companyId: 10, email: 'bruno@acme.test', isOwner: false })).toBeNull();
   });
 
-  it('checkRepos: libera o que está num projeto da pessoa, registra o uso e ignora além de 10', () => {
+  it('checkRepos: libera o que está num projeto da pessoa, registra o uso e ignora além de 10', async () => {
     const { service, activity } = memory();
-    service.addRepo(1, 'github.com/acme/checkout');
-    service.addMember(1, 'ana@acme.test');
+    await service.addRepo(1, 'github.com/acme/checkout');
+    await service.addMember(1, 'ana@acme.test');
     const ana = { companyId: 10, email: 'Ana@acme.test', isOwner: false };
-    const result = service.checkRepos(ana, [
+    const result = await service.checkRepos(ana, [
       { remote: 'git@github.com:acme/checkout.git', branch: 'main' },
       { remote: 'github.com/acme/outro' },
       { remote: 'lixo' },
@@ -74,10 +74,10 @@ describe('ProjectService (repositório em memória)', () => {
       { remote: 'lixo', allowed: false, project: null },
     ]);
     expect(activity).toEqual([{ repoId: 1, email: 'ana@acme.test', branch: 'main', at: 5 * ACTIVE_WINDOW_MS }]);
-    expect(service.checkRepos(ana, Array.from({ length: 15 }, () => ({ remote: 'lixo' })))).toHaveLength(10);
+    expect(await service.checkRepos(ana, Array.from({ length: 15 }, () => ({ remote: 'lixo' })))).toHaveLength(10);
   });
 
-  it('a janela de "em uso" é das últimas 24 h', () => {
-    expect(memory().service.listRepos(1)).toEqual([4 * ACTIVE_WINDOW_MS]);
+  it('a janela de "em uso" é das últimas 24 h', async () => {
+    expect(await memory().service.listRepos(1)).toEqual([4 * ACTIVE_WINDOW_MS]);
   });
 });
