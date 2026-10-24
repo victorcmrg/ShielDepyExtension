@@ -1,6 +1,6 @@
 # 0012 — Postgres com migrations; PGlite nos testes
 
-**Data:** 2026-10-23 (confirmado pelo usuário) · **Estado:** valendo
+**Data:** 2026-10-23 (confirmado pelo usuário) · **Estado:** valendo, menos o "SQL puro sem ORM", **substituído pela [0015](0015-drizzle.md)**
 
 **Decisão.**
 - O banco da API passa do `node:sqlite` para **Postgres**, com migrations versionadas em SQL puro e um executor simples (sem ORM, como o código atual).

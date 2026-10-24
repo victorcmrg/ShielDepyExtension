@@ -15,6 +15,7 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0009](0009-modelo-de-venda.md) | Assinatura por empresa; a licença é um direito da conta | 2026-10-23 | valendo |
 | [0010](0010-empresa-em-typescript.md) | A parte da empresa continua em TypeScript | 2026-10-23 | valendo |
 | [0011](0011-tdd-na-empresa.md) | TDD em toda regra de negócio da empresa | 2026-10-23 | valendo |
-| [0012](0012-postgres.md) | Postgres com migrations; PGlite nos testes | 2026-10-23 | valendo |
+| [0012](0012-postgres.md) | Postgres com migrations; PGlite nos testes | 2026-10-23 | valendo; o "sem ORM" foi substituído pela 0015 |
+| [0015](0015-drizzle.md) | Drizzle para o esquema, as consultas e as migrations (não Alembic, não Prisma) | 2026-10-23 | valendo |
 | [0013](0013-api-ddd-por-dominio.md) | `apps/api` em DDD, organizada por domínio | 2026-10-23 | valendo |
 | [0014](0014-organizacao-do-repositorio.md) | Monorepo na raiz, `main` como tronco, plano curto + decisões | 2026-10-23 | valendo |

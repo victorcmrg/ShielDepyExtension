@@ -8,9 +8,17 @@
     "start": "tsx --env-file-if-exists=../../.env src/server.ts",
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
     "bootstrap": "tsx --env-file-if-exists=../../.env src/scripts/bootstrap.ts",
-    "seed:demo": "tsx --env-file-if-exists=../../.env src/scripts/seedDemo.ts"
+    "seed:demo": "tsx --env-file-if-exists=../../.env src/scripts/seedDemo.ts",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1",
     "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11"
   }
 }

@@ -14,7 +14,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) na branch `feat/separacao-web`, esperando o merge na `main` (usuário). A `apps/api` agora é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`.
-- **Próxima: P1 (Postgres).** Antes, decidir com o usuário se as migrations usam um ORM ou query builder (pergunta de 2026-10-23) ou SQL puro, como diz a decisão 0012.
+- **Em andamento: P1 (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md))** na branch `feat/postgres-drizzle`, criada a partir da `feat/separacao-web` (a S ainda não está na `main`). **P1a ✅**: esquema, primeira migration e a conexão, ainda sem uso. **Parado aqui em 2026-10-23, a pedido do usuário.** Para retomar, comece pela **P1b** (detalhe na tarefa P1, mais abaixo).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -39,7 +39,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 | Etapa | O que | Status |
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
-| P1 | Postgres e migrations ([0012](docs/decisoes/0012-postgres.md)) | próxima; ORM × SQL puro a decidir |
+| P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | P1a ✅; próxima: P1b (branch `feat/postgres-drizzle`) |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1: testes ✅; falta o `--init` e o `chaos` nos 3 projetos |
 | W | Landing honesta | pendente |
 | G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
@@ -167,7 +167,32 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 
 **Por que existe:** o portal só roda com `npm run web` em localhost.
 
-- **P1. Postgres e migrations** (logo depois da S; Postgres confirmado em 2026-10-23). Trocar o `node:sqlite` por Postgres com migrations versionadas: SQL puro com um executor simples, para seguir o estilo atual sem ORM. Com a S7, a troca fica nos `infra/*Repository` de cada domínio. Os testes usam PGlite. Script de migração dos dados de demo.
+- **P1. Postgres e migrations com Drizzle** (decisão [0015](docs/decisoes/0015-drizzle.md), escolhida pelo usuário em 2026-10-23; Alembic e Prisma descartados). Trocar o `node:sqlite` por Postgres. Com `DATABASE_URL`, um Postgres de verdade (`pg`); sem ela, o PGlite em `apps/api/data/pglite`, para o dev e os testes não instalarem nada. A API aplica as migrations pendentes ao subir.
+  - **P1a ✅ Esquema e migrations.**
+    - Dependências na `apps/api`: `drizzle-orm` 0.45.4, `pg` 8.23.1, `@electric-sql/pglite` 0.5.11, e no dev `drizzle-kit` 0.31.11 e `@types/pg`.
+    - `src/shared/db/schema.ts` tem as 15 tabelas, iguais às do SQLite: datas em ms como `bigint`, `company_permissions.value` como `boolean` e `chaos_runs.payload` como `jsonb`.
+    - `src/shared/db/postgres.ts` (`openDatabase`): escolhe PGlite ou `pg` e aplica as migrations.
+    - `drizzle.config.ts`, o script `db:generate` e a primeira migration `drizzle/0000_inicial.sql`.
+    - O `test/db.test.ts` confere que as migrations criam todas as tabelas do esquema e que reabrir o banco não reaplica nada.
+    - **Ainda nada usa o Postgres:** os repositórios seguem no `node:sqlite` (`shared/db/sqlite.ts`).
+  - **P1b — próxima: trocar os repositórios para Drizzle.** Tem que ser uma fatia só, porque há consultas que cruzam tabelas de domínios diferentes.
+    1. **`composition.ts`:** abrir o banco com `await openDatabase()` (top-level await; o `app.ts` já importa a composição de forma tardia) e exportar `database` para os testes e os scripts fecharem.
+    2. **Portas assíncronas:** as portas de cada domínio (`domains/*/application/ports.ts`) passam a devolver `Promise`, e os serviços viram `async`.
+    3. **Rotas:** os handlers viram `async` e esperam os serviços. O `Access` (`shared/http/access.ts`) também vira assíncrono (`session`, `device`, `user`, `owner`, `admin`), porque a sessão está no banco. O `projectFor` local de `projects/http` e `chaos-runs/http` também.
+    4. **Repositórios Drizzle no lugar dos `Sqlite*Repository`:** `domains/*/infra/*`, mesmo comportamento. Atenção:
+       - `ORDER BY name COLLATE NOCASE` vira `lower(name)`;
+       - os `ON CONFLICT` (convite, membro, atividade, identidade social) passam para `onConflictDoUpdate` ou `onConflictDoNothing`;
+       - as transações (excluir empresa ou usuário) usam `db.transaction`;
+       - o `payload` volta como objeto (`jsonb`), sem `JSON.parse`.
+    5. **Saem** o `shared/db/sqlite.ts`, o `SHIELDEPY_DATA_DIR/auth.db` e o `createRequire('node:sqlite')`.
+    6. **Testes:** o `chaos-runs.test.ts` e os scripts passam a usar a composição assíncrona, com o PGlite numa pasta temporária pelo `SHIELDEPY_DATA_DIR`. Os testes de domínio (repositórios em memória) ganham `async`.
+    7. **Conferência:** `npm run check` verde, e as mesmas fumaças da S7c, S7d e S7e contra a API. Os scripts ficaram no scratchpad da sessão e não estão no repositório: refazer pelos comandos descritos nos commits da S7.
+  - **P1c — scripts e documentação.**
+    - Comandos `db:generate` e `db:migrate` (este só aplica, para o deploy).
+    - `.env.example` com `DATABASE_URL`.
+    - Os `seed:demo` e `bootstrap` assíncronos.
+    - `docs/como-funciona.md` e `CLAUDE.md` atualizados.
+    - Não há dados de produção para migrar do SQLite: o dev recria com `npm run seed:demo -w @shieldepy/api`.
 - **P2. Deploy (depende de DP3 e DP4).** Dockerfile da API, domínio, TLS, variáveis de ambiente e OAuth do Google e do GitHub com as URLs de produção. Workflow de deploy na `main`.
 - **P3. Segurança.** Rate limit no login e no device flow, cookies `Secure` e `SameSite`, CSP no site, chaves e segredos fora do repositório, rotação documentada. Revisar com `/security-review` antes de abrir para clientes.
 - **P4. Operação.** Backup diário do Postgres com restauração testada uma vez, logs estruturados, alerta de erro e uma página de status simples.
