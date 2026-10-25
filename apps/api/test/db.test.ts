@@ -27,9 +27,11 @@ describe('migrations (Drizzle + PGlite)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'shieldepy-pg-'));
     try {
       const first = await openDatabase({ pgliteDir: dir });
+      expect(first.migrationsApplied).toBeGreaterThan(0);
       await first.db.insert(schema.companies).values({ name: 'Acme', createdAt: 1 });
       await first.close();
       const second = await openDatabase({ pgliteDir: dir });
+      expect(second.migrationsApplied).toBe(0);
       expect(await second.db.select({ name: schema.companies.name }).from(schema.companies)).toEqual([{ name: 'Acme' }]);
       await second.close();
     } finally {

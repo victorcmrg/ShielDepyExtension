@@ -9,7 +9,8 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
     "bootstrap": "tsx --env-file-if-exists=../../.env src/scripts/bootstrap.ts",
     "seed:demo": "tsx --env-file-if-exists=../../.env src/scripts/seedDemo.ts",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/scripts/migrate.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.11",

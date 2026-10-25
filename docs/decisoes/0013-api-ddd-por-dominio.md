@@ -18,7 +18,7 @@ apps/api/src/
 │       cada um com:
 │       ├── domain/       entidades e regras puras, sem I/O
 │       ├── application/  casos de uso; recebem os repositórios por interface
-│       ├── infra/        repositórios SQL (Sqlite* hoje, Postgres na P1)
+│       ├── infra/        repositórios SQL (Drizzle* no Postgres, desde a P1; antes, Sqlite*)
 │       └── http/         rotas
 └── shared/           servidor HTTP, banco (conexão e migrations), config
 ```

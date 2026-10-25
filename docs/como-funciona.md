@@ -398,6 +398,25 @@ Os endereços `.html` antigos (antes do React) não existem mais.
 
 Chaves da IA (para a CLI) e da API (OAuth, URLs): copie `.env.example` para `.env`.
 
+**Banco da API** (Postgres com Drizzle, decisão 0015; a conexão em `apps/api/src/shared/db/postgres.ts`):
+- **Sem `DATABASE_URL`**, a API usa o PGlite (o Postgres compilado para WebAssembly, dentro do Node),
+  gravado em `apps/api/data/pglite`, ou em `SHIELDEPY_DATA_DIR/pglite` se essa variável existir (os
+  testes usam uma pasta temporária). Não precisa instalar nada. O PGlite só grava no disco ao fechar:
+  scripts fecham o banco no fim, e o servidor fecha no Ctrl+C.
+- **Com `DATABASE_URL`**, um Postgres de verdade (`pg`).
+- Nos dois casos, a API aplica as migrations pendentes ao subir.
+
+```bash
+npm run db:migrate -w @shieldepy/api    # só aplica as migrations pendentes e diz quantas (o passo do deploy)
+npm run db:generate -w @shieldepy/api   # depois de mudar o schema.ts: gera a próxima migration em apps/api/drizzle/
+npm run seed:demo -w @shieldepy/api     # dados de demonstração (a conta dono@acme.test)
+npm run bootstrap -w @shieldepy/api     # primeiro admin (ADMIN_EMAIL no .env)
+```
+
+Para mudar o esquema: editar `apps/api/src/shared/db/schema.ts`, rodar o `db:generate`, conferir o SQL
+gerado e commitar a migration junto (o `test/db.test.ts` confere que as migrations criam as tabelas do
+esquema). As datas ficam em ms num `bigint`; o domínio não importa o Drizzle (teste de fronteira).
+
 ### O que os testes cobrem
 
 - **400 testes** (vitest, em 2026-10-23), cobrindo:

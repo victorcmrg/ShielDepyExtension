@@ -36,6 +36,7 @@
 - `npm run cli -- graph|topology|chaos <pasta>`: o motor pela CLI. `chaos examples/checkout-express --offline [--report arq.md]` sai com 1 no vulnerável e 0 no `-fixed`.
 - `npm run mapa:reais`: mede o mapa em projetos reais do GitHub (fixados por commit, fora do repositório).
 - `npm run web:dev`: portal em desenvolvimento (`apps/web` no Vite em 5173, com proxy de `/api` para a `apps/api` em 3001). `npm run web`: build do site + API servindo tudo em 3001. Na extensão, `"shieldepy.webBaseUrl"` aponta para um dos dois. Para testes, o banco vai para uma pasta temporária com `SHIELDEPY_DATA_DIR`. Primeiro admin: `npm run bootstrap -w @shieldepy/api` (com `ADMIN_EMAIL` no `.env`).
+- Banco da API: Postgres com Drizzle ([0015](docs/decisoes/0015-drizzle.md)). Sem `DATABASE_URL`, PGlite em `apps/api/data/pglite` (ou `SHIELDEPY_DATA_DIR/pglite`). `npm run db:migrate -w @shieldepy/api` aplica as migrations pendentes (a API também aplica ao subir); depois de mudar o `schema.ts`, `npm run db:generate -w @shieldepy/api` gera a próxima. Dados de demo: `npm run seed:demo -w @shieldepy/api`.
 - `npm run package:vscode`: gera o `.vsix`.
 - `npm run estimate:chaos` (grátis) e `npm run measure:chaos -- --sim-gastar` (pago: só com autorização).
 - Windows: os caminhos têm acento e espaço (`Área de Trabalho`), use aspas. Os arquivos estão em CRLF; edições por script que procuram `\n` podem não casar (prefira o editor).

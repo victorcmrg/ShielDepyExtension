@@ -11,6 +11,7 @@ import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
 import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator';
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import { migrate as migratePg } from 'drizzle-orm/node-postgres/migrator';
+import { sql } from 'drizzle-orm';
 import pg from 'pg';
 import * as schema from './schema';
 
@@ -20,6 +21,8 @@ export interface Database {
   db: Db;
   /** 'postgres' (DATABASE_URL) ou 'pglite' (arquivo local ou memória). */
   kind: 'postgres' | 'pglite';
+  /** Quantas migrations esta abertura aplicou (0 quando o banco já estava em dia). */
+  migrationsApplied: number;
   close(): Promise<void>;
 }
 
@@ -39,13 +42,26 @@ export async function openDatabase(opts: OpenOptions = {}): Promise<Database> {
   if (url) {
     const pool = new pg.Pool({ connectionString: url });
     const db = drizzlePg(pool, { schema });
+    const before = await appliedMigrations(db as unknown as Db);
     await migratePg(db, { migrationsFolder: MIGRATIONS_DIR });
-    return { db: db as unknown as Db, kind: 'postgres', close: () => pool.end() };
+    const migrationsApplied = (await appliedMigrations(db as unknown as Db)) - before;
+    return { db: db as unknown as Db, kind: 'postgres', migrationsApplied, close: () => pool.end() };
   }
   const dir = opts.pgliteDir ?? join(process.env.SHIELDEPY_DATA_DIR ?? DEFAULT_DATA_DIR, 'pglite');
   if (!dir.startsWith('memory://')) mkdirSync(dir, { recursive: true });
   const client = new PGlite(dir);
   const db = drizzlePglite(client, { schema });
+  const before = await appliedMigrations(db as unknown as Db);
   await migratePglite(db, { migrationsFolder: MIGRATIONS_DIR });
-  return { db: db as unknown as Db, kind: 'pglite', close: () => client.close() };
+  const migrationsApplied = (await appliedMigrations(db as unknown as Db)) - before;
+  return { db: db as unknown as Db, kind: 'pglite', migrationsApplied, close: () => client.close() };
+}
+
+/** Linhas na tabela de controle do Drizzle (drizzle.__drizzle_migrations); 0 se ela ainda não existe. */
+async function appliedMigrations(db: Db): Promise<number> {
+  // node-postgres e PGlite devolvem { rows }
+  const exists = (await db.execute(sql`select to_regclass('drizzle.__drizzle_migrations') is not null as ok`)) as unknown as { rows: { ok: boolean }[] };
+  if (!exists.rows[0]?.ok) return 0;
+  const count = (await db.execute(sql`select count(*)::int as n from drizzle.__drizzle_migrations`)) as unknown as { rows: { n: number }[] };
+  return count.rows[0]?.n ?? 0;
 }
