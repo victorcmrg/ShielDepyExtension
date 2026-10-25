@@ -2,6 +2,7 @@
 // para o pacote `express` — nunca qualquer método chamado `post`. Os prefixos vêm das montagens
 // (`app.use('/api', router)`), seguindo `router` até onde ele é declarado (import, barrel).
 
+import { CHAOS_CONFIG_FILE } from '../chaos-config';
 import type { CodeGraph } from '../code-graph/CodeGraph';
 import { isSymbolNode, type CallArg, type CallSite, type ReceiverCall, type ValueOrigin } from '../code-graph/types';
 import type { HttpMethod, Route, RouteHandler, RouteScan, SkippedRoute } from './types';
@@ -200,7 +201,12 @@ function decoratorRoutes(graph: CodeGraph, all: Array<{ file: string; site: Call
 /** Todas as rotas Express do grafo, com o caminho completo e a cadeia de handlers em ordem. */
 export function findExpressRoutes(graph: CodeGraph): RouteScan {
   const all: Array<{ file: string; site: CallSite }> = [];
-  for (const file of graph.files()) for (const site of graph.callSitesIn(file)) all.push({ file, site });
+  for (const file of graph.files()) {
+    // o contrato do caos é arnês de teste: quando o `createApp` dele remonta os roteadores (app que
+    // chama `listen` no topo), cada rota sairia duas vezes (C1, pg-crud). Ele continua no grafo.
+    if (file.split(/[\\/]/).pop() === CHAOS_CONFIG_FILE) continue;
+    for (const site of graph.callSitesIn(file)) all.push({ file, site });
+  }
 
   const sites: Array<{ file: string; site: CallSite; router: string }> = [];
   for (const { file, site } of all) {

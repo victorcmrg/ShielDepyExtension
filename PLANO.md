@@ -13,9 +13,8 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
-- **Etapa S ✅** (S1 a S7) na branch `feat/separacao-web`, esperando o merge na `main` (usuário). A `apps/api` agora é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`.
-- **P1 ✅ (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md))** na branch `feat/postgres-drizzle`, criada a partir da `feat/separacao-web` (a S ainda não está na `main`): P1a (esquema, migration, conexão), P1b (a API inteira no Postgres/PGlite; o `node:sqlite` saiu) e P1c (2026-10-24: `db:migrate`, `.env.example` e documentação). Espera o push e o merge na `main` (usuário). **Próxima etapa: C** (C1 restante).
-  - **Para trabalhar nesta etapa noutra máquina:** a `main` não tem a S nem a P1. Um `git pull` na `main` não traz nada disso: rode `git fetch` e `git switch feat/postgres-drizzle` (ou `git pull` já nela), e depois `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo (`node_modules` e arquivos gerados) e pode ser apagada.
+- **Etapa S ✅** (S1 a S7) e **P1 ✅** (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md)): na `main` desde 2026-10-24 (`9d0bc55`, merge fast-forward da `feat/postgres-drizzle`). A `apps/api` é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`, sobre Postgres/PGlite. Noutra máquina: `git pull` na `main` e `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo e pode ser apagada.
+- **Em andamento: etapa C**, na branch `feat/caos-c1`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **Próxima: C2**, começando pela C2d (banco de teste que mostra a corrida).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -41,7 +40,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
 | P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; branch `feat/postgres-drizzle`, esperando o merge) |
-| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1: testes ✅; falta o `--init` e o `chaos` nos 3 projetos |
+| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅; próxima: C2 (branch `feat/caos-c1`) |
 | W | Landing honesta | pendente |
 | G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
 | A | Licença: direito de uso por empresa ([0009](docs/decisoes/0009-modelo-de-venda.md), TDD [0011](docs/decisoes/0011-tdd-na-empresa.md)) | pendente |
@@ -78,18 +77,20 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 
 **Por que existe:** o caos é o diferencial (nenhum concorrente levantado gera caos pela topologia), mas só roda em Express + pg/Prisma + fetch/axios, e com um contrato escrito à mão. A M (ver `docs/historico/PLANO-CHAOS.md`) já pôs o Mongoose e os padrões CommonJS no mapa e na topologia, mas o DB_Chaos só injeta falha no `pg`.
 
-- **C1. Caos em 3 projetos Express reais (restante).** Os projetos são `gothinkster/node-express-realworld-example-app` (`30b68e1`), `prisma/prisma-examples` na pasta `orm/express` (`caa902a`) e `manfraio/rest_api_with_nodejs_and_postgres` (`fdd9fc7`). Clonar no scratchpad, fora do repositório. O `npm run mapa:reais` já clona e mede esses e outros 9 projetos.
-  1. ✅ **Um teste por correção** (as 7 da `3799732`), em `packages/core/test/real-express.test.ts`, bloco "C1".
-  2. Conferir rotas à mão num recorte e rodar `npm run cli -- chaos <pasta> --init` nos três. Registrar as pendências e o que o mapa errou.
-  3. `npm install --ignore-scripts`, deixar o contrato rodando (PGlite para o `pg`; SQLite ou PGlite com adapter para o Prisma; no Prisma 7, rodar `prisma generate` e ver se o gerado vira ruído no mapa) e rodar `chaos --offline --report`. Abrir os testes gerados para julgar os achados.
-  4. Fechar no Registro a tabela (tamanho, cobertura, rotas achadas × reais, pendências do `--init`, tempo para o contrato rodar, achados verdadeiros e falsos) e a lista ordenada para a C2.
-- **C2. Contrato quase automático.** Meta: num projeto Express suportado, o `--init` gera um contrato que roda sem edição ou com no máximo 1 pendência.
+- **C1 ✅ Caos em 3 projetos Express reais** (2026-10-24): `pg-crud` (JS, `pg`), `realworld` (TS, Prisma 4) e `prisma-express` (TS, Prisma 7). Para clonar de novo: `npm run mapa:reais -- --dir <scratchpad> --so realworld,prisma-express,pg-crud`. A tabela, como cada contrato rodou e a lista ordenada para a C2 estão em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md).
+  - Os controles passaram nos três: 5 achados verdadeiros, nenhum falso, e 3 "aguentou" que não provam nada (requisições iguais; invariante sem as respostas). Nenhum `--init` rodou sem edição.
+  - Corrigido no motor: o `createApp` do contrato que remonta os roteadores duplicava as rotas e as hipóteses (`topology/routes.ts` ignora as chamadas do `shieldepy.chaos.config.ts`, que continua no grafo; teste em `code-graph/walk.test.ts`).
+  - Achado principal: o PGlite em memória esconde corridas (não devolve a vez ao event loop). O banco falso precisa de um `setImmediate` por consulta.
+- **C2. Contrato quase automático.** Meta: num projeto Express suportado, o `--init` gera um contrato que roda sem edição ou com no máximo 1 pendência. **Ordem, pela C1:** C2d → C2a → autenticação → C2b/C2c → testes de corrida mais fortes (C2g) → arnês de teste no projeto (C2h). O detalhe de cada uma está na seção 5 do relatório da C1.
   - **C2a. `createApp`:** onde o `express()` é montado e exportado. Não importar o arquivo que chama `listen`.
   - **C2b. Corpos válidos:** zod ou joi → class-validator → tipo TS do `req.body` → propriedades lidas no handler.
   - **C2c. Parâmetros de rota com tipo:** por exemplo, uuid.
   - **C2d. `reset` e banco de teste:** Prisma `deleteMany` ou banco de teste; pg com PGlite a partir das migrações.
   - **C2e. `apis` com resposta saudável:** SDKs conhecidos; senão `{}` com pendência.
   - **C2f. Aviso de "framework não suportado":** quando a topologia dá 0 rotas e há Fastify, Nest, Koa, Hono, Next ou `node:http` nas dependências. Evita o falso verde silencioso, e **sai antes da G**.
+  - **C2g. Testes de corrida mais fortes** (nova, da C1): requisições variadas (duas entidades indo para o mesmo valor), as respostas no contexto dos invariantes, e Alto em vez de Crítico quando só o `noUnhandledError` falha.
+  - **C2h. Arnês de teste no projeto** (nova, da C1): o `chaos` exige `vitest`, `supertest` e `msw` no alvo; o `--init` diz o comando de instalação, ou a CLI usa os dela.
+  - A C2d ganha, da C1: PGlite com o esquema (migrations do projeto ou `prisma migrate diff --from-empty`), um `setImmediate` por consulta, a troca do `Pool` no cache do `require` em CommonJS, e o `pglite-socket` só onde não houver adapter do Prisma. A C2b/C2c ganham a autenticação (JWT): rota com `express-jwt` não é "pronta".
   - Onde mexer: `packages/core/src/chaos-config.ts`, `apps/cli/src/chaos.ts`, `packages/core/src/topology/` e `packages/agent/src/chaos/templates.ts`.
 - **C4. Caos no CI de verdade.** O `shieldepy-chaos.yml` nunca rodou no Actions. Preparar a branch de teste que mexe numa rota sensível do `checkout-express`, e o usuário abre o PR. Conferir o comentário com o relatório, o exit 1 e o escopo `--base`.
   - **C4b.** O template ganha o `report --fail-on critico`, e o `cycles` passa a sair com código diferente de 0 quando usado com uma flag de portão.
