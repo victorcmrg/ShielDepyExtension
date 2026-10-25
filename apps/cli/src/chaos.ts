@@ -5,7 +5,7 @@
 // `--no-run`, só gera os testes e o relatório de hipóteses. Com `--base <ref>` (E5), só as rotas
 // sensíveis que o PR tocou vão para a IA e para os testes.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
@@ -18,12 +18,15 @@ import {
   CHAOS_CONFIG_FILE,
   CHAOS_CONFIG_TODO,
   chaosConfigScaffold,
+  chaosDbPlan,
+  chaosDbScaffold,
   CodeGraph,
   indexFiles,
   listSourceFiles,
   readChaosConfig,
   silentHost,
   TS_EXTENSIONS,
+  walkSourceTree,
   type AttackSurface,
   type MapDiff,
   type SystemGraph,
@@ -134,8 +137,26 @@ export async function runChaosCommand(
 
   // --init: o contrato inicial sai do próprio mapa; o que só o projeto sabe fica marcado
   if (args.init) {
-    await writeFile(configPath, chaosConfigScaffold(fullSurface), 'utf8');
-    io.err(`✓ ${CHAOS_CONFIG_FILE} criado com ${fullSurface.routes.length} rota(s) sensível(is). Preencha os ${CHAOS_CONFIG_TODO} e rode de novo sem --init.`);
+    // o banco de teste (C2d): PGlite no lugar do driver, com os .sql do projeto
+    const db = chaosDbPlan(fullSurface, walkSourceTree(root).filter((f) => f.toLowerCase().endsWith('.sql')));
+    await writeFile(configPath, chaosConfigScaffold(fullSurface, db), 'utf8');
+    io.err(`✓ ${CHAOS_CONFIG_FILE} criado com ${fullSurface.routes.length} rota(s) sensível(is).`);
+    if (db) {
+      for (const [rel, text] of Object.entries(chaosDbScaffold(db))) {
+        const file = path.join(root, rel);
+        if (existsSync(file)) {
+          io.err(`ℹ ${rel} já existe: mantido como está.`);
+          continue;
+        }
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, text, 'utf8');
+        io.err(`✓ ${rel} criado`);
+      }
+      io.err(db.schemaFiles.length ? `  esquema: ${db.schemaFiles.join(', ')}` : '  o projeto não tem .sql de esquema: escreva os CREATE TABLE em chaos/schema.sql');
+    }
+    const missing = missingTestDeps(root, db ? ['@electric-sql/pglite'] : []);
+    if (missing.length) io.err(`Instale o que os testes de caos usam: npm install -D ${missing.join(' ')}`);
+    io.err(`Preencha os ${CHAOS_CONFIG_TODO} e rode de novo sem --init.`);
     return 0;
   }
 
@@ -393,4 +414,16 @@ function isChaosSource(file: string): boolean {
 
 function isWebAsset(file: string): boolean {
   return ['.html', '.htm', '.css'].includes(path.extname(file).toLowerCase());
+}
+
+/** O que os testes gerados importam (Vitest, supertest, MSW) e o `package.json` do projeto não declara. */
+function missingTestDeps(root: string, extra: string[]): string[] {
+  let declared: Record<string, unknown> = {};
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as { dependencies?: object; devDependencies?: object };
+    declared = { ...pkg.dependencies, ...pkg.devDependencies };
+  } catch {
+    // sem package.json legível: lista tudo
+  }
+  return ['vitest', 'supertest', 'msw', ...extra].filter((dep) => !(dep in declared));
 }

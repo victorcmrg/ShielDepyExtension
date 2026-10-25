@@ -9,10 +9,13 @@ import {
   CHAOS_CONFIG_TODO,
   chaosConfigPending,
   chaosConfigScaffold,
+  chaosDbPlan,
+  chaosDbScaffold,
   CodeGraph,
   indexFiles,
   listSourceFiles,
   readChaosConfig,
+  schemaFilesOf,
   silentHost,
   TsParser,
 } from '@shieldepy/core';
@@ -61,6 +64,38 @@ describe('R3 — contrato inicial gerado a partir do mapa', () => {
     const state = await runChaosPipeline(surface, { invariantNames: config.invariants, render: { config } });
     expect(state.specs.length).toBeGreaterThan(0);
     expect(state.warnings.filter((w) => /falta (requests|apis)|sem (createApp|reset)/.test(w))).toEqual([]);
+  });
+
+  it('C2d: com o pg no mapa, o contrato já sai com o banco de teste no setupFiles e no reset', async () => {
+    const { surface, parser } = await scaffoldOf('checkout-express');
+    const plan = chaosDbPlan(surface, ['db/migrations/002_orders.sql', 'db/migrations/001_stock.sql', 'db/seed.sql'])!;
+    expect(plan).toEqual({ driver: 'pg', schemaFiles: ['db/migrations/001_stock.sql', 'db/migrations/002_orders.sql'], tables: ['orders', 'stock'] });
+    const source = chaosConfigScaffold(surface, plan);
+    expect(parser.withTree(source, false, (root) => root.hasError)).toBe(false);
+    expect(parser.withTree(source, false, readChaosConfig)).toMatchObject({ createApp: true, reset: true, setupFiles: ['chaos/setup.ts'] });
+    expect(source).toContain("import { resetDb } from './chaos/db';");
+    // o reset deixou de ser pendência: createApp, a API do Stripe, o corpo do POST e o :id do GET
+    expect(chaosConfigPending(source)).toBe(4);
+    for (const [file, text] of Object.entries(chaosDbScaffold(plan))) {
+      if (file.endsWith('.ts')) expect(parser.withTree(text, false, (root) => root.hasError), file).toBe(false);
+    }
+    expect(Object.keys(chaosDbScaffold(plan)).sort()).toEqual(['chaos/db.ts', 'chaos/setup.ts']);
+  });
+
+  it('C2d: sem .sql no projeto, o esquema vira uma pendência e o chaos/schema.sql lista as tabelas do mapa', async () => {
+    const { surface } = await scaffoldOf('checkout-express');
+    const plan = chaosDbPlan(surface, [])!;
+    const source = chaosConfigScaffold(surface, plan);
+    expect(chaosConfigPending(source)).toBe(5);
+    expect(source).toMatch(/TODO\(shieldepy\): o projeto não tem \.sql de esquema/);
+    const files = chaosDbScaffold(plan);
+    expect(files['chaos/schema.sql']).toContain('orders, stock');
+    expect(files['chaos/db.ts']).toContain("const SCHEMA = ['chaos/schema.sql'];");
+  });
+
+  it('C2d: sem pg no mapa (Prisma, Mongoose, nenhum banco), não há banco gerado', () => {
+    expect(chaosDbPlan({ version: 1, topologyHash: 'x', routes: [], collisions: [] }, ['schema.sql'])).toBeUndefined();
+    expect(schemaFilesOf(['b.sql', 'a.sql', 'src\\x.ts', 'chaos/schema.sql'])).toEqual(['a.sql', 'b.sql']);
   });
 
   it('sem rota sensível, o contrato diz que não há o que testar', () => {

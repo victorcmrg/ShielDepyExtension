@@ -238,9 +238,40 @@ describe('CLI chaos (E3)', () => {
       const config = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
       expect(config).toContain("'POST /checkout': { path: '/checkout', body: {} }");
       expect(config).toContain("'api.stripe.com': () => ({})");
+      // C2d: o app usa pg, então o banco de teste sai junto, e o contrato já o usa
+      expect(config).toContain("setupFiles: ['chaos/setup.ts']");
+      expect(config).toContain('await resetDb();');
+      for (const f of ['chaos/db.ts', 'chaos/setup.ts', 'chaos/schema.sql']) expect(fs.existsSync(path.join(tmp, f)), f).toBe(true);
+      expect(created.err).toMatch(/não tem \.sql de esquema/);
+      // o package.json do exemplo já declara vitest, supertest, msw e PGlite
+      expect(created.err).not.toMatch(/npm install -D/);
       const again = await run('chaos', tmp, '--init');
       expect(again.code).toBe(2);
       expect(again.err).toMatch(/já existe/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('--init (C2d): usa as migrations .sql do projeto, não sobrescreve um chaos/db.ts e diz o que instalar', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      for (const f of ['src', 'tsconfig.json']) fs.cpSync(path.join(example('checkout-express'), f), path.join(tmp, f), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { express: '4', pg: '8' }, devDependencies: { vitest: '2' } }));
+      fs.mkdirSync(path.join(tmp, 'db', 'migrations'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'db', 'migrations', '002_orders.sql'), 'CREATE TABLE orders (id SERIAL PRIMARY KEY);');
+      fs.writeFileSync(path.join(tmp, 'db', 'migrations', '001_stock.sql'), 'CREATE TABLE stock (product_id TEXT PRIMARY KEY);');
+      fs.writeFileSync(path.join(tmp, 'db', 'seed.sql'), "INSERT INTO stock VALUES ('p-1');");
+      fs.mkdirSync(path.join(tmp, 'chaos'));
+      fs.writeFileSync(path.join(tmp, 'chaos', 'db.ts'), '// do projeto');
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(0);
+      expect(created.err).toMatch(/chaos\/db\.ts já existe: mantido/);
+      expect(fs.readFileSync(path.join(tmp, 'chaos', 'db.ts'), 'utf8')).toBe('// do projeto');
+      expect(created.err).toMatch(/esquema: db\/migrations\/001_stock\.sql, db\/migrations\/002_orders\.sql/);
+      expect(fs.existsSync(path.join(tmp, 'chaos', 'schema.sql'))).toBe(false);
+      expect(created.err).toMatch(/npm install -D supertest msw @electric-sql\/pglite/);
+      expect(fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8')).not.toMatch(/não tem \.sql de esquema/);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

@@ -14,7 +14,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) e **P1 ✅** (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md)): na `main` desde 2026-10-24 (`9d0bc55`, merge fast-forward da `feat/postgres-drizzle`). A `apps/api` é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`, sobre Postgres/PGlite. Noutra máquina: `git pull` na `main` e `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo e pode ser apagada.
-- **Em andamento: etapa C**, na branch `feat/caos-c1`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **Próxima: C2**, começando pela C2d (banco de teste que mostra a corrida).
+- **Em andamento: etapa C**, na branch `feat/caos-c1`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). **Próxima: C2a** (`createApp` sem editar o projeto), depois a C2d2 (Prisma).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -40,7 +40,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
 | P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; branch `feat/postgres-drizzle`, esperando o merge) |
-| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅; próxima: C2 (branch `feat/caos-c1`) |
+| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅; próxima: C2a (branch `feat/caos-c1`) |
 | W | Landing honesta | pendente |
 | G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
 | A | Licença: direito de uso por empresa ([0009](docs/decisoes/0009-modelo-de-venda.md), TDD [0011](docs/decisoes/0011-tdd-na-empresa.md)) | pendente |
@@ -81,16 +81,22 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
   - Os controles passaram nos três: 5 achados verdadeiros, nenhum falso, e 3 "aguentou" que não provam nada (requisições iguais; invariante sem as respostas). Nenhum `--init` rodou sem edição.
   - Corrigido no motor: o `createApp` do contrato que remonta os roteadores duplicava as rotas e as hipóteses (`topology/routes.ts` ignora as chamadas do `shieldepy.chaos.config.ts`, que continua no grafo; teste em `code-graph/walk.test.ts`).
   - Achado principal: o PGlite em memória esconde corridas (não devolve a vez ao event loop). O banco falso precisa de um `setImmediate` por consulta.
-- **C2. Contrato quase automático.** Meta: num projeto Express suportado, o `--init` gera um contrato que roda sem edição ou com no máximo 1 pendência. **Ordem, pela C1:** C2d → C2a → autenticação → C2b/C2c → testes de corrida mais fortes (C2g) → arnês de teste no projeto (C2h). O detalhe de cada uma está na seção 5 do relatório da C1.
+- **C2. Contrato quase automático.** Meta: num projeto Express suportado, o `--init` gera um contrato que roda sem edição ou com no máximo 1 pendência. **Ordem, pela C1:** C2d1 ✅ → C2a → C2d2 → autenticação → C2b/C2c → testes de corrida mais fortes (C2g) → arnês de teste no projeto (C2h). O detalhe de cada uma está na seção 5 do relatório da C1.
   - **C2a. `createApp`:** onde o `express()` é montado e exportado. Não importar o arquivo que chama `listen`.
   - **C2b. Corpos válidos:** zod ou joi → class-validator → tipo TS do `req.body` → propriedades lidas no handler.
   - **C2c. Parâmetros de rota com tipo:** por exemplo, uuid.
-  - **C2d. `reset` e banco de teste:** Prisma `deleteMany` ou banco de teste; pg com PGlite a partir das migrações.
+  - **C2d. `reset` e banco de teste.**
+    - **C2d1 ✅ `pg`** (2026-10-24). Com o `pg` no mapa, o `--init` gera `chaos/db.ts` e `chaos/setup.ts` (gerador em `packages/core/src/chaos-db.ts`):
+      - o `db.ts` tem PGlite com os `.sql` do projeto (os de uma pasta `migrations`, senão todos; sem nenhum, um `chaos/schema.sql` com as tabelas do mapa e uma pendência), um `Pool`/`Client` com a cara do `pg` e a pausa `setImmediate` por consulta, e um `resetDb()` que esvazia tudo;
+      - o `setup.ts` faz o `vi.mock` e a troca no cache do `require`;
+      - o contrato sai com `setupFiles` e `reset` preenchidos, e o `--init` diz o `npm install -D` que falta (o começo da C2h).
+      - Conferido no pg-crud da C1: com o banco gerado, preenchendo só o esquema, o `createApp`, os corpos e um registro de exemplo, saiu o mesmo achado da C1. O `chaos-db.test.ts` dá `[201, 409]` sem a pausa e `[201, 201]` com ela.
+    - **C2d2 — Prisma** (pendente): adapter do PGlite para o Prisma 6+ (ou o `pglite-socket` com `DATABASE_URL`), o esquema por `prisma migrate diff --from-empty` ou pelas migrations, e o `reset` por `TRUNCATE`.
   - **C2e. `apis` com resposta saudável:** SDKs conhecidos; senão `{}` com pendência.
   - **C2f. Aviso de "framework não suportado":** quando a topologia dá 0 rotas e há Fastify, Nest, Koa, Hono, Next ou `node:http` nas dependências. Evita o falso verde silencioso, e **sai antes da G**.
   - **C2g. Testes de corrida mais fortes** (nova, da C1): requisições variadas (duas entidades indo para o mesmo valor), as respostas no contexto dos invariantes, e Alto em vez de Crítico quando só o `noUnhandledError` falha.
   - **C2h. Arnês de teste no projeto** (nova, da C1): o `chaos` exige `vitest`, `supertest` e `msw` no alvo; o `--init` diz o comando de instalação, ou a CLI usa os dela.
-  - A C2d ganha, da C1: PGlite com o esquema (migrations do projeto ou `prisma migrate diff --from-empty`), um `setImmediate` por consulta, a troca do `Pool` no cache do `require` em CommonJS, e o `pglite-socket` só onde não houver adapter do Prisma. A C2b/C2c ganham a autenticação (JWT): rota com `express-jwt` não é "pronta".
+  - A C2b/C2c ganham, da C1, a autenticação (JWT): rota com `express-jwt` não é "pronta".
   - Onde mexer: `packages/core/src/chaos-config.ts`, `apps/cli/src/chaos.ts`, `packages/core/src/topology/` e `packages/agent/src/chaos/templates.ts`.
 - **C4. Caos no CI de verdade.** O `shieldepy-chaos.yml` nunca rodou no Actions. Preparar a branch de teste que mexe numa rota sensível do `checkout-express`, e o usuário abre o PR. Conferir o comentário com o relatório, o exit 1 e o escopo `--base`.
   - **C4b.** O template ganha o `report --fail-on critico`, e o `cycles` passa a sair com código diferente de 0 quando usado com uma flag de portão.

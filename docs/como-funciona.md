@@ -201,6 +201,12 @@ export default {
 };
 ```
 
+**O banco de teste gerado (C2d).** Quando o mapa vê o app usar o `pg`, o `--init` também gera, sem sobrescrever o que já existir:
+- `chaos/db.ts`: um PGlite com o esquema do projeto (os `.sql` de uma pasta `migrations`, ou todos os `.sql`) e um `Pool`/`Client` com a cara do `pg`. Ele aceita `query(text, values)`, `query({ text, values })` e callback, e faz o `resetDb()` que esvazia as tabelas;
+- `chaos/setup.ts`: troca o `pg` pelo `Pool` de lá, com o `vi.mock` (ESM e TS) e no cache do `require` (CommonJS, que o `vi.mock` não alcança).
+
+O contrato já sai com o `setupFiles` e o `reset` preenchidos. O banco falso faz uma pausa (`setImmediate`) antes de cada consulta. Sem ela, o PGlite responde sem devolver a vez ao event loop e o teste de corrida passa num código que corre (`packages/core/test/chaos-db.test.ts`). Sem nenhum `.sql` no projeto, sai um `chaos/schema.sql` com as tabelas que o mapa viu, e escrever o esquema fica como pendência. O `--init` também diz o que instalar (`vitest`, `supertest`, `msw` e o PGlite) quando o `package.json` não declara. O gerador está em `packages/core/src/chaos-db.ts`.
+
 **DB_Chaos (falha parcial).** Quando a rota grava no banco depois de chamar uma API externa (tag
 `write-after-api-call`), o teste deixa a requisição correr até a API responder com sucesso e então
 faz a primeira gravação na tabela alvo falhar, trocando o `query` do `Pool`/`Client` do `pg`. Os

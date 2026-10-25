@@ -2,6 +2,7 @@
 // executar nada. Importar o config carregaria o app inteiro (e os aliases do projeto quebram fora
 // do bundler dele). Só NOMES saem daqui: é o que o gerador de testes e a IA podem ver.
 
+import { CHAOS_SCHEMA_FILE, CHAOS_SETUP_FILE, type ChaosDbPlan } from './chaos-db';
 import { propertyKey } from './code-graph/extract-module';
 import type { SyntaxNode } from './code-graph/parser';
 import type { AttackSurface } from './topology/surface';
@@ -130,9 +131,10 @@ const WITH_BODY = new Set(['POST', 'PUT', 'PATCH']);
  * O contrato inicial (`shieldepy.chaos.config.ts`) a partir do mapa: uma requisição por rota
  * sensível e uma resposta saudável por API externa que elas chamam. O que o mapa não sabe (subir o
  * app, zerar o estado, as invariantes, corpos válidos) sai marcado com `CHAOS_CONFIG_TODO`. O
- * arquivo compila como está: `createApp` lança um erro claro até ser preenchido.
+ * arquivo compila como está: `createApp` lança um erro claro até ser preenchido. Com `db` (C2d), o
+ * banco de teste gerado (`chaosDbScaffold`) entra no `setupFiles` e no `reset`, sem pendência.
  */
-export function chaosConfigScaffold(surface: AttackSurface): string {
+export function chaosConfigScaffold(surface: AttackSurface, db?: ChaosDbPlan): string {
   const hosts = [...new Set(surface.routes.flatMap((r) => r.operations.filter((o) => o.kind === 'api_call' && o.target !== 'dynamic').map((o) => o.target)))].sort();
   const routes = [...surface.routes].sort((a, b) => a.id.localeCompare(b.id));
   const T = CHAOS_CONFIG_TODO;
@@ -156,15 +158,28 @@ export function chaosConfigScaffold(surface: AttackSurface): string {
     '// Complete as linhas marcadas abaixo (uma marca por pendência) e rode "ShielDepy: Testar Caos"',
     '// (ou `shieldepy chaos .`). As invariantes são opcionais, mas são elas que provam corrida e estado.',
     '',
+    ...(db ? ["import { resetDb } from './chaos/db';", ''] : []),
     'export default {',
     '  /** Monta o app SEM abrir porta (os testes usam supertest): importe e chame a fábrica do seu app. */',
     '  createApp: (): never => {',
     `    throw new Error('${T}: preencha createApp no ${CHAOS_CONFIG_FILE}');`,
     '  },',
-    '  /** Carregados antes de cada teste gerado (ex.: trocar o banco por um em memória). */',
-    '  setupFiles: [],',
-    '  /** Estado limpo antes de cada teste. */',
-    `  async reset(): Promise<void> {}, // ${T}: zere o banco ou o estado em memória (ou apague esta marca se não há estado)`,
+    ...(db
+      ? [
+          `  /** Carregados antes de cada teste gerado: o \`${db.driver}\` do app vira o PGlite de chaos/db.ts. */`,
+          ...(db.schemaFiles.length === 0 ? [`  // ${T}: o projeto não tem .sql de esquema; escreva os CREATE TABLE em ${CHAOS_SCHEMA_FILE}`] : []),
+          `  setupFiles: ['${CHAOS_SETUP_FILE}'],`,
+          '  /** Estado limpo antes de cada teste: o banco vazio (e os dados que as requisições abaixo usam, no chaos/db.ts). */',
+          '  async reset(): Promise<void> {',
+          '    await resetDb();',
+          '  },',
+        ]
+      : [
+          '  /** Carregados antes de cada teste gerado (ex.: trocar o banco por um em memória). */',
+          '  setupFiles: [],',
+          '  /** Estado limpo antes de cada teste. */',
+          `  async reset(): Promise<void> {}, // ${T}: zere o banco ou o estado em memória (ou apague esta marca se não há estado)`,
+        ]),
     '  /** O que nunca pode acontecer: cada função devolve true quando está tudo certo. */',
     '  invariants: {',
     '    // ex.: async estoqueNuncaNegativo() { return (await menorEstoque()) >= 0; },',
