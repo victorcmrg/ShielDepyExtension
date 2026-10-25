@@ -14,8 +14,8 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) na branch `feat/separacao-web`, esperando o merge na `main` (usuário). A `apps/api` agora é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`.
-- **Em andamento: P1 (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md))** na branch `feat/postgres-drizzle`, criada a partir da `feat/separacao-web` (a S ainda não está na `main`). **P1a ✅** (esquema, migration, conexão) e **P1b ✅** (2026-10-24): a API inteira roda no Postgres/PGlite, e o `node:sqlite` saiu. Próxima: **P1c** (scripts `db:migrate`, `.env.example` e documentação).
-  - **Para trabalhar nesta etapa noutra máquina:** a `main` não tem a S nem a P1. Um `git pull` na `main` não traz nada disso: rode `git fetch` e `git switch feat/postgres-drizzle`, e depois `npm install` na raiz (a pasta `shieldepy_p1/` é do layout antigo; se ainda existir aí, é resto de `node_modules` e arquivos gerados, e pode ser apagada).
+- **Em andamento: P1 (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md))** na branch `feat/postgres-drizzle`, criada a partir da `feat/separacao-web` (a S ainda não está na `main`). **P1a ✅** (esquema, migration, conexão) e **P1b ✅** (2026-10-24, no GitHub): a API inteira roda no Postgres/PGlite, e o `node:sqlite` saiu. **Próxima: P1c** (detalhe na tarefa P1, mais abaixo).
+  - **Para trabalhar nesta etapa noutra máquina:** a `main` não tem a S nem a P1. Um `git pull` na `main` não traz nada disso: rode `git fetch` e `git switch feat/postgres-drizzle` (ou `git pull` já nela), e depois `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo (`node_modules` e arquivos gerados) e pode ser apagada.
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -183,12 +183,14 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
     - Os dados de demonstração viraram uma função (`src/scripts/demoData.ts`): antes, a demo do TCC dependia de importar o `seedDemo.ts` só para ele rodar. O `seedDemo.ts` e o `scripts/demo/seed.ts` chamam a função e fecham o banco.
     - **Teste novo, `apps/api/test/portal.test.ts`** (no lugar das fumaças da S7, que estavam só no scratchpad): login e conta, equipe, projetos e repositórios, device flow e o painel do admin, pelo HTTP contra o PGlite. Os dois testes que abrem o banco dão 60 s ao `beforeAll`: com a suíte inteira, subir o PGlite passa dos 10 s padrão.
     - Conferido: `npm run check` (440 passando); `bootstrap` duas vezes (a segunda acha o admin, ou seja, gravou), `seed:demo` duas vezes, o `scripts/demo/seed.ts`, e a API no ar com login da conta demo.
-  - **P1c — scripts e documentação.**
-    - Comandos `db:generate` e `db:migrate` (este só aplica, para o deploy).
-    - `.env.example` com `DATABASE_URL`.
-    - Os `seed:demo` e `bootstrap` assíncronos.
-    - `docs/como-funciona.md` e `CLAUDE.md` atualizados.
-    - Não há dados de produção para migrar do SQLite: o dev recria com `npm run seed:demo -w @shieldepy/api`.
+  - **P1c — próxima: scripts e documentação.** Os `seed:demo` e `bootstrap` assíncronos já saíram na P1b. Falta:
+    1. **`db:migrate`** em `apps/api/package.json`: um script (`src/scripts/migrate.ts`) que só abre o banco com `openDatabase()` (que já aplica as migrations pendentes), diz quantas aplicou e fecha. É o passo do deploy antes de subir a API (a API também aplica ao subir; o script deixa a migração visível e separada). O `db:generate` (drizzle-kit) já existe.
+    2. **Conferir o `db:generate`:** rodar sem mudar o `schema.ts` tem que dizer que não há nada a gerar (o esquema e a `0000_inicial.sql` estão em dia).
+    3. **`.env.example`:** a linha `# DATABASE_URL=` hoje está perdida no bloco da IA. Mover para um bloco "Banco" explicando: sem ela, PGlite em `apps/api/data/pglite` (ou em `SHIELDEPY_DATA_DIR/pglite`); com ela, Postgres de verdade e as migrations aplicadas ao subir.
+    4. **Documentação:** `docs/como-funciona.md` (seção da API: o banco, o PGlite, onde ficam os dados, `db:generate`/`db:migrate`, como mudar o esquema), o `README.md` da raiz e o da `apps/api`, se falarem de SQLite, a árvore da decisão [0013](docs/decisoes/0013-api-ddd-por-dominio.md) (ainda diz "Sqlite* hoje") e os comandos do `CLAUDE.md`.
+    5. **Conferência:** `npm run check`; `db:migrate` numa pasta temporária (`SHIELDEPY_DATA_DIR`), duas vezes (a segunda não aplica nada); se houver um Postgres à mão, uma rodada com `DATABASE_URL` (senão, registrar que só o PGlite foi conferido).
+    - Não há dados de produção para migrar do SQLite: o dev recria com `npm run seed:demo -w @shieldepy/api` (se houver um `auth.db` antigo em `apps/api/data/`, pode ser apagado).
+    - Ao fechar a P1c, a P1 inteira fica pronta: a branch `feat/postgres-drizzle` (que já contém a S) espera o merge na `main` pelo usuário.
 - **P2. Deploy (depende de DP3 e DP4).** Dockerfile da API, domínio, TLS, variáveis de ambiente e OAuth do Google e do GitHub com as URLs de produção. Workflow de deploy na `main`.
 - **P3. Segurança.** Rate limit no login e no device flow, cookies `Secure` e `SameSite`, CSP no site, chaves e segredos fora do repositório, rotação documentada. Revisar com `/security-review` antes de abrir para clientes.
 - **P4. Operação.** Backup diário do Postgres com restauração testada uma vez, logs estruturados, alerta de erro e uma página de status simples.
