@@ -201,9 +201,15 @@ export default {
 };
 ```
 
+**O `createApp` gerado (C2a).** O mapa diz onde o app nasce (`RouteScan.apps`, em `packages/core/src/topology/routes.ts`): o `express()` que não é montado em ninguém, se ele é exportado (o próprio app, ou uma função exportada que o devolve com `return app`) e os `listen` que rodam ao importar o arquivo (no topo e fora de `if`/`&&`; `if (require.main === module)` não conta). O `--init` escolhe o app com mais rotas sensíveis e escreve o `createApp` de um de dois jeitos (`packages/core/src/chaos-app.ts`):
+- **importar:** o arquivo exporta o app ou a fábrica e não abre porta ao ser importado (o `checkout-express`). Em CommonJS, carrega com `createRequire`;
+- **guardar:** o arquivo abre porta no topo ou não exporta o app (os três projetos da C1). O `chaos/setup.ts` troca o `express` por um que guarda o app criado e cujo `listen()` devolve um servidor falso, sem abrir porta (com o `vi.mock` e no cache do `require`). O contrato importa o arquivo só pelo efeito, e o `createApp` devolve o app guardado. O `packages/core/test/chaos-app.test.ts` roda isso de verdade, em ESM e em CommonJS, e confere que a porta continua livre.
+
+Sem `express()` no mapa, o `createApp` continua sendo pendência. Um `listen` no topo fora do app (`http.createServer(app).listen()`) também vira pendência, porque importar o arquivo abriria a porta de verdade.
+
 **O banco de teste gerado (C2d).** Quando o mapa vê o app usar o `pg`, o `--init` também gera, sem sobrescrever o que já existir:
 - `chaos/db.ts`: um PGlite com o esquema do projeto (os `.sql` de uma pasta `migrations`, ou todos os `.sql`) e um `Pool`/`Client` com a cara do `pg`. Ele aceita `query(text, values)`, `query({ text, values })` e callback, e faz o `resetDb()` que esvazia as tabelas;
-- `chaos/setup.ts`: troca o `pg` pelo `Pool` de lá, com o `vi.mock` (ESM e TS) e no cache do `require` (CommonJS, que o `vi.mock` não alcança).
+- `chaos/setup.ts`: troca o `pg` pelo `Pool` de lá, com o `vi.mock` (ESM e TS) e no cache do `require` (CommonJS, que o `vi.mock` não alcança). Quando o app também é guardado (C2a), as duas trocas ficam no mesmo arquivo (`chaosSetupScaffold`).
 
 O contrato já sai com o `setupFiles` e o `reset` preenchidos. O banco falso faz uma pausa (`setImmediate`) antes de cada consulta. Sem ela, o PGlite responde sem devolver a vez ao event loop e o teste de corrida passa num código que corre (`packages/core/test/chaos-db.test.ts`). Sem nenhum `.sql` no projeto, sai um `chaos/schema.sql` com as tabelas que o mapa viu, e escrever o esquema fica como pendência. O `--init` também diz o que instalar (`vitest`, `supertest`, `msw` e o PGlite) quando o `package.json` não declara. O gerador está em `packages/core/src/chaos-db.ts`.
 

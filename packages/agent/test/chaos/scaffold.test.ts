@@ -11,6 +11,7 @@ import {
   chaosConfigScaffold,
   chaosDbPlan,
   chaosDbScaffold,
+  chaosSetupScaffold,
   CodeGraph,
   indexFiles,
   listSourceFiles,
@@ -70,22 +71,26 @@ describe('R3 — contrato inicial gerado a partir do mapa', () => {
     const { surface, parser } = await scaffoldOf('checkout-express');
     const plan = chaosDbPlan(surface, ['db/migrations/002_orders.sql', 'db/migrations/001_stock.sql', 'db/seed.sql'])!;
     expect(plan).toEqual({ driver: 'pg', schemaFiles: ['db/migrations/001_stock.sql', 'db/migrations/002_orders.sql'], tables: ['orders', 'stock'] });
-    const source = chaosConfigScaffold(surface, plan);
+    const source = chaosConfigScaffold(surface, { db: plan });
     expect(parser.withTree(source, false, (root) => root.hasError)).toBe(false);
     expect(parser.withTree(source, false, readChaosConfig)).toMatchObject({ createApp: true, reset: true, setupFiles: ['chaos/setup.ts'] });
     expect(source).toContain("import { resetDb } from './chaos/db';");
     // o reset deixou de ser pendência: createApp, a API do Stripe, o corpo do POST e o :id do GET
     expect(chaosConfigPending(source)).toBe(4);
-    for (const [file, text] of Object.entries(chaosDbScaffold(plan))) {
+    const files = { ...chaosDbScaffold(plan), 'chaos/setup.ts': chaosSetupScaffold({ db: plan })! };
+    for (const [file, text] of Object.entries(files)) {
       if (file.endsWith('.ts')) expect(parser.withTree(text, false, (root) => root.hasError), file).toBe(false);
     }
-    expect(Object.keys(chaosDbScaffold(plan)).sort()).toEqual(['chaos/db.ts', 'chaos/setup.ts']);
+    expect(Object.keys(chaosDbScaffold(plan)).sort()).toEqual(['chaos/db.ts']);
+    // o setup troca só o pg: sem app guardado, não há troca do express
+    expect(files['chaos/setup.ts']).toContain("vi.mock('pg'");
+    expect(files['chaos/setup.ts']).not.toContain("vi.mock('express'");
   });
 
   it('C2d: sem .sql no projeto, o esquema vira uma pendência e o chaos/schema.sql lista as tabelas do mapa', async () => {
     const { surface } = await scaffoldOf('checkout-express');
     const plan = chaosDbPlan(surface, [])!;
-    const source = chaosConfigScaffold(surface, plan);
+    const source = chaosConfigScaffold(surface, { db: plan });
     expect(chaosConfigPending(source)).toBe(5);
     expect(source).toMatch(/TODO\(shieldepy\): o projeto não tem \.sql de esquema/);
     const files = chaosDbScaffold(plan);

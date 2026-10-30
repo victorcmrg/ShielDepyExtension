@@ -83,6 +83,30 @@ export interface IoOperation {
 export interface RouteScan {
   routes: Route[];
   skipped: SkippedRoute[];
+  /** Os apps Express do projeto (fora da topologia: não mudam o hash dela). */
+  apps: ExpressApp[];
+}
+
+/**
+ * Onde um app Express nasce (C2a): um `express()` que não é montado em nenhum outro roteador. É o
+ * que o `--init` usa para escrever o `createApp` do contrato sem editar o projeto.
+ */
+export interface ExpressApp {
+  /** Arquivo e linha (0-based) do `express()`. */
+  file: string;
+  line: number;
+  /** O arquivo importa o `express` com `require` (CommonJS): o contrato o carrega com `createRequire`. */
+  commonjs: boolean;
+  /** Como pegar o app importando `file`: o export que é o próprio app, ou a função exportada que o devolve. */
+  exported?: { name: string; factory: boolean };
+  /**
+   * Os `listen` no app, e os do topo do arquivo dele em outro receptor (`createApp().listen()`,
+   * `http.createServer(app).listen()`, com `onApp: false`): importar o arquivo abriria porta do mesmo jeito.
+   * `topLevel`: roda ao importar o arquivo (no topo dele e fora de `if`, `&&`...).
+   */
+  listens: Array<{ file: string; line: number; topLevel: boolean; onApp: boolean }>;
+  /** Ids das rotas que sobem até este app, ordenados. */
+  routes: string[];
 }
 
 /**

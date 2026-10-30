@@ -37,6 +37,8 @@ export interface SymbolInfo {
   properties?: string[];
   /** Função/método: tipo de retorno anotado (`Promise<T>` desembrulhado pra T). */
   returns?: TypeRef;
+  /** Função/método: os nomes que ela devolve direto (`return app;`, `() => app`), sem contar as funções de dentro. */
+  returnsNames?: string[];
   /** Classe de C#/Java: o namespace (ou package) onde ela é declarada — a resolução é por ele, não por import de arquivo. */
   namespace?: string;
   /** Método de extensão do C# (`static void Validate(this Order o)`): o tipo do `this`. */
@@ -120,6 +122,11 @@ export interface RawCall {
    * `lista`, que dentro do callback se chama `item`. É o que monta `routes.forEach((r) => router.use(r.path, r.route))`.
    */
   loop?: { array: string; param: string };
+  /**
+   * A chamada só roda num ramo do escopo dela (`if`, `switch`, ternário, `&&`/`||`/`??`, `catch`):
+   * `if (require.main === module) app.listen(3000)` não abre porta quando o arquivo é importado.
+   */
+  conditional?: true;
 }
 
 /** `module`: declarado no topo do arquivo; `local`: parâmetro ou variável de uma função. */
@@ -424,6 +431,42 @@ function paramIndexOf(from: SyntaxNode, name: string): number | undefined {
   return undefined;
 }
 
+/** Nós que só rodam um dos ramos: o que está dentro deles não roda sempre que o escopo roda. */
+const BRANCH_TYPES = new Set(['if_statement', 'switch_statement', 'ternary_expression', 'catch_clause']);
+const LOGICAL_OPERATORS = new Set(['&&', '||', '??']);
+
+/** A chamada roda só num ramo do escopo dela (função ou arquivo)? Ver `RawCall.conditional`. */
+function isConditional(from: SyntaxNode): boolean {
+  for (let n = from.parent; n; n = n.parent) {
+    if (FUNCTION_SCOPE_TYPES.has(n.type)) return false;
+    if (BRANCH_TYPES.has(n.type)) return true;
+    if (n.type === 'binary_expression' && LOGICAL_OPERATORS.has(n.childForFieldName('operator')?.type ?? '')) return true;
+  }
+  return false;
+}
+
+/** `return app;` e `() => app`: os identificadores que a função devolve, sem descer nas funções de dentro. */
+function returnedNames(fn: SyntaxNode): string[] {
+  const body = fn.childForFieldName('body');
+  if (!body) return [];
+  const value = unwrap(body);
+  if (value?.type === 'identifier') return [value.text];
+  const names = new Set<string>();
+  const visit = (n: SyntaxNode) => {
+    for (const child of n.namedChildren) {
+      if (FUNCTION_SCOPE_TYPES.has(child.type) || CLASS_TYPES.has(child.type)) continue;
+      if (child.type === 'return_statement') {
+        const returned = unwrap(child.namedChildren[0]);
+        if (returned?.type === 'identifier') names.add(returned.text);
+        continue;
+      }
+      visit(child);
+    }
+  };
+  if (body.type === 'statement_block') visit(body);
+  return [...names].sort();
+}
+
 /** Onde `name`, visto de `from`, é declarado: topo do arquivo, dentro de uma função, ou fora daqui (import/global). */
 function declarationScope(from: SyntaxNode, name: string): Scope | undefined {
   for (let n = from.parent; n; n = n.parent) {
@@ -633,6 +676,10 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
       endIndex: node.endIndex,
     };
     for (const [k, v] of Object.entries(extra)) if (v !== undefined) (info as unknown as Record<string, unknown>)[k] = v;
+    if (kind !== 'class') {
+      const names = returnedNames(fn);
+      if (names.length > 0) info.returnsNames = names;
+    }
     results.push(info);
   };
   const insideFunction = (node: SyntaxNode) => {
@@ -855,6 +902,7 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
         ...(loop && { loop }),
         ...(receiverParam !== undefined && { receiverParam }),
         ...(decorates && { decorates }),
+        ...(isConditional(node) && { conditional: true as const }),
         line: node.startPosition.row,
         column: node.startPosition.column,
         end: node.endIndex,

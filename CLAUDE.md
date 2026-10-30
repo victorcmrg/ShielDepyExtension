@@ -31,7 +31,7 @@
 - Se um processo travar, avisar em vez de matar e relançar várias vezes. No Windows, o `tsx` do servidor pode sobreviver ao terminal: encerrar o que você subiu.
 
 ## Comandos (da raiz do repositório)
-- `npm run check`: typecheck + testes unitários (448 passando em 2026-10-24).
+- `npm run check`: typecheck + testes unitários (465 passando em 2026-10-30).
 - `npm run build:vscode`: a extensão (`dist/extension.js` ~740 KB e `dist/chaos.js` ~1,9 MB; se o primeiro crescer muito, algo puxou o LangGraph).
 - `npm run cli -- graph|topology|chaos <pasta>`: o motor pela CLI. `chaos examples/checkout-express --offline [--report arq.md]` sai com 1 no vulnerável e 0 no `-fixed`.
 - `npm run mapa:reais`: mede o mapa em projetos reais do GitHub (fixados por commit, fora do repositório).

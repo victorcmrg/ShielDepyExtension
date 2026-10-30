@@ -243,11 +243,60 @@ describe('CLI chaos (E3)', () => {
       expect(config).toContain('await resetDb();');
       for (const f of ['chaos/db.ts', 'chaos/setup.ts', 'chaos/schema.sql']) expect(fs.existsSync(path.join(tmp, f)), f).toBe(true);
       expect(created.err).toMatch(/não tem \.sql de esquema/);
+      // C2a: o src/app.ts exporta a fábrica e não abre porta (o listen é no server.ts): o contrato a importa
+      expect(config).toContain("import { createApp as projectApp } from './src/app';");
+      expect(config).toContain('createApp: () => projectApp(),');
+      expect(created.err).toMatch(/createApp: importado de src\/app\.ts \(a fábrica createApp\)/);
+      // o setup só troca o pg: o app não precisa ser guardado
+      expect(fs.readFileSync(path.join(tmp, 'chaos', 'setup.ts'), 'utf8')).not.toContain("vi.mock('express'");
       // o package.json do exemplo já declara vitest, supertest, msw e PGlite
       expect(created.err).not.toMatch(/npm install -D/);
       const again = await run('chaos', tmp, '--init');
       expect(again.code).toBe(2);
       expect(again.err).toMatch(/já existe/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('--init (C2a): o app CommonJS que abre porta no topo sai guardado pelo setup, sem pendência no createApp', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { express: '4' } }));
+      // o pg-crud da C1: index.js monta o app, chama listen() no topo e não exporta nada
+      fs.writeFileSync(
+        path.join(tmp, 'index.js'),
+        "const express = require('express')\nconst app = express()\napp.use(express.json())\napp.use('/categories', require('./routes/category'))\napp.listen(3000)\n"
+      );
+      fs.mkdirSync(path.join(tmp, 'routes'));
+      fs.writeFileSync(path.join(tmp, 'routes', 'category.js'), "const router = require('express').Router()\nrouter.post('/', (req, res) => res.status(201).end())\nmodule.exports = router\n");
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(0);
+      expect(created.err).toMatch(/createApp: guardado pelo chaos\/setup\.ts ao importar index\.js/);
+      const config = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
+      expect(config).toContain("createRequire(import.meta.url)('./index.js');");
+      expect(config).toContain('createApp: () => chaosApp(),');
+      expect(config).toContain("setupFiles: ['chaos/setup.ts']");
+      expect(config).not.toContain('preencha createApp');
+      // sem banco no mapa: o setup só tem a troca do express, e não há chaos/db.ts
+      const setup = fs.readFileSync(path.join(tmp, 'chaos', 'setup.ts'), 'utf8');
+      expect(setup).toContain("vi.mock('express'");
+      expect(setup).not.toContain("vi.mock('pg'");
+      expect(fs.existsSync(path.join(tmp, 'chaos', 'db.ts'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('--init (C2a): sem express() no mapa, o createApp continua pendente e não há setup', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'index.js'), "const http = require('node:http')\nhttp.createServer((req, res) => res.end()).listen(3000)\n");
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(0);
+      expect(created.err).toMatch(/createApp: nenhum app Express/);
+      expect(fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8')).toContain('preencha createApp');
+      expect(fs.existsSync(path.join(tmp, 'chaos'))).toBe(false);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

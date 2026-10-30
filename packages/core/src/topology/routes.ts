@@ -5,7 +5,7 @@
 import { CHAOS_CONFIG_FILE } from '../chaos-config';
 import type { CodeGraph } from '../code-graph/CodeGraph';
 import { isSymbolNode, type CallArg, type CallSite, type ReceiverCall, type ValueOrigin } from '../code-graph/types';
-import type { HttpMethod, Route, RouteHandler, RouteScan, SkippedRoute } from './types';
+import type { ExpressApp, HttpMethod, Route, RouteHandler, RouteScan, SkippedRoute } from './types';
 
 const VERBS: Record<string, HttpMethod> = {
   get: 'GET',
@@ -278,6 +278,8 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   }
 
   const routes: Route[] = [];
+  // roteador raiz → as rotas que sobem até ele (o app, quando ele nasce de um `express()`)
+  const rootRoutes = new Map<string, Set<string>>();
   for (const reg of registrations) {
     // Sobe da rota até a raiz pelas montagens: cada nível soma o prefixo e os middlewares registrados antes.
     const climb = (router: string, path: string, handlers: RouteHandler[], at: Position, seen: Set<string>) => {
@@ -286,6 +288,9 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
       const parents = mounts.filter((m) => m.child === router && !seen.has(m.parent));
       if (parents.length === 0) {
         routes.push({ id: `${reg.method} ${path}`, method: reg.method, path, file: reg.file, line: reg.line, handlers: chain });
+        let ids = rootRoutes.get(router);
+        if (!ids) rootRoutes.set(router, (ids = new Set()));
+        ids.add(`${reg.method} ${path}`);
         return;
       }
       for (const m of parents) climb(m.parent, joinPath(m.prefix, path), chain, m, new Set([...seen, router]));
@@ -299,10 +304,88 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   routes.push(...fastEndpointsRoutes(graph, all, skipped));
   routes.push(...springRoutes(graph, all, skipped));
   routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
-  return { routes, skipped };
+  return { routes, skipped, apps: expressApps(graph, all, sites, mounts, rootRoutes) };
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** O import do `express` por trás de `local` em `file`: o default do pacote (`import express`, `require('express')`). */
+function expressImport(graph: CodeGraph, file: string, local: string) {
+  const binding = graph.moduleInfoOf(file)?.imports.find((b) => b.local === local);
+  return binding?.spec === 'express' && (binding.imported === 'default' || binding.imported === '*') ? binding : undefined;
+}
+
+/** `express()` — não `express.Router()`, `Router()` nem `json()`. */
+const createsApp = (graph: CodeGraph, file: string, call: { name: string; object?: string[] }) => !call.object && !!expressImport(graph, file, call.name);
+
+/**
+ * Os apps Express (C2a): os roteadores raiz (não montados em ninguém) que nascem de um `express()`.
+ * No topo do arquivo, o valor tem que vir do `express()` (`const app = express()`); dentro de uma
+ * função, vale o roteador raiz da função que chama o `express()`. A fábrica (`export function
+ * createApp() { const app = express(); ...; return app }`) só conta se a função devolve o app pelo nome.
+ */
+function expressApps(
+  graph: CodeGraph,
+  all: Array<{ file: string; site: CallSite }>,
+  sites: Array<{ file: string; site: CallSite; router: string }>,
+  mounts: Mount[],
+  rootRoutes: Map<string, Set<string>>
+): ExpressApp[] {
+  const children = new Set(mounts.map((m) => m.child));
+  // a declaração de cada roteador raiz: arquivo, nome e, se local, a função onde ele vive
+  const roots = new Map<string, { file: string; name: string; caller?: string }>();
+  for (const { file, site, router } of sites) {
+    const origin = site.receiverOrigin;
+    if (children.has(router) || roots.has(router) || !origin || site.receiverParam !== undefined) continue;
+    roots.set(router, { file: origin.file, name: origin.name, ...(origin.local && { caller: site.caller }) });
+  }
+  const creations = all.filter(({ file, site }) => isExpress(site) && createsApp(graph, file, site));
+  const used = new Set<CallSite>();
+
+  const apps: ExpressApp[] = [];
+  for (const [key, root] of roots) {
+    const scope = root.caller ?? root.file;
+    if (!root.caller) {
+      const produced = graph.valueCallOf(root.file, root.name);
+      if (!produced || !createsApp(graph, root.file, produced)) continue;
+    }
+    const creation = creations.find(({ file, site }) => file === root.file && site.caller === scope && !used.has(site));
+    if (!creation) continue;
+    used.add(creation.site);
+
+    const exports = [...(graph.moduleInfoOf(root.file)?.exports ?? [])];
+    const exportOf = (local: string) =>
+      exports
+        .filter(([, l]) => l === local)
+        .map(([name]) => name)
+        .sort((a, b) => (a === 'default' ? -1 : b === 'default' ? 1 : cmp(a, b)))[0];
+    let exported: ExpressApp['exported'];
+    if (!root.caller) {
+      const name = exportOf(root.name);
+      if (name) exported = { name, factory: false };
+    } else {
+      const fn = graph.nodeAttributes(root.caller);
+      const name = fn && isSymbolNode(fn) && fn.kind === 'function' && fn.returnsNames?.includes(root.name) ? exportOf(fn.name) : undefined;
+      if (name) exported = { name, factory: true };
+    }
+
+    const topLevel = (file: string, site: CallSite) => site.caller === file && !site.conditional;
+    const listens = all
+      .filter(({ site }) => site.name === 'listen' && !site.shadowed)
+      .map(({ file, site }) => ({ file, site, onApp: isExpress(site) && valueKey(site.receiverOrigin, site.object, site.caller, file) === key }))
+      .filter(({ file, site, onApp }) => onApp || (file === root.file && topLevel(file, site)))
+      .map(({ file, site, onApp }) => ({ file, line: site.line, topLevel: topLevel(file, site), onApp }));
+    apps.push({
+      file: root.file,
+      line: creation.site.line,
+      commonjs: !!expressImport(graph, root.file, creation.site.name)?.require,
+      ...(exported && { exported }),
+      listens,
+      routes: [...(rootRoutes.get(key) ?? [])].sort(),
+    });
+  }
+  return apps.sort((a, b) => cmp(a.file, b.file) || a.line - b.line);
+}
 
 // ---------------------------------------------------------------------------------------------
 // ASP.NET Core (etapa L3). Como no Express, um atributo de rota só conta se resolve para o pacote do

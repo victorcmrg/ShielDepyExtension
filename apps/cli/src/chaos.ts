@@ -17,10 +17,14 @@ import {
   diffSystemGraphs,
   CHAOS_CONFIG_FILE,
   CHAOS_CONFIG_TODO,
+  CHAOS_SETUP_FILE,
+  chaosAppPlan,
   chaosConfigScaffold,
   chaosDbPlan,
   chaosDbScaffold,
+  chaosSetupScaffold,
   CodeGraph,
+  findExpressRoutes,
   indexFiles,
   listSourceFiles,
   readChaosConfig,
@@ -139,21 +143,33 @@ export async function runChaosCommand(
   if (args.init) {
     // o banco de teste (C2d): PGlite no lugar do driver, com os .sql do projeto
     const db = chaosDbPlan(fullSurface, walkSourceTree(root).filter((f) => f.toLowerCase().endsWith('.sql')));
-    await writeFile(configPath, chaosConfigScaffold(fullSurface, db), 'utf8');
+    // o app (C2a): importado do projeto, ou guardado pelo setup quando o arquivo abre porta
+    const app = chaosAppPlan(findExpressRoutes(graph).apps, fullSurface, root);
+    await writeFile(configPath, chaosConfigScaffold(fullSurface, { db, app }), 'utf8');
     io.err(`✓ ${CHAOS_CONFIG_FILE} criado com ${fullSurface.routes.length} rota(s) sensível(is).`);
-    if (db) {
-      for (const [rel, text] of Object.entries(chaosDbScaffold(db))) {
-        const file = path.join(root, rel);
-        if (existsSync(file)) {
-          io.err(`ℹ ${rel} já existe: mantido como está.`);
-          continue;
-        }
-        await mkdir(path.dirname(file), { recursive: true });
-        await writeFile(file, text, 'utf8');
-        io.err(`✓ ${rel} criado`);
+    if (app) {
+      const how =
+        app.mode === 'import'
+          ? `importado de ${app.file} (${app.exported!.factory ? `a fábrica ${app.exported!.name}` : 'o app exportado'})`
+          : `guardado pelo ${CHAOS_SETUP_FILE} ao importar ${app.file} (ele abre porta ou não exporta o app; o listen() não abre)`;
+      io.err(`  createApp: ${how}`);
+      if (app.others.length) io.err(`  ℹ outros apps no projeto: ${app.others.join(', ')}; o contrato usa o de ${app.file}:${app.line}`);
+      for (const line of app.foreignListens) io.err(`  ⚠ ${app.file}:${line} abre porta fora do app: confira a pendência no contrato`);
+    } else io.err('  createApp: nenhum app Express (express()) no mapa; preencha à mão');
+    const generated = { ...(db && chaosDbScaffold(db)) };
+    const setup = chaosSetupScaffold({ db, app });
+    if (setup) generated[CHAOS_SETUP_FILE] = setup;
+    for (const [rel, text] of Object.entries(generated)) {
+      const file = path.join(root, rel);
+      if (existsSync(file)) {
+        io.err(`ℹ ${rel} já existe: mantido como está.`);
+        continue;
       }
-      io.err(db.schemaFiles.length ? `  esquema: ${db.schemaFiles.join(', ')}` : '  o projeto não tem .sql de esquema: escreva os CREATE TABLE em chaos/schema.sql');
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, text, 'utf8');
+      io.err(`✓ ${rel} criado`);
     }
+    if (db) io.err(db.schemaFiles.length ? `  esquema: ${db.schemaFiles.join(', ')}` : '  o projeto não tem .sql de esquema: escreva os CREATE TABLE em chaos/schema.sql');
     const missing = missingTestDeps(root, db ? ['@electric-sql/pglite'] : []);
     if (missing.length) io.err(`Instale o que os testes de caos usam: npm install -D ${missing.join(' ')}`);
     io.err(`Preencha os ${CHAOS_CONFIG_TODO} e rode de novo sem --init.`);

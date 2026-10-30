@@ -40,6 +40,8 @@ export interface SymbolNodeAttrs {
   properties?: string[];
   /** Função/método: tipo de retorno anotado (`Promise<T>` → T); `[]` = anotado, mas não é classe. */
   returns?: string[];
+  /** Função/método: os nomes que ela devolve direto (`return app;`). */
+  returnsNames?: string[];
   /** Classe de C#/Java: namespace (ou package) onde é declarada. */
   namespace?: string;
   /** Método de extensão do C#: o tipo do parâmetro `this`. */
@@ -211,6 +213,8 @@ export interface CallSite {
    * variável (`var api = app.MapGroup("/api"); api.MapGet(...)`). É o que dá o prefixo de um grupo de rotas.
    */
   receiverCall?: ReceiverCall;
+  /** A chamada só roda num ramo do escopo dela: `if (require.main === module) app.listen()`. */
+  conditional?: true;
 }
 
 /** A chamada que produziu um receptor: o nome, os argumentos estáticos e, por sua vez, a que produziu o receptor dela. */

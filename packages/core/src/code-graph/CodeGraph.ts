@@ -205,6 +205,12 @@ export class CodeGraph {
     return this.moduleInfo.get(fileId);
   }
 
+  /** A chamada que produz o valor `name` do topo de `fileId` (`const app = express()` → `express`), por nome e receptor. */
+  valueCallOf(fileId: string, name: string): { name: string; object?: string[] } | undefined {
+    const call = this.moduleInfo.get(fileId)?.valueCalls.get(name);
+    return call && { name: call.name, ...(call.object && { object: call.object }) };
+  }
+
   /** Esquece os tsconfig/jsconfig lidos (sem religar nada) — ver `reloadModuleConfig`. */
   invalidateConfig(): void {
     this.resolver.invalidate();
@@ -617,6 +623,7 @@ export class CodeGraph {
           ...(sym.fieldArgs !== undefined && { fieldArgs: sym.fieldArgs }),
           ...(sym.properties !== undefined && { properties: sym.properties }),
           ...(sym.returns !== undefined && { returns: sym.returns }),
+          ...(sym.returnsNames !== undefined && { returnsNames: sym.returnsNames }),
           ...(sym.namespace !== undefined && { namespace: sym.namespace }),
           ...(sym.extensionOf !== undefined && { extensionOf: sym.extensionOf }),
           ...(sym.handles !== undefined && { handles: sym.handles }),
@@ -1111,6 +1118,7 @@ export class CodeGraph {
       ...(call.receiverParam !== undefined && { receiverParam: call.receiverParam }),
       ...(call.decorates && { decorates: call.decorates }),
       ...(receiverCall && { receiverCall }),
+      ...(call.conditional && { conditional: true as const }),
     };
   }
 

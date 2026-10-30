@@ -43,7 +43,7 @@ export function schemaFilesOf(sqlFiles: string[]): string[] {
 
 const list = (items: string[]) => `[${items.map((s) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}]`;
 
-/** Os arquivos do banco de teste, por caminho relativo à raiz do projeto. */
+/** Os arquivos do banco de teste, por caminho relativo à raiz do projeto. A troca do `pg` fica no setup (`chaosSetupScaffold`). */
 export function chaosDbScaffold(plan: ChaosDbPlan): Record<string, string> {
   const schema = plan.schemaFiles.length > 0 ? plan.schemaFiles : [CHAOS_SCHEMA_FILE];
   const files: Record<string, string> = {
@@ -125,25 +125,6 @@ export function chaosDbScaffold(plan: ChaosDbPlan): Record<string, string> {
       '  // ex.: o registro de id 1 que as rotas com :id do contrato usam',
       "  // await db.exec(`INSERT INTO category (name) VALUES ('Livros')`);",
       '}',
-      '',
-    ].join('\n'),
-    [CHAOS_SETUP_FILE]: [
-      '// Gerado pelo `shieldepy chaos --init`: carregado antes de cada teste de caos. O `pg` que o app usa',
-      '// vira o banco de chaos/db.ts; nada no código do app muda.',
-      "import { createRequire } from 'node:module';",
-      "import { vi } from 'vitest';",
-      "import { Client, Pool } from './db';",
-      '',
-      '// import (ESM e TypeScript): o Vitest troca o módulo',
-      "vi.mock('pg', async () => {",
-      "  const db = await import('./db');",
-      '  return { Pool: db.Pool, Client: db.Client, default: { Pool: db.Pool, Client: db.Client } };',
-      '});',
-      '',
-      '// require() (CommonJS): o vi.mock não alcança o require nativo; troca no módulo em cache, antes de o app carregar',
-      "const pg = createRequire(import.meta.url)('pg');",
-      'pg.Pool = Pool;',
-      'pg.Client = Client;',
       '',
     ].join('\n'),
   };
