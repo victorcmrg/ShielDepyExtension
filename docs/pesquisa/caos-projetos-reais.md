@@ -73,3 +73,18 @@ O arnês de teste que o `chaos` exige (`vitest` 2.1.9, `supertest` 7, `msw` 2) f
    - o contexto dos invariantes ganha as respostas (status e corpo de cada requisição), e não só `apiCalls`;
    - a severidade de uma corrida em que só o `noUnhandledError` falhou (500 sem estado corrompido) cai de Crítico para Alto.
 6. **O arnês de teste no projeto:** o `chaos` exige `vitest`, `supertest` e `msw` instalados no alvo. O `--init` deve dizer o comando de instalação, ou a CLI deve usar os dela.
+
+## 6. Depois da C2a (2026-10-30)
+
+Os mesmos 3 projetos, nos mesmos commits, com o `createApp` gerado pelo `--init` (C2a1). O mapa deu os mesmos números da tabela da seção 2.
+
+| | pg-crud | realworld | prisma-express |
+|---|---|---|---|
+| Como o `--init` subiu o app | guardado: `index.js` (CommonJS) carregado com `createRequire` | guardado: `import './src/main'` | guardado: `import './src/index'` |
+| Pendência do `createApp` | nenhuma | nenhuma | nenhuma |
+| Conferido | o `chaos --offline` inteiro | fumaça: 404 numa rota inexistente e a porta 3000 livre | fumaça: 404 numa rota inexistente e a porta 3000 livre |
+
+- **pg-crud:** escritos à mão só o `chaos/schema.sql` (as duas tabelas), os corpos, um registro de exemplo no `resetDb` e a invariante `nomeDeCategoriaUnico`. Saiu o mesmo resultado da C1: `POST /categories` Crítico (`stateCheck: nomeDeCategoriaUnico`) e `PUT /categories/:id` aguentou. Os controles passaram, então o app subiu pelo setup gerado.
+- **Sem a invariante, o `POST /categories` dá "aguentou":** dez inserções iguais com 201 não quebram nada que o teste veja (é a seção 4). O esquema da C1 não tinha `UNIQUE`; com ele, o defeito apareceria como 500.
+- **realworld e prisma-express:** a entrada importada pelo contrato roda o que está no topo (o `PrismaClient`, o `dotenv`, o `cors`), e nada disso abriu conexão nem porta. O banco deles ainda é à mão (C2d2).
+- **Ambiente:** atrás do proxy desta máquina, o `prisma generate` só baixa o binário com `NODE_OPTIONS=--use-system-ca`.
