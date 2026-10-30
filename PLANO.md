@@ -14,10 +14,10 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) e **P1 ✅** (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md)): na `main` desde 2026-10-24 (`9d0bc55`, merge fast-forward da `feat/postgres-drizzle`). A `apps/api` é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`, sobre Postgres/PGlite. Noutra máquina: `git pull` na `main` e `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo e pode ser apagada.
-- **Em andamento: etapa C**, na branch `feat/caos-c2a`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). A C1 e a C2d1 estão na `main` desde 2026-10-30 (`8dda696`, merge fast-forward da `feat/caos-c1`; as branches já mergeadas foram apagadas no GitHub). **C2a ✅** (2026-10-30, na `main` desde `c2e75e0`): o `--init` escreve o `createApp` sem editar o projeto, e nos 3 projetos da C1 saiu sem pendência (resultado na seção 6 do relatório da C1). **Próxima: C2d2** (o banco de teste para o Prisma; tarefa mais abaixo), numa branch nova a partir da `main`.
+- **Em andamento: etapa C**, na `main`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). A C1 e a C2d1 estão na `main` desde 2026-10-30 (`8dda696`, merge fast-forward da `feat/caos-c1`; as branches já mergeadas foram apagadas no GitHub). **C2a ✅** (2026-10-30, na `main` desde `c2e75e0`): o `--init` escreve o `createApp` sem editar o projeto, e nos 3 projetos da C1 saiu sem pendência (resultado na seção 6 do relatório da C1). **Próxima: C2d2** (o banco de teste para o Prisma; tarefa mais abaixo), numa branch nova a partir da `main`.
 - **Nova frente, D (2026-10-30): dados para a equipe que treina a IA de erros de produção** ([0016](docs/decisoes/0016-dados-para-treino.md)). Só planejada, nada implementado; a seção D mais abaixo diz o que fazer. Corre em paralelo à C e não mexe na `apps/api` nem na `apps/web` (o full stack da empresa segue noutra sessão).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
-- **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
+- **Parte da empresa: só o necessário para distribuir o produto** ([0017](docs/decisoes/0017-lancamento-minimo.md), 2026-10-30). Nada de full stack completo agora. O **degrau 1** põe o site estático no ar e a extensão no Marketplace e no Open VSX, sem servidor; o **degrau 2** põe o portal e a API no ar para os primeiros times. Licença e cobrança (A e B) ficam para quando houver quem pague. A seção "Lançamento mínimo", mais abaixo, tem a lista. Falta o usuário decidir DP4 (domínio e e-mail) e DP2 (repositório privado ou público) para o degrau 1, e DP3 (hospedagem) para o degrau 2.
 
 ## Decisões pendentes (do usuário; perguntar antes da tarefa que depende delas)
 
@@ -32,7 +32,8 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 
 ## Etapas
 
-Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
+Ordem: **S ✅ → P1 ✅ → C (até a C2f) → lançamento mínimo, degrau 1 → degrau 2 → resto da C → A → B → P (resto)** ([0017](docs/decisoes/0017-lancamento-minimo.md)). A D corre em paralelo.
+- Da empresa, só entra o que serve para distribuir o produto: o lançamento mínimo junta as partes necessárias da W, da G e da P.
 - A S destrava tudo sem mudar comportamento, e a P1 (Postgres) vem logo depois da S7, que isola o banco na `infra`.
 - A C e a W deixam o produto honesto e utilizável antes de alguém instalar.
 - A G põe o produto na mão das pessoas, de graça.
@@ -43,7 +44,8 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
 | P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; na `main`) |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅, C2a ✅ (na `main`); próxima: C2d2 |
-| W | Landing honesta | pendente |
+| LM | **Lançamento mínimo** ([0017](docs/decisoes/0017-lancamento-minimo.md)): degrau 1 (site estático + marketplaces) e degrau 2 (portal e API no ar) | pendente; degrau 1 depende de DP2 e DP4, degrau 2 de DP3 |
+| W | Landing honesta | pendente; W1–W3 entram no degrau 1 |
 | G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
 | A | Licença: direito de uso por empresa ([0009](docs/decisoes/0009-modelo-de-venda.md), TDD [0011](docs/decisoes/0011-tdd-na-empresa.md)) | pendente |
 | B | Monetização: planos, assinatura, cobrança, cadastro (TDD) | pendente; depende de DP1 e DP5 |
@@ -180,6 +182,27 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
   - **Diagnóstico:** o prompt é o código da rota; o `chosen` é a falha que deu achado, com a invariante; o `rejected` é uma falha que aguentou na mesma rota. Marcar como fraco: "aguentou" não prova que a rota é segura (C1, seção 4).
 - **D6. Entrega e documentação.** `docs/dataset.md`: o esquema, o que cada campo quer dizer, os limites (o alcance, o volume, "aguentou" não é "seguro") e como rastrear a geração no LangSmith (as variáveis `LANGCHAIN_*` só na máquina que gera; conferir se o `@langchain/core` já traz o `langsmith` ou se a CLI precisa declarar). A outra equipe importa o JSONL no banco dela.
 - **Ordem:** D1 → D2 → D6 (o mínimo para a outra equipe começar) → D4 → D5 → D3 com IA (DP6).
+
+---
+
+### LM — Lançamento mínimo: só o necessário da empresa para distribuir o produto
+
+**Por que existe:** a meta é o site da empresa no ar e a extensão instalável por qualquer pessoa, com o mínimo de full stack ([0017](docs/decisoes/0017-lancamento-minimo.md)). A extensão já funciona sem conta (o motor é local), então dá para lançar antes de a API estar no ar. Cada item abaixo é uma tarefa da W, da G ou da P, só no tamanho necessário.
+
+- **Degrau 1: lançar (sem servidor).** Depende de DP4 (domínio e e-mail) e de DP2 (repositório privado ou público; o Marketplace aceita privado).
+  1. **W1–W3:** a landing honesta: as 8 promessas corrigidas, o que é "em breve" marcado, o plano Local (grátis) visível e "Entrar na lista de espera" ou "Falar com o time", com o contato real, no lugar de "Assinar".
+  2. **Site estático:** só o build da landing (`apps/web`), sem a API, numa hospedagem estática grátis (Cloudflare Pages, Vercel ou Netlify), no domínio da empresa. Os links do portal saem até o degrau 2.
+  3. **C2f:** o aviso de "framework não suportado" (evita o falso verde com Fastify, Nest e afins).
+  4. **A extensão pronta para estranhos:** **G1** (versão e changelog); o login e o portal desligados ou escondidos enquanto não há API (hoje o `shieldepy.webBaseUrl` aponta para localhost); README e página do Marketplace honestos; o E2E rodando contra o `.vsix` antes de publicar (perguntar antes de rodar).
+  5. **Termos de uso e política de privacidade** (o pedaço da P5 que o Marketplace pede): o que a extensão envia (nada sem login) e o que vai para a IA (só com a chave do usuário, [0006](docs/decisoes/0006-ia-byok.md)).
+  6. **G4:** a publicação no Marketplace do VS Code (publisher `shieldepy`, token do Azure DevOps) e no Open VSX (Cursor, VSCodium). Os tokens e a publicação são do usuário.
+- **Degrau 2: portal e API no ar (login, equipe, histórico do caos).** Depende de DP3 (sugestão: PaaS como Railway, Render ou Fly, com Postgres gerenciado como o Neon).
+  1. **P2:** o Dockerfile da API (que já serve o site, `npm run web`), o Postgres gerenciado com o `db:migrate` no deploy, TLS, as variáveis de ambiente e o OAuth do Google e do GitHub com as URLs de produção. A extensão passa a apontar para o domínio.
+  2. **P3, o mínimo:** cookies `Secure`/`SameSite`, rate limit no login e no device flow, CSP, segredos fora do repositório e um `/security-review` antes de abrir o acesso.
+  3. **P4, o básico:** backup diário do Postgres (com uma restauração testada uma vez) e logs.
+  4. **Cadastro:** os primeiros 5 a 10 times entram pelo admin (`npm run bootstrap` e o painel de empresas). O cadastro self-service fica para a B2.
+  5. Conferir num VS Code real o device flow da extensão contra a API de produção (perguntar antes).
+- **Fica para depois do lançamento:** a CLI no npm (G2), o `.vsix` nas Releases (G3), o workflow de release automático (G5), a licença (A), a cobrança (B) e o resto da P (status, alertas, exportação e exclusão de conta).
 
 ---
 
