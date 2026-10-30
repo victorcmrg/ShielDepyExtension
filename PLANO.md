@@ -14,7 +14,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) e **P1 ✅** (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md)): na `main` desde 2026-10-24 (`9d0bc55`, merge fast-forward da `feat/postgres-drizzle`). A `apps/api` é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`, sobre Postgres/PGlite. Noutra máquina: `git pull` na `main` e `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo e pode ser apagada.
-- **Em andamento: etapa C**, na branch `feat/caos-c1`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). **Próxima: C2a** (`createApp` sem editar o projeto; o passo a passo está na tarefa C2a, mais abaixo), depois a C2d2 (Prisma). A branch está no GitHub: noutra máquina, `git fetch` e `git switch feat/caos-c1`.
+- **Em andamento: etapa C**, na branch `feat/caos-c2a`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). A C1 e a C2d1 estão na `main` desde 2026-10-30 (`8dda696`, merge fast-forward da `feat/caos-c1`; as branches já mergeadas foram apagadas no GitHub). **Agora: C2a** (`createApp` sem editar o projeto; o passo a passo está na tarefa C2a, mais abaixo), depois a C2d2 (Prisma).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -39,8 +39,8 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 | Etapa | O que | Status |
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
-| P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; branch `feat/postgres-drizzle`, esperando o merge) |
-| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅; próxima: C2a (branch `feat/caos-c1`) |
+| P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; na `main`) |
+| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅ (na `main`); agora: C2a (branch `feat/caos-c2a`) |
 | W | Landing honesta | pendente |
 | G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
 | A | Licença: direito de uso por empresa ([0009](docs/decisoes/0009-modelo-de-venda.md), TDD [0011](docs/decisoes/0011-tdd-na-empresa.md)) | pendente |
@@ -212,7 +212,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
     - `.env.example` com um bloco "Banco" (`DATABASE_URL`, `SHIELDEPY_DATA_DIR`); `docs/como-funciona.md` com a seção "Banco da API" (PGlite × Postgres, onde ficam os dados, os scripts, como mudar o esquema); a árvore da [0013](docs/decisoes/0013-api-ddd-por-dominio.md) e os comandos do `CLAUDE.md`. O `README.md` da raiz não falava de SQLite, e a `apps/api` não tem README.
     - Conferido: `npm run check` (440 passando); `db:migrate` duas vezes numa pasta temporária (1 aplicada, depois "nenhuma pendente"); `db:generate` sem mudar o esquema diz "No schema changes". **Só o PGlite foi conferido:** não havia um Postgres conhecido à mão (um Postgres de verdade fica para a P2).
     - Não há dados de produção para migrar do SQLite: o dev recria com `npm run seed:demo -w @shieldepy/api` (se houver um `auth.db` antigo em `apps/api/data/`, pode ser apagado).
-    - Com a P1c, a P1 inteira está pronta: a branch `feat/postgres-drizzle` (que já contém a S) espera o merge na `main` pelo usuário.
+    - Com a P1c, a P1 inteira está pronta e na `main` (`9d0bc55`).
 - **P2. Deploy (depende de DP3 e DP4).** Dockerfile da API, domínio, TLS, variáveis de ambiente e OAuth do Google e do GitHub com as URLs de produção. Workflow de deploy na `main`.
 - **P3. Segurança.** Rate limit no login e no device flow, cookies `Secure` e `SameSite`, CSP no site, chaves e segredos fora do repositório, rotação documentada. Revisar com `/security-review` antes de abrir para clientes.
 - **P4. Operação.** Backup diário do Postgres com restauração testada uma vez, logs estruturados, alerta de erro e uma página de status simples.
