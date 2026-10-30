@@ -15,6 +15,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) e **P1 ✅** (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md)): na `main` desde 2026-10-24 (`9d0bc55`, merge fast-forward da `feat/postgres-drizzle`). A `apps/api` é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`, sobre Postgres/PGlite. Noutra máquina: `git pull` na `main` e `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo e pode ser apagada.
 - **Em andamento: etapa C**, na branch `feat/caos-c2a`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). A C1 e a C2d1 estão na `main` desde 2026-10-30 (`8dda696`, merge fast-forward da `feat/caos-c1`; as branches já mergeadas foram apagadas no GitHub). **C2a ✅** (2026-10-30, na `main` desde `c2e75e0`): o `--init` escreve o `createApp` sem editar o projeto, e nos 3 projetos da C1 saiu sem pendência (resultado na seção 6 do relatório da C1). **Próxima: C2d2** (o banco de teste para o Prisma; tarefa mais abaixo), numa branch nova a partir da `main`.
+- **Nova frente, D (2026-10-30): dados para a equipe que treina a IA de erros de produção** ([0016](docs/decisoes/0016-dados-para-treino.md)). Só planejada, nada implementado; a seção D mais abaixo diz o que fazer. Corre em paralelo à C e não mexe na `apps/api` nem na `apps/web` (o full stack da empresa segue noutra sessão).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
 - **Parte da empresa** (licença, cobrança, produção): nada existe ainda.
 
@@ -27,6 +28,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 | DP3 | Hospedagem da API, do site e do Postgres | Uma VPS com Docker, ou PaaS (Railway, Render, Fly) com Postgres gerenciado (Neon, Supabase) | P2 |
 | DP4 | Domínio e e-mail de contato | — | P2, W |
 | DP5 | O que cada plano destrava (a tabela de planos) | Ponto de partida: [`docs/pesquisa/precos-concorrencia.md`](docs/pesquisa/precos-concorrencia.md), seção 7.3 | B1 |
+| DP6 | Dataset do treino: gerar também com a IA (pago) e com que orçamento; quais licenças de repositório aceitar no corpus | Só offline (grátis) ou offline + IA com teto em US$; licenças permissivas (MIT, Apache-2.0, BSD) ou qualquer pública | D3 com IA, D5 |
 
 ## Etapas
 
@@ -46,6 +48,7 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
 | A | Licença: direito de uso por empresa ([0009](docs/decisoes/0009-modelo-de-venda.md), TDD [0011](docs/decisoes/0011-tdd-na-empresa.md)) | pendente |
 | B | Monetização: planos, assinatura, cobrança, cadastro (TDD) | pendente; depende de DP1 e DP5 |
 | P | Produção: deploy, segurança, operação, LGPD | pendente; depende de DP3 e DP4 |
+| D | Dados para treinar a IA de erros de produção ([0016](docs/decisoes/0016-dados-para-treino.md)) | pendente; em paralelo à C (D1 e D2 podem começar já) |
 | — | Medição paga da IA (5e) | só com autorização |
 | — | Python no motor ([0007](docs/decisoes/0007-linguagens.md)) | próxima linguagem; escrever a etapa aqui quando começar |
 | — | Caos em C# e Java (xUnit/`WebApplicationFactory`, JUnit/Spring Test) | talvez |
@@ -141,6 +144,42 @@ Ordem: **S → P1 → C (restante) → W → G → A → B → P (resto)**.
   | F7 | got, undici, ky, node-fetch, SDKs comuns | 0,5–1 dia cada |
 
   **Ordem:** pelas stacks dos times que testarem o produto (ver G). Sem esse dado, F1 → F4 → F6 (Mongoose, Sequelize) → F5 → resto. A F3 deixou de ser a primeira: ela provaria o caos no portal, e na S3 o portal passa a não rodar o motor.
+
+---
+
+### D — Dados para treinar a IA de erros de produção (nova, 2026-10-30)
+
+**Por que existe:** outra equipe vai treinar um modelo aberto (Llama-3.2-1B-Instruct, com DPO) para ser especialista em erro de produção, com os dados que o ShielDepy gera. A proposta dela previa um projeto à parte com o `tree-sitter` nativo, Neon com pgvector, LangSmith e o Sonnet como validador. O que vale e o que muda está na [0016](docs/decisoes/0016-dados-para-treino.md). Em resumo: **o motor gera os dados pela CLI, o rótulo vem do Vitest (controle × caos), só entra código público ou nosso, e o banco do treino é o da outra equipe, não a `apps/api`.**
+
+**O que já existe e serve de matéria-prima:** o mapa e a topologia (rotas, operações em ordem com `arquivo:linha`, `proven`/`heuristic`, tags), as hipóteses do catálogo, as specs validadas, o `.spec.ts` gerado, o resultado de cada teste com severidade e invariante (`.shieldepy/chaos-results.json`, `packages/agent/src/chaos/results.ts`) e o custo. Falta juntar isso com o código da rota num registro por hipótese, e gerar volume.
+
+**Onde mexer:** `packages/agent/src/chaos/` (o registro, como função pura), `apps/cli/src/chaos.ts` (a flag) e um script na raiz. **Não mexe** na `apps/api` nem na `apps/web`.
+
+- **D1. O registro (JSONL v1).** `packages/agent/src/chaos/dataset.ts`, função pura com teste. Um registro por hipótese testada:
+  - `id` estável (hash do projeto, do commit e da hipótese) e `schemaVersion: 1`;
+  - `source`: projeto, URL do repositório, commit, licença (do `package.json` ou do `LICENSE`) e variante (`original`, `fixed` ou `mutante:<operador>`);
+  - `route`: método e path, a cadeia de handlers, as operações em ordem (tipo, alvo, `arquivo:linha`, `proven`/`heuristic`) e as tags;
+  - `code`: o corpo de cada função da cadeia, recortado pelos símbolos do grafo (faixa de nós do Tree-sitter, nunca regex), com `arquivo:linha`;
+  - `hypothesis`: a falha do catálogo, o alvo, quem escreveu (`offline`, ou o provedor e o modelo), a spec validada e o que a validação descartou (rota, falha ou alvo inventados pela IA);
+  - `result`: o status do controle e do caos, o desfecho (`achado`, `aguentou`, `inválido`), a invariante violada, a severidade e a duração;
+  - `test`: o texto do `.spec.ts` gerado; e o `topologyHash`.
+  - **Pronto quando:** o teste confere um registro do `checkout-express` campo a campo, e a mesma entrada dá o mesmo JSON (ordem estável).
+- **D2. `shieldepy chaos <pasta> --dataset <arq.jsonl>`.** Acrescenta os registros da execução ao arquivo, sem rede no modo `--offline`. Inválido também vai (com o motivo), para a outra equipe filtrar.
+  - **Pronto quando:** no `checkout-express` saem os 6 achados com o controle passando; no `checkout-express-fixed`, os mesmos ids de hipótese com "aguentou". Teste na `apps/cli/test/cli.test.ts`.
+- **D3. O corpus.** `npm run dataset:gerar -- --dir <scratchpad>`: roda o `chaos --dataset` nos `examples/` e nos projetos do `mapa:reais` (clonados no scratchpad, fixados por commit, `npm install --ignore-scripts`). Primeiro só offline (grátis). Com a IA escrevendo as hipóteses e as specs, só depois da DP6 e com autorização (estimar antes com `npm run estimate:chaos`).
+  - **Volume, sem enfeitar:** hoje são 2 exemplos e os 3 projetos da C1, que deram 5 achados verdadeiros. Isso é dezenas de registros, não milhares. O alcance é o da C (Express + pg/Prisma + fetch/axios); a F aumenta.
+- **D4. Pares por mutação.** É o que dá volume ao DPO. A partir de código que aguenta (o `-fixed` e as rotas reais que deram "aguentou" com controle verde), aplicar mutações pela AST numa cópia no scratchpad, uma por mutante:
+  - tirar o `timeout`/`signal` de um `fetch` ou `axios`;
+  - tirar o `BEGIN`/`COMMIT` ou o `FOR UPDATE`;
+  - inverter a ordem "reserva → cobrança";
+  - tirar o estorno do `catch` depois da API.
+
+  Um mutante só vira par se o original aguentou **e** o mutante deu achado no mesmo teste, com o controle passando nos dois. A troca é por faixa de nós do Tree-sitter, sem regex.
+- **D5. Pares para o DPO** (`npm run dataset:pares`), no formato a combinar com a outra equipe: `{ prompt, chosen, rejected, provenance }`.
+  - **Correção:** o prompt é o código vulnerável com o achado; o `chosen` é a versão que aguentou; o `rejected` é a que ainda dá achado.
+  - **Diagnóstico:** o prompt é o código da rota; o `chosen` é a falha que deu achado, com a invariante; o `rejected` é uma falha que aguentou na mesma rota. Marcar como fraco: "aguentou" não prova que a rota é segura (C1, seção 4).
+- **D6. Entrega e documentação.** `docs/dataset.md`: o esquema, o que cada campo quer dizer, os limites (o alcance, o volume, "aguentou" não é "seguro") e como rastrear a geração no LangSmith (as variáveis `LANGCHAIN_*` só na máquina que gera; conferir se o `@langchain/core` já traz o `langsmith` ou se a CLI precisa declarar). A outra equipe importa o JSONL no banco dela.
+- **Ordem:** D1 → D2 → D6 (o mínimo para a outra equipe começar) → D4 → D5 → D3 com IA (DP6).
 
 ---
 
