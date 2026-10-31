@@ -32,6 +32,7 @@ import {
   readChaosConfig,
   silentHost,
   TS_EXTENSIONS,
+  unsupportedFrameworks,
   walkSourceTree,
   type AttackSurface,
   type ChaosDbPlan,
@@ -147,6 +148,12 @@ export async function runChaosCommand(
   const others = topology.routes.filter((r) => !isChaosSource(r.file));
   if (others.length > 0) io.err(`ℹ ${others.length} rota(s) de C#/Java fora do caos (só JS/TS): ${others.map((r) => r.id).join(', ')}`);
   const fullSurface = attackSurface({ ...topology, routes: topology.routes.filter((r) => isChaosSource(r.file)) });
+  // C2f (MVP3): um framework que o mapa não lê dá 0 rotas, e 0 testes não é um verde
+  const unsupported = unsupportedFrameworks(existsSync(path.join(root, 'package.json')) ? readFileSync(path.join(root, 'package.json'), 'utf8') : undefined);
+  const jsRoutes = topology.routes.length - others.length;
+  const blind = unsupported.length > 0 && jsRoutes === 0;
+  if (blind) io.err(`⚠ o projeto usa ${unsupported.join(', ')}, que o ShielDepy ainda não lê: o mapa não achou nenhuma rota, e o caos não tem o que testar. Isso não é um "aguentou".`);
+  else if (unsupported.length > 0) io.err(`⚠ o projeto também usa ${unsupported.join(', ')}, que o ShielDepy ainda não lê: as rotas de lá ficam fora do mapa e do caos.`);
 
   // --init: o contrato inicial sai do próprio mapa; o que só o projeto sabe fica marcado
   if (args.init) {
@@ -348,6 +355,10 @@ export async function runChaosCommand(
   }
   if (allInvalid) {
     io.err('erro de ambiente: nenhum teste de caos foi válido (todos os controles falharam ou não rodaram). Nada foi provado.');
+    return 2;
+  }
+  if (blind) {
+    io.err(`erro: nada foi provado: ${unsupported.join(', ')} ainda não é suportado pelo caos (o mapa dá 0 rotas).`);
     return 2;
   }
   return 0;
