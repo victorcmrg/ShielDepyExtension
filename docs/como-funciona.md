@@ -295,6 +295,7 @@ empresa pela URL do portal (`shieldepy.webBaseUrl`) e pelo `shieldepy publish`.
 | Id estável de símbolo e hash do corpo/topo pela AST | `packages/core/src/code-graph/extract-ts.ts` (`stableIds`), `fingerprint.ts` |
 | Diff entre mapas e rotas tocadas por um PR | `packages/core/src/map-diff.ts`, `topology/affected.ts`; base pelo git em `packages/core/src/git-base.ts` |
 | Resultado do caos em disco (`chaos-results.json`) e o que vai para o portal (`ChaosRunUpload`) | `packages/agent/src/chaos/results.ts`; o envio em `apps/cli/src/publish.ts` |
+| Dataset para treino (`chaos --dataset`), mutantes e pares do DPO ([`dataset.md`](dataset.md)) | `packages/agent/src/chaos/dataset.ts`, `dataset-pairs.ts`, `mutations.ts`; a fonte pelo git em `apps/cli/src/dataset.ts`; o corpus em `scripts/dataset-*.ts` |
 | API: servidor, estáticos, cabeçalhos de segurança e o despacho de rotas | `apps/api/src/app.ts`, `server.ts`, `shared/http/*` |
 | API: onde os domínios se juntam (repositórios, serviços, rotas) | `apps/api/src/composition.ts` |
 | API: um domínio (DDD, decisão 0013) | `apps/api/src/domains/<domínio>/{domain,application,infra,http}`; o banco (Postgres com Drizzle, decisão 0015) em `shared/db/{schema,postgres}.ts` e as migrations em `apps/api/drizzle/` |
@@ -344,7 +345,7 @@ empresa pela URL do portal (`shieldepy.webBaseUrl`) e pelo `shieldepy publish`.
    símbolos, chamadas (com o tipo do receptor) e, se a linguagem resolve nomes por namespace/package, o `NamespaceScope`.
 2. Os tipos de fora que importam para o caos (banco, HTTP, rotas) viram ligações de import para um "pacote".
 3. As rotas em `topology/routes.ts` e o I/O em `topology/io.ts`, sempre pelo pacote para o qual a chamada resolveu.
-4. Um exemplo em `examples/` com o checkout e os mesmos defeitos, e projetos reais no `scripts/measure-real-projects.ts`.
+4. Um exemplo em `examples/` com o checkout e os mesmos defeitos, e projetos reais no `scripts/real-projects.ts`.
 
 **Nova linguagem só nas regras reativas** (ex.: Go):
 1. Inclua a gramática (`tree-sitter-go.wasm`, do `tree-sitter-wasms`) em `packages/core/scripts/copy-wasm.cjs` e em `GrammarName` (`packages/core/src/code-graph/parser.ts`).
