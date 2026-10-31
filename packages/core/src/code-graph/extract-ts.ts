@@ -39,6 +39,8 @@ export interface SymbolInfo {
   returns?: TypeRef;
   /** Função/método: os nomes que ela devolve direto (`return app;`, `() => app`), sem contar as funções de dentro. */
   returnsNames?: string[];
+  /** Função/método: os caminhos que ela lê de `req.body` (o 1º parâmetro), para o corpo de exemplo do contrato (MVP6). */
+  bodyReads?: string[];
   /** Classe de C#/Java: o namespace (ou package) onde ela é declarada — a resolução é por ele, não por import de arquivo. */
   namespace?: string;
   /** Método de extensão do C# (`static void Validate(this Order o)`): o tipo do `this`. */
@@ -468,6 +470,87 @@ function returnedNames(fn: SyntaxNode): string[] {
   return [...names].sort();
 }
 
+const sameNode = (a: SyntaxNode | null | undefined, b: SyntaxNode) => !!a && a.startIndex === b.startIndex && a.endIndex === b.endIndex && a.type === b.type;
+
+/** `(req.body ?? {}) as X`, `req.body!`, `req.body || {}` → `req.body`: o valor por baixo do embrulho. */
+function bareValue(node: SyntaxNode | null | undefined): SyntaxNode | null | undefined {
+  let n = node;
+  for (;;) {
+    if (!n) return n;
+    if (n.type === 'parenthesized_expression' || n.type === 'non_null_expression' || n.type === 'as_expression' || n.type === 'satisfies_expression') n = n.namedChildren[0];
+    else if (n.type === 'binary_expression' && ['??', '||'].includes(n.childForFieldName('operator')?.type ?? '')) n = n.childForFieldName('left');
+    else return n;
+  }
+}
+
+/**
+ * Os caminhos que a função lê do corpo da requisição, o `body` do 1º parâmetro (`req` no Express e no
+ * Fastify): `req.body.user.email` → `user.email`; `const { a, b: { c }, d = 1 } = req.body` → `a`, `b.c`, `d`;
+ * `const body = req.body; body.x` → `x`. A chamada de método no fim não é campo (`req.body.items.map()` →
+ * `items`). Ordenados e sem repetir. É o que o `--init` usa para montar um corpo de exemplo (MVP6).
+ */
+export function bodyReads(fn: SyntaxNode): string[] {
+  const single = fn.childForFieldName('parameter');
+  const firstParam = fn.childForFieldName('parameters')?.namedChildren[0];
+  const req = single?.type === 'identifier' ? single.text : firstParam ? paramName(firstParam) : undefined;
+  const body = fn.childForFieldName('body');
+  if (!req || !body) return [];
+  const aliases = new Set<string>();
+  const isBody = (node: SyntaxNode | null | undefined): boolean => {
+    const n = bareValue(node);
+    if (n?.type === 'identifier') return aliases.has(n.text);
+    if (n?.type !== 'member_expression' || n.childForFieldName('property')?.text !== 'body') return false;
+    const object = bareValue(n.childForFieldName('object'));
+    return object?.type === 'identifier' && object.text === req;
+  };
+  // `const body = req.body`: o apelido vale na função inteira (o caso comum é declarar no começo)
+  walk(body, (n) => {
+    const name = n.type === 'variable_declarator' ? n.childForFieldName('name') : undefined;
+    if (name?.type === 'identifier' && isBody(n.childForFieldName('value'))) aliases.add(name.text);
+  });
+  const paths = new Set<string>();
+  const pattern = (p: SyntaxNode, prefix: string) => {
+    for (const c of p.namedChildren) {
+      if (c.type === 'shorthand_property_identifier_pattern') paths.add(prefix + c.text);
+      else if (c.type === 'object_assignment_pattern') {
+        const left = c.childForFieldName('left');
+        if (left) paths.add(prefix + left.text);
+      } else if (c.type === 'pair_pattern') {
+        const key = propertyKey(c.childForFieldName('key'));
+        const value = c.childForFieldName('value');
+        const inner = value?.type === 'assignment_pattern' ? value.childForFieldName('left') : value;
+        if (!key) continue;
+        if (inner?.type === 'object_pattern') pattern(inner, `${prefix}${key}.`);
+        else paths.add(prefix + key);
+      }
+    }
+  };
+  walk(body, (n) => {
+    if (n.type === 'variable_declarator') {
+      const name = n.childForFieldName('name');
+      if (name?.type === 'object_pattern' && isBody(n.childForFieldName('value'))) pattern(name, '');
+      return;
+    }
+    if (n.type !== 'member_expression' || !isBody(n.childForFieldName('object'))) return;
+    // sobe enquanto o pai continua a cadeia (`.user.email`); o último membro chamado é método, não campo
+    const segments: string[] = [];
+    let at: SyntaxNode = n;
+    for (;;) {
+      const prop = at.childForFieldName('property');
+      const parent = at.parent;
+      const called = parent?.type === 'call_expression' && sameNode(parent.childForFieldName('function'), at);
+      if (prop?.type !== 'property_identifier' || called) break;
+      segments.push(prop.text);
+      if (parent?.type !== 'member_expression' || !sameNode(parent.childForFieldName('object'), at)) break;
+      at = parent;
+    }
+    if (segments.length > 0) paths.add(segments.join('.'));
+  });
+  // `user` e `user.email`: fica só o mais fundo
+  const all = [...paths];
+  return all.filter((p) => !all.some((q) => q.startsWith(`${p}.`))).sort();
+}
+
 /** Onde `name`, visto de `from`, é declarado: topo do arquivo, dentro de uma função, ou fora daqui (import/global). */
 function declarationScope(from: SyntaxNode, name: string): Scope | undefined {
   for (let n = from.parent; n; n = n.parent) {
@@ -698,6 +781,8 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
     if (kind !== 'class') {
       const names = returnedNames(fn);
       if (names.length > 0) info.returnsNames = names;
+      const reads = bodyReads(fn);
+      if (reads.length > 0) info.bodyReads = reads;
     }
     results.push(info);
   };

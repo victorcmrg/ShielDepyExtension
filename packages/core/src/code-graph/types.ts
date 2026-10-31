@@ -42,6 +42,8 @@ export interface SymbolNodeAttrs {
   returns?: string[];
   /** Função/método: os nomes que ela devolve direto (`return app;`). */
   returnsNames?: string[];
+  /** Função/método: os caminhos lidos de `req.body` (`user.email`). */
+  bodyReads?: string[];
   /** Classe de C#/Java: namespace (ou package) onde é declarada. */
   namespace?: string;
   /** Método de extensão do C#: o tipo do parâmetro `this`. */

@@ -624,6 +624,7 @@ export class CodeGraph {
           ...(sym.properties !== undefined && { properties: sym.properties }),
           ...(sym.returns !== undefined && { returns: sym.returns }),
           ...(sym.returnsNames !== undefined && { returnsNames: sym.returnsNames }),
+          ...(sym.bodyReads !== undefined && { bodyReads: sym.bodyReads }),
           ...(sym.namespace !== undefined && { namespace: sym.namespace }),
           ...(sym.extensionOf !== undefined && { extensionOf: sym.extensionOf }),
           ...(sym.handles !== undefined && { handles: sym.handles }),

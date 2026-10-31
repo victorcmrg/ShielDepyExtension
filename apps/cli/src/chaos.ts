@@ -30,6 +30,7 @@ import {
   indexFiles,
   listSourceFiles,
   readChaosConfig,
+  routeBodyReads,
   silentHost,
   TS_EXTENSIONS,
   unsupportedFrameworks,
@@ -164,8 +165,11 @@ export async function runChaosCommand(
     const db = chaosDbPlan(fullSurface, tree, prismaSchemas);
     if (db?.prisma && db.schemaFiles.length === 0) db.prisma.diff = prismaSchemaSql(root, db.prisma.schema, db.prisma.envVars);
     // o app (C2a): importado do projeto, ou guardado pelo setup quando o arquivo abre porta
-    const app = chaosAppPlan(findExpressRoutes(graph).apps, fullSurface, root);
-    await writeFile(configPath, chaosConfigScaffold(fullSurface, { db, app }), 'utf8');
+    const scan = findExpressRoutes(graph);
+    const app = chaosAppPlan(scan.apps, fullSurface, root);
+    // os corpos (MVP6): os campos que a cadeia de cada rota lê de req.body
+    const bodies = routeBodyReads(graph, scan.routes);
+    await writeFile(configPath, chaosConfigScaffold(fullSurface, { db, app, bodies }), 'utf8');
     io.err(`✓ ${CHAOS_CONFIG_FILE} criado com ${fullSurface.routes.length} rota(s) sensível(is).`);
     if (app) {
       const how =

@@ -236,7 +236,8 @@ describe('CLI chaos (E3)', () => {
       expect(created.code).toBe(0);
       expect(created.err).toMatch(/criado com 2 rota\(s\) sensível\(is\)/);
       const config = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
-      expect(config).toContain("'POST /checkout': { path: '/checkout', body: {} }");
+      // MVP6: o corpo pelos campos que o validateCheckout lê de req.body
+      expect(config).toContain("'POST /checkout': { path: '/checkout', body: { cardToken: 'tok_test', priceCents: 1, productId: '1', quantity: 1 } }, // corpo pelos campos que validateCheckout lê");
       expect(config).toContain("'api.stripe.com': () => ({})");
       // C2d: o app usa pg, então o banco de teste sai junto, e o contrato já o usa
       expect(config).toContain("setupFiles: ['chaos/setup.ts']");

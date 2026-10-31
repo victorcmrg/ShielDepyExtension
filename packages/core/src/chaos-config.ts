@@ -3,6 +3,7 @@
 // do bundler dele). Só NOMES saem daqui: é o que o gerador de testes e a IA podem ver.
 
 import { chaosAppContract, type ChaosAppPlan } from './chaos-app';
+import { sampleBody, type RouteBodyReads } from './chaos-body';
 import { CHAOS_SCHEMA_FILE, CHAOS_SETUP_FILE, chaosSchemaPending, type ChaosDbPlan } from './chaos-db';
 import { propertyKey } from './code-graph/extract-module';
 import type { SyntaxNode } from './code-graph/parser';
@@ -128,6 +129,21 @@ const samplePath = (routePath: string) =>
 
 const WITH_BODY = new Set(['POST', 'PUT', 'PATCH']);
 
+/** Um valor do corpo de exemplo como TS: `{ a: 1, b: 'x', c: [] }`. */
+function literal(v: unknown): string {
+  if (typeof v === 'string') return quoted(v);
+  if (Array.isArray(v)) return `[${v.map(literal).join(', ')}]`;
+  if (v && typeof v === 'object') {
+    const entries = Object.entries(v);
+    if (entries.length === 0) return '{}';
+    // a chave veio da AST: identificador, ou o texto de uma chave entre aspas (`'with-dash'`)
+    const plain = (k: string) => k !== '' && [...k].every((c, i) => c === '_' || c === '$' || (c.toLowerCase() !== c.toUpperCase()) || (i > 0 && c >= '0' && c <= '9'));
+    const key = (k: string) => (plain(k) ? k : quoted(k));
+    return `{ ${entries.map(([k, x]) => `${key(k)}: ${literal(x)}`).join(', ')} }`;
+  }
+  return String(v);
+}
+
 /**
  * O contrato inicial (`shieldepy.chaos.config.ts`) a partir do mapa: uma requisição por rota
  * sensível e uma resposta saudável por API externa que elas chamam. O que o mapa não sabe (subir o
@@ -136,7 +152,10 @@ const WITH_BODY = new Set(['POST', 'PUT', 'PATCH']);
  * (C2d), o banco de teste gerado (`chaosDbScaffold`) entra no `setupFiles` e no `reset`, sem pendência.
  * Com `app` (C2a), o `createApp` importa o app do projeto (`chaosAppContract`), sem pendência.
  */
-export function chaosConfigScaffold(surface: AttackSurface, { db, app }: { db?: ChaosDbPlan; app?: ChaosAppPlan } = {}): string {
+export function chaosConfigScaffold(
+  surface: AttackSurface,
+  { db, app, bodies = {} }: { db?: ChaosDbPlan; app?: ChaosAppPlan; bodies?: Record<string, RouteBodyReads> } = {}
+): string {
   const hosts = [...new Set(surface.routes.flatMap((r) => r.operations.filter((o) => o.kind === 'api_call' && o.target !== 'dynamic').map((o) => o.target)))].sort();
   const routes = [...surface.routes].sort((a, b) => a.id.localeCompare(b.id));
   const T = CHAOS_CONFIG_TODO;
@@ -147,8 +166,14 @@ export function chaosConfigScaffold(surface: AttackSurface, { db, app }: { db?: 
   const requests = routes.length
     ? routes.map((r) => {
         const sample = samplePath(r.path);
-        const fields = [`path: ${quoted(sample)}`, ...(WITH_BODY.has(r.method) ? ['body: {}'] : [])];
-        const todo = WITH_BODY.has(r.method) ? `${T}: um corpo válido` : sample !== r.path ? `${T}: confira o parâmetro` : 'pronta';
+        const withBody = WITH_BODY.has(r.method);
+        // MVP6: o corpo pelos campos que a cadeia lê de req.body; o controle do teste gerado diz se ele vale
+        const read = withBody ? bodies[r.id] : undefined;
+        const fields = [`path: ${quoted(sample)}`, ...(withBody ? [`body: ${literal(read ? sampleBody(read.paths) : {})}`] : [])];
+        const param = sample !== r.path ? `${T}: confira o parâmetro` : undefined;
+        const todo = withBody && !read
+          ? `${T}: um corpo válido`
+          : [read && `corpo pelos campos que ${read.from.join(', ')} lê (confira os valores)`, param].filter(Boolean).join('; ') || 'pronta';
         return `    ${quoted(r.id)}: { ${fields.join(', ')} }, // ${todo} (${r.at})`;
       })
     : ['    // nenhuma rota sensível no mapa: não há o que testar ainda'];

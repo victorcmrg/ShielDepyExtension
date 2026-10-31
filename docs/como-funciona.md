@@ -209,7 +209,7 @@ export default {
   async reset() { /* estado limpo antes de cada teste */ },
   invariants: { async stockNeverNegative() { /* ... */ }, async noChargeWithoutOrder(ctx) { /* ctx.apiCalls */ } },
   apis: { 'api.stripe.com': () => ({ id: 'ch_test', status: 'succeeded' }) }, // resposta saudável
-  requests: { 'POST /checkout': { path: '/checkout', body: { /* válido */ } } },
+  requests: { 'POST /checkout': { path: '/checkout', body: { /* válido; o --init preenche pelos campos lidos (MVP6) */ } } },
 };
 ```
 
@@ -220,6 +220,8 @@ export default {
 No Fastify (MVP4), o app é o `Fastify()` raiz, com os mesmos dois jeitos. Como o Fastify só atende depois do `ready()` e o `createApp` é síncrono, o contrato devolve `fastifyHandler(app)`: um `(req, res)` que espera o `ready()` e passa a requisição ao `app.routing(req, res)` (API pública do Fastify). Assim o supertest e os testes gerados são os mesmos do Express. No modo guardar, o `chaos/setup.ts` troca o `fastify` (o `listen()` devolve a promessa, ou chama o callback, com um endereço falso); o `packages/core/test/chaos-app-fastify.test.ts` roda isso em ESM e em CommonJS.
 
 Sem `express()` nem `Fastify()` no mapa, o `createApp` continua sendo pendência. Um `listen` no topo fora do app (`http.createServer(app).listen()`) também vira pendência, porque importar o arquivo abriria a porta de verdade.
+
+**Os corpos mínimos (MVP6).** O extrator anota em cada função os caminhos que ela lê do `body` do 1º parâmetro (`bodyReads`, em `packages/core/src/code-graph/extract-ts.ts`): o acesso direto (`req.body.user.email` → `user.email`), a desestruturação (renomeada, com padrão e aninhada), um apelido (`const body = req.body`) e o corpo embrulhado (`(req.body ?? {}) as X`). Uma chamada de método no fim não é campo (`req.body.items.map()` → `items`). O `--init` junta o que a cadeia de handlers da rota lê (o middleware de validação e o handler) e escreve um corpo de exemplo com valores pelo nome do campo (`packages/core/src/chaos-body.ts`: `*Id` → `'1'`, `email` → um e-mail, `quantity`/`price` → `1`, `is*` → `true`...). A linha sai sem a marca de pendência, com o comentário "corpo pelos campos que X lê (confira os valores)": o corpo não prova nada, e o bloco de controle de cada teste gerado é quem diz se ele é aceito (se não for, o teste sai inválido, não achado). Fica para depois: o corpo pelo zod/joi, pelo tipo TS do `req.body` (`req.body as CheckoutInput`) e pelo DTO do NestJS, e o que um serviço chamado com o `req.body` inteiro lê.
 
 **O banco de teste gerado (C2d).** Quando o mapa vê o app usar o `pg`, o `--init` também gera, sem sobrescrever o que já existir:
 - `chaos/db.ts`: um PGlite com o esquema do projeto (os `.sql` de uma pasta `migrations`, ou todos os `.sql`) e um `Pool`/`Client` com a cara do `pg`. Ele aceita `query(text, values)`, `query({ text, values })` e callback, e faz o `resetDb()` que esvazia as tabelas;

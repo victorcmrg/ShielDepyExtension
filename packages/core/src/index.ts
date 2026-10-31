@@ -26,6 +26,7 @@ export * from './topology/affected';
 export * from './chaos-config';
 export * from './chaos-db';
 export * from './chaos-app';
+export * from './chaos-body';
 export * from './frameworks';
 export * from './sql/classify';
 
