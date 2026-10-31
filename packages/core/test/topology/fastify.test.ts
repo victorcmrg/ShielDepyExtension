@@ -1,6 +1,7 @@
+import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { findExpressRoutes, type CodeGraph, type Route } from '../../src/index';
-import { createGraph, Fixture, indexFile, symbolId } from '../helpers';
+import { buildSystemGraph, buildTopology, findExpressRoutes, indexFiles, listSourceFiles, silentHost, type CodeGraph, type Route } from '../../src/index';
+import { createGraph, Fixture, indexFile, REPO_ROOT, symbolId } from '../helpers';
 
 /** `GET /x: a → b` — a cadeia de handlers numa linha, pra comparar fácil. */
 const show = (r: Route) => `${r.id}: ${r.handlers.map((h) => h.label).join(' → ')}`;
@@ -115,4 +116,28 @@ describe('MVP4 — rotas Fastify pela instância do pacote', () => {
     expect(scan.routes.map(show)).toEqual(['GET /open: create', 'POST /orders: auth → create', 'PUT /orders/:id: auth → create']);
     expect(scan.skipped.map((s) => s.reason)).toEqual(['POST: caminho não literal', 'route(): método ou caminho não literal']);
   });
+});
+
+describe('MVP4 — os exemplos checkout-fastify: a topologia com as operações em ordem', () => {
+  for (const [name, ops] of [
+    // lê o estoque, cobra (sem timeout) e só depois grava: a janela da corrida
+    ['checkout-fastify', ['db_read stock', 'api_call api.stripe.com', 'db_write stock', 'db_write orders']],
+    // reserva antes de cobrar, devolve a reserva se a cobrança falhar, estorna se o pedido não grava
+    ['checkout-fastify-fixed', ['db_write stock', 'api_call api.stripe.com', 'db_write stock', 'db_write orders', 'api_call api.stripe.com', 'db_write stock']],
+  ] as const) {
+    it(`${name}: POST /api/checkout com o preHandler, as operações e as tags, tudo provado`, async () => {
+      const graph = await createGraph();
+      const root = path.join(REPO_ROOT, 'examples', name);
+      await indexFiles(graph, await listSourceFiles(root), silentHost);
+      const topology = buildTopology(graph, buildSystemGraph(graph, [], root), root);
+      expect(topology.routes.map((r) => r.id)).toEqual(['POST /api/checkout', 'GET /api/orders/:id']);
+      const checkout = topology.routes[0]!;
+      expect(checkout.handlers.map((h) => h.label)).toEqual(['validateCheckout', 'checkoutController.create']);
+      expect(checkout.operations.map((o) => `${o.kind} ${o.target}`)).toEqual(ops);
+      expect(checkout.confidence).toBe('proven');
+      if (name === 'checkout-fastify') {
+        expect(checkout.tags.map((t) => t.tag)).toEqual(['external-io', 'no-timeout', 'no-transaction', 'read-then-write', 'write-after-api-call']);
+      } else expect(checkout.tags.map((t) => t.tag)).not.toContain('no-timeout');
+    });
+  }
 });

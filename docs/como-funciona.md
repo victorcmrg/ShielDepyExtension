@@ -158,6 +158,14 @@ Tudo é decidido pelo **pacote para o qual a chamada resolveu** no grafo, nunca 
 - **Rota:** `.get/.post/...` num valor que vem de `express`, com path literal. Os prefixos de
   `app.use('/api', router)` são compostos seguindo `router` até onde ele é declarado (import,
   barrel). Middlewares de `use` entram na cadeia só se foram registrados antes da rota.
+- **Rota no Fastify (MVP4, `fastifyRoutes`):** `.get/.post/...` ou `.route({ method, url, handler })`
+  numa instância do pacote `fastify`: a de `Fastify()` ou o parâmetro tipado de um plugin
+  (`app: FastifyInstance`). O plugin sem tipo só conta quando alguém o registra numa instância.
+  `app.register(plugin, { prefix: '/api' })` monta como o `use` (inclusive o callback escrito no próprio
+  `register`), e os hooks que rodam antes do handler (`addHook('preHandler', ...)` registrado antes da
+  rota, e `onRequest`/`preValidation`/`preHandler` nas opções dela) entram na cadeia. O plugin que não é
+  função do projeto (`fp(...)`, `register(import('./x'))`) sai em `skipped`. O exemplo é o
+  `examples/checkout-fastify` (e o `-fixed`), o mesmo checkout do Express.
 - **Banco:** `query` de `pg`, com o SQL classificado pelos tokens (verbo, tabela, `FOR UPDATE`,
   `BEGIN`); operações do Prisma (`prisma.order.create`).
 - **API externa:** `fetch` global (ou de `node-fetch`/`undici`) e `axios`, com o host da URL e o
@@ -190,7 +198,7 @@ esses testes com o Vitest do projeto (ou com o da CLI, quando o projeto não tem
 
 **O arnês embutido (MVP2, decisão [0025](decisoes/0025-arnes-de-teste-embutido.md)).** Os testes gerados importam o Vitest, o supertest e o MSW, e o banco gerado importa o PGlite. O que o `node_modules` da raiz do projeto não tem, a CLI empresta dos dela (`apps/cli/src/chaos-harness.ts`), sem instalar nada no projeto: cada pacote vira um link (junction no Windows) em `.shieldepy/chaos-tests/node_modules`, a pasta que é apagada e regerada a cada rodada (o `rm` apaga o link, não o pacote). Os testes e o `vitest.config.ts` gerado moram ali, então o `import` deles acha o pacote pela resolução normal do Node; para o que está fora (o `chaos/setup.ts` e o `chaos/db.ts`), o `vitest.config.ts` ganha um alias exato de cada pacote, antes dos aliases do projeto. O Vitest que roda é o emprestado, e o `--init` deixa de pedir para instalar o que vai ser emprestado. Na extensão ainda não há arnês (o bundle não leva o Vitest): lá vale o do projeto, como antes.
 
-**Framework não suportado (C2f, MVP3).** O mapa lê as rotas do Express. Um projeto em Fastify, Koa, Hono, Next.js, hapi ou Restify dava 0 rotas, o caos não testava nada e saía 0: um verde falso. Agora o caos confere as dependências do `package.json` (`UNSUPPORTED_FRAMEWORKS`, em `packages/core/src/frameworks.ts`). Com um desses e nenhuma rota JS/TS no mapa, ele avisa e sai **2** ("nada foi provado"). Com rotas de Express também, só avisa que as rotas do outro framework ficam de fora. Quando um framework passar a ser lido, ele sai da lista. O NestJS não entra: as rotas dele já saem dos decorators.
+**Framework não suportado (C2f, MVP3).** O mapa lê as rotas do Express e do Fastify (MVP4). Um projeto em Koa, Hono, Next.js, hapi ou Restify dava 0 rotas, o caos não testava nada e saía 0: um verde falso. Agora o caos confere as dependências do `package.json` (`UNSUPPORTED_FRAMEWORKS`, em `packages/core/src/frameworks.ts`). Com um desses e nenhuma rota JS/TS no mapa, ele avisa e sai **2** ("nada foi provado"). Com rotas de Express também, só avisa que as rotas do outro framework ficam de fora. Quando um framework passar a ser lido, ele sai da lista. O NestJS não entra: as rotas dele já saem dos decorators.
 
 O projeto declara o contrato em `shieldepy.chaos.config.ts`, que o ShielDepy lê pela AST, sem executar. O inicial sai do próprio mapa, com as rotas sensíveis e as APIs preenchidas: `shieldepy chaos <pasta> --init` (ou o comando **ShielDepy: Testar Caos** na extensão). O que só o projeto sabe vem marcado com `TODO(shieldepy)`, uma marca por pendência:
 
@@ -209,7 +217,9 @@ export default {
 - **importar:** o arquivo exporta o app ou a fábrica e não abre porta ao ser importado (o `checkout-express`). Em CommonJS, carrega com `createRequire`;
 - **guardar:** o arquivo abre porta no topo ou não exporta o app (os três projetos da C1). O `chaos/setup.ts` troca o `express` por um que guarda o app criado e cujo `listen()` devolve um servidor falso, sem abrir porta (com o `vi.mock` e no cache do `require`). O contrato importa o arquivo só pelo efeito, e o `createApp` devolve o app guardado. O `packages/core/test/chaos-app.test.ts` roda isso de verdade, em ESM e em CommonJS, e confere que a porta continua livre.
 
-Sem `express()` no mapa, o `createApp` continua sendo pendência. Um `listen` no topo fora do app (`http.createServer(app).listen()`) também vira pendência, porque importar o arquivo abriria a porta de verdade.
+No Fastify (MVP4), o app é o `Fastify()` raiz, com os mesmos dois jeitos. Como o Fastify só atende depois do `ready()` e o `createApp` é síncrono, o contrato devolve `fastifyHandler(app)`: um `(req, res)` que espera o `ready()` e passa a requisição ao `app.routing(req, res)` (API pública do Fastify). Assim o supertest e os testes gerados são os mesmos do Express. No modo guardar, o `chaos/setup.ts` troca o `fastify` (o `listen()` devolve a promessa, ou chama o callback, com um endereço falso); o `packages/core/test/chaos-app-fastify.test.ts` roda isso em ESM e em CommonJS.
+
+Sem `express()` nem `Fastify()` no mapa, o `createApp` continua sendo pendência. Um `listen` no topo fora do app (`http.createServer(app).listen()`) também vira pendência, porque importar o arquivo abriria a porta de verdade.
 
 **O banco de teste gerado (C2d).** Quando o mapa vê o app usar o `pg`, o `--init` também gera, sem sobrescrever o que já existir:
 - `chaos/db.ts`: um PGlite com o esquema do projeto (os `.sql` de uma pasta `migrations`, ou todos os `.sql`) e um `Pool`/`Client` com a cara do `pg`. Ele aceita `query(text, values)`, `query({ text, values })` e callback, e faz o `resetDb()` que esvazia as tabelas;
@@ -500,7 +510,7 @@ Do Projeto18:
 - O grafo não infere tipo sem anotação além de `new X()` e retornos anotados. `const x = f()`
   com `f` sem tipo de retorno, ou um campo atribuído a partir de uma chamada, caem no fallback
   por nome (aresta `heuristic`). `require` com caminho dinâmico não é seguido.
-- Topologia: só Express (NestJS, Fastify e rotas por arquivo do Next.js ainda não), e só
+- Topologia: Express e Fastify (o caos do NestJS e as rotas por arquivo do Next.js ainda não), e só
   `pg`/Prisma/`fetch`/`axios` como I/O. Ficam de fora `router.route('/x').get(...)`, roteador
   recebido como parâmetro (sai sem o prefixo de quem chama), SQL que não é literal
   (`db_unknown`) e chamadas dentro de callbacks passados a funções (`prisma.$transaction(async (tx) => ...)`:

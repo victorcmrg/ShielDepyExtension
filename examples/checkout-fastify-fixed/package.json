@@ -1,0 +1,10 @@
+{
+  "name": "checkout-fastify-fixed",
+  "private": true,
+  "type": "module",
+  "description": "O checkout-fastify corrigido (reserva atômica antes de cobrar, Stripe com timeout, estorno se o pedido não grava): os mesmos testes de caos aguentam.",
+  "dependencies": {
+    "fastify": "^5.6.1",
+    "pg": "^8.13.1"
+  }
+}

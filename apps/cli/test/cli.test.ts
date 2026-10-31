@@ -567,6 +567,33 @@ describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', ()
     );
   }
 
+  // MVP4: o mesmo checkout em Fastify (plugin com prefixo /api), só com o fastify e o pg instalados: o
+  // arnês é o da CLI, o createApp é o que o --init gerou, e o quadro é o mesmo dos exemplos Express
+  const api = (id: string) => id.replace('POST /checkout', 'POST /api/checkout');
+  for (const [name, expected] of [
+    ['checkout-fastify', { code: 1, failed: [RACE, TIMEOUT, H5XX, MALFORMED, PARTIAL_ORDERS, PARTIAL_STOCK], passed: [] as string[], invalid: [] as string[] }],
+    ['checkout-fastify-fixed', { code: 0, failed: [] as string[], passed: [RACE, H5XX, MALFORMED, PARTIAL_ORDERS], invalid: [PARTIAL_STOCK] }],
+  ] as const) {
+    it.skipIf(!fs.existsSync(path.join(example(name), 'node_modules', 'fastify')))(
+      `MVP4 ${name}: exit ${expected.code}, ${expected.failed.length} achado(s), ${expected.passed.length} aprovado(s), ${expected.invalid.length} inválido(s)`,
+      async () => {
+        const dir = example(name);
+        try {
+          const { code, out } = await run('chaos', dir, '--offline', '--json');
+          expect(code).toBe(expected.code);
+          const r = JSON.parse(out) as { results: TestResult[] };
+          const ids = (status: string) => r.results.filter((x) => x.status === status).map((x) => x.hypothesisId).sort();
+          expect(ids('failed')).toEqual(expected.failed.map(api).sort());
+          expect(ids('passed')).toEqual(expected.passed.map(api).sort());
+          expect(ids('invalid')).toEqual(expected.invalid.map(api).sort());
+        } finally {
+          fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
+        }
+      },
+      240_000
+    );
+  }
+
   // MVP2: o mesmo checkout-express num projeto sem Vitest, supertest, MSW nem PGlite (só o express e o
   // pg, ligados aos do exemplo): o caos roda com o arnês da CLI e acha o mesmo que acima
   it.skipIf(!vitestEntry(example('checkout-express')))(

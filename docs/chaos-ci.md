@@ -112,7 +112,7 @@ Sem o secret, o workflow roda `--offline`: só o motor, custo zero, com os mesmo
 
 ## Limites conhecidos
 
-- Só Express. NestJS, Fastify e Next.js ainda não.
+- Express e Fastify. NestJS (o mapa lê as rotas, o caos ainda não), Koa, Hono e Next.js ainda não.
 - A falha no banco depois da chamada externa (`partial_failure_after_external_call`, o DB_Chaos) só é injetada no `pg`. Com Prisma, TypeORM ou Knex, ela aparece como hipótese sem teste e não bloqueia. Falha no meio de uma transação (`BEGIN … COMMIT`) ainda não é testada.
 - Quando a gravação alvo do DB_Chaos não acontece depois da API (ex.: só existe no caminho de erro, como devolver a reserva), o resultado sai inválido ("a falha não disparou"), não achado.
 - `retry_storm` aparece no relatório como hipótese sem teste e não bloqueia.

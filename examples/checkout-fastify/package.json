@@ -1,0 +1,10 @@
+{
+  "name": "checkout-fastify",
+  "private": true,
+  "type": "module",
+  "description": "Exemplo do ShielDepy em Fastify: o mesmo checkout do checkout-express (lê estoque, cobra, grava sem lock; Stripe sem timeout). Os testes de caos usam o Vitest, o supertest, o MSW e o PGlite da CLI (MVP2).",
+  "dependencies": {
+    "fastify": "^5.6.1",
+    "pg": "^8.13.1"
+  }
+}
