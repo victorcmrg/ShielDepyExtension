@@ -15,7 +15,26 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **MVP1 ✅** (2026-10-31, na `feat/mvp-caos`): o banco de teste do Prisma (C2d2) portado para a C2a nova, com a decisão [0019](docs/decisoes/0019-banco-de-teste-prisma-pelo-socket.md). Conferido de novo no realworld (os 4 achados da C1 em 3 rodadas) e no prisma-express (esquema pelo `migrate diff`, o mesmo "aguentou" da C1 e a perda de atualização inteira numa sonda). A branch local `backup/c2d2-antes-do-rebase` já pode ser apagada.
 - **MVP2 ✅** (2026-10-31): o arnês embutido ([0025](docs/decisoes/0025-arnes-de-teste-embutido.md)). Sem Vitest, supertest, MSW ou PGlite no projeto, a CLI empresta os dela por links em `.shieldepy/chaos-tests/node_modules`, sem instalar nada no alvo. Conferido num `checkout-express` só com `express` e `pg`: os mesmos 6 achados. **Falta na extensão** (o bundle não leva o Vitest): decidir depois se o `.vsix` leva o arnês ou se ele é baixado na primeira execução.
 - **MVP3 ✅** (2026-10-31): com Fastify, Koa, Hono, Next.js, hapi ou Restify no `package.json` e 0 rotas no mapa, o caos avisa e sai 2 (nada provado), em vez de 0.
-- **Próxima: MVP4** (Fastify), que vale em qualquer fluxo de demo. **Parar antes da MVP5 (NestJS) e conferir com o usuário:** ele estava decidindo um fluxo de demo (compra mockada → baixar a extensão → logar pelo portal → a extensão libera o mapa e o caos), que pode trazer tarefas novas e tirar o NestJS do prazo.
+- **Próxima: MVP4** (Fastify). A ordem recomendada e o que o chat pode fazer sem o usuário estão em **"Para o próximo chat"**, logo abaixo.
+
+### Para o próximo chat (escrito em 2026-10-31)
+
+**Recomendação para a demo do TCC** (do Claude; o usuário ainda confirma, DP7). A contribuição do TCC é o motor ("o motor prova, a IA propõe"), então a demo mais fluida conta uma história só, com poucos cliques e nada editado ao vivo:
+1. **Ao vivo, na extensão:** o `checkout-express` mostra a rota no mapa, "Testar Caos" acha os 6 problemas no código e no relatório, e o `-fixed` passa. Já funciona hoje (`npm run demo:verificar`), offline, sem IA paga.
+2. **Generaliza:** o mesmo num exemplo Fastify (MVP4), ao vivo ou em vídeo.
+3. **Funciona em projeto real:** a tabela da MVP8, em slide. Rodar projeto real ao vivo é lento e frágil (`prisma generate`, proxy).
+4. **A empresa:** o portal local com o histórico do caos (já existe) e uma página mockada de plano e faturas (MVP7). O fluxo comercial inteiro (compra mockada → download → login → a extensão libera) põe muita peça móvel ao vivo e não é a contribuição do TCC. Se entrar, que seja enxuto: o login pelo device flow, que já existe, e a execução aparecendo no portal, sem travar o mapa nem o caos atrás do login (a demo não pode depender do servidor).
+5. Gravar um vídeo da demo inteira como plano B.
+
+**Ordem recomendada:** MVP4 (Fastify) → MVP6 (corpos mínimos: é o que mais tira pendência do `--init`) → MVP8 (tabela) → MVP9 (roteiro) → MVP7 (empresa mockada) → MVP5 (NestJS), se sobrar prazo. O mapa **já lê** as rotas do NestJS pelos decorators (21 no nest-realworld do `mapa:reais`); falta o caos (o `createApp` pelo `NestFactory`). A MVP5 pode custar menos que 3 ou 4 dias e, sem ela, dá para mostrar com honestidade "o mapa lê, o caos ainda não".
+
+**O que o chat pode fazer sem o usuário** (ele pediu o máximo possível, deixando as decisões dele para depois):
+- MVP4, MVP6 e MVP8 inteiras, uma fatia por commit, como sempre. A MVP8 só offline (sem IA paga) e com os projetos clonados no scratchpad;
+- MVP9: escrever o `docs/roteiro-mvp.md` e estender o `demo:verificar`, mas **sem abrir o VS Code** (rodar o roteiro inteiro fica para quando ele estiver);
+- MVP7: o código e os testes, mas **sem abrir o Chrome** (o screenshot fica pendente para quando ele estiver);
+- MVP5 (NestJS): só depois de ele responder a DP7;
+- não fazer push nem merge, e não decidir a DP7 nem a DP8. Escolha técnica: decidir, registrar em `docs/decisoes/` e avisar no resumo;
+- se houver outra sessão aberta (a da etapa D, no worktree `../ShielDepy-dataset`), combinar com ela pelo `ListAgents` e pelo `SendMessage`: uma coisa pesada por vez, avisando antes. Os números de decisão de 0020 a 0024 são da D; o MVP segue a partir da 0026.
 
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
@@ -34,6 +53,8 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 | DP3 | Hospedagem da API, do site e do Postgres | Uma VPS com Docker, ou PaaS (Railway, Render, Fly) com Postgres gerenciado (Neon, Supabase) | P2 |
 | DP4 | Domínio e e-mail de contato | — | P2, W |
 | DP5 | O que cada plano destrava (a tabela de planos) | Ponto de partida: [`docs/pesquisa/precos-concorrencia.md`](docs/pesquisa/precos-concorrencia.md), seção 7.3 | B1 |
+| DP7 | O fluxo da demo do TCC | Só o motor (extensão, CLI e o portal local com o histórico) **ou** com o fluxo comercial mockado (compra → download → login → a extensão libera); se entrar, se o login trava tudo ou só o caos. Recomendação do Claude em "Para o próximo chat": o motor, com o login enxuto e sem travar nada | MVP5, MVP7 |
+| DP8 | O arnês de teste na extensão | O `.vsix` leva o Vitest, o supertest e o MSW (fica maior) **ou** a extensão baixa na primeira execução. Hoje, na extensão, vale o do projeto (os exemplos já têm) | arnês na extensão |
 | DP6 | Dataset do treino: gerar também com a IA (pago) e com que orçamento; quais licenças de repositório aceitar no corpus | Só offline (grátis) ou offline + IA com teto em US$; licenças permissivas (MIT, Apache-2.0, BSD) ou qualquer pública | D3 com IA, D5 |
 
 ## Etapas
