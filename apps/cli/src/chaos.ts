@@ -59,7 +59,7 @@ import type { Registry } from '@shieldepy/extractors';
 import { ChaosRunError, runChaosTests } from './chaos-run';
 import { renderGraphHtml } from '@shieldepy/viewer';
 import { buildMapOf } from './diff';
-import { appendChaosDataset } from './dataset';
+import { exportChaosDataset } from './dataset';
 import { GitBaseError, withBaseCheckout } from '@shieldepy/core';
 
 export interface ChaosArgs {
@@ -285,10 +285,7 @@ export async function runChaosCommand(
   });
   await mkdir(path.join(root, path.dirname(CHAOS_RESULTS_FILE)), { recursive: true });
   await writeFile(path.join(root, CHAOS_RESULTS_FILE), canonicalJson(results, 2) + '\n', 'utf8');
-  if (args.dataset) {
-    const n = outcomes ? await appendChaosDataset(args.dataset, { root, graph, topology, surface: fullSurface, state, outcomes }) : 0;
-    io.err(n ? `✓ ${n} registro(s) do dataset acrescentado(s) a ${args.dataset}` : `ℹ dataset: nada acrescentado a ${args.dataset} (sem resultado de teste)`);
-  }
+  await exportChaosDataset(args.dataset, io, { root, graph, topology, surface: fullSurface, state, outcomes });
   if (args.html) {
     await mkdir(path.dirname(path.resolve(args.html)), { recursive: true });
     await writeFile(args.html, renderGraphHtml(system, path.basename(root), { kind: 'inline' }, topology, { chaos: results, ...(baseDiff && { diff: baseDiff }) }), 'utf8');

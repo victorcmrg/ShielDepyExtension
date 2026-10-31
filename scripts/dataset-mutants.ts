@@ -15,7 +15,7 @@ import { listSourceFiles, TS_EXTENSIONS, TsParser } from '../packages/core/src/i
 import { defaultWasmDir } from '../packages/core/src/wasm-path';
 import { asMutantRecord, datasetJsonl, mergeDatasetJsonl } from '../packages/agent/src/chaos/dataset';
 import { applyEdits, findMutations, mutantVariant, type Mutation } from '../packages/agent/src/chaos/mutations';
-import { datasetSource } from '../apps/cli/src/dataset';
+import { DATASET_DB_ENV, datasetSource, dbHost, publishDataset } from '../apps/cli/src/dataset';
 import { writeCorpus } from './dataset-corpus';
 import { arg, PROJECTS } from './real-projects';
 
@@ -28,6 +28,10 @@ const out = path.resolve(arg('--out') ?? path.join(workDir, 'dataset.jsonl'));
 const parts = path.join(workDir, 'partes');
 const only = arg('--so')?.split(',');
 mkdirSync(parts, { recursive: true });
+/** Com a variável do banco do treino (0020), os registros corrigidos vão para lá. */
+const dbUrl = process.env[DATASET_DB_ENV]?.trim() || undefined;
+const childEnv = { ...process.env };
+delete childEnv[DATASET_DB_ENV];
 
 /** O código que aguenta: o exemplo corrigido e os reais com contrato que o `dataset:gerar` já preparou. */
 const bases = [
@@ -73,11 +77,19 @@ for (const base of bases) {
 
     const tmp = path.join(dir, '.shieldepy', 'dataset.jsonl');
     const started = Date.now();
-    const r = spawnSync(process.execPath, [CLI, 'chaos', dir, '--offline', '--dataset', tmp], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    // o filho não envia ao banco: o registro dele tem a fonte da cópia; quem envia é este script, já corrigido
+    const r = spawnSync(process.execPath, [CLI, 'chaos', dir, '--offline', '--dataset', tmp], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', env: childEnv });
     const secs = ((Date.now() - started) / 1000).toFixed(0);
     const records = existsSync(tmp) ? mergeDatasetJsonl([readFileSync(tmp, 'utf8')]).records : [];
     const mutated = records.map((rec) => asMutantRecord(rec, source, { operator: m.operator, file: m.file, line: m.line, description: m.description }, variant, 'offline'));
     writeFileSync(path.join(parts, `${name}.jsonl`), datasetJsonl(mutated), 'utf8');
+    if (dbUrl && mutated.length > 0) {
+      try {
+        console.log(`  ✓ ${await publishDataset(mutated, dbUrl)} registro(s) enviado(s) a ${dbHost(dbUrl)}`);
+      } catch (err) {
+        console.log(`  ⚠ não deu para enviar a ${dbHost(dbUrl)}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     const hits = mutated.filter((rec) => rec.result.outcome === 'achado').map((rec) => rec.hypothesis.failure + '/' + rec.hypothesis.target);
     const status = r.status === 0 || r.status === 1 ? `exit ${r.status}` : `erro de ambiente (exit ${r.status})`;
     console.log(`  ${variant}: ${m.description}; ${status}, ${secs} s; achados: ${hits.length ? hits.join(', ') : 'nenhum'}`);

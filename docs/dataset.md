@@ -21,9 +21,26 @@ npm run dataset:pares -- --in <pasta-de-trabalho>/dataset.jsonl [--sem-fracos]
 A pasta de trabalho fica fora do repositório. Lá ficam os clones, os mutantes, uma parte por projeto em `partes/`, o `dataset.jsonl` e o `pares.jsonl`.
 
 - O projeto precisa do `shieldepy.chaos.config.ts` e das dependências instaladas (`npm install`), porque o caos roda o Vitest do próprio projeto.
-- No modo `--offline`, nada vai para a rede: as hipóteses e as specs são do motor, e o custo é zero.
+- No modo `--offline`, as hipóteses e as specs são do motor e o custo é zero. Nada vai para a rede, a não ser o envio ao banco de vocês, quando a variável dele existe (abaixo).
 - Sem `--offline`, a IA (Anthropic ou Gemini, com a chave do usuário) escreve as hipóteses e as specs. É chamada paga: estime antes com `npm run estimate:chaos`.
 - O `--dataset` **acrescenta** ao arquivo. Rodar duas vezes o mesmo projeto no mesmo commit dá registros com o mesmo `id`, que você pode deduplicar por ele (o `dataset:gerar` já faz isso).
+## Direto no banco de vocês (automático)
+
+Com a variável `SHIELDEPY_DATASET_DATABASE_URL` apontando para o Postgres de vocês (o Neon), **cada execução do caos** grava os registros sozinha. Vale para o `shieldepy chaos` na CLI, para o plugin do VS Code (que lê o mesmo ambiente) e para os scripts acima. A decisão é a [0020](decisoes/0020-dataset-direto-no-neon.md).
+
+```sh
+# PowerShell (Windows), na máquina que gera; feche e reabra o VS Code para o plugin ler
+setx SHIELDEPY_DATASET_DATABASE_URL "postgres://usuario:senha@ep-xxx.neon.tech/treino?sslmode=require"
+
+# bash
+export SHIELDEPY_DATASET_DATABASE_URL="postgres://usuario:senha@ep-xxx.neon.tech/treino?sslmode=require"
+```
+
+- A tabela `shieldepy_dataset` é criada na primeira vez: `id` (chave), `schema_version`, `project`, `variant`, `hypothesis_id`, `outcome`, `control`, `record` (o registro inteiro, em `jsonb`), `created_at` e `updated_at`.
+- A gravação é por **upsert no `id`**: rodar de novo o mesmo projeto no mesmo commit atualiza a linha, não duplica.
+- Se o banco estiver fora do ar, o caos só avisa e segue: o resultado dele não muda. O log mostra o host, nunca a URL (ela tem a senha).
+- **Só nas nossas máquinas.** O registro leva o código das rotas. Com a variável definida, tudo em que o caos rodar vai para o banco: não use num projeto que não seja público ou nosso. Sem a variável, nada sai da máquina.
+- Para ler: `SELECT record FROM shieldepy_dataset WHERE control = 'passed' AND outcome IN ('achado', 'aguentou')`. Os pares do DPO não vão para o banco; eles saem do `npm run dataset:pares` sobre o corpus.
 
 ## Um registro
 
@@ -113,4 +130,4 @@ LANGSMITH_PROJECT=shieldepy-dataset
 
 ## Importar
 
-O banco é o da equipe de treino (o Neon dela), não a `apps/api`. Cada linha é um JSON independente; dá para importar com `COPY` de uma coluna `jsonb`, ou com um script que lê linha a linha.
+O banco é o da equipe de treino (o Neon dela), não a `apps/api`. Com a variável do envio automático, não há o que importar: os registros já chegam na tabela `shieldepy_dataset`. Sem ela, cada linha do arquivo é um JSON independente; dá para importar com `COPY` de uma coluna `jsonb`, ou com um script que lê linha a linha.

@@ -1,14 +1,24 @@
-// `shieldepy chaos <pasta> --dataset <arq.jsonl>` (D2, decisão 0016): acrescenta ao arquivo um
-// registro por hipótese que rodou. Aqui fica o que lê o disco e o git (a fonte, a licença e o
-// código da cadeia); o registro em si é a função pura `buildDatasetRecords` do agent. Sem rede:
-// o remote vem da config local do git.
+// O dataset de treino no fim do `shieldepy chaos` (D2, decisões 0016 e 0020): um registro por
+// hipótese que rodou, acrescentado ao `--dataset <arq.jsonl>` e/ou enviado ao banco do treino quando
+// a variável SHIELDEPY_DATASET_DATABASE_URL existe. Aqui fica o que lê o disco e o git (a fonte, a
+// licença e o código da cadeia); o registro em si é a função pura `buildDatasetRecords` do agent.
+// Sem a variável, nada vai para a rede: o remote vem da config local do git.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { appendFile, mkdir } from 'node:fs/promises';
 import * as path from 'node:path';
-import { toFileId, type AttackSurface, type CodeGraph, type TopologyGraph } from '@shieldepy/core';
-import { buildDatasetRecords, datasetJsonl, routeCode, type ChaosOutcome, type ChaosStateType, type DatasetSource, type DatasetVariant } from '@shieldepy/agent/chaos';
+import { canonicalJson, toFileId, type AttackSurface, type CodeGraph, type TopologyGraph } from '@shieldepy/core';
+import {
+  buildDatasetRecords,
+  datasetJsonl,
+  routeCode,
+  type ChaosOutcome,
+  type ChaosStateType,
+  type DatasetRecord,
+  type DatasetSource,
+  type DatasetVariant,
+} from '@shieldepy/agent/chaos';
 
 const LICENSE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE', 'COPYING'];
 
@@ -77,11 +87,18 @@ export function datasetSource(root: string): DatasetSource {
   };
 }
 
-/** Acrescenta os registros da execução ao JSONL e devolve quantos foram. */
-export async function appendChaosDataset(
-  file: string,
-  run: { root: string; graph: CodeGraph; topology: TopologyGraph; surface: AttackSurface; state: ChaosStateType; outcomes: ChaosOutcome[] }
-): Promise<number> {
+export interface ChaosRunForDataset {
+  root: string;
+  graph: CodeGraph;
+  topology: TopologyGraph;
+  surface: AttackSurface;
+  state: ChaosStateType;
+  /** Sem resultado (--no-run, erro de ambiente) não há rótulo, e nada sai. */
+  outcomes?: ChaosOutcome[];
+}
+
+/** Os registros de uma execução do caos (um por hipótese que rodou). */
+export function chaosDatasetRecords(run: ChaosRunForDataset & { outcomes: ChaosOutcome[] }): DatasetRecord[] {
   const { root, state } = run;
   const code = routeCode(run.topology.routes, run.graph, toFileId(root), (id) => {
     try {
@@ -90,7 +107,7 @@ export async function appendChaosDataset(
       return undefined;
     }
   });
-  const records = buildDatasetRecords({
+  return buildDatasetRecords({
     source: datasetSource(root),
     surface: run.surface,
     code,
@@ -103,8 +120,110 @@ export async function appendChaosDataset(
     files: state.files,
     outcomes: run.outcomes,
   });
+}
+
+/**
+ * O banco do treino (decisão 0020): a URL do Postgres da equipe de IA (o Neon dela). Só existe nas
+ * nossas máquinas e no nosso CI: o registro leva o código das rotas, e o de um cliente nunca pode
+ * sair da máquina dele (0008, 0016). Sem a variável, nada vai para a rede.
+ */
+export const DATASET_DB_ENV = 'SHIELDEPY_DATASET_DATABASE_URL';
+export const DATASET_TABLE = 'shieldepy_dataset';
+
+export const DATASET_TABLE_SQL = `CREATE TABLE IF NOT EXISTS ${DATASET_TABLE} (
+  id text PRIMARY KEY,
+  schema_version integer NOT NULL,
+  project text NOT NULL,
+  variant text NOT NULL,
+  hypothesis_id text NOT NULL,
+  outcome text NOT NULL,
+  control text NOT NULL,
+  record jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+)`;
+
+/** O pedaço do cliente do `pg` que o envio usa (os testes injetam um falso). */
+export interface SqlClient {
+  query(text: string, values?: unknown[]): Promise<unknown>;
+  end(): Promise<void>;
+}
+export type SqlConnect = (url: string) => Promise<SqlClient>;
+
+/** O `pg` só carrega quando há para onde enviar. */
+export const pgConnect: SqlConnect = async (url) => {
+  const { default: pg } = await import('pg');
+  const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10_000, query_timeout: 30_000 });
+  await client.connect();
+  return client;
+};
+
+const BATCH = 50;
+
+/** Grava os registros por upsert no `id`: rodar de novo atualiza, não duplica. Devolve quantos foram. */
+export async function publishDataset(records: DatasetRecord[], url: string, connect: SqlConnect = pgConnect): Promise<number> {
   if (records.length === 0) return 0;
-  await mkdir(path.dirname(path.resolve(file)), { recursive: true });
-  await appendFile(file, datasetJsonl(records), 'utf8');
-  return records.length;
+  const client = await connect(url);
+  try {
+    await client.query(DATASET_TABLE_SQL);
+    for (let i = 0; i < records.length; i += BATCH) {
+      const batch = records.slice(i, i + BATCH);
+      const values: unknown[] = [];
+      const rows = batch.map((r) => {
+        const n = values.length;
+        values.push(r.id, r.schemaVersion, r.source.project, r.source.variant, r.hypothesis.id, r.result.outcome, r.result.control, canonicalJson(r));
+        return `($${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}, $${n + 8}::jsonb)`;
+      });
+      await client.query(
+        `INSERT INTO ${DATASET_TABLE} (id, schema_version, project, variant, hypothesis_id, outcome, control, record) VALUES ${rows.join(', ')}
+         ON CONFLICT (id) DO UPDATE SET schema_version = EXCLUDED.schema_version, outcome = EXCLUDED.outcome, control = EXCLUDED.control, record = EXCLUDED.record, updated_at = now()`,
+        values
+      );
+    }
+    return records.length;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+/** O host da URL, para o log (a URL tem a senha). */
+export function dbHost(url: string): string {
+  try {
+    return new URL(url).host || 'banco';
+  } catch {
+    return 'banco';
+  }
+}
+
+/**
+ * O fim do `shieldepy chaos`: com `--dataset <arq>`, acrescenta ao JSONL; com a variável
+ * `SHIELDEPY_DATASET_DATABASE_URL`, envia ao banco do treino. Falha no envio só avisa: o portão do
+ * caos não muda por causa do dataset.
+ */
+export async function exportChaosDataset(
+  file: string | undefined,
+  io: { err: (line: string) => void; env: NodeJS.ProcessEnv },
+  run: ChaosRunForDataset,
+  connect: SqlConnect = pgConnect
+): Promise<void> {
+  const url = io.env[DATASET_DB_ENV]?.trim() || undefined;
+  if (!file && !url) return;
+  const records = run.outcomes ? chaosDatasetRecords({ ...run, outcomes: run.outcomes }) : [];
+  if (records.length === 0) {
+    io.err(`ℹ dataset: nada a ${file ? `acrescentar a ${file}` : 'enviar'} (sem resultado de teste)`);
+    return;
+  }
+  if (file) {
+    await mkdir(path.dirname(path.resolve(file)), { recursive: true });
+    await appendFile(file, datasetJsonl(records), 'utf8');
+    io.err(`✓ ${records.length} registro(s) do dataset acrescentado(s) a ${file}`);
+  }
+  if (url) {
+    try {
+      const n = await publishDataset(records, url, connect);
+      io.err(`✓ ${n} registro(s) do dataset enviado(s) a ${dbHost(url)} (tabela ${DATASET_TABLE})`);
+    } catch (err) {
+      io.err(`⚠ dataset: não deu para enviar a ${dbHost(url)}: ${err instanceof Error ? err.message : String(err)} (o resultado do caos não muda)`);
+    }
+  }
 }
