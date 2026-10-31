@@ -213,6 +213,13 @@ Sem `express()` no mapa, o `createApp` continua sendo pendência. Um `listen` no
 
 O contrato já sai com o `setupFiles` e o `reset` preenchidos. O banco falso faz uma pausa (`setImmediate`) antes de cada consulta. Sem ela, o PGlite responde sem devolver a vez ao event loop e o teste de corrida passa num código que corre (`packages/core/test/chaos-db.test.ts`). Sem nenhum `.sql` no projeto, sai um `chaos/schema.sql` com as tabelas que o mapa viu, e escrever o esquema fica como pendência. O `--init` também diz o que instalar (`vitest`, `supertest`, `msw` e o PGlite) quando o `package.json` não declara. O gerador está em `packages/core/src/chaos-db.ts`.
 
+**No Prisma (C2d2, decisão [0019](decisoes/0019-banco-de-teste-prisma-pelo-socket.md))**, do 4 ao 7, o app não muda. O `chaos/db.ts` sobe o PGlite e o serve pelo protocolo do Postgres numa porta livre (`@electric-sql/pglite-socket`), e aponta para lá as variáveis do `datasource` (`url` e `directUrl` do `schema.prisma`, lidas por um analisador léxico; sem elas, `DATABASE_URL`). O `chaos/setup.ts` só importa o `chaos/db.ts`, antes do app (e antes da troca do `express`, quando o app é guardado):
+- **o esquema** vem das migrations ao lado do `schema.prisma` (`<pasta>/migrations/*/migration.sql`). Sem elas, o `--init` roda o `prisma migrate diff --from-empty` do próprio projeto (`--to-schema` no Prisma 7, `--to-schema-datamodel` antes) e grava o SQL em `chaos/schema.sql`, com o comando para gerar de novo. Sem o Prisma instalado, isso vira pendência;
+- **uma conexão só:** com o pool frio, a primeira requisição terminava sozinha enquanto as outras abriam conexão, e a corrida sumia. A URL leva `connection_limit=1` (o motor do Prisma 4 a 6), e o `Pool` do `pg` sai com `max: 1` (o `@prisma/adapter-pg` do Prisma 7). A rede já devolve a vez ao event loop, então não há pausa;
+- **o `reset`** é o mesmo `TRUNCATE … RESTART IDENTITY CASCADE`, sem tocar no `_prisma_migrations`.
+
+Conferido no realworld (Prisma 4, as 4 migrations do projeto): os mesmos 4 achados da C1, com só o registro de exemplo, o token e os corpos escritos à mão. No prisma-express (Prisma 7, esquema pelo `migrate diff`): o mesmo "aguentou" da C1, que é falta de invariante (C2g); a perda de atualização acontece no banco gerado.
+
 **DB_Chaos (falha parcial).** Quando a rota grava no banco depois de chamar uma API externa (tag
 `write-after-api-call`), o teste deixa a requisição correr até a API responder com sucesso e então
 faz a primeira gravação na tabela alvo falhar, trocando o `query` do `Pool`/`Client` do `pg`. Os
@@ -496,7 +503,9 @@ Do Projeto18:
   o `tx` não tem tipo, então as operações de dentro não aparecem).
 - Caos: falhas de rede, de concorrência e no banco depois da chamada externa têm teste. A falha
   no banco só é injetada no `pg` (Prisma, TypeORM e Knex ficam como hipótese sem teste), e não há
-  falha no meio de uma transação. `retry_storm` aparece como hipótese, mas sem teste. Host
+  falha no meio de uma transação. O banco de teste gerado (`pg` e Prisma) tem uma sessão só, então
+  transações de requisições diferentes rodam uma de cada vez: a corrida entre duas transações abertas
+  ao mesmo tempo não aparece. `retry_storm` aparece como hipótese, mas sem teste. Host
   de API dinâmico (URL montada em runtime) não gera teste de rede, porque não se sabe o que interceptar.
 - O painel, o chat e as configurações são testados no E2E só indiretamente (via comandos e
   Diagnostics), não clicando na interface.

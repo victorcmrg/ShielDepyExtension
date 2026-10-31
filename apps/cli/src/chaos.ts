@@ -5,8 +5,10 @@
 // `--no-run`, só gera os testes e o relatório de hipóteses. Com `--base <ref>` (E5), só as rotas
 // sensíveis que o PR tocou vão para a IA e para os testes.
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import {
   affectedRoutes,
@@ -32,6 +34,7 @@ import {
   TS_EXTENSIONS,
   walkSourceTree,
   type AttackSurface,
+  type ChaosDbPlan,
   type MapDiff,
   type SystemGraph,
   type TopologyGraph,
@@ -141,8 +144,12 @@ export async function runChaosCommand(
 
   // --init: o contrato inicial sai do próprio mapa; o que só o projeto sabe fica marcado
   if (args.init) {
-    // o banco de teste (C2d): PGlite no lugar do driver, com os .sql do projeto
-    const db = chaosDbPlan(fullSurface, walkSourceTree(root).filter((f) => f.toLowerCase().endsWith('.sql')));
+    // o banco de teste (C2d): PGlite no lugar do banco, com o esquema do projeto (os .sql, as migrations
+    // do Prisma ou, sem elas, o SQL que o `prisma migrate diff` gera do schema.prisma)
+    const tree = walkSourceTree(root);
+    const prismaSchemas = tree.filter((f) => f.endsWith('.prisma')).map((file) => ({ file, text: readFileSync(path.join(root, file), 'utf8') }));
+    const db = chaosDbPlan(fullSurface, tree, prismaSchemas);
+    if (db?.prisma && db.schemaFiles.length === 0) db.prisma.diff = prismaSchemaSql(root, db.prisma.schema, db.prisma.envVars);
     // o app (C2a): importado do projeto, ou guardado pelo setup quando o arquivo abre porta
     const app = chaosAppPlan(findExpressRoutes(graph).apps, fullSurface, root);
     await writeFile(configPath, chaosConfigScaffold(fullSurface, { db, app }), 'utf8');
@@ -169,8 +176,9 @@ export async function runChaosCommand(
       await writeFile(file, text, 'utf8');
       io.err(`✓ ${rel} criado`);
     }
-    if (db) io.err(db.schemaFiles.length ? `  esquema: ${db.schemaFiles.join(', ')}` : '  o projeto não tem .sql de esquema: escreva os CREATE TABLE em chaos/schema.sql');
-    const missing = missingTestDeps(root, db ? ['@electric-sql/pglite'] : []);
+    if (db) io.err(schemaSummary(db));
+    if (db?.driver === 'prisma') io.err('ℹ o cliente do Prisma precisa estar gerado (npx prisma generate) antes de rodar o caos.');
+    const missing = missingTestDeps(root, db ? ['@electric-sql/pglite', ...(db.driver === 'prisma' ? ['@electric-sql/pglite-socket'] : [])] : []);
     if (missing.length) io.err(`Instale o que os testes de caos usam: npm install -D ${missing.join(' ')}`);
     io.err(`Preencha os ${CHAOS_CONFIG_TODO} e rode de novo sem --init.`);
     return 0;
@@ -430,6 +438,54 @@ function isChaosSource(file: string): boolean {
 
 function isWebAsset(file: string): boolean {
   return ['.html', '.htm', '.css'].includes(path.extname(file).toLowerCase());
+}
+
+/** A linha do esquema no resumo do --init: de onde ele vem, ou o que falta fazer. */
+function schemaSummary(db: ChaosDbPlan): string {
+  if (db.schemaFiles.length) return `  esquema: ${db.schemaFiles.join(', ')}`;
+  const diff = db.prisma?.diff;
+  if (diff?.sql) return `  esquema: chaos/schema.sql, gerado de ${db.prisma!.schema} (o projeto não tem migrations)`;
+  if (diff) return `  o projeto não tem migrations do Prisma, e o --init não conseguiu gerar o esquema: rode ${diff.command} > chaos/schema.sql`;
+  return '  o projeto não tem .sql de esquema: escreva os CREATE TABLE em chaos/schema.sql';
+}
+
+/** Uma URL qualquer: o `prisma.config.ts` do Prisma 7 exige a variável até para o `migrate diff`, que não conecta. */
+const PLACEHOLDER_DATABASE_URL = 'postgresql://shieldepy:shieldepy@localhost:5432/shieldepy';
+
+/**
+ * O SQL do esquema a partir do `schema.prisma` (o projeto não tem migrations), pelo Prisma do próprio
+ * projeto: `prisma migrate diff --from-empty`. A flag do destino mudou no Prisma 7 (`--to-schema`; antes,
+ * `--to-schema-datamodel`), então tenta as duas. Sem o Prisma instalado ou com erro, só o comando volta.
+ */
+export function prismaSchemaSql(root: string, schema: string, envVars: string[] = []): { command: string; sql?: string } {
+  const command = (flag: string) => `npx prisma migrate diff --from-empty ${flag} ${schema} --script`;
+  let bin: string;
+  try {
+    const pkgFile = createRequire(path.join(root, 'package.json')).resolve('prisma/package.json');
+    const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { bin?: string | Record<string, string> };
+    const rel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.prisma;
+    if (!rel) return { command: command('--to-schema') };
+    bin = path.join(path.dirname(pkgFile), rel);
+  } catch {
+    return { command: command('--to-schema') };
+  }
+  const env = { ...process.env };
+  for (const name of envVars) env[name] ??= PLACEHOLDER_DATABASE_URL;
+  for (const flag of ['--to-schema', '--to-schema-datamodel']) {
+    try {
+      const sql = execFileSync(process.execPath, [bin, 'migrate', 'diff', '--from-empty', flag, schema, '--script'], {
+        cwd: root,
+        env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 120_000,
+      });
+      if (sql.trim()) return { command: command(flag), sql };
+    } catch {
+      // a outra flag, ou desiste
+    }
+  }
+  return { command: command('--to-schema') };
 }
 
 /** O que os testes gerados importam (Vitest, supertest, MSW) e o `package.json` do projeto não declara. */

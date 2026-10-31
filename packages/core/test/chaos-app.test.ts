@@ -12,6 +12,9 @@ import { REPO_ROOT } from './helpers';
 
 const EXAMPLE = path.join(REPO_ROOT, 'examples', 'checkout-express');
 const dir = path.join(EXAMPLE, '.shieldepy', `c2a-${process.pid}`);
+// sem o `npm install` do exemplo, o teste é pulado (como os da CLI que rodam o Vitest dos exemplos)
+const VITEST = path.join(EXAMPLE, 'node_modules', 'vitest', 'vitest.mjs');
+const installed = fs.existsSync(VITEST);
 const surface: AttackSurface = { version: 1, topologyHash: 'x', routes: [], collisions: [] };
 
 /** Uma porta livre agora: o app de teste tenta ouvir nela, e o teste confere que ela continua livre. */
@@ -63,6 +66,7 @@ let port: number;
 let run: ReturnType<typeof spawnSync>;
 
 beforeAll(async () => {
+  if (!installed) return;
   port = await freePort();
   const write = (rel: string, text: string) => {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
@@ -101,8 +105,9 @@ beforeAll(async () => {
   }
   // o checkout-express é "type": "module"; um projeto CommonJS (o pg-crud da C1) não declara nada
   write('cjs/package.json', '{ "type": "commonjs" }\n');
-  write('vitest.config.mjs', "export default { test: { include: ['*.spec.ts'], setupFiles: ['chaos/setup.ts'] } };\n");
-  run = spawnSync(process.execPath, [path.join(EXAMPLE, 'node_modules', 'vitest', 'vitest.mjs'), 'run', '--config', 'vitest.config.mjs', '--reporter=json'], {
+  // em série: os dois specs conferem a mesma porta, e em paralelo um pegaria a sonda do outro (EADDRINUSE)
+  write('vitest.config.mjs', "export default { test: { include: ['*.spec.ts'], setupFiles: ['chaos/setup.ts'], fileParallelism: false } };\n");
+  run = spawnSync(process.execPath, [VITEST, 'run', '--config', 'vitest.config.mjs', '--reporter=json'], {
     cwd: dir,
     encoding: 'utf8',
     env: { ...process.env, FORCE_COLOR: '0' },
@@ -111,7 +116,7 @@ beforeAll(async () => {
 }, 150000);
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-describe('C2a — o app guardado pelo setup gerado', () => {
+describe.skipIf(!installed)('C2a — o app guardado pelo setup gerado', () => {
   it('ESM e CommonJS: o createApp devolve o app que o arquivo criou, e o listen() dele não abre porta', () => {
     const out = String(run.stdout);
     const report = JSON.parse(out.slice(out.indexOf('{'))) as { testResults: { name: string; status: string; message?: string; assertionResults: { status: string; failureMessages: string[] }[] }[] };

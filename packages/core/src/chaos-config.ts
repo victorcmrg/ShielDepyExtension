@@ -3,7 +3,7 @@
 // do bundler dele). Só NOMES saem daqui: é o que o gerador de testes e a IA podem ver.
 
 import { chaosAppContract, type ChaosAppPlan } from './chaos-app';
-import { CHAOS_SCHEMA_FILE, CHAOS_SETUP_FILE, type ChaosDbPlan } from './chaos-db';
+import { CHAOS_SCHEMA_FILE, CHAOS_SETUP_FILE, chaosSchemaPending, type ChaosDbPlan } from './chaos-db';
 import { propertyKey } from './code-graph/extract-module';
 import type { SyntaxNode } from './code-graph/parser';
 import type { AttackSurface } from './topology/surface';
@@ -165,8 +165,14 @@ export function chaosConfigScaffold(surface: AttackSurface, { db, app }: { db?: 
       ];
   const setupFiles = db
     ? [
-        `  /** Carregados antes de cada teste gerado: o \`${db.driver}\` do app vira o PGlite de chaos/db.ts${app?.mode === 'capture' ? ', e o express guarda o app' : ''}. */`,
-        ...(db.schemaFiles.length === 0 ? [`  // ${T}: o projeto não tem .sql de esquema; escreva os CREATE TABLE em ${CHAOS_SCHEMA_FILE}`] : []),
+        `  /** Carregados antes de cada teste gerado: ${db.driver === 'prisma' ? 'o Prisma do app fala com o PGlite de chaos/db.ts (pela URL do banco)' : 'o `pg` do app vira o PGlite de chaos/db.ts'}${app?.mode === 'capture' ? ', e o express guarda o app' : ''}. */`,
+        ...(chaosSchemaPending(db)
+          ? [
+              db.prisma?.diff
+                ? `  // ${T}: gere o esquema do Prisma em ${CHAOS_SCHEMA_FILE} (o comando está no arquivo)`
+                : `  // ${T}: o projeto não tem .sql de esquema; escreva os CREATE TABLE em ${CHAOS_SCHEMA_FILE}`,
+            ]
+          : []),
         `  setupFiles: ['${CHAOS_SETUP_FILE}'],`,
       ]
     : setup

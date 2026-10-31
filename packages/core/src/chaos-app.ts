@@ -101,22 +101,37 @@ export function chaosAppContract(plan: ChaosAppPlan): { imports: string[]; doc: 
 
 /**
  * O `chaos/setup.ts`, carregado antes de cada teste gerado: a troca do `express` (modo `capture`) e a
- * do `pg` (banco gerado, C2d), as que houver. Sem nenhuma, não há setup.
+ * do `pg` (banco gerado, C2d), as que houver. No Prisma não há troca: importar o chaos/db.ts, antes do
+ * app, sobe o banco e aponta a URL para ele (C2d2). Sem nada disso, não há setup.
  */
 export function chaosSetupScaffold(parts: { db?: ChaosDbPlan; app?: ChaosAppPlan }): string | undefined {
   const express = parts.app?.mode === 'capture';
+  const pg = parts.db?.driver === 'pg';
+  const prisma = parts.db?.driver === 'prisma';
   if (!express && !parts.db) return undefined;
-  const what = [express && 'o `express` guarda o app criado e o `listen()` dele não abre porta', parts.db && 'o `pg` vira o banco de chaos/db.ts'].filter(Boolean).join('; ');
+  const swaps = express || pg;
+  const what = [
+    prisma && 'o banco de chaos/db.ts sobe antes do app, e a URL do Prisma aponta para ele',
+    express && 'o `express` guarda o app criado e o `listen()` dele não abre porta',
+    pg && 'o `pg` vira o banco de chaos/db.ts',
+  ]
+    .filter(Boolean)
+    .join('; ');
   const lines = [
     `// Gerado pelo \`shieldepy chaos --init\`: carregado antes de cada teste de caos. ${what[0]!.toUpperCase()}${what.slice(1)}.`,
     '// Nada no código do app muda. Pode editar (o --init não sobrescreve).',
-    "import { createRequire } from 'node:module';",
+    ...(prisma ? ["import './db';"] : []),
+    ...(swaps ? ["import { createRequire } from 'node:module';"] : []),
     ...(express ? ["import { EventEmitter } from 'node:events';"] : []),
-    "import { vi } from 'vitest';",
-    ...(parts.db ? ["import { Client, Pool } from './db';"] : []),
-    '',
-    '// require() (CommonJS): o vi.mock não alcança o require nativo; a troca é no módulo em cache, antes de o app carregar',
-    'const nodeRequire = createRequire(import.meta.url);',
+    ...(swaps ? ["import { vi } from 'vitest';"] : []),
+    ...(pg ? ["import { Client, Pool } from './db';"] : []),
+    ...(swaps
+      ? [
+          '',
+          '// require() (CommonJS): o vi.mock não alcança o require nativo; a troca é no módulo em cache, antes de o app carregar',
+          'const nodeRequire = createRequire(import.meta.url);',
+        ]
+      : []),
   ];
   if (express) {
     lines.push(
@@ -174,7 +189,7 @@ export function chaosSetupScaffold(parts: { db?: ChaosDbPlan; app?: ChaosAppPlan
       'nodeRequire.cache[expressId]!.exports = wrapExpress(nodeRequire.cache[expressId]!.exports);'
     );
   }
-  if (parts.db) {
+  if (pg) {
     lines.push(
       '',
       '// --- o banco: o `pg` do app vira o PGlite de chaos/db.ts',

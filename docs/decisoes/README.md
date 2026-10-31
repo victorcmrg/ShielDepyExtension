@@ -22,3 +22,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0016](0016-dados-para-treino.md) | Dados para treinar a IA de erros de produção: JSONL pela CLI, rótulo do motor, sem código de cliente | 2026-10-30 | valendo |
 | [0017](0017-lancamento-minimo.md) | Da empresa, só o necessário para distribuir o produto (degrau 1: site estático + marketplaces; degrau 2: portal no ar) | 2026-10-30 | adiada pela 0018 |
 | [0018](0018-mvp-caos-e-frameworks.md) | MVP de demonstração: o caos utilizável nos frameworks, com a parte da empresa mockada | 2026-10-31 | valendo |
+| [0019](0019-banco-de-teste-prisma-pelo-socket.md) | No Prisma, o banco de teste do caos é o PGlite pela rede (`pglite-socket`), com uma conexão só | 2026-10-25 (portada em 2026-10-31) | valendo |

@@ -325,6 +325,78 @@ describe('CLI chaos (E3)', () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  // um app Express com Prisma, como o realworld da C1: checa a unicidade e depois cria
+  const PRISMA_APP =
+    "import express from 'express';\nimport { PrismaClient } from '@prisma/client';\nconst prisma = new PrismaClient();\nconst app = express();\napp.use(express.json());\napp.post('/users', async (req, res) => {\n  const found = await prisma.user.findUnique({ where: { email: req.body.email } });\n  if (found) return res.status(422).end();\n  await prisma.user.create({ data: { email: req.body.email } });\n  res.status(201).end();\n});\napp.listen(3000);\n";
+  const PRISMA_SCHEMA = 'datasource db {\n  provider = "postgresql"\n  url      = env("DATABASE_URL")\n}\nmodel User {\n  id    Int    @id @default(autoincrement())\n  email String @unique\n}\n';
+
+  it('--init (C2d2): Prisma com migrations: o banco pelo socket, a URL do datasource e o que instalar', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { express: '4', '@prisma/client': '4' }, devDependencies: { vitest: '2', supertest: '7', msw: '2' } }));
+      fs.mkdirSync(path.join(tmp, 'src', 'prisma', 'migrations', '20240101_init'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'src', 'main.ts'), PRISMA_APP);
+      fs.writeFileSync(path.join(tmp, 'src', 'prisma', 'schema.prisma'), PRISMA_SCHEMA);
+      fs.writeFileSync(path.join(tmp, 'src', 'prisma', 'migrations', '20240101_init', 'migration.sql'), 'CREATE TABLE "User" ("id" SERIAL PRIMARY KEY, "email" TEXT NOT NULL);');
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(0);
+      expect(created.err).toMatch(/esquema: src\/prisma\/migrations\/20240101_init\/migration\.sql/);
+      expect(created.err).toMatch(/npx prisma generate/);
+      expect(created.err).toMatch(/npm install -D @electric-sql\/pglite @electric-sql\/pglite-socket/);
+      const db = fs.readFileSync(path.join(tmp, 'chaos', 'db.ts'), 'utf8');
+      expect(db).toContain("const SCHEMA = ['src/prisma/migrations/20240101_init/migration.sql'];");
+      expect(db).toContain("for (const name of ['DATABASE_URL']) process.env[name] = url;");
+      // o app abre porta no topo: o setup guarda o express (C2a) e sobe o banco antes, sem trocar o pg
+      const setup = fs.readFileSync(path.join(tmp, 'chaos', 'setup.ts'), 'utf8');
+      expect(setup).toContain("import './db';");
+      expect(setup.indexOf("import './db';")).toBeLessThan(setup.indexOf("vi.mock('express'"));
+      expect(setup).not.toContain("vi.mock('pg'");
+      const config = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
+      expect(config).toContain('await resetDb();');
+      expect(config).toContain('createApp: () => chaosApp(),');
+      expect(config).not.toMatch(/zere o banco|esquema/);
+      expect(fs.existsSync(path.join(tmp, 'chaos', 'schema.sql'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('--init (C2d2): Prisma sem migrations: o esquema sai do prisma migrate diff do projeto (a flag antiga, se a nova falhar)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { express: '4', '@prisma/client': '4' } }));
+      fs.mkdirSync(path.join(tmp, 'src'));
+      fs.mkdirSync(path.join(tmp, 'prisma'));
+      fs.writeFileSync(path.join(tmp, 'src', 'main.ts'), PRISMA_APP);
+      fs.writeFileSync(path.join(tmp, 'prisma', 'schema.prisma'), PRISMA_SCHEMA);
+      // o Prisma 4 não conhece o --to-schema do Prisma 7; e o 7 exige a URL até para o diff, que não conecta
+      const fake = path.join(tmp, 'node_modules', 'prisma');
+      fs.mkdirSync(path.join(fake, 'build'), { recursive: true });
+      fs.writeFileSync(path.join(fake, 'package.json'), JSON.stringify({ name: 'prisma', version: '4.16.2', bin: { prisma: 'build/index.js' } }));
+      fs.writeFileSync(
+        path.join(fake, 'build', 'index.js'),
+        "const args = process.argv.slice(2);\nif (args.includes('--to-schema') || !process.env.DATABASE_URL) { console.error('unknown or unexpected option: --to-schema'); process.exit(1); }\nconsole.log('-- CreateTable\\nCREATE TABLE \"User\" (\"id\" SERIAL NOT NULL); -- ' + args.join(' '));\n"
+      );
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(0);
+      expect(created.err).toMatch(/esquema: chaos\/schema\.sql, gerado de prisma\/schema\.prisma/);
+      const schema = fs.readFileSync(path.join(tmp, 'chaos', 'schema.sql'), 'utf8');
+      expect(schema).toContain('CREATE TABLE "User" ("id" SERIAL NOT NULL); -- migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script');
+      expect(schema).toContain('-- npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > chaos/schema.sql');
+      expect(fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8')).not.toMatch(/esquema/);
+
+      // sem o Prisma instalado: o esquema vira pendência, com o comando
+      fs.rmSync(path.join(tmp, 'node_modules'), { recursive: true });
+      fs.rmSync(path.join(tmp, 'chaos'), { recursive: true });
+      fs.rmSync(path.join(tmp, 'shieldepy.chaos.config.ts'));
+      const missing = await run('chaos', tmp, '--init');
+      expect(missing.err).toMatch(/não conseguiu gerar o esquema: rode npx prisma migrate diff --from-empty --to-schema prisma\/schema\.prisma --script > chaos\/schema\.sql/);
+      expect(fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8')).toMatch(/TODO\(shieldepy\): gere o esquema do Prisma/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 const RACE = 'POST /checkout__race_condition__stock';
@@ -466,7 +538,8 @@ describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', ()
           fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
         }
       },
-      90_000
+      // ~20 s sozinho; no `npm run check`, o Vitest do exemplo disputa a CPU com os outros forks (passou de 90 s)
+      240_000
     );
   }
 });
