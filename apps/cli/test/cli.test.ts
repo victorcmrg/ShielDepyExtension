@@ -8,6 +8,7 @@ import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry } from '@shieldepy/extractors';
 import { ChaosRunError, vitestEntry, type TestResult } from '../src/chaos-run';
 import { runChaosCommand, type ChaosTestRunner } from '../src/chaos';
+import { findLicense, publicRemote, variantOf } from '../src/dataset';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const example = (rel: string) => path.join(ROOT, 'examples', rel);
@@ -469,6 +470,102 @@ describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', ()
       90_000
     );
   }
+});
+
+// D2: `--dataset` acrescenta um registro por teste que rodou ao JSONL (dados para treino, 0016)
+describe('CLI chaos --dataset (D2)', () => {
+  const registry = () => loadRegistry(defaultWasmDir());
+  const silent = { out: () => {}, err: () => {}, env: {} };
+  const readJsonl = (file: string) => fs.readFileSync(file, 'utf8').trimEnd().split('\n').map((l) => JSON.parse(l));
+  const clean = (dir: string) => {
+    fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
+    fs.rmSync(path.join(dir, '.shieldepy', 'chaos-results.json'), { force: true });
+  };
+
+  it('runner injetado: um registro por teste, com a fonte do git, e acrescenta sem apagar', async () => {
+    const dir = example('checkout-express');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-d2-'));
+    const file = path.join(tmp, 'sub', 'dataset.jsonl');
+    const runner: ChaosTestRunner = async (_root, ids) =>
+      ids.map((id) => ({ hypothesisId: id, status: id === RACE ? 'failed' : 'passed', message: id === RACE ? 'stateCheck: stockNeverNegative' : undefined, durationMs: 10 }));
+    try {
+      const err: string[] = [];
+      const code = await runChaosCommand({ target: dir, json: false, noRun: false, offline: true, dataset: file }, { ...silent, err: (l) => err.push(l) }, registry, runner);
+      expect(code).toBe(1);
+      expect(err.join('\n')).toContain(`✓ 6 registro(s) do dataset acrescentado(s) a ${file}`);
+      const records = readJsonl(file);
+      expect(records.map((r) => r.hypothesis.id)).toEqual([H5XX, MALFORMED, PARTIAL_ORDERS, PARTIAL_STOCK, RACE, TIMEOUT].sort());
+      const race = records.find((r) => r.hypothesis.id === RACE);
+      expect(race.source).toMatchObject({ project: 'checkout-express', path: 'examples/checkout-express', variant: 'original' });
+      expect(race.source.commit).toMatch(/^[0-9a-f]{40}$/);
+      expect(race.result).toMatchObject({ control: 'passed', chaos: 'failed', outcome: 'achado', severity: 'Crítico' });
+      expect(race.code.length).toBeGreaterThan(3);
+      expect(race.test.text).toContain('describe(');
+
+      await runChaosCommand({ target: dir, json: false, noRun: false, offline: true, dataset: file }, silent, registry, runner);
+      expect(readJsonl(file)).toHaveLength(12); // acrescenta; quem gera o corpus deduplica pelo id
+
+      // --no-run: sem resultado não há rótulo, e o arquivo fica como estava
+      await runChaosCommand({ target: dir, json: false, noRun: true, offline: true, dataset: file }, silent, registry, runner);
+      expect(readJsonl(file)).toHaveLength(12);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      clean(dir);
+    }
+  });
+
+  it('a fonte: remote sem credencial, licença do package.json ou do LICENSE, variante pelo nome', () => {
+    expect(publicRemote('https://user:token@github.com/dono/repo.git')).toBe('https://github.com/dono/repo.git');
+    expect(publicRemote('git@github.com:dono/repo.git')).toBe('git@github.com:dono/repo.git');
+    expect(variantOf('checkout-express-fixed')).toBe('fixed');
+    expect(variantOf('checkout-express')).toBe('original');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-lic-'));
+    try {
+      const a = path.join(tmp, 'a');
+      const b = path.join(tmp, 'b');
+      fs.mkdirSync(a);
+      fs.mkdirSync(b);
+      fs.writeFileSync(path.join(a, 'package.json'), JSON.stringify({ license: 'Apache-2.0' }));
+      fs.writeFileSync(path.join(b, 'package.json'), '{}');
+      fs.writeFileSync(path.join(b, 'LICENSE'), '\n  MIT License\n\nCopyright (c) 2024\n');
+      expect(findLicense([a])).toEqual({ value: 'Apache-2.0', from: 'package.json' });
+      expect(findLicense([b])).toEqual({ value: 'MIT License', from: 'LICENSE' });
+      expect(findLicense([path.join(tmp, 'nada'), b])).toEqual({ value: 'MIT License', from: 'LICENSE' });
+      expect(findLicense([path.join(tmp, 'nada')])).toBeUndefined();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // De verdade (Vitest dos exemplos; precisa do npm install neles): o par original × corrigido
+  it.skipIf(!vitestEntry(example('checkout-express')) || !vitestEntry(example('checkout-express-fixed')))(
+    'checkout-express: 6 achados com o controle passando; o -fixed: as mesmas hipóteses aguentam',
+    async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-d2-real-'));
+      const file = path.join(tmp, 'dataset.jsonl');
+      try {
+        expect(await runChaosCommand({ target: example('checkout-express'), json: false, noRun: false, offline: true, dataset: file }, silent, registry)).toBe(1);
+        expect(await runChaosCommand({ target: example('checkout-express-fixed'), json: false, noRun: false, offline: true, dataset: file }, silent, registry)).toBe(0);
+        const records = readJsonl(file);
+        const of = (variant: string) => records.filter((r) => r.source.variant === variant);
+        const original = of('original');
+        expect(original).toHaveLength(6);
+        expect(original.every((r) => r.result.control === 'passed' && r.result.chaos === 'failed' && r.result.outcome === 'achado')).toBe(true);
+        const fixed = new Map(of('fixed').map((r) => [r.hypothesis.id, r.result]));
+        // o corrigido tem timeout no fetch: a hipótese de timeout nem existe nele
+        expect([...fixed.keys()].sort()).toEqual([H5XX, MALFORMED, PARTIAL_ORDERS, PARTIAL_STOCK, RACE].sort());
+        for (const id of [RACE, H5XX, MALFORMED, PARTIAL_ORDERS]) expect(fixed.get(id)).toMatchObject({ control: 'passed', chaos: 'passed', outcome: 'aguentou' });
+        // o stock só é gravado depois da API no caminho de erro: a falha não dispara (inválido, com o motivo)
+        expect(fixed.get(PARTIAL_STOCK)).toMatchObject({ outcome: 'inválido', control: 'passed', chaos: 'not-run' });
+        expect(new Set(records.map((r) => r.id)).size).toBe(records.length);
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+        clean(example('checkout-express'));
+        clean(example('checkout-express-fixed'));
+      }
+    },
+    180_000
+  );
 });
 
 /** Os dados embutidos no HTML do visualizador (`const SYSTEM = ...; const TOPOLOGY = ...;`). */
