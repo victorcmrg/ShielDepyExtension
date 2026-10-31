@@ -148,6 +148,13 @@ describe('D1 — o registro do dataset (JSONL v1)', () => {
     const fixed = buildDatasetRecords({ ...inp, source: { ...source, variant: 'fixed' } })[0]!;
     expect(fixed.id).not.toBe(original.id);
     expect(fixed.hypothesis.id).toBe(original.hypothesis.id);
+    // um commit novo do repositório com o mesmo código: mesmo id (o banco não duplica)
+    const otherCommit = buildDatasetRecords({ ...inp, source: { ...source, commit: 'def456' } })[0]!;
+    expect(otherCommit.id).toBe(original.id);
+    expect(otherCommit.source.commit).toBe('def456');
+    // o código mudou: outro id
+    const code = { ...inp.code, [original.route.id]: inp.code[original.route.id]!.map((c, i) => (i === 0 ? { ...c, text: c.text + '\n// mudou' } : c)) };
+    expect(buildDatasetRecords({ ...inp, code })[0]!.id).not.toBe(original.id);
   });
 
   it('inválido vai com o motivo; sem resultado não há registro', async () => {
@@ -183,7 +190,7 @@ describe('D1 — o registro do dataset (JSONL v1)', () => {
     const mutation = { operator: 'sem-timeout', file: 'src/gateways/StripeGateway.ts', line: 17, description: 'tira o signal de fetch' };
     const m = asMutantRecord(ran, source, mutation, 'mutante:sem-timeout@src/gateways/StripeGateway.ts:17', 'offline');
     expect(m.source).toEqual({ ...source, variant: 'mutante:sem-timeout@src/gateways/StripeGateway.ts:17', mutation });
-    expect(m.id).toBe(datasetRecordId(m.source, 'offline', ran.hypothesis.id));
+    expect(m.id).toBe(datasetRecordId(m, 'offline'));
     expect(m.id).not.toBe(buildDatasetRecords(inp)[0]!.id);
     expect(m.hypothesis).toEqual(ran.hypothesis);
   });

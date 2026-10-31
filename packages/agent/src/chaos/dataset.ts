@@ -51,7 +51,7 @@ export type DatasetOutcome = 'achado' | 'aguentou' | 'inválido';
 export type DatasetRunStatus = 'passed' | 'failed' | 'not-run';
 
 export interface DatasetRecord {
-  /** Hash do projeto, do repositório, do commit, da variante, de quem escreveu e da hipótese. */
+  /** Hash do projeto, do repositório, da variante, do motor, da hipótese e do conteúdo (código, spec, teste); sem o commit. */
   id: string;
   schemaVersion: typeof DATASET_SCHEMA_VERSION;
   source: DatasetSource;
@@ -148,8 +148,17 @@ function violatedInvariant(spec: ChaosSpec, message: string | undefined): Invari
 const author = (engine: Engine, model: string | undefined, byAi: boolean): DatasetAuthor =>
   byAi && engine !== 'offline' ? { engine, ...(model && { model }) } : { engine: 'offline' };
 
-export function datasetRecordId(source: DatasetSource, engine: Engine, hypothesisId: string): string {
-  const key = [source.project, source.repo ?? '', source.path ?? '', source.commit ?? '', source.variant, engine, hypothesisId].join('\n');
+/**
+ * O id: o projeto, o repositório, a pasta, a variante, o motor, a hipótese e o **conteúdo** que o
+ * modelo vê (o código da cadeia, a spec e o teste). O commit fica de fora: um commit novo do
+ * repositório que não muda o código do exemplo dá o mesmo id, e o upsert no banco não duplica.
+ */
+export function datasetRecordId(record: Pick<DatasetRecord, 'source' | 'code' | 'test'> & { hypothesis: Pick<DatasetRecord['hypothesis'], 'id' | 'spec'> }, engine: Engine): string {
+  const { source } = record;
+  const content = createHash('sha256')
+    .update(canonicalJson({ code: record.code, spec: record.hypothesis.spec, test: record.test.text }))
+    .digest('hex');
+  const key = [source.project, source.repo ?? '', source.path ?? '', source.variant, engine, record.hypothesis.id, content].join('\n');
   return createHash('sha256').update(key).digest('hex').slice(0, 32);
 }
 
@@ -171,8 +180,7 @@ export function buildDatasetRecords(input: DatasetInput): DatasetRecord[] {
     const mine = ` ${h.id}: `;
     const statuses = runStatuses(o);
     const violated = o.status === 'failed' ? violatedInvariant(spec, o.message) : undefined;
-    records.push({
-      id: datasetRecordId(input.source, input.engine, h.id),
+    const record: Omit<DatasetRecord, 'id'> = {
       schemaVersion: DATASET_SCHEMA_VERSION,
       source: input.source,
       topologyHash: input.surface.topologyHash,
@@ -220,7 +228,8 @@ export function buildDatasetRecords(input: DatasetInput): DatasetRecord[] {
         durationMs: o.durationMs,
       },
       test: { file: testFile, text: files.get(testFile) ?? '' },
-    });
+    };
+    records.push({ id: datasetRecordId(record, input.engine), ...record });
   }
   return records.sort((a, b) => (a.hypothesis.id < b.hypothesis.id ? -1 : a.hypothesis.id > b.hypothesis.id ? 1 : 0));
 }
@@ -236,7 +245,7 @@ export function datasetJsonl(records: DatasetRecord[]): string {
  */
 export function asMutantRecord(record: DatasetRecord, base: DatasetSource, mutation: NonNullable<DatasetSource['mutation']>, variant: DatasetVariant, engine: Engine): DatasetRecord {
   const source: DatasetSource = { ...base, variant, mutation };
-  return { ...record, source, id: datasetRecordId(source, engine, record.hypothesis.id) };
+  return { ...record, source, id: datasetRecordId({ ...record, source }, engine) };
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

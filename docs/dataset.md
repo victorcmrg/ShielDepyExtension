@@ -48,7 +48,7 @@ Uma linha por hipótese testada, com as chaves em ordem alfabética: a mesma ent
 
 | Campo | O que é |
 |---|---|
-| `id` | Hash (32 hex) do projeto, repositório, pasta, commit, variante, motor e hipótese. |
+| `id` | Hash (32 hex) do projeto, repositório, pasta, variante, motor, hipótese e do conteúdo (o código da cadeia, a spec e o teste). O commit fica de fora: um commit novo do repositório que não muda o código dá o mesmo id. |
 | `schemaVersion` | `1`. Campo novo não muda a versão; campo que muda de sentido ou some muda. |
 | `source.project` | O nome da pasta analisada (`checkout-express`). |
 | `source.repo`, `source.commit`, `source.path` | O remote `origin` (sem usuário e senha), o commit e a pasta dentro do repositório. |
