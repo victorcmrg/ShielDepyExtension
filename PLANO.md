@@ -47,7 +47,7 @@ Ordem: **S ✅ → P1 ✅ → MVP ([0018](docs/decisoes/0018-mvp-caos-e-framewor
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
 | P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; na `main`) |
-| **MVP** | **Caos utilizável nos frameworks, empresa mockada** ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md)): MVP1 a MVP9 | **em andamento**; próxima: MVP1 (branch `feat/mvp-caos`) |
+| **MVP** | **Caos utilizável em Express, Fastify e NestJS, empresa mockada** ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md)): MVP1 a MVP9, versão enxuta | **em andamento**; próxima: MVP1 (branch `feat/mvp-caos`) |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅, C2a ✅ (na `main`); o resto da C2 e a F rápida viraram tarefas do MVP; C4 parada |
 | LM | **Lançamento mínimo** ([0017](docs/decisoes/0017-lancamento-minimo.md)): degrau 1 (site estático + marketplaces) e degrau 2 (portal e API no ar) | parado até o fim do MVP (0018) |
 | W | Landing honesta | parado (0018) |
@@ -76,16 +76,18 @@ As tarefas, em ordem. Cada uma é uma fatia com teste e um commit, como sempre:
 | # | Tarefa | Vem de | Estimativa |
 |---|---|---|---|
 | MVP1 | **Banco de teste do Prisma.** Portar o que foi feito em 2026-10-25 (branch local `backup/c2d2-antes-do-rebase`, `40256a7`) para a C2a da `main`. Resumo: PGlite pelo `pglite-socket` numa porta livre; a URL do `datasource` lida por tokens; o esquema pelas migrations ou pelo `prisma migrate diff`; uma conexão só (`connection_limit=1` e o `Pool` do `pg` com `max: 1`, senão o pool frio esconde a corrida). Na época, conferido no realworld (os 4 achados da C1) e no prisma-express. A decisão técnica de lá vira a **0019** (o número 0016 já foi usado na `main`). | C2d2 | 1 sessão |
-| MVP2 | **Autenticação nas requisições.** Rota atrás de `express-jwt` ou `passport-jwt` deixa de sair como "pronta": o `--init` acha o segredo (literal, ou `process.env.X` com valor padrão) e gera o token no contrato; senão, uma pendência de cabeçalho. | C1, item 3 | 1 sessão |
-| MVP3 | **Corpos e parâmetros, versão rápida.** O corpo sai do zod/joi quando houver; senão, das propriedades lidas no handler (`req.body.user.email`, desestruturação), com valores de exemplo pelo nome. O parâmetro de rota vem do registro de exemplo do `reset`. | C2b, C2c | 1–2 sessões |
-| MVP4 | **Arnês de teste embutido.** A CLI roda com o `vitest`, o `supertest` e o `msw` dela quando o projeto não tem, sem instalar nada no alvo. | C2h | 1 sessão |
-| MVP5 | **Corrida mais forte.** As respostas entram no contexto dos invariantes; requisições variadas; severidade Alto quando só aparece o 500, sem estado corrompido. | C2g | 1 sessão |
-| MVP6 | **Aviso de framework não suportado**, para não dar falso verde. | C2f | meia sessão |
-| MVP7 | **Frameworks, versão rápida.** Em cada um, só o mínimo que roda o caos: rotas, I/O, `createApp` e um exemplo em `examples/` com o teste de aceitação. O que não der para provar sai `heuristic`. Ordem: **Fastify → NestJS → Koa/Hono → Next** (route handlers). O Mongoose no caos, se sobrar tempo. | F1, F4, F2, F5 | 1–2 dias cada |
-| MVP8 | **Empresa mockada no portal.** Telas de plano, assinatura e faturas com dados fixos e o selo "demonstração": sem provedor, sem formulário de cartão, sem regra de cobrança. O portal roda local com o `seed:demo`. Screenshot antes de dar por pronto (pedir antes de abrir o Chrome). | B4, figurativa | 1 sessão |
-| MVP9 | **Roteiro do MVP.** `docs/roteiro-mvp.md`, o passo a passo de "pronto quando", e o `npm run demo:verificar` cobrindo os exemplos novos. Rodar o roteiro inteiro uma vez (perguntar antes de abrir o VS Code). | demo do TCC | 1 sessão |
+| MVP2 | **Arnês de teste embutido.** A CLI roda com o `vitest`, o `supertest` e o `msw` dela quando o projeto não tem, sem instalar nada no alvo. É o que faz o passo "instalar e rodar" funcionar. | C2h | 1 sessão |
+| MVP3 | **Aviso de framework não suportado**, para não dar falso verde. | C2f | meia sessão |
+| MVP4 | **Fastify, versão rápida:** rotas, I/O, `createApp` e um exemplo em `examples/` com o teste de aceitação ("topologia com as operações em ordem" e o caos achando a falha). O que não der para provar sai `heuristic`. | F1 | 1–2 dias |
+| MVP5 | **NestJS, versão rápida**, igual à MVP4: rotas pelos decorators (`@Controller`, `@Post`), o serviço injetado pelo construtor e o `createApp` pelo `NestFactory`. É o mais trabalhoso e o que mais mostra que o motor generaliza. | F4 | 3–4 dias |
+| MVP6 | **Corpos mínimos:** as propriedades lidas no handler (`req.body.user.email`, desestruturação, o DTO do Nest) viram um corpo de exemplo, com valores pelo nome. Sem zod/joi. | C2b | 1 sessão |
+| MVP7 | **Empresa mockada numa página do portal:** plano, assinatura e faturas com dados fixos e o selo "demonstração", sem provedor, sem formulário de cartão e sem regra de cobrança. O portal roda local com o `seed:demo`. Screenshot antes de dar por pronto (pedir antes de abrir o Chrome). | B4, figurativa | meia sessão |
+| MVP8 | **Tabela de resultados para o TCC:** o caos nos 3 projetos reais da C1 mais 1 ou 2 em Fastify/NestJS (do `mapa:reais` ou clonados no scratchpad), com achados verdadeiros e falsos, controles e quanto do contrato saiu automático. Vai para `docs/pesquisa/`. | C1 | 1–2 sessões |
+| MVP9 | **Roteiro do MVP.** `docs/roteiro-mvp.md`, o passo a passo de "pronto quando" (o `checkout-express` que falha e o `-fixed` que passa, e o mesmo num exemplo Fastify ou NestJS), e o `npm run demo:verificar` cobrindo os exemplos novos. Rodar o roteiro inteiro uma vez (perguntar antes de abrir o VS Code). | demo do TCC | 1 sessão |
 
-Total estimado: 3 a 4 semanas. A MVP7 é a parte mais incerta.
+Total estimado: 1,5 a 2 semanas. A MVP5 (NestJS) é a parte mais incerta.
+
+**Depois do MVP** (anotado para aprimorar, sem data): autenticação JWT nas requisições (o `--init` gera o token), corpos pelo zod/joi e parâmetros com tipo (C2b/C2c), corrida mais forte com as respostas nos invariantes (C2g), Koa/Hono e Next (F2, F5), os outros ORMs (F6), o caos em C# e Java, e o lançamento mínimo da 0017.
 
 ---
 
