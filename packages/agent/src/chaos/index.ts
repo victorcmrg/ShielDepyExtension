@@ -8,3 +8,4 @@ export * from './graph';
 export * from './templates';
 export * from './results';
 export * from './report';
+export * from './dataset';
