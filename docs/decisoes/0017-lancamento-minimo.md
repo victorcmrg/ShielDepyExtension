@@ -1,6 +1,6 @@
 # 0017 — Da empresa, só o necessário para distribuir o produto
 
-**Data:** 2026-10-30 (escolha do usuário) · **Estado:** valendo · **Ajusta:** a ordem das etapas do `PLANO.md` (W, G e P vêm antes de A e B, e só no mínimo)
+**Data:** 2026-10-30 (escolha do usuário) · **Estado:** adiada pela [0018](0018-mvp-caos-e-frameworks.md) (2026-10-31) · **Ajusta:** a ordem das etapas do `PLANO.md` (W, G e P vêm antes de A e B, e só no mínimo)
 
 **Contexto.** A meta é pôr o site da empresa no ar e distribuir a extensão. Licença e cobrança (A e B) só fazem sentido quando houver quem pague. Um full stack completo da empresa (cadastro self-service, planos, faturas, operação madura) atrasaria o lançamento sem ninguém usando o produto. A extensão já funciona sem conta: o motor é local e grátis ([0005](0005-modo-local-gratis.md)).
 

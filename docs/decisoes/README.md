@@ -20,4 +20,5 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0013](0013-api-ddd-por-dominio.md) | `apps/api` em DDD, organizada por domínio | 2026-10-23 | valendo |
 | [0014](0014-organizacao-do-repositorio.md) | Monorepo na raiz, `main` como tronco, plano curto + decisões | 2026-10-23 | valendo |
 | [0016](0016-dados-para-treino.md) | Dados para treinar a IA de erros de produção: JSONL pela CLI, rótulo do motor, sem código de cliente | 2026-10-30 | valendo |
-| [0017](0017-lancamento-minimo.md) | Da empresa, só o necessário para distribuir o produto (degrau 1: site estático + marketplaces; degrau 2: portal no ar) | 2026-10-30 | valendo |
+| [0017](0017-lancamento-minimo.md) | Da empresa, só o necessário para distribuir o produto (degrau 1: site estático + marketplaces; degrau 2: portal no ar) | 2026-10-30 | adiada pela 0018 |
+| [0018](0018-mvp-caos-e-frameworks.md) | MVP de demonstração: o caos utilizável nos frameworks, com a parte da empresa mockada | 2026-10-31 | valendo |

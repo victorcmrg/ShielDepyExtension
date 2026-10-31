@@ -9,15 +9,18 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 3. Ler as decisões que a etapa cita, em [`docs/decisoes/`](docs/decisoes/README.md).
 4. Rodar `git log --oneline -15` para ver as últimas tarefas feitas.
 
-## Onde estamos (2026-10-24)
+## Onde estamos (2026-10-31)
+
+- **Agora: o MVP de demonstração** ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md), escolha do usuário em 2026-10-31): o caos utilizável de ponta a ponta e em mais frameworks, com um roteiro sólido; a parte da empresa fica mockada. Licença, cobrança, deploy e o lançamento mínimo ([0017](docs/decisoes/0017-lancamento-minimo.md)) ficam parados. A etapa e as tarefas estão na seção **MVP**, mais abaixo. Branch: `feat/mvp-caos`, a partir da `main` em `2057cfa`.
+- **Próxima: MVP1** (a C2d2, o banco de teste do Prisma). Ela já foi feita em 2026-10-25, mas em cima da C2a antiga. Está só **nesta máquina**, na branch local `backup/c2d2-antes-do-rebase` (`40256a7`), e precisa ser portada para a C2a nova da `main`.
 
 - **Pronto:** o motor (mapa, topologia e caos em JS/TS; mapa, rotas e I/O em C# e Java), a extensão, a CLI, o portal com o histórico do caos e a demo do TCC. Como funciona: [`docs/como-funciona.md`](docs/como-funciona.md).
 - **Reorganização de 2026-10-23** ([0014](docs/decisoes/0014-organizacao-do-repositorio.md)) ✅: o monorepo virou a raiz, as decisões viraram arquivos e o plano encolheu. Está na `main`, e as branches antigas do GitHub foram apagadas.
 - **Etapa S ✅** (S1 a S7) e **P1 ✅** (Postgres com Drizzle, decisão [0015](docs/decisoes/0015-drizzle.md)): na `main` desde 2026-10-24 (`9d0bc55`, merge fast-forward da `feat/postgres-drizzle`). A `apps/api` é `shared/` + `domains/{identity,companies,projects,chaos-runs}` + `composition.ts`, sobre Postgres/PGlite. Noutra máquina: `git pull` na `main` e `npm install` na raiz. Se aparecer uma pasta `shieldepy_p1/` não rastreada, é resto do layout antigo e pode ser apagada.
-- **Em andamento: etapa C**, na `main`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). A C1 e a C2d1 estão na `main` desde 2026-10-30 (`8dda696`, merge fast-forward da `feat/caos-c1`; as branches já mergeadas foram apagadas no GitHub). **C2a ✅** (2026-10-30, na `main` desde `c2e75e0`): o `--init` escreve o `createApp` sem editar o projeto, e nos 3 projetos da C1 saiu sem pendência (resultado na seção 6 do relatório da C1). **Próxima: C2d2** (o banco de teste para o Prisma; tarefa mais abaixo), numa branch nova a partir da `main`.
+- **Em andamento: etapa C**, na `main`. **C1 ✅** (2026-10-24): o caos rodou nos 3 projetos reais; resultado e lista para a C2 em [`docs/pesquisa/caos-projetos-reais.md`](docs/pesquisa/caos-projetos-reais.md). **C2 em andamento:** C2d1 ✅ (banco de teste gerado para o `pg`). A C1 e a C2d1 estão na `main` desde 2026-10-30 (`8dda696`, merge fast-forward da `feat/caos-c1`; as branches já mergeadas foram apagadas no GitHub). **C2a ✅** (2026-10-30, na `main` desde `c2e75e0`): o `--init` escreve o `createApp` sem editar o projeto, e nos 3 projetos da C1 saiu sem pendência (resultado na seção 6 do relatório da C1). O resto da C2 seguiu para o MVP (a C2d2 virou a MVP1).
 - **Nova frente, D (2026-10-30): dados para a equipe que treina a IA de erros de produção** ([0016](docs/decisoes/0016-dados-para-treino.md)). Só planejada, nada implementado; a seção D mais abaixo diz o que fazer. Corre em paralelo à C e não mexe na `apps/api` nem na `apps/web` (o full stack da empresa segue noutra sessão).
 - **Falta conferir num VS Code real** (perguntar antes): o E2E da L e da J, e o device flow da extensão contra a `apps/api`.
-- **Parte da empresa: só o necessário para distribuir o produto** ([0017](docs/decisoes/0017-lancamento-minimo.md), 2026-10-30). Nada de full stack completo agora. O **degrau 1** põe o site estático no ar e a extensão no Marketplace e no Open VSX, sem servidor; o **degrau 2** põe o portal e a API no ar para os primeiros times. Licença e cobrança (A e B) ficam para quando houver quem pague. A seção "Lançamento mínimo", mais abaixo, tem a lista. Falta o usuário decidir DP4 (domínio e e-mail) e DP2 (repositório privado ou público) para o degrau 1, e DP3 (hospedagem) para o degrau 2.
+- **Parte da empresa: parada até o fim do MVP** ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md)); o que a [0017](docs/decisoes/0017-lancamento-minimo.md) tinha decidido vale para depois. Nada de full stack completo agora. O **degrau 1** põe o site estático no ar e a extensão no Marketplace e no Open VSX, sem servidor; o **degrau 2** põe o portal e a API no ar para os primeiros times. Licença e cobrança (A e B) ficam para quando houver quem pague. A seção "Lançamento mínimo", mais abaixo, tem a lista. Falta o usuário decidir DP4 (domínio e e-mail) e DP2 (repositório privado ou público) para o degrau 1, e DP3 (hospedagem) para o degrau 2.
 
 ## Decisões pendentes (do usuário; perguntar antes da tarefa que depende delas)
 
@@ -32,7 +35,8 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 
 ## Etapas
 
-Ordem: **S ✅ → P1 ✅ → C (até a C2f) → lançamento mínimo, degrau 1 → degrau 2 → resto da C → A → B → P (resto)** ([0017](docs/decisoes/0017-lancamento-minimo.md)). A D corre em paralelo.
+Ordem: **S ✅ → P1 ✅ → MVP ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md)) → depois do MVP: lançamento mínimo ([0017](docs/decisoes/0017-lancamento-minimo.md)) → resto da C e da F → A → B → P**. A D corre em paralelo, fora do caminho do MVP.
+- Desde a 0018, o que segue abaixo sobre a empresa (LM, W, G, A, B, P) está parado: fica escrito para quando o MVP acabar.
 - Da empresa, só entra o que serve para distribuir o produto: o lançamento mínimo junta as partes necessárias da W, da G e da P.
 - A S destrava tudo sem mudar comportamento, e a P1 (Postgres) vem logo depois da S7, que isola o banco na `infra`.
 - A C e a W deixam o produto honesto e utilizável antes de alguém instalar.
@@ -43,17 +47,45 @@ Ordem: **S ✅ → P1 ✅ → C (até a C2f) → lançamento mínimo, degrau 1 �
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
 | P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; na `main`) |
-| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅, C2a ✅ (na `main`); próxima: C2d2 |
-| LM | **Lançamento mínimo** ([0017](docs/decisoes/0017-lancamento-minimo.md)): degrau 1 (site estático + marketplaces) e degrau 2 (portal e API no ar) | pendente; degrau 1 depende de DP2 e DP4, degrau 2 de DP3 |
-| W | Landing honesta | pendente; W1–W3 entram no degrau 1 |
-| G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | pendente; depende de DP2 |
-| A | Licença: direito de uso por empresa ([0009](docs/decisoes/0009-modelo-de-venda.md), TDD [0011](docs/decisoes/0011-tdd-na-empresa.md)) | pendente |
-| B | Monetização: planos, assinatura, cobrança, cadastro (TDD) | pendente; depende de DP1 e DP5 |
-| P | Produção: deploy, segurança, operação, LGPD | pendente; depende de DP3 e DP4 |
+| **MVP** | **Caos utilizável nos frameworks, empresa mockada** ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md)): MVP1 a MVP9 | **em andamento**; próxima: MVP1 (branch `feat/mvp-caos`) |
+| C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅, C2a ✅ (na `main`); o resto da C2 e a F rápida viraram tarefas do MVP; C4 parada |
+| LM | **Lançamento mínimo** ([0017](docs/decisoes/0017-lancamento-minimo.md)): degrau 1 (site estático + marketplaces) e degrau 2 (portal e API no ar) | parado até o fim do MVP (0018) |
+| W | Landing honesta | parado (0018) |
+| G | Distribuição do produto (npm, Releases, Marketplace, Open VSX) | parado (0018); o `.vsix` local já existe |
+| A | Licença: direito de uso por empresa ([0009](docs/decisoes/0009-modelo-de-venda.md), TDD [0011](docs/decisoes/0011-tdd-na-empresa.md)) | parado (0018) |
+| B | Monetização: planos, assinatura, cobrança, cadastro (TDD) | parado (0018); no MVP, só telas mockadas (MVP8) |
+| P | Produção: deploy, segurança, operação, LGPD | parado (0018) |
 | D | Dados para treinar a IA de erros de produção ([0016](docs/decisoes/0016-dados-para-treino.md)) | pendente; em paralelo à C (D1 e D2 podem começar já) |
 | — | Medição paga da IA (5e) | só com autorização |
 | — | Python no motor ([0007](docs/decisoes/0007-linguagens.md)) | próxima linguagem; escrever a etapa aqui quando começar |
 | — | Caos em C# e Java (xUnit/`WebApplicationFactory`, JUnit/Spring Test) | talvez |
+
+---
+
+### MVP — o caos utilizável nos frameworks, com a empresa mockada (2026-10-31)
+
+**Por que existe:** a decisão [0018](docs/decisoes/0018-mvp-caos-e-frameworks.md). É preciso mostrar o produto funcionando de ponta a ponta antes de cuidar de licença, cobrança e produção.
+
+**Pronto quando:** em projetos Express, Fastify e NestJS (com `pg` ou Prisma), o roteiro roda sem tropeço:
+1. instalar a extensão pelo `.vsix` local;
+2. abrir o projeto e gerar o contrato (`--init`), deixando no máximo 1 ou 2 pendências óbvias;
+3. rodar o caos e ver o achado no código, no relatório e no portal local, com as telas da empresa mockadas.
+
+As tarefas, em ordem. Cada uma é uma fatia com teste e um commit, como sempre:
+
+| # | Tarefa | Vem de | Estimativa |
+|---|---|---|---|
+| MVP1 | **Banco de teste do Prisma.** Portar o que foi feito em 2026-10-25 (branch local `backup/c2d2-antes-do-rebase`, `40256a7`) para a C2a da `main`. Resumo: PGlite pelo `pglite-socket` numa porta livre; a URL do `datasource` lida por tokens; o esquema pelas migrations ou pelo `prisma migrate diff`; uma conexão só (`connection_limit=1` e o `Pool` do `pg` com `max: 1`, senão o pool frio esconde a corrida). Na época, conferido no realworld (os 4 achados da C1) e no prisma-express. A decisão técnica de lá vira a **0019** (o número 0016 já foi usado na `main`). | C2d2 | 1 sessão |
+| MVP2 | **Autenticação nas requisições.** Rota atrás de `express-jwt` ou `passport-jwt` deixa de sair como "pronta": o `--init` acha o segredo (literal, ou `process.env.X` com valor padrão) e gera o token no contrato; senão, uma pendência de cabeçalho. | C1, item 3 | 1 sessão |
+| MVP3 | **Corpos e parâmetros, versão rápida.** O corpo sai do zod/joi quando houver; senão, das propriedades lidas no handler (`req.body.user.email`, desestruturação), com valores de exemplo pelo nome. O parâmetro de rota vem do registro de exemplo do `reset`. | C2b, C2c | 1–2 sessões |
+| MVP4 | **Arnês de teste embutido.** A CLI roda com o `vitest`, o `supertest` e o `msw` dela quando o projeto não tem, sem instalar nada no alvo. | C2h | 1 sessão |
+| MVP5 | **Corrida mais forte.** As respostas entram no contexto dos invariantes; requisições variadas; severidade Alto quando só aparece o 500, sem estado corrompido. | C2g | 1 sessão |
+| MVP6 | **Aviso de framework não suportado**, para não dar falso verde. | C2f | meia sessão |
+| MVP7 | **Frameworks, versão rápida.** Em cada um, só o mínimo que roda o caos: rotas, I/O, `createApp` e um exemplo em `examples/` com o teste de aceitação. O que não der para provar sai `heuristic`. Ordem: **Fastify → NestJS → Koa/Hono → Next** (route handlers). O Mongoose no caos, se sobrar tempo. | F1, F4, F2, F5 | 1–2 dias cada |
+| MVP8 | **Empresa mockada no portal.** Telas de plano, assinatura e faturas com dados fixos e o selo "demonstração": sem provedor, sem formulário de cartão, sem regra de cobrança. O portal roda local com o `seed:demo`. Screenshot antes de dar por pronto (pedir antes de abrir o Chrome). | B4, figurativa | 1 sessão |
+| MVP9 | **Roteiro do MVP.** `docs/roteiro-mvp.md`, o passo a passo de "pronto quando", e o `npm run demo:verificar` cobrindo os exemplos novos. Rodar o roteiro inteiro uma vez (perguntar antes de abrir o VS Code). | demo do TCC | 1 sessão |
+
+Total estimado: 3 a 4 semanas. A MVP7 é a parte mais incerta.
 
 ---
 
