@@ -37,6 +37,11 @@ export interface RenderContext {
   projectViteConfig?: string;
   /** `tsconfig.json` do projeto: os testes gerados são checados com ele (paths, strict). */
   projectTsconfig?: string;
+  /**
+   * Os pacotes do arnês que o projeto não tem (MVP2), e a pasta de cada um: viram alias exato no
+   * vitest.config.ts, para os arquivos de fora da pasta dos testes (o chaos/setup.ts, o chaos/db.ts).
+   */
+  harnessAliases?: Record<string, string>;
 }
 
 /** `POST /checkout__race_condition__stock` → `POST__checkout__race_condition__stock`. */
@@ -327,6 +332,7 @@ function renderSpecFile(spec: ChaosSpec, h: Hypothesis | undefined, ctx: RenderC
 
 function renderViteConfig(ctx: RenderContext, testTimeoutMs: number): string {
   const project = ctx.projectViteConfig;
+  const aliases = Object.entries(ctx.harnessAliases ?? {}).sort(([a], [b]) => a.localeCompare(b));
   return [
     '// Gerado pelo ShielDepy — não editar. Herda a config do projeto (aliases, plugins) e roda só os testes de caos.',
     "import { fileURLToPath } from 'node:url';",
@@ -338,9 +344,28 @@ function renderViteConfig(ctx: RenderContext, testTimeoutMs: number): string {
       ? "const base: any = (typeof project === 'function' ? await (project as any)({ command: 'serve', mode: 'test' }) : await project) ?? {};"
       : 'const base: any = {};',
     '',
+    ...(aliases.length
+      ? [
+          '',
+          '// o arnês do ShielDepy: o projeto não tem estes pacotes, e os arquivos de fora desta pasta usam os da CLI',
+          'const harness = [',
+          ...aliases.map(([name, dir]) => `  { find: new RegExp(${js(`^${name}$`)}), replacement: ${js(dir.split('\\').join('/'))} },`),
+          '];',
+          'const baseAlias = base.resolve?.alias ?? [];',
+          'const projectAlias = Array.isArray(baseAlias) ? baseAlias : Object.entries(baseAlias).map(([find, replacement]) => ({ find, replacement }));',
+        ]
+      : []),
+    '',
     'export default defineConfig({',
     '  ...base,',
     '  root,',
+    ...(aliases.length
+      ? [
+          '  resolve: { ...(base.resolve ?? {}), alias: [...harness, ...projectAlias] },',
+          '  // o cache do Vite também fica aqui, e não no node_modules do projeto',
+          `  cacheDir: ${js(`${CHAOS_TESTS_DIR}/.vite`)},`,
+        ]
+      : []),
     '  test: {',
     '    ...(base.test ?? {}),',
     `    include: [${js(`${CHAOS_TESTS_DIR}/**/*.spec.ts`)}],`,

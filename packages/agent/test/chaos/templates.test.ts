@@ -97,6 +97,21 @@ describe('E3/3e — templates', () => {
     expect(vite).toContain("import project from \"../../vitest.config\";");
     expect(vite).toContain('setupFiles: ["chaos/setup.ts"]');
     expect(JSON.parse(state.files[7]!.content)).toEqual({ extends: '../../tsconfig.json', compilerOptions: { noEmit: true }, include: ['./*.spec.ts'] });
+    expect(vite).not.toContain('harness');
+  });
+
+  it('MVP2: com o arnês emprestado, o vitest.config ganha alias exato para cada pacote, antes dos do projeto', async () => {
+    const { surface, config } = await prepare('checkout-express');
+    const harnessAliases = { vitest: 'C:\\cli\\node_modules\\vitest', '@electric-sql/pglite': '/cli/node_modules/@electric-sql/pglite' };
+    const state = await runChaosPipeline(surface, { invariantNames: config.invariants, render: { config, projectViteConfig: 'vitest.config.ts', harnessAliases } });
+    const vite = state.files.find((f) => f.path.endsWith('vitest.config.ts'))!.content;
+    expect(vite).toContain('{ find: new RegExp("^@electric-sql/pglite$"), replacement: "/cli/node_modules/@electric-sql/pglite" },');
+    expect(vite).toContain('{ find: new RegExp("^vitest$"), replacement: "C:/cli/node_modules/vitest" },');
+    // o alias do projeto (objeto ou lista) continua valendo, depois dos do arnês
+    expect(vite).toContain('resolve: { ...(base.resolve ?? {}), alias: [...harness, ...projectAlias] },');
+    expect(vite).toContain('cacheDir: ".shieldepy/chaos-tests/.vite",');
+    const parser = await TsParser.load(defaultWasmDir());
+    expect(parser.withTree(vite, false, (root) => root.hasError)).toBe(false);
   });
 
   it('contrato incompleto vira aviso (o teste rodaria, mas o controle cairia)', async () => {

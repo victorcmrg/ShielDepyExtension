@@ -319,7 +319,9 @@ describe('CLI chaos (E3)', () => {
       expect(fs.readFileSync(path.join(tmp, 'chaos', 'db.ts'), 'utf8')).toBe('// do projeto');
       expect(created.err).toMatch(/esquema: db\/migrations\/001_stock\.sql, db\/migrations\/002_orders\.sql/);
       expect(fs.existsSync(path.join(tmp, 'chaos', 'schema.sql'))).toBe(false);
-      expect(created.err).toMatch(/npm install -D supertest msw @electric-sql\/pglite/);
+      // MVP2: o que a CLI tem (o arnês) é emprestado, não pedido
+      expect(created.err).toMatch(/o projeto não tem supertest, msw, @electric-sql\/pglite: o caos usa os do ShielDepy, sem instalar nada no projeto/);
+      expect(created.err).not.toMatch(/npm install -D/);
       expect(fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8')).not.toMatch(/não tem \.sql de esquema/);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -343,7 +345,7 @@ describe('CLI chaos (E3)', () => {
       expect(created.code).toBe(0);
       expect(created.err).toMatch(/esquema: src\/prisma\/migrations\/20240101_init\/migration\.sql/);
       expect(created.err).toMatch(/npx prisma generate/);
-      expect(created.err).toMatch(/npm install -D @electric-sql\/pglite @electric-sql\/pglite-socket/);
+      expect(created.err).toMatch(/o projeto não tem @electric-sql\/pglite, @electric-sql\/pglite-socket: o caos usa os do ShielDepy/);
       const db = fs.readFileSync(path.join(tmp, 'chaos', 'db.ts'), 'utf8');
       expect(db).toContain("const SCHEMA = ['src/prisma/migrations/20240101_init/migration.sql'];");
       expect(db).toContain("for (const name of ['DATABASE_URL']) process.env[name] = url;");
@@ -542,6 +544,36 @@ describe('CLI chaos: aceitação contra os exemplos (E4, Vitest de verdade)', ()
       240_000
     );
   }
+
+  // MVP2: o mesmo checkout-express num projeto sem Vitest, supertest, MSW nem PGlite (só o express e o
+  // pg, ligados aos do exemplo): o caos roda com o arnês da CLI e acha o mesmo que acima
+  it.skipIf(!vitestEntry(example('checkout-express')))(
+    'MVP2: sem o arnês no projeto, o caos usa o da CLI, sem instalar nada nele, e acha o mesmo',
+    async () => {
+      const src = example('checkout-express');
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-arnes-'));
+      try {
+        for (const f of ['src', 'chaos/db.ts', 'chaos/setup.ts', 'shieldepy.chaos.config.ts', 'tsconfig.json']) fs.cpSync(path.join(src, f), path.join(tmp, f), { recursive: true });
+        const pkg = JSON.parse(fs.readFileSync(path.join(src, 'package.json'), 'utf8')) as { dependencies: object };
+        fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ type: 'module', dependencies: pkg.dependencies }));
+        // o alias @/ do exemplo, num config do Vite que não importa o Vitest
+        fs.writeFileSync(path.join(tmp, 'vite.config.ts'), "import { fileURLToPath } from 'node:url';\nexport default { resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } } };\n");
+        fs.mkdirSync(path.join(tmp, 'node_modules'));
+        for (const dep of ['express', 'pg']) fs.symlinkSync(path.join(src, 'node_modules', dep), path.join(tmp, 'node_modules', dep), 'junction');
+
+        const { code, out, err } = await run('chaos', tmp, '--offline', '--json');
+        expect(err).toMatch(/com o Vitest do ShielDepy; do ShielDepy, sem instalar nada no projeto: vitest, supertest, msw, @electric-sql\/pglite/);
+        expect(code).toBe(1);
+        const r = JSON.parse(out) as { results: TestResult[] };
+        expect(r.results.filter((x) => x.status === 'failed').map((x) => x.hypothesisId).sort()).toEqual([RACE, TIMEOUT, H5XX, MALFORMED, PARTIAL_ORDERS, PARTIAL_STOCK].sort());
+        expect(fs.readdirSync(path.join(tmp, 'node_modules')).sort()).toEqual(['express', 'pg']);
+        expect(fs.existsSync(path.join(tmp, 'package-lock.json'))).toBe(false);
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    },
+    240_000
+  );
 });
 
 /** Os dados embutidos no HTML do visualizador (`const SYSTEM = ...; const TOPOLOGY = ...;`). */

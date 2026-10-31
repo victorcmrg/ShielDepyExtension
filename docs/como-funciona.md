@@ -176,7 +176,7 @@ para o hash do mapa de onde saiu.
 ### Testes de caos gerados pela topologia
 
 `shieldepy chaos <pasta>` transforma a topologia em testes de caos para as rotas sensíveis, roda
-esses testes com o Vitest do projeto e serve de portão de PR. O pipeline é um grafo do LangGraph (`@shieldepy/agent/chaos`):
+esses testes com o Vitest do projeto (ou com o da CLI, quando o projeto não tem) e serve de portão de PR. O pipeline é um grafo do LangGraph (`@shieldepy/agent/chaos`):
 
 1. **Threat Modeler** (IA, tier `deep`, ou o motor offline): recebe só a superfície de ataque, sem
    código, e propõe hipóteses do catálogo (`race_condition`, `timeout`, `http_5xx_intermittent`,
@@ -187,6 +187,8 @@ esses testes com o Vitest do projeto e serve de portão de PR. O pipeline é um 
    erro, invariantes). A IA **não escreve código**.
 3. **Templates**: cada spec vira um `.spec.ts` (Vitest + supertest + MSW) com um bloco de
    **controle** (a mesma requisição, sem caos) e o de **caos**.
+
+**O arnês embutido (MVP2, decisão [0025](decisoes/0025-arnes-de-teste-embutido.md)).** Os testes gerados importam o Vitest, o supertest e o MSW, e o banco gerado importa o PGlite. O que o `node_modules` da raiz do projeto não tem, a CLI empresta dos dela (`apps/cli/src/chaos-harness.ts`), sem instalar nada no projeto: cada pacote vira um link (junction no Windows) em `.shieldepy/chaos-tests/node_modules`, a pasta que é apagada e regerada a cada rodada (o `rm` apaga o link, não o pacote). Os testes e o `vitest.config.ts` gerado moram ali, então o `import` deles acha o pacote pela resolução normal do Node; para o que está fora (o `chaos/setup.ts` e o `chaos/db.ts`), o `vitest.config.ts` ganha um alias exato de cada pacote, antes dos aliases do projeto. O Vitest que roda é o emprestado, e o `--init` deixa de pedir para instalar o que vai ser emprestado. Na extensão ainda não há arnês (o bundle não leva o Vitest): lá vale o do projeto, como antes.
 
 O projeto declara o contrato em `shieldepy.chaos.config.ts`, que o ShielDepy lê pela AST, sem executar. O inicial sai do próprio mapa, com as rotas sensíveis e as APIs preenchidas: `shieldepy chaos <pasta> --init` (ou o comando **ShielDepy: Testar Caos** na extensão). O que só o projeto sabe vem marcado com `TODO(shieldepy)`, uma marca por pendência:
 

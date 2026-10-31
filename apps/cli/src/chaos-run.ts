@@ -9,7 +9,6 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { CHAOS_TESTS_DIR, CONTROL_TEST_NAME, DB_NOT_FIRED, specFileName, type TestResult } from '@shieldepy/agent/chaos';
-
 export type { TestResult };
 
 /** O pedaço do JSON do reporter do Vitest que o runner lê (medido no 3e/E4). */
@@ -106,10 +105,16 @@ export const spawnProcess: ProcessRunner = (command, args, cwd) =>
     child.on('close', (code) => resolve({ code, output }));
   });
 
-/** O Vitest instalado no projeto-alvo. Sem `npx`: no Windows ele exige shell, e o caminho tem espaço. */
+/**
+ * O Vitest do projeto-alvo ou, sem ele, o do arnês da CLI, emprestado em `.shieldepy/chaos-tests/node_modules`
+ * (MVP2). Sem `npx`: no Windows ele exige shell, e o caminho tem espaço.
+ */
 export function vitestEntry(root: string): string | undefined {
-  const entry = path.join(root, 'node_modules', 'vitest', 'vitest.mjs');
-  return existsSync(entry) ? entry : undefined;
+  for (const modules of [path.join(root, 'node_modules'), path.join(root, CHAOS_TESTS_DIR, 'node_modules')]) {
+    const entry = path.join(modules, 'vitest', 'vitest.mjs');
+    if (existsSync(entry)) return entry;
+  }
+  return undefined;
 }
 
 /**
@@ -118,7 +123,7 @@ export function vitestEntry(root: string): string | undefined {
  */
 export async function runChaosTests(root: string, expected: string[], run: ProcessRunner = spawnProcess): Promise<TestResult[]> {
   const entry = vitestEntry(root);
-  if (!entry) throw new ChaosRunError(`o Vitest não está instalado em ${root} (rode npm install/npm ci no projeto antes)`);
+  if (!entry) throw new ChaosRunError(`o Vitest não está instalado em ${root} (rode npm install/npm ci no projeto antes, ou use a CLI do ShielDepy, que traz o dela)`);
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'shieldepy-chaos-'));
   const outputFile = path.join(tmp, 'vitest.json');
   try {

@@ -59,6 +59,7 @@ import {
 } from '@shieldepy/agent/chaos';
 import { loadRulesFromPath } from '@shieldepy/extractors';
 import type { Registry } from '@shieldepy/extractors';
+import { chaosHarness, defaultHarnessDir, linkHarness } from './chaos-harness';
 import { ChaosRunError, runChaosTests } from './chaos-run';
 import { renderGraphHtml } from '@shieldepy/viewer';
 import { buildMapOf } from './diff';
@@ -81,6 +82,11 @@ export interface ChaosArgs {
   init?: boolean;
   /** Pasta das gramáticas `.wasm` (a extensão passa a dela; a CLI usa a do @shieldepy/core). */
   wasmDir?: string;
+  /**
+   * De onde emprestar o Vitest, o supertest, o MSW e o PGlite que o projeto não tem (MVP2). Padrão: a
+   * pasta da CLI; `null` desliga (só o que o projeto tem).
+   */
+  harnessDir?: string | null;
 }
 
 /** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
@@ -178,7 +184,11 @@ export async function runChaosCommand(
     }
     if (db) io.err(schemaSummary(db));
     if (db?.driver === 'prisma') io.err('ℹ o cliente do Prisma precisa estar gerado (npx prisma generate) antes de rodar o caos.');
-    const missing = missingTestDeps(root, db ? ['@electric-sql/pglite', ...(db.driver === 'prisma' ? ['@electric-sql/pglite-socket'] : [])] : []);
+    const lent = chaosHarness(root, args.harnessDir === undefined ? defaultHarnessDir() : (args.harnessDir ?? undefined))?.borrowed ?? {};
+    const needed = missingTestDeps(root, db ? ['@electric-sql/pglite', ...(db.driver === 'prisma' ? ['@electric-sql/pglite-socket'] : [])] : []);
+    const borrowed = needed.filter((dep) => dep in lent);
+    const missing = needed.filter((dep) => !(dep in lent));
+    if (borrowed.length) io.err(`ℹ o projeto não tem ${borrowed.join(', ')}: o caos usa os do ShielDepy, sem instalar nada no projeto.`);
     if (missing.length) io.err(`Instale o que os testes de caos usam: npm install -D ${missing.join(' ')}`);
     io.err(`Preencha os ${CHAOS_CONFIG_TODO} e rode de novo sem --init.`);
     return 0;
@@ -208,7 +218,9 @@ export async function runChaosCommand(
   }
 
   const provider = args.offline ? undefined : providerFromEnv(io.env, io.err);
-  // regera do zero: hipótese que sumiu não pode deixar um teste velho para trás
+  // o arnês (MVP2): o que o projeto não tem para rodar os testes vem da CLI, sem instalar nada nele
+  const harness = chaosHarness(root, args.harnessDir === undefined ? defaultHarnessDir() : (args.harnessDir ?? undefined));
+  // regera do zero: hipótese que sumiu não pode deixar um teste velho para trás (o rm apaga os links do arnês, não os pacotes)
   await rm(path.join(root, CHAOS_TESTS_DIR), { recursive: true, force: true });
   const state = await runChaosPipeline(surface, {
     provider,
@@ -218,6 +230,7 @@ export async function runChaosCommand(
       config,
       projectViteConfig: VITE_CONFIGS.find((f) => existsSync(path.join(root, f))),
       projectTsconfig: existsSync(path.join(root, 'tsconfig.json')) ? 'tsconfig.json' : undefined,
+      harnessAliases: harness?.borrowed,
     },
     io: {
       write: async (files) => {
@@ -226,6 +239,7 @@ export async function runChaosCommand(
           await mkdir(path.dirname(full), { recursive: true });
           await writeFile(full, f.content, 'utf8');
         }
+        if (harness && files.length > 0) linkHarness(root, harness);
       },
     },
   });
@@ -235,7 +249,8 @@ export async function runChaosCommand(
   let runError: string | undefined;
   const tested = state.specs.map((s) => s.hypothesisId);
   if (!args.noRun && tested.length > 0) {
-    io.err(`rodando ${tested.length} teste(s) de caos com o Vitest do projeto (controle + caos)...`);
+    const lent = harness ? `; do ShielDepy, sem instalar nada no projeto: ${Object.keys(harness.borrowed).join(', ')}` : '';
+    io.err(`rodando ${tested.length} teste(s) de caos (controle + caos) com o Vitest ${harness?.borrowed.vitest ? 'do ShielDepy' : 'do projeto'}${lent}...`);
     try {
       outcomes = chaosOutcomes(await runTests(root, tested), state.hypotheses);
     } catch (err) {
