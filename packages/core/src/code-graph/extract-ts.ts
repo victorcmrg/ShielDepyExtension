@@ -41,6 +41,10 @@ export interface SymbolInfo {
   returnsNames?: string[];
   /** Função/método: os caminhos que ela lê de `req.body` (o 1º parâmetro), para o corpo de exemplo do contrato (MVP6). */
   bodyReads?: string[];
+  /** Onde a função passa um pedaço de `req.body` inteiro a outra chamada (`createArticle(req.body.article)`). */
+  bodyPasses?: ValuePass[];
+  /** O que a função lê de cada parâmetro, por posição (`input.email` no 1º → `[['email']]`). */
+  paramReads?: string[][];
   /** Classe de C#/Java: o namespace (ou package) onde ela é declarada — a resolução é por ele, não por import de arquivo. */
   namespace?: string;
   /** Método de extensão do C# (`static void Validate(this Order o)`): o tipo do `this`. */
@@ -483,55 +487,107 @@ function bareValue(node: SyntaxNode | null | undefined): SyntaxNode | null | und
   }
 }
 
+/** Um pedaço do valor passado inteiro a uma chamada: `createArticle(req.body.article)`, `create({ ...req.body.user })`. */
+export interface ValuePass {
+  /** Início da chamada (0-based), como o `CallSite`. */
+  line: number;
+  column: number;
+  /** Posição do argumento. */
+  index: number;
+  /** O caminho dentro do valor (`article`; `''` = o valor inteiro). */
+  path: string;
+}
+
+const WRAPPERS = new Set(['parenthesized_expression', 'non_null_expression', 'as_expression', 'satisfies_expression']);
+
+/** Métodos de lista: `posts.map(...)` diz que `posts` é uma lista (o corpo de exemplo leva `[]`). */
+const LIST_METHODS = new Set(['map', 'forEach', 'filter', 'some', 'every', 'reduce', 'find', 'findIndex', 'includes', 'join', 'slice', 'flatMap', 'indexOf']);
+
+/** O argumento de chamada que `node` é (direto, embrulhado ou espalhado num objeto literal): a chamada e a posição. */
+function passedAt(node: SyntaxNode): { call: SyntaxNode; index: number } | undefined {
+  let w = node;
+  while (w.parent && WRAPPERS.has(w.parent.type)) w = w.parent;
+  if (w.parent?.type === 'spread_element' && w.parent.parent?.type === 'object') w = w.parent.parent;
+  const args = w.parent;
+  if (args?.type !== 'arguments' || args.parent?.type !== 'call_expression') return undefined;
+  const index = args.namedChildren.filter((a) => a.type !== 'comment').findIndex((a) => sameNode(a, w));
+  return index < 0 ? undefined : { call: args.parent, index };
+}
+
 /**
- * Os caminhos que a função lê do corpo da requisição, o `body` do 1º parâmetro (`req` no Express e no
- * Fastify): `req.body.user.email` → `user.email`; `const { a, b: { c }, d = 1 } = req.body` → `a`, `b.c`, `d`;
- * `const body = req.body; body.x` → `x`. A chamada de método no fim não é campo (`req.body.items.map()` →
- * `items`). Ordenados e sem repetir. É o que o `--init` usa para montar um corpo de exemplo (MVP6).
+ * Os caminhos que o corpo de uma função lê de um valor (`isRoot` diz o que é o valor: `req.body`, um
+ * parâmetro): `v.user.email` → `user.email`; `const { a, b: { c }, d = 1 } = v` → `a`, `b.c`, `d`; um
+ * apelido (`const x = v; x.y` → `y`). A chamada de método no fim não é campo (`v.items.map()` → `items`).
+ * Também diz onde um pedaço do valor vai inteiro para outra função (`passes`).
  */
-export function bodyReads(fn: SyntaxNode): string[] {
-  const single = fn.childForFieldName('parameter');
-  const firstParam = fn.childForFieldName('parameters')?.namedChildren[0];
-  const req = single?.type === 'identifier' ? single.text : firstParam ? paramName(firstParam) : undefined;
-  const body = fn.childForFieldName('body');
-  if (!req || !body) return [];
+function valueReads(body: SyntaxNode, isRoot: (n: SyntaxNode) => boolean): { paths: string[]; passes: ValuePass[] } {
   const aliases = new Set<string>();
-  const isBody = (node: SyntaxNode | null | undefined): boolean => {
+  const isValue = (node: SyntaxNode | null | undefined): boolean => {
     const n = bareValue(node);
-    if (n?.type === 'identifier') return aliases.has(n.text);
-    if (n?.type !== 'member_expression' || n.childForFieldName('property')?.text !== 'body') return false;
-    const object = bareValue(n.childForFieldName('object'));
-    return object?.type === 'identifier' && object.text === req;
+    if (!n) return false;
+    return (n.type === 'identifier' && aliases.has(n.text)) || isRoot(n);
   };
   // `const body = req.body`: o apelido vale na função inteira (o caso comum é declarar no começo)
   walk(body, (n) => {
     const name = n.type === 'variable_declarator' ? n.childForFieldName('name') : undefined;
-    if (name?.type === 'identifier' && isBody(n.childForFieldName('value'))) aliases.add(name.text);
+    if (name?.type === 'identifier' && isValue(n.childForFieldName('value'))) aliases.add(name.text);
   });
   const paths = new Set<string>();
+  const passes = new Map<string, ValuePass>();
+  // `const { posts } = req.body`: o nome local de cada campo desestruturado, e os campos usados como lista
+  const fieldLocals = new Map<string, string>();
+  const lists = new Set<string>();
+  /** `x.length` ou `x.map(...)` (também com `?.`): o membro `member` trata o objeto como lista. */
+  const listUse = (member: SyntaxNode) => {
+    const prop = member.childForFieldName('property')?.text ?? '';
+    const parent = member.parent;
+    return prop === 'length' || (LIST_METHODS.has(prop) && parent?.type === 'call_expression' && sameNode(parent.childForFieldName('function'), member));
+  };
+  const pass = (node: SyntaxNode, path: string) => {
+    const at = passedAt(node);
+    if (!at) return;
+    const p = { line: at.call.startPosition.row, column: at.call.startPosition.column, index: at.index, path };
+    passes.set(`${p.line}:${p.column}:${p.index}:${path}`, p);
+  };
   const pattern = (p: SyntaxNode, prefix: string) => {
     for (const c of p.namedChildren) {
-      if (c.type === 'shorthand_property_identifier_pattern') paths.add(prefix + c.text);
-      else if (c.type === 'object_assignment_pattern') {
+      if (c.type === 'shorthand_property_identifier_pattern') {
+        paths.add(prefix + c.text);
+        fieldLocals.set(c.text, prefix + c.text);
+      } else if (c.type === 'object_assignment_pattern') {
         const left = c.childForFieldName('left');
-        if (left) paths.add(prefix + left.text);
+        if (left) {
+          paths.add(prefix + left.text);
+          fieldLocals.set(left.text, prefix + left.text);
+        }
       } else if (c.type === 'pair_pattern') {
         const key = propertyKey(c.childForFieldName('key'));
         const value = c.childForFieldName('value');
         const inner = value?.type === 'assignment_pattern' ? value.childForFieldName('left') : value;
         if (!key) continue;
         if (inner?.type === 'object_pattern') pattern(inner, `${prefix}${key}.`);
-        else paths.add(prefix + key);
+        else {
+          paths.add(prefix + key);
+          if (inner?.type === 'identifier') fieldLocals.set(inner.text, prefix + key);
+        }
       }
     }
   };
   walk(body, (n) => {
     if (n.type === 'variable_declarator') {
       const name = n.childForFieldName('name');
-      if (name?.type === 'object_pattern' && isBody(n.childForFieldName('value'))) pattern(name, '');
+      if (name?.type === 'object_pattern' && isValue(n.childForFieldName('value'))) pattern(name, '');
       return;
     }
-    if (n.type !== 'member_expression' || !isBody(n.childForFieldName('object'))) return;
+    // `posts.map(...)` num campo desestruturado
+    if (n.type === 'member_expression') {
+      const object = n.childForFieldName('object');
+      const field = object?.type === 'identifier' ? fieldLocals.get(object.text) : undefined;
+      if (field && listUse(n)) lists.add(field);
+    }
+    // o valor inteiro como argumento (`service.create(req.body)`)
+    if ((n.type === 'member_expression' || n.type === 'identifier') && isValue(n) && bareValue(n) === n) pass(n, '');
+    if (n.type !== 'member_expression' || !isValue(n.childForFieldName('object'))) return;
     // sobe enquanto o pai continua a cadeia (`.user.email`); o último membro chamado é método, não campo
     const segments: string[] = [];
     let at: SyntaxNode = n;
@@ -539,16 +595,59 @@ export function bodyReads(fn: SyntaxNode): string[] {
       const prop = at.childForFieldName('property');
       const parent = at.parent;
       const called = parent?.type === 'call_expression' && sameNode(parent.childForFieldName('function'), at);
-      if (prop?.type !== 'property_identifier' || called) break;
+      // `tagList.length`, `items.map()`: o campo de antes é uma lista
+      if (segments.length > 0 && listUse(at)) lists.add(segments.join('.'));
+      if (prop?.type !== 'property_identifier' || called || prop.text === 'length') break;
       segments.push(prop.text);
       if (parent?.type !== 'member_expression' || !sameNode(parent.childForFieldName('object'), at)) break;
       at = parent;
     }
-    if (segments.length > 0) paths.add(segments.join('.'));
+    if (segments.length === 0) return;
+    paths.add(segments.join('.'));
+    pass(at, segments.join('.'));
   });
-  // `user` e `user.email`: fica só o mais fundo
+  // `user` e `user.email`: fica só o mais fundo; a lista sai com `[]` no fim (`posts[]`)
   const all = [...paths];
-  return all.filter((p) => !all.some((q) => q.startsWith(`${p}.`))).sort();
+  return {
+    paths: all
+      .filter((p) => !all.some((q) => q.startsWith(`${p}.`)))
+      .map((p) => (lists.has(p) ? `${p}[]` : p))
+      .sort(),
+    passes: [...passes.values()].sort((a, b) => a.line - b.line || a.column - b.column || a.index - b.index || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+  };
+}
+
+/** Os parâmetros da função, por posição (`undefined` onde não é um nome simples). */
+function paramNames(fn: SyntaxNode): Array<string | undefined> {
+  const single = fn.childForFieldName('parameter');
+  if (single?.type === 'identifier') return [single.text];
+  return (fn.childForFieldName('parameters')?.namedChildren ?? []).filter((p) => p.type !== 'comment').map((p) => paramName(p));
+}
+
+/**
+ * O que a função lê do corpo da requisição, o `body` do 1º parâmetro (`req` no Express e no Fastify), e
+ * onde ela passa um pedaço dele a outra função. É o que o `--init` usa para montar um corpo de exemplo (MVP6).
+ */
+export function bodyReads(fn: SyntaxNode): { paths: string[]; passes: ValuePass[] } {
+  const req = paramNames(fn)[0];
+  const body = fn.childForFieldName('body');
+  if (!req || !body) return { paths: [], passes: [] };
+  return valueReads(body, (n) => {
+    if (n.type !== 'member_expression' || n.childForFieldName('property')?.text !== 'body') return false;
+    const object = bareValue(n.childForFieldName('object'));
+    return object?.type === 'identifier' && object.text === req;
+  });
+}
+
+/**
+ * O que a função lê de cada parâmetro (`input.email`, `const { title } = article`), por posição. Serve para
+ * seguir o corpo um nível para dentro: `createArticle(req.body.article)` → o que `createArticle` lê do 1º.
+ */
+export function paramReads(fn: SyntaxNode): string[][] {
+  const body = fn.childForFieldName('body');
+  if (!body) return [];
+  const out = paramNames(fn).map((name) => (name ? valueReads(body, (n) => n.type === 'identifier' && n.text === name).paths : []));
+  return out.some((p) => p.length > 0) ? out : [];
 }
 
 /** Onde `name`, visto de `from`, é declarado: topo do arquivo, dentro de uma função, ou fora daqui (import/global). */
@@ -782,7 +881,10 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
       const names = returnedNames(fn);
       if (names.length > 0) info.returnsNames = names;
       const reads = bodyReads(fn);
-      if (reads.length > 0) info.bodyReads = reads;
+      if (reads.paths.length > 0) info.bodyReads = reads.paths;
+      if (reads.passes.length > 0) info.bodyPasses = reads.passes;
+      const params = paramReads(fn);
+      if (params.length > 0) info.paramReads = params;
     }
     results.push(info);
   };

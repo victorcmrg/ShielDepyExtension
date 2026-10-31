@@ -44,6 +44,10 @@ export interface SymbolNodeAttrs {
   returnsNames?: string[];
   /** Função/método: os caminhos lidos de `req.body` (`user.email`). */
   bodyReads?: string[];
+  /** Função/método: onde ela passa um pedaço de `req.body` a outra chamada (início da chamada, 0-based, e a posição do argumento). */
+  bodyPasses?: Array<{ line: number; column: number; index: number; path: string }>;
+  /** Função/método: os caminhos lidos de cada parâmetro, por posição. */
+  paramReads?: string[][];
   /** Classe de C#/Java: namespace (ou package) onde é declarada. */
   namespace?: string;
   /** Método de extensão do C#: o tipo do parâmetro `this`. */

@@ -173,7 +173,7 @@ export function chaosConfigScaffold(
         const param = sample !== r.path ? `${T}: confira o parâmetro` : undefined;
         const todo = withBody && !read
           ? `${T}: um corpo válido`
-          : [read && `corpo pelos campos que ${read.from.join(', ')} lê (confira os valores)`, param].filter(Boolean).join('; ') || 'pronta';
+          : [read && (read.paths.length ? `corpo pelos campos que ${read.from.join(', ')} lê (confira os valores)` : 'sem corpo: os handlers do projeto não leem req.body'), param].filter(Boolean).join('; ') || 'pronta';
         return `    ${quoted(r.id)}: { ${fields.join(', ')} }, // ${todo} (${r.at})`;
       })
     : ['    // nenhuma rota sensível no mapa: não há o que testar ainda'];

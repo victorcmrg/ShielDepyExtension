@@ -7,29 +7,65 @@ import type { CodeGraph } from './code-graph/CodeGraph';
 import { isSymbolNode } from './code-graph/types';
 import type { Route } from './topology/types';
 
-/** O que a cadeia de uma rota lê do corpo: os caminhos e as funções onde eles foram lidos. */
+/**
+ * O que a cadeia de uma rota lê do corpo: os caminhos e as funções onde eles foram lidos. `paths` vazio:
+ * a cadeia tem handlers do projeto e nenhum deles lê ou repassa o `req.body` (a rota não usa corpo).
+ */
 export interface RouteBodyReads {
   paths: string[];
   /** Os rótulos dos handlers que leram algo (`validateCheckout`), na ordem da cadeia. */
   from: string[];
 }
 
-/** Por id de rota (`POST /checkout`), o que os handlers dela leem de `req.body`. Rotas sem leitura ficam de fora. */
+/** Por id de rota (`POST /checkout`), o que os handlers dela leem de `req.body`. Fica de fora a rota em que não dá para saber (sem handler do projeto). */
 export function routeBodyReads(graph: CodeGraph, routes: Route[]): Record<string, RouteBodyReads> {
   const out: Record<string, RouteBodyReads> = {};
   for (const route of routes) {
     const paths = new Set(out[route.id]?.paths ?? []);
     const from = [...(out[route.id]?.from ?? [])];
+    // algum handler do projeto toca no corpo (lê ou repassa)? e há handler do projeto na cadeia?
+    let touched = false;
+    let own = false;
     for (const handler of route.handlers) {
+      for (const id of handler.symbols) {
+        const attrs = graph.nodeAttributes(id);
+        if (!attrs || !isSymbolNode(attrs)) continue;
+        own = true;
+        if (attrs.bodyReads || attrs.bodyPasses) touched = true;
+      }
       const read = handler.symbols.flatMap((id) => {
         const attrs = graph.nodeAttributes(id);
-        return attrs && isSymbolNode(attrs) ? attrs.bodyReads ?? [] : [];
+        if (!attrs || !isSymbolNode(attrs)) return [];
+        return [...(attrs.bodyReads ?? []), ...passedReads(graph, id, attrs.file, attrs.bodyPasses ?? [])];
       });
       if (read.length === 0) continue;
       read.forEach((p) => paths.add(p));
       if (!from.includes(handler.label)) from.push(handler.label);
     }
-    if (paths.size > 0) out[route.id] = { paths: [...paths].sort(), from };
+    // `article` e `article.title` (o pedaço e o que o serviço lê dele): fica só o mais fundo
+    const all = [...paths];
+    if (all.length > 0) out[route.id] = { paths: all.filter((x) => !all.some((y) => y.startsWith(`${x}.`))).sort(), from };
+    else if (own && !touched && !out[route.id]) out[route.id] = { paths: [], from: [] };
+  }
+  return out;
+}
+
+/**
+ * Um nível para dentro: o handler passa um pedaço do corpo a outra função (`createArticle(req.body.article)`,
+ * `createUser({ ...req.body.user })`), e quem lê os campos é ela. A chamada é a do grafo (a mesma posição),
+ * e o que a função chamada lê do parâmetro naquela posição entra com o caminho do pedaço na frente.
+ */
+function passedReads(graph: CodeGraph, caller: string, file: string, passes: Array<{ line: number; column: number; index: number; path: string }>): string[] {
+  if (passes.length === 0) return [];
+  const sites = graph.callSitesIn(file).filter((s) => s.caller === caller);
+  const out: string[] = [];
+  for (const p of passes) {
+    const site = sites.find((s) => s.line === p.line && s.column === p.column);
+    const inner = (site?.outcome === 'resolved' || site?.outcome === 'heuristic' ? site.targets : []).flatMap((id) => {
+      const attrs = graph.nodeAttributes(id);
+      return attrs && isSymbolNode(attrs) ? attrs.paramReads?.[p.index] ?? [] : [];
+    });
+    out.push(...inner.map((q) => (p.path ? `${p.path}.${q}` : q)));
   }
   return out;
 }
@@ -71,7 +107,7 @@ export function sampleValue(field: string): unknown {
   return 'teste';
 }
 
-/** `['user.email', 'user.name', 'quantity']` → `{ quantity: 1, user: { email: ..., name: ... } }`. */
+/** `['user.email', 'user.name', 'quantity', 'tags[]']` → `{ quantity: 1, tags: [], user: { email: ..., name: ... } }`. */
 export function sampleBody(paths: string[]): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   for (const path of [...paths].sort()) {
@@ -81,7 +117,10 @@ export function sampleBody(paths: string[]): Record<string, unknown> {
       const next = at[key];
       at = (next && typeof next === 'object' && !Array.isArray(next) ? next : (at[key] = {})) as Record<string, unknown>;
     }
-    at[keys.at(-1)!] = sampleValue(keys.at(-1)!);
+    const last = keys.at(-1)!;
+    // `posts[]`: o campo é usado como lista (`posts.map(...)`)
+    if (last.endsWith('[]')) at[last.slice(0, -2)] = [];
+    else at[last] = sampleValue(last);
   }
   return body;
 }

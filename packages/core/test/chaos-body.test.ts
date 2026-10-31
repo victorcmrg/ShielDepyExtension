@@ -36,8 +36,8 @@ describe('MVP6 — o que a função lê de req.body', () => {
       fx,
       'h.ts',
       [
-        'export function direct(req, res) { return req.body.user.email + req.body.user.name + req.body.items.map((i) => i); }',
-        'export function destructured(req, res) { const { productId, qty: quantity, note = "", address: { zip } } = req.body; }',
+        'export function direct(req, res) { return req.body.user.email + req.body.user.name + req.body.items.map((i) => i) + req.body.tags.length; }',
+        'export function destructured(req, res) { const { productId, qty: quantity, note = "", address: { zip }, posts } = req.body; return posts?.map((p) => p); }',
         'export function aliased(request, res) { const body = request.body; return body.cardToken; }',
         'export async function wrapped(req, reply) { const { priceCents } = (req.body ?? {}) as Record<string, any>; return req.body!.coupon; }',
         // o 2º parâmetro (ou outro objeto) com .body não é a requisição
@@ -45,12 +45,43 @@ describe('MVP6 — o que a função lê de req.body', () => {
         'export function none(req, res) { return req.params.id; }',
       ].join('\n')
     );
-    expect(reads(graph, 'direct', f)).toEqual(['items', 'user.email', 'user.name']);
-    expect(reads(graph, 'destructured', f)).toEqual(['address.zip', 'note', 'productId', 'qty']);
+    expect(reads(graph, 'direct', f)).toEqual(['items[]', 'tags[]', 'user.email', 'user.name']);
+    expect(reads(graph, 'destructured', f)).toEqual(['address.zip', 'note', 'posts[]', 'productId', 'qty']);
     expect(reads(graph, 'aliased', f)).toEqual(['cardToken']);
     expect(reads(graph, 'wrapped', f)).toEqual(['coupon', 'priceCents']);
     expect(reads(graph, 'other', f)).toBeUndefined();
     expect(reads(graph, 'none', f)).toBeUndefined();
+  });
+
+  it('um nível para dentro: o pedaço do corpo passado a um serviço (direto, espalhado ou inteiro) vale o que o serviço lê', () => {
+    indexFile(
+      graph,
+      fx,
+      'service.ts',
+      [
+        'export const createArticle = async (article: any, id: number) => { const { title, body } = article; return title + body + id; };',
+        'export const createUser = async (input: { email: string; password: string }) => input.email?.trim() + input.password;',
+        'export class Orders { async checkout(o: any) { return o.productId + o.quantity; } }',
+      ].join('\n')
+    );
+    indexFile(
+      graph,
+      fx,
+      'routes.ts',
+      [
+        "import express from 'express';",
+        "import { createArticle, createUser, Orders } from './service';",
+        'const orders = new Orders();',
+        'const app = express();',
+        "app.post('/articles', async (req, res) => { res.json(await createArticle(req.body.article, 1)); });",
+        "app.post('/users', async (req, res) => { res.json(await createUser({ ...req.body.user, demo: false })); });",
+        "app.post('/orders', async (req, res) => { res.json(await orders.checkout(req.body as any)); });",
+      ].join('\n')
+    );
+    const bodies = routeBodyReads(graph, findExpressRoutes(graph).routes);
+    expect(bodies['POST /articles']?.paths).toEqual(['article.body', 'article.title']);
+    expect(bodies['POST /users']?.paths).toEqual(['user.email', 'user.password']);
+    expect(bodies['POST /orders']?.paths).toEqual(['productId', 'quantity']);
   });
 
   it('a rota junta o que o middleware e o handler leem, com os rótulos de quem leu', () => {
@@ -70,6 +101,8 @@ describe('MVP6 — o que a função lê de req.body', () => {
     );
     expect(routeBodyReads(graph, findExpressRoutes(graph).routes)).toEqual({
       'POST /users': { paths: ['email', 'name', 'password'], from: ['validate', 'ctrl.create'] },
+      // o handler do projeto não lê nem repassa o corpo: a rota não usa corpo
+      'GET /users': { paths: [], from: [] },
     });
   });
 });
@@ -85,7 +118,7 @@ describe('MVP6 — o corpo de exemplo', () => {
     expect(sampleValue('isActive')).toBe(true);
     expect(sampleValue('createdAt')).toBe('2026-01-01T00:00:00.000Z');
     expect(sampleValue('title')).toBe('teste');
-    expect(sampleBody(['user.email', 'user.name', 'quantity'])).toEqual({ quantity: 1, user: { email: 'teste@exemplo.com', name: 'teste' } });
+    expect(sampleBody(['user.email', 'user.name', 'quantity', 'tags[]'])).toEqual({ quantity: 1, tags: [], user: { email: 'teste@exemplo.com', name: 'teste' } });
   });
 
   it('o contrato leva o corpo, sem a pendência do corpo; sem leitura, a pendência continua', async () => {
