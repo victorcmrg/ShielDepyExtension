@@ -175,7 +175,7 @@ export async function runChaosCommand(
       io.err(`  createApp: ${how}`);
       if (app.others.length) io.err(`  ℹ outros apps no projeto: ${app.others.join(', ')}; o contrato usa o de ${app.file}:${app.line}`);
       for (const line of app.foreignListens) io.err(`  ⚠ ${app.file}:${line} abre porta fora do app: confira a pendência no contrato`);
-    } else io.err('  createApp: nenhum app Express (express()) no mapa; preencha à mão');
+    } else io.err('  createApp: nenhum app Express (express()) nem Fastify (Fastify()) no mapa; preencha à mão');
     const generated = { ...(db && chaosDbScaffold(db)) };
     const setup = chaosSetupScaffold({ db, app });
     if (setup) generated[CHAOS_SETUP_FILE] = setup;

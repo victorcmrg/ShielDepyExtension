@@ -165,7 +165,7 @@ export function chaosConfigScaffold(surface: AttackSurface, { db, app }: { db?: 
       ];
   const setupFiles = db
     ? [
-        `  /** Carregados antes de cada teste gerado: ${db.driver === 'prisma' ? 'o Prisma do app fala com o PGlite de chaos/db.ts (pela URL do banco)' : 'o `pg` do app vira o PGlite de chaos/db.ts'}${app?.mode === 'capture' ? ', e o express guarda o app' : ''}. */`,
+        `  /** Carregados antes de cada teste gerado: ${db.driver === 'prisma' ? 'o Prisma do app fala com o PGlite de chaos/db.ts (pela URL do banco)' : 'o `pg` do app vira o PGlite de chaos/db.ts'}${app?.mode === 'capture' ? `, e o ${app.framework ?? 'express'} guarda o app` : ''}. */`,
         ...(chaosSchemaPending(db)
           ? [
               db.prisma?.diff
@@ -176,7 +176,7 @@ export function chaosConfigScaffold(surface: AttackSurface, { db, app }: { db?: 
         `  setupFiles: ['${CHAOS_SETUP_FILE}'],`,
       ]
     : setup
-      ? ['  /** Carregados antes de cada teste gerado: o express guarda o app que o projeto cria (ex.: trocar também o banco por um em memória). */', `  setupFiles: ['${CHAOS_SETUP_FILE}'],`]
+      ? [`  /** Carregados antes de cada teste gerado: o ${app?.framework ?? 'express'} guarda o app que o projeto cria (ex.: trocar também o banco por um em memória). */`, `  setupFiles: ['${CHAOS_SETUP_FILE}'],`]
       : ['  /** Carregados antes de cada teste gerado (ex.: trocar o banco por um em memória). */', '  setupFiles: [],'];
   const reset = db
     ? [

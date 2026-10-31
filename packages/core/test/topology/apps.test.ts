@@ -169,3 +169,70 @@ describe('C2a — o createApp do contrato', () => {
     expect(setup.match(/createRequire\(import\.meta\.url\)/g)).toHaveLength(1);
   });
 });
+
+describe('MVP4 — o app Fastify e o createApp dele', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+  let parser: TsParser;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+    parser = await TsParser.load(defaultWasmDir());
+  });
+  afterEach(() => fx.cleanup());
+
+  async function appsOf(files: Record<string, string>): Promise<ExpressApp[]> {
+    await indexFiles(graph, Object.entries(files).map(([f, text]) => fx.write(f, text)), silentHost);
+    const root = fx.dir.replace(/\\/g, '/').toLowerCase();
+    const rel = (f: string) => f.slice(root.length + 1);
+    return findExpressRoutes(graph).apps.map((a) => ({ ...a, file: rel(a.file), listens: a.listens.map((l) => ({ ...l, file: rel(l.file) })) }));
+  }
+
+  it('a fábrica exportada (buildApp), com o plugin registrado; o listen no server.ts não conta como topo do app', async () => {
+    const apps = await appsOf({
+      'src/app.ts':
+        "import Fastify from 'fastify';\nimport { orders } from './orders';\nexport function buildApp() {\n  const app = Fastify();\n  app.register(orders, { prefix: '/api' });\n  return app;\n}\n",
+      'src/orders.ts': "import type { FastifyInstance } from 'fastify';\nexport async function orders(app: FastifyInstance) {\n  app.post('/checkout', async () => ({}));\n}\n",
+      'src/server.ts': "import { buildApp } from './app';\nconst app = buildApp();\napp.listen({ port: 3000 });\n",
+    });
+    expect(apps).toEqual([
+      { file: 'src/app.ts', line: 3, commonjs: false, framework: 'fastify', exported: { name: 'buildApp', factory: true }, listens: [], routes: ['POST /api/checkout'] },
+    ]);
+  });
+
+  it('CommonJS com listen no topo: guardado pelo setup; o contrato embrulha o app no handler que espera o ready()', async () => {
+    const apps = await appsOf({
+      'index.js': "const Fastify = require('fastify');\nconst app = Fastify({ logger: true });\napp.post('/orders', async () => ({}));\napp.listen({ port: 3000 });\n",
+    });
+    expect(apps).toMatchObject([{ file: 'index.js', commonjs: true, framework: 'fastify', listens: [{ line: 3, topLevel: true, onApp: true }], routes: ['POST /orders'] }]);
+
+    const root = fx.dir.replace(/\\/g, '/').toLowerCase();
+    const plan = chaosAppPlan(findExpressRoutes(graph).apps, surfaceWith(['POST /orders']), root)!;
+    expect(plan).toMatchObject({ mode: 'capture', framework: 'fastify', commonjs: true });
+    const source = chaosConfigScaffold(surfaceWith(['POST /orders']), { app: plan });
+    expect(parser.withTree(source, false, (r) => r.hasError)).toBe(false);
+    expect(source).toContain('createApp: () => fastifyHandler(chaosApp()),');
+    expect(source).toContain('(Fastify() na linha 2)');
+    expect(source).toContain('o fastify guarda o app');
+    const setup = chaosSetupScaffold({ app: plan })!;
+    expect(parser.withTree(setup, false, (r) => r.hasError)).toBe(false);
+    expect(setup).toContain("vi.mock('fastify'");
+    expect(setup).not.toContain("vi.mock('express'");
+  });
+
+  it('import: o contrato chama a fábrica dentro do handler, e não há setup', () => {
+    const P = toFileId('/p');
+    const plan = chaosAppPlan(
+      [{ file: `${P}/src/app.ts`, line: 3, commonjs: false, framework: 'fastify', exported: { name: 'buildApp', factory: true }, listens: [], routes: ['POST /a'] }],
+      surfaceWith(['POST /a']),
+      P
+    )!;
+    const source = chaosConfigScaffold(surfaceWith(['POST /a']), { app: plan });
+    expect(parser.withTree(source, false, (r) => r.hasError)).toBe(false);
+    expect(source).toContain("import { buildApp as projectApp } from './src/app';");
+    expect(source).toContain('createApp: () => fastifyHandler(projectApp()),');
+    expect(source).toContain('app.ready().then(');
+    expect(chaosSetupScaffold({ app: plan })).toBeUndefined();
+  });
+});

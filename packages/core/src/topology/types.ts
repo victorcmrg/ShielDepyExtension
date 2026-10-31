@@ -97,6 +97,8 @@ export interface ExpressApp {
   line: number;
   /** O arquivo importa o `express` com `require` (CommonJS): o contrato o carrega com `createRequire`. */
   commonjs: boolean;
+  /** O app é de Fastify (`Fastify()`, MVP4); sem o campo, é Express. */
+  framework?: 'fastify';
   /** Como pegar o app importando `file`: o export que é o próprio app, ou a função exportada que o devolve. */
   exported?: { name: string; factory: boolean };
   /**

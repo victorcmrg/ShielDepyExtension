@@ -287,7 +287,11 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
   routes.push(...fastEndpointsRoutes(graph, all, skipped));
   routes.push(...springRoutes(graph, all, skipped));
   routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
-  return { routes, skipped, apps: expressApps(graph, all, sites, mounts, rootRoutes) };
+  const apps = [
+    ...appsOf(graph, all, sites, mounts, rootRoutes, 'express'),
+    ...appsOf(graph, all, fastify.sites.map(({ file, site, instance }) => ({ file, site, router: instance })), fastify.mounts, fastify.rootRoutes, 'fastify'),
+  ];
+  return { routes, skipped, apps: apps.sort((a, b) => cmp(a.file, b.file) || a.line - b.line) };
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -484,21 +488,25 @@ function expressImport(graph: CodeGraph, file: string, local: string) {
 }
 
 /** `express()` — não `express.Router()`, `Router()` nem `json()`. */
-const createsApp = (graph: CodeGraph, file: string, call: { name: string; object?: string[] }) => !call.object && !!expressImport(graph, file, call.name);
+const createsExpress = (graph: CodeGraph, file: string, call: { name: string; object?: string[] }) => !call.object && !!expressImport(graph, file, call.name);
 
 /**
- * Os apps Express (C2a): os roteadores raiz (não montados em ninguém) que nascem de um `express()`.
- * No topo do arquivo, o valor tem que vir do `express()` (`const app = express()`); dentro de uma
- * função, vale o roteador raiz da função que chama o `express()`. A fábrica (`export function
+ * Os apps (C2a; o Fastify na MVP4): os roteadores raiz (não montados em ninguém) que nascem de um
+ * `express()` (ou de um `Fastify()`). No topo do arquivo, o valor tem que vir dessa chamada (`const app =
+ * express()`); dentro de uma função, vale o roteador raiz da função que a faz. A fábrica (`export function
  * createApp() { const app = express(); ...; return app }`) só conta se a função devolve o app pelo nome.
  */
-function expressApps(
+function appsOf(
   graph: CodeGraph,
   all: Array<{ file: string; site: CallSite }>,
   sites: Array<{ file: string; site: CallSite; router: string }>,
   mounts: Mount[],
-  rootRoutes: Map<string, Set<string>>
+  rootRoutes: Map<string, Set<string>>,
+  framework: 'express' | 'fastify'
 ): ExpressApp[] {
+  const isPackage = (s: CallSite) => s.outcome === 'external' && s.package === framework;
+  const importOf = framework === 'express' ? expressImport : fastifyImport;
+  const createsApp = framework === 'express' ? createsExpress : createsFastify;
   const children = new Set(mounts.map((m) => m.child));
   // a declaração de cada roteador raiz: arquivo, nome e, se local, a função onde ele vive
   const roots = new Map<string, { file: string; name: string; caller?: string }>();
@@ -507,7 +515,7 @@ function expressApps(
     if (children.has(router) || roots.has(router) || !origin || site.receiverParam !== undefined) continue;
     roots.set(router, { file: origin.file, name: origin.name, ...(origin.local && { caller: site.caller }) });
   }
-  const creations = all.filter(({ file, site }) => isExpress(site) && createsApp(graph, file, site));
+  const creations = all.filter(({ file, site }) => isPackage(site) && createsApp(graph, file, site));
   const used = new Set<CallSite>();
 
   const apps: ExpressApp[] = [];
@@ -540,13 +548,14 @@ function expressApps(
     const topLevel = (file: string, site: CallSite) => site.caller === file && !site.conditional;
     const listens = all
       .filter(({ site }) => site.name === 'listen' && !site.shadowed)
-      .map(({ file, site }) => ({ file, site, onApp: isExpress(site) && valueKey(site.receiverOrigin, site.object, site.caller, file) === key }))
+      .map(({ file, site }) => ({ file, site, onApp: isPackage(site) && valueKey(site.receiverOrigin, site.object, site.caller, file) === key }))
       .filter(({ file, site, onApp }) => onApp || (file === root.file && topLevel(file, site)))
       .map(({ file, site, onApp }) => ({ file, line: site.line, topLevel: topLevel(file, site), onApp }));
     apps.push({
       file: root.file,
       line: creation.site.line,
-      commonjs: !!expressImport(graph, root.file, creation.site.name)?.require,
+      commonjs: !!importOf(graph, root.file, creation.site.name)?.require,
+      ...(framework === 'fastify' && { framework }),
       ...(exported && { exported }),
       listens,
       routes: [...(rootRoutes.get(key) ?? [])].sort(),

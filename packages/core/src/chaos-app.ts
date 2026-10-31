@@ -19,7 +19,9 @@ const TODO = 'TODO(shieldepy)';
 
 export interface ChaosAppPlan {
   mode: 'import' | 'capture';
-  /** O arquivo onde o app nasce, relativo à raiz e com `/`; `line` é a do `express()`, 1-based. */
+  /** O framework do app: sem o campo, Express. */
+  framework?: 'fastify';
+  /** O arquivo onde o app nasce, relativo à raiz e com `/`; `line` é a do `express()` (ou do `Fastify()`), 1-based. */
   file: string;
   line: number;
   commonjs: boolean;
@@ -43,6 +45,7 @@ export function chaosAppPlan(apps: ExpressApp[], surface: AttackSurface, root: s
   const mode = app.exported && !opensPort ? 'import' : 'capture';
   return {
     mode,
+    ...(app.framework && { framework: app.framework }),
     file: rel(app.file),
     line: app.line + 1,
     commonjs: app.commonjs,
@@ -60,9 +63,41 @@ function specifier(file: string): string {
 
 const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
+/**
+ * O Fastify só atende depois do `ready()`, e o `createApp` é síncrono: o contrato entrega ao supertest um
+ * handler `(req, res)` que espera o `ready()` e passa a requisição ao roteador (`app.routing`, API pública).
+ */
+const FASTIFY_HANDLER = [
+  '',
+  '// o Fastify só atende depois do ready(): o supertest recebe um handler que espera por ele',
+  'type FastifyLike = { ready(): PromiseLike<unknown>; routing(req: unknown, res: unknown): void };',
+  'const fastifyHandler = (app: FastifyLike) => (req: IncomingMessage, res: ServerResponse) => {',
+  '  app.ready().then(',
+  '    () => app.routing(req, res),',
+  '    (err) => {',
+  '      res.statusCode = 500;',
+  '      res.end(String(err));',
+  '    }',
+  '  );',
+  '};',
+];
+
 /** O que o contrato importa e como o `createApp` pega o app (ver `chaosConfigScaffold`). */
 export function chaosAppContract(plan: ChaosAppPlan): { imports: string[]; doc: string; body: string; notes: string[] } {
+  const base = chaosAppContractOf(plan);
+  if (plan.framework !== 'fastify') return base;
+  // `createApp: () => x,` → `createApp: () => fastifyHandler(x),`
+  const value = base.body.slice('createApp: () => '.length, -1);
+  return {
+    ...base,
+    imports: ["import type { IncomingMessage, ServerResponse } from 'node:http';", ...base.imports, ...FASTIFY_HANDLER],
+    body: `createApp: () => fastifyHandler(${value}),`,
+  };
+}
+
+function chaosAppContractOf(plan: ChaosAppPlan): { imports: string[]; doc: string; body: string; notes: string[] } {
   const spec = quoted(specifier(plan.file));
+  const created = plan.framework === 'fastify' ? 'Fastify()' : 'express()';
   const at = `${plan.file}:${plan.line}`;
   const nodeRequire = "import { createRequire } from 'node:module';";
   const others = plan.others.length ? [`  // outros apps no projeto: ${plan.others.join(', ')}. Troque o import se o certo for outro.`] : [];
@@ -73,7 +108,7 @@ export function chaosAppContract(plan: ChaosAppPlan): { imports: string[]; doc: 
     if (plan.commonjs) {
       const value = name === 'default' ? 'project' : `project.${name}`;
       return {
-        imports: [nodeRequire, '', `// o app do projeto (express() em ${at}), carregado como CommonJS`, `const project = createRequire(import.meta.url)(${spec});`, `const projectApp = ${value};`],
+        imports: [nodeRequire, '', `// o app do projeto (${created} em ${at}), carregado como CommonJS`, `const project = createRequire(import.meta.url)(${spec});`, `const projectApp = ${value};`],
         doc: `Monta o app SEM abrir porta (os testes usam supertest): ${what}.`,
         body: `createApp: () => ${call},`,
         notes: others,
@@ -81,7 +116,7 @@ export function chaosAppContract(plan: ChaosAppPlan): { imports: string[]; doc: 
     }
     const binding = name === 'default' ? 'projectApp' : `{ ${name} as projectApp }`;
     return {
-      imports: [`// o app do projeto (express() em ${at})`, `import ${binding} from ${spec};`],
+      imports: [`// o app do projeto (${created} em ${at})`, `import ${binding} from ${spec};`],
       doc: `Monta o app SEM abrir porta (os testes usam supertest): ${what}.`,
       body: `createApp: () => ${call},`,
       notes: others,
@@ -93,7 +128,7 @@ export function chaosAppContract(plan: ChaosAppPlan): { imports: string[]; doc: 
   );
   return {
     imports: load,
-    doc: `Monta o app SEM abrir porta: o app que ${plan.file} cria (express() na linha ${plan.line}), guardado pelo chaos/setup.ts.`,
+    doc: `Monta o app SEM abrir porta: o app que ${plan.file} cria (${created} na linha ${plan.line}), guardado pelo chaos/setup.ts.`,
     body: 'createApp: () => chaosApp(),',
     notes: [...foreign, ...others],
   };
@@ -105,14 +140,17 @@ export function chaosAppContract(plan: ChaosAppPlan): { imports: string[]; doc: 
  * app, sobe o banco e aponta a URL para ele (C2d2). Sem nada disso, não há setup.
  */
 export function chaosSetupScaffold(parts: { db?: ChaosDbPlan; app?: ChaosAppPlan }): string | undefined {
-  const express = parts.app?.mode === 'capture';
+  const capture = parts.app?.mode === 'capture';
+  const fastify = capture && parts.app?.framework === 'fastify';
+  const express = capture && !fastify;
   const pg = parts.db?.driver === 'pg';
   const prisma = parts.db?.driver === 'prisma';
-  if (!express && !parts.db) return undefined;
-  const swaps = express || pg;
+  if (!capture && !parts.db) return undefined;
+  const swaps = capture || pg;
   const what = [
     prisma && 'o banco de chaos/db.ts sobe antes do app, e a URL do Prisma aponta para ele',
     express && 'o `express` guarda o app criado e o `listen()` dele não abre porta',
+    fastify && 'o `fastify` guarda o app criado e o `listen()` dele não abre porta',
     pg && 'o `pg` vira o banco de chaos/db.ts',
   ]
     .filter(Boolean)
@@ -187,6 +225,53 @@ export function chaosSetupScaffold(parts: { db?: ChaosDbPlan; app?: ChaosAppPlan
       "const expressId = nodeRequire.resolve('express');",
       'nodeRequire(expressId);',
       'nodeRequire.cache[expressId]!.exports = wrapExpress(nodeRequire.cache[expressId]!.exports);'
+    );
+  }
+  if (fastify) {
+    lines.push(
+      '',
+      '// --- o app Fastify: o projeto o cria ao ser importado (o contrato importa o arquivo); o teste o pega com chaosApp()',
+      'type App = { listen: (...args: unknown[]) => unknown; ready(): PromiseLike<unknown>; routing(req: unknown, res: unknown): void };',
+      '// no globalThis: o contrato pode carregar outra instância deste arquivo, e os apps são um só registro',
+      'const registry = ((globalThis as { __shieldepyFastifyApps?: { created: App[]; listened?: App } }).__shieldepyFastifyApps ??= { created: [] });',
+      "const ADDRESS = 'http://127.0.0.1:0';",
+      '',
+      'function wrapFastify(real: any): any {',
+      '  if (real.__shieldepy) return real;',
+      '  const wrapped = function (this: unknown, ...args: unknown[]) {',
+      '    const app = real.apply(this, args) as App;',
+      '    registry.created.push(app);',
+      '    // listen(opções, callback?): não abre porta; a promessa (ou o callback) recebe um endereço de mentira',
+      '    app.listen = (...listenArgs: unknown[]) => {',
+      '      registry.listened = app;',
+      "      const callback = listenArgs.find((a) => typeof a === 'function') as ((err: null, address: string) => void) | undefined;",
+      '      if (!callback) return Promise.resolve(ADDRESS);',
+      '      setImmediate(() => callback(null, ADDRESS));',
+      '      return app;',
+      '    };',
+      '    return app;',
+      '  };',
+      '  // o pacote se exporta como default e como `fastify`',
+      '  return Object.assign(wrapped, real, { default: wrapped, fastify: wrapped, __shieldepy: true });',
+      '}',
+      '',
+      '/** O app que o projeto criou: o que chamou listen(), senão o último criado. */',
+      'export function chaosApp(): App {',
+      '  const app = registry.listened ?? registry.created.at(-1);',
+      `  if (!app) throw new Error('chaos/setup.ts: nenhum app Fastify foi criado ao importar ${parts.app!.file}. Confira o createApp do shieldepy.chaos.config.ts');`,
+      '  return app;',
+      '}',
+      '',
+      '// import (ESM e TypeScript): o Vitest troca o módulo',
+      "vi.mock('fastify', async (importOriginal) => {",
+      '  const real = await importOriginal<any>();',
+      '  const wrapped = wrapFastify(real.default ?? real);',
+      '  return { ...real, default: wrapped, fastify: wrapped };',
+      '});',
+      '',
+      "const fastifyId = nodeRequire.resolve('fastify');",
+      'nodeRequire(fastifyId);',
+      'nodeRequire.cache[fastifyId]!.exports = wrapFastify(nodeRequire.cache[fastifyId]!.exports);'
     );
   }
   if (pg) {
