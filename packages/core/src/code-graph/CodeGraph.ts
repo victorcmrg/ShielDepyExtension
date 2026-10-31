@@ -1168,6 +1168,11 @@ export class CodeGraph {
       return { kind: 'call', callee: arg.callee, ...(loc && { origin: { file: loc.file, name: loc.local } }), ...(arg.functions && { functions: arg.functions }) };
     }
     if (arg.kind === 'array') return { kind: 'array', items: arg.items.map((a) => this.resolveArg(fileId, a, ctx)) };
+    if (arg.kind === 'object') {
+      if (!arg.values) return arg as CallArg;
+      const values = Object.fromEntries(Object.entries(arg.values).map(([k, v]) => [k, this.resolveArg(fileId, v, ctx)]));
+      return { ...arg, values };
+    }
     if (arg.kind !== 'name') return arg;
     const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx);
     return {

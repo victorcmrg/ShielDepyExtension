@@ -277,11 +277,29 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
     }
   }
 
+  const { routes, rootRoutes } = climbRoutes(registrations, mounts, middlewares);
+  const fastify = fastifyRoutes(graph, all, skipped);
+  routes.push(...fastify.routes);
+
+  routes.push(...decoratorRoutes(graph, all, skipped));
+  routes.push(...aspNetControllerRoutes(graph, all, skipped));
+  routes.push(...minimalApiRoutes(graph, all, skipped));
+  routes.push(...fastEndpointsRoutes(graph, all, skipped));
+  routes.push(...springRoutes(graph, all, skipped));
+  routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
+  return { routes, skipped, apps: expressApps(graph, all, sites, mounts, rootRoutes) };
+}
+
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Sobe de cada registro até a raiz pelas montagens: cada nível soma o prefixo e os middlewares
+ * registrados antes. Devolve as rotas e, por roteador raiz, os ids das rotas que sobem até ele.
+ */
+function climbRoutes(registrations: Registration[], mounts: Mount[], middlewares: Middleware[]): { routes: Route[]; rootRoutes: Map<string, Set<string>> } {
   const routes: Route[] = [];
-  // roteador raiz → as rotas que sobem até ele (o app, quando ele nasce de um `express()`)
   const rootRoutes = new Map<string, Set<string>>();
   for (const reg of registrations) {
-    // Sobe da rota até a raiz pelas montagens: cada nível soma o prefixo e os middlewares registrados antes.
     const climb = (router: string, path: string, handlers: RouteHandler[], at: Position, seen: Set<string>) => {
       const mws = middlewares.filter((m) => m.router === router && before(m, at) && covers(m.prefix, path)).map((m) => m.handler);
       const chain = [...mws, ...handlers];
@@ -297,17 +315,167 @@ export function findExpressRoutes(graph: CodeGraph): RouteScan {
     };
     climb(reg.router, joinPath('', reg.path), reg.handlers, reg, new Set());
   }
-
-  routes.push(...decoratorRoutes(graph, all, skipped));
-  routes.push(...aspNetControllerRoutes(graph, all, skipped));
-  routes.push(...minimalApiRoutes(graph, all, skipped));
-  routes.push(...fastEndpointsRoutes(graph, all, skipped));
-  routes.push(...springRoutes(graph, all, skipped));
-  routes.sort((a, b) => cmp(a.path, b.path) || cmp(a.method, b.method) || cmp(a.file, b.file) || a.line - b.line);
-  return { routes, skipped, apps: expressApps(graph, all, sites, mounts, rootRoutes) };
+  return { routes, rootRoutes };
 }
 
-const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+// ---------------------------------------------------------------------------------------------
+// Fastify (MVP4). Uma rota é `.get/.post/...` ou `.route({ method, url, handler })` numa instância do
+// pacote `fastify`: a criada por `Fastify()`, ou o parâmetro tipado de um plugin (`app: FastifyInstance`).
+// O plugin sem tipo (`async function (app) { app.post(...) }`) só conta se alguém o registra numa
+// instância (`app.register(orderRoutes, { prefix: '/api' })`), como o roteador-parâmetro do Express.
+
+const FASTIFY = 'fastify';
+/** Os hooks que rodam antes do handler, na ordem do ciclo de vida do Fastify. */
+const FASTIFY_HOOKS = ['onRequest', 'preParsing', 'preValidation', 'preHandler'];
+
+/** `import Fastify from 'fastify'` / `import { fastify } from 'fastify'` / `require('fastify')` por trás de `local`. */
+function fastifyImport(graph: CodeGraph, file: string, local: string) {
+  const binding = graph.moduleInfoOf(file)?.imports.find((b) => b.local === local);
+  return binding?.spec === FASTIFY && ['default', '*', 'fastify'].includes(binding.imported) ? binding : undefined;
+}
+
+/** `Fastify()` / `fastify()`: a chamada do próprio pacote, sem receptor. */
+const createsFastify = (graph: CodeGraph, file: string, call: { name: string; object?: string[] }) => !call.object && !!fastifyImport(graph, file, call.name);
+
+/** As funções do projeto por trás de um argumento: a referência (`orderRoutes`) ou o callback escrito ali. */
+function functionsOf(graph: CodeGraph, arg: CallArg | undefined): string[] {
+  if (arg?.kind === 'function') return arg.symbolId ? [arg.symbolId] : [];
+  if (arg?.kind !== 'name' || arg.outcome === 'external') return [];
+  return arg.targets.filter((id) => {
+    const attrs = graph.nodeAttributes(id);
+    return attrs && isSymbolNode(attrs) && (attrs.kind === 'function' || attrs.kind === 'method');
+  });
+}
+
+/** Os hooks de uma rota (`{ preHandler: [auth] }` nas opções), em ordem, e o `handler` delas, se houver. */
+function fastifyOptions(graph: CodeGraph, opts: CallArg | undefined): { hooks: RouteHandler[]; handler?: RouteHandler } {
+  if (opts?.kind !== 'object' || !opts.values) return { hooks: [] };
+  const hooks = FASTIFY_HOOKS.flatMap((name) => {
+    const value = opts.values![name];
+    return value ? flat([value]).flatMap((a) => handlerOf(graph, a) ?? []).map((h) => ({ ...h, middleware: true as const })) : [];
+  });
+  const handler = opts.values.handler && handlerOf(graph, opts.values.handler);
+  return { hooks, ...(handler && { handler }) };
+}
+
+/** `method: 'POST'` ou `method: ['GET', 'HEAD']` de um `route({...})`; `undefined` se não é literal. */
+function fastifyMethods(opts: Extract<CallArg, { kind: 'object' }>): HttpMethod[] | undefined {
+  const text = opts.texts?.method;
+  const raw = text ? [text] : opts.values?.method?.kind === 'array' ? opts.values.method.items : undefined;
+  if (!raw) return undefined;
+  const out: HttpMethod[] = [];
+  for (const item of raw) {
+    const verb = item.kind === 'string' ? VERBS[item.value.toLowerCase()] : undefined;
+    if (!verb) return undefined;
+    out.push(verb);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** As instâncias do Fastify de onde as rotas sobem: chave (a de `valueKey`) → onde ela nasce. */
+export interface FastifyRoots {
+  routes: Route[];
+  /** Instância raiz → ids das rotas que sobem até ela. */
+  rootRoutes: Map<string, Set<string>>;
+  /** Os call sites em instâncias do Fastify, com a chave da instância (os `listen` saem daqui). */
+  sites: Array<{ file: string; site: CallSite; instance: string }>;
+  mounts: Mount[];
+}
+
+function fastifyRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSite }>, skipped: SkippedRoute[]): FastifyRoots {
+  const keyOf = (file: string, site: CallSite) => valueKey(site.receiverOrigin, site.object, site.caller, file);
+  // a instância tipada (`app.post` com `app` de `Fastify()` ou `app: FastifyInstance`); `fastify.x` no próprio import do pacote não é instância
+  const typed = all.filter(({ file, site }) => site.outcome === 'external' && site.package === FASTIFY && site.object && !fastifyImport(graph, file, site.object[0]!));
+  // o parâmetro sem tipo de um plugin: vale se alguém registra o plugin numa instância
+  const untyped = all.filter(
+    ({ site }) => site.receiverParam !== undefined && site.outcome === 'unbound' && site.object?.length === 1 && (VERBS[site.name] || ['route', 'register', 'addHook', 'listen'].includes(site.name))
+  );
+  if (typed.length === 0) return { routes: [], rootRoutes: new Map(), sites: [], mounts: [] };
+
+  // o primeiro parâmetro de cada plugin: função → chave da instância que ela recebe
+  const pluginParam = new Map<string, string>();
+  for (const { file, site } of [...typed, ...untyped]) {
+    if (site.receiverParam !== 0) continue;
+    const key = keyOf(file, site);
+    if (key && !pluginParam.has(site.caller)) pluginParam.set(site.caller, key);
+  }
+
+  const live = new Set(typed.flatMap(({ file, site }) => keyOf(file, site) ?? []));
+  const mounts: Mount[] = [];
+  const seenRegister = new Set<CallSite>();
+  // registrar um plugin numa instância viva acorda o parâmetro dele (e o que ele, por sua vez, registra)
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const { file, site } of [...typed, ...untyped]) {
+      const parent = keyOf(file, site);
+      if (site.name !== 'register' || !parent || !live.has(parent) || seenRegister.has(site)) continue;
+      seenRegister.add(site);
+      const first = site.args[0];
+      // o callback escrito ali, sem símbolo próprio: as chamadas dele ficam no chamador do `register`
+      const inline = first?.kind === 'function' && !first.symbolId && first.param ? `${file}#${site.caller}#${first.param}` : undefined;
+      const children = inline ? [inline] : functionsOf(graph, first).flatMap((fn) => pluginParam.get(fn) ?? []);
+      if (!inline && functionsOf(graph, first).length === 0) {
+        skipped.push({ file, line: site.line, reason: 'register: plugin não seguido (não é função do projeto)' });
+        continue;
+      }
+      const opts = site.args[1];
+      const prefixText = opts?.kind === 'object' ? opts.texts?.prefix : undefined;
+      if (opts?.kind === 'object' && opts.keys.includes('prefix') && prefixText?.kind !== 'string') {
+        skipped.push({ file, line: site.line, reason: 'register: prefixo não literal (as rotas do plugin saem sem ele)' });
+      }
+      // o plugin que não chama nada na instância não tem filho
+      for (const child of children) {
+        mounts.push({ file, line: site.line, column: site.column, parent, child, prefix: prefixText?.kind === 'string' ? prefixText.value : '' });
+        if (!live.has(child)) {
+          live.add(child);
+          grew = true;
+        }
+      }
+    }
+  }
+
+  const sites = [...typed, ...untyped].flatMap(({ file, site }) => {
+    const instance = keyOf(file, site);
+    return instance && live.has(instance) ? [{ file, site, instance }] : [];
+  });
+  const registrations: Registration[] = [];
+  const middlewares: Middleware[] = [];
+  for (const { file, site, instance } of sites) {
+    const pos: Position = { file, line: site.line, column: site.column };
+    const method = VERBS[site.name];
+    if (method) {
+      // `app.get(path, handler)` / `app.get(path, opts, handler)` / `app.get(path, { handler })`
+      const [first, ...rest] = site.args;
+      if (rest.length === 0) continue;
+      if (first?.kind !== 'string') {
+        skipped.push({ ...pos, reason: `${method}: caminho não literal` });
+        continue;
+      }
+      const opts = rest.find((a) => a.kind === 'object');
+      const { hooks, handler } = fastifyOptions(graph, opts);
+      const last = rest.filter((a) => a.kind !== 'object').at(-1);
+      const main = last ? handlerOf(graph, last) : handler;
+      registrations.push({ ...pos, router: instance, method, path: first.value, handlers: [...hooks, ...(main ? [main] : [])] });
+    } else if (site.name === 'route') {
+      const opts = site.args[0];
+      const url = opts?.kind === 'object' ? opts.texts?.url ?? opts.texts?.path : undefined;
+      const methods = opts?.kind === 'object' ? fastifyMethods(opts) : undefined;
+      if (opts?.kind !== 'object' || url?.kind !== 'string' || !methods) {
+        skipped.push({ ...pos, reason: 'route(): método ou caminho não literal' });
+        continue;
+      }
+      const { hooks, handler } = fastifyOptions(graph, opts);
+      for (const m of methods) registrations.push({ ...pos, router: instance, method: m, path: url.value, handlers: [...hooks, ...(handler ? [handler] : [])] });
+    } else if (site.name === 'addHook') {
+      // `app.addHook('preHandler', auth)`: vale para as rotas da instância (e dos plugins registrados depois)
+      const [name, fn] = site.args;
+      if (name?.kind !== 'string' || !FASTIFY_HOOKS.includes(name.value) || !fn) continue;
+      const handler = handlerOf(graph, fn);
+      if (handler) middlewares.push({ ...pos, router: instance, prefix: '', handler: { ...handler, middleware: true } });
+    }
+  }
+  return { ...climbRoutes(registrations, mounts, middlewares), sites, mounts };
+}
 
 /** O import do `express` por trás de `local` em `file`: o default do pacote (`import express`, `require('express')`). */
 function expressImport(graph: CodeGraph, file: string, local: string) {

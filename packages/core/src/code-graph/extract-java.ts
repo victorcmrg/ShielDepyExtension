@@ -588,7 +588,8 @@ function annotationArgs(annotation: SyntaxNode): RawArg[] {
       const t = values[key]!;
       if (t.kind === 'string') texts[key] = t;
     }
-    out.push({ kind: 'object', keys: Object.keys(values), ...(Object.keys(texts).length > 0 && { texts }), values });
+    // os valores de anotação são texto, constante ou lista deles: não há nome para resolver
+    out.push({ kind: 'object', keys: Object.keys(values), ...(Object.keys(texts).length > 0 && { texts }), values: values as Record<string, RawArg> });
   }
   return out;
 }

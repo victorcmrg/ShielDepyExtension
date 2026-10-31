@@ -305,20 +305,20 @@ describe('CLI chaos (E3)', () => {
   it('C2f (MVP3): um framework que o mapa não lê dá 0 rotas, e o caos sai 2 (nada provado), não 0', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-fw-'));
     try {
-      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { '@nestjs/core': '10', fastify: '4' } }));
-      fs.writeFileSync(path.join(tmp, 'main.ts'), "import Fastify from 'fastify';\nconst app = Fastify();\napp.post('/orders', async () => ({ ok: true }));\napp.listen({ port: 3000 });\n");
+      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { '@nestjs/core': '10', koa: '2' } }));
+      fs.writeFileSync(path.join(tmp, 'main.ts'), "import Koa from 'koa';\nconst app = new Koa();\napp.use(async (ctx) => { ctx.body = 'ok'; });\napp.listen(3000);\n");
       fs.writeFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'export default { createApp: () => null, requests: {} };\n');
       const blind = await run('chaos', tmp, '--offline');
       expect(blind.code).toBe(2);
-      expect(blind.err).toMatch(/o projeto usa Fastify, que o ShielDepy ainda não lê: o mapa não achou nenhuma rota/);
+      expect(blind.err).toMatch(/o projeto usa Koa, que o ShielDepy ainda não lê: o mapa não achou nenhuma rota/);
       expect(blind.err).toMatch(/nada foi provado/);
 
       // com rotas de Express também: só o aviso, e o portão segue as rotas que o mapa viu
-      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { express: '4', fastify: '4' } }));
+      fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { express: '4', koa: '2' } }));
       fs.writeFileSync(path.join(tmp, 'app.ts'), "import express from 'express';\nexport const app = express();\napp.get('/health', (req, res) => res.end());\n");
       const mixed = await run('chaos', tmp, '--offline', '--no-run');
       expect(mixed.code).toBe(0);
-      expect(mixed.err).toMatch(/o projeto também usa Fastify, que o ShielDepy ainda não lê: as rotas de lá ficam fora/);
+      expect(mixed.err).toMatch(/o projeto também usa Koa, que o ShielDepy ainda não lê: as rotas de lá ficam fora/);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

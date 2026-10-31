@@ -159,7 +159,7 @@ export type CallArg =
   /** Java: constante de enum ou campo estático num argumento de anotação (`RequestMethod.POST`). */
   | { kind: 'constant'; chain: string[] }
   /** Callback inline; `symbolId` quando ele virou símbolo. */
-  | { kind: 'function'; symbolId?: string }
+  | { kind: 'function'; symbolId?: string; /** O primeiro parâmetro (`async (app) => ...` → `app`). */ param?: string }
   /** Identificador ou cadeia (`router`, `ctrl.create`), resolvido como referência. */
   | { kind: 'name'; chain: string[]; outcome: CallOutcome; targets: string[]; package?: string; origin?: ValueOrigin }
   /**

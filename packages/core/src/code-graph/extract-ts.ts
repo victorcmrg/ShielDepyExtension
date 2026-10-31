@@ -134,10 +134,11 @@ export type Scope = 'module' | 'local';
 
 /** Argumento como sai do parse; o `name` o CodeGraph resolve depois (vira `CallArg`). */
 export type RawArg =
-  | Exclude<CallArg, { kind: 'name' | 'call' | 'array' }>
+  | Exclude<CallArg, { kind: 'name' | 'call' | 'array' | 'object' }>
   | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope }
   | { kind: 'call'; callee: string[]; spec?: string; functions?: string[] }
-  | { kind: 'array'; items: RawArg[] };
+  | { kind: 'array'; items: RawArg[] }
+  | (Omit<Extract<CallArg, { kind: 'object' }>, 'values'> & { values?: Record<string, RawArg> });
 
 const FUNCTION_SCOPE_TYPES = new Set([
   'function_declaration',
@@ -502,6 +503,9 @@ function describeText(node: SyntaxNode): { kind: 'string'; value: string } | { k
   return { kind: 'template', prefix: unquote(node.text.slice(0, sub.startIndex - node.startIndex) + '`') };
 }
 
+/** Valores de propriedade que o objeto descreve (`values`): referência, função, lista e chamada. */
+const OBJECT_VALUE_TYPES = new Set([...FUNCTION_VALUE_TYPES, 'identifier', 'member_expression', 'array', 'call_expression']);
+
 /** O que dá pra saber de um argumento sem executar nada. */
 function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg {
   const text = describeText(arg);
@@ -509,6 +513,9 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
   if (arg.type === 'object') {
     const keys: string[] = [];
     const texts: Record<string, { kind: 'string'; value: string } | { kind: 'template'; prefix: string }> = {};
+    // `route({ method: ['GET', 'POST'], handler: show, preHandler: [auth] })` (Fastify): os valores que são
+    // nome, função ou lista; o objeto aninhado (`schema: {...}`) fica só na chave
+    const values: Record<string, RawArg> = {};
     for (const p of arg.namedChildren) {
       if (p.type === 'shorthand_property_identifier') keys.push(p.text);
       else if (p.type === 'spread_element') keys.push('...');
@@ -517,16 +524,28 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
         const key = keyNode?.type === 'string' ? unquote(keyNode.text) : keyNode?.text ?? '';
         if (key === '') continue;
         keys.push(key);
+        if (p.type === 'method_definition') {
+          // `{ async handler(req, reply) {} }`: o método vira símbolo como qualquer outro
+          const symbolId = symbolAt.get(p.startIndex)?.id;
+          values[key] = symbolId ? { kind: 'function', symbolId } : { kind: 'function' };
+          continue;
+        }
         const value = p.type === 'pair' ? p.childForFieldName('value') : undefined;
         const t = value ? describeText(value) : undefined;
         if (t) texts[key] = t;
+        else if (value && OBJECT_VALUE_TYPES.has(value.type)) values[key] = describeArg(value, symbolAt);
       }
     }
-    return { kind: 'object', keys, ...(Object.keys(texts).length > 0 && { texts }) };
+    return { kind: 'object', keys, ...(Object.keys(texts).length > 0 && { texts }), ...(Object.keys(values).length > 0 && { values }) };
   }
   if (FUNCTION_VALUE_TYPES.has(arg.type)) {
     const symbolId = symbolAt.get(arg.startIndex)?.id;
-    return symbolId ? { kind: 'function', symbolId } : { kind: 'function' };
+    // `register(async (app) => { app.get(...) })`: sem símbolo, as chamadas de dentro ficam no chamador de
+    // fora, e o primeiro parâmetro é o que liga o callback a elas
+    const single = arg.childForFieldName('parameter');
+    const firstParam = arg.childForFieldName('parameters')?.namedChildren[0];
+    const param = single?.type === 'identifier' ? single.text : firstParam ? paramName(firstParam) : undefined;
+    return { kind: 'function', ...(symbolId && { symbolId }), ...(param && { param }) };
   }
   // `[verifySignUp.checkDuplicate, verifySignUp.checkRoles]`: middlewares em lista
   if (arg.type === 'array') return { kind: 'array', items: arg.namedChildren.filter((a) => a.type !== 'comment').map((a) => describeArg(a, symbolAt)) };

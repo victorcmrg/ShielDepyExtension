@@ -1,13 +1,12 @@
-// Os frameworks HTTP que o mapa ainda não lê (C2f, MVP3). Sem isso, um projeto Fastify ou Koa dava
+// Os frameworks HTTP que o mapa ainda não lê (C2f, MVP3). Sem isso, um projeto Koa ou Hono dava
 // 0 rotas, o caos não testava nada e saía verde: um falso "aguentou" silencioso. O motor só olha as
 // dependências do package.json (texto JSON, não código): saber que o framework está lá basta para avisar.
 
 /**
- * Pacote → nome do framework, para os que o mapa não lê. Sai daqui o que passar a ser lido. O NestJS não
+ * Pacote → nome do framework, para os que o mapa não lê. Sai daqui o que passar a ser lido (o Fastify saiu na MVP4). O NestJS não
  * está aqui: as rotas dele saem dos decorators (`@Controller`, `@Post`), como as do routing-controllers.
  */
 export const UNSUPPORTED_FRAMEWORKS: Readonly<Record<string, string>> = {
-  fastify: 'Fastify',
   koa: 'Koa',
   hono: 'Hono',
   next: 'Next.js',
