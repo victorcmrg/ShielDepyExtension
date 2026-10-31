@@ -10,3 +10,4 @@ export * from './results';
 export * from './report';
 export * from './dataset';
 export * from './dataset-pairs';
+export * from './mutations';

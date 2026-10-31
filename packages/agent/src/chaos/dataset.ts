@@ -13,7 +13,7 @@ import { CHAOS_TESTS_DIR, DB_NOT_FIRED, specFileName, type GeneratedFile } from 
 
 export const DATASET_SCHEMA_VERSION = 1;
 
-/** `mutante:<operador>` sai da D4 (mutação pela AST de um código que aguentou). */
+/** `mutante:<operador>@<arquivo>:<linha>` sai da D4 (mutação pela AST de um código que aguentou). */
 export type DatasetVariant = 'original' | 'fixed' | `mutante:${string}`;
 
 /** De onde o código veio: só código público ou nosso entra no treino (0016). */
@@ -28,6 +28,8 @@ export interface DatasetSource {
   /** O `license` do `package.json`, ou a primeira linha do `LICENSE`. */
   license?: { value: string; from: 'package.json' | 'LICENSE' };
   variant: DatasetVariant;
+  /** Só nos mutantes: o que foi tirado do código que aguentou (`source` é o do original). */
+  mutation?: { operator: string; file: string; line: number; description: string };
 }
 
 /** O corpo de uma função da cadeia da rota, recortado pela faixa do símbolo no grafo (nó do Tree-sitter). */
@@ -226,6 +228,15 @@ export function buildDatasetRecords(input: DatasetInput): DatasetRecord[] {
 /** JSONL: um registro por linha, chaves em ordem (a mesma entrada dá o mesmo texto). */
 export function datasetJsonl(records: DatasetRecord[]): string {
   return records.map((r) => canonicalJson(r) + '\n').join('');
+}
+
+/**
+ * O registro de um mutante (que rodou numa cópia do projeto) com a fonte do original: mesmo
+ * projeto, repositório e commit, variante `mutante:...` e a mutação. O id é refeito com ela.
+ */
+export function asMutantRecord(record: DatasetRecord, base: DatasetSource, mutation: NonNullable<DatasetSource['mutation']>, variant: DatasetVariant, engine: Engine): DatasetRecord {
+  const source: DatasetSource = { ...base, variant, mutation };
+  return { ...record, source, id: datasetRecordId(source, engine, record.hypothesis.id) };
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

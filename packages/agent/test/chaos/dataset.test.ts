@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { attackSurface, buildSystemGraph, buildTopology, CodeGraph, indexFiles, listSourceFiles, readChaosConfig, silentHost, toFileId, TsParser } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import {
+  asMutantRecord,
   buildDatasetRecords,
   chaosOutcomes,
+  datasetRecordId,
   datasetJsonl,
   mergeDatasetJsonl,
   routeCode,
@@ -173,6 +175,17 @@ describe('D1 — o registro do dataset (JSONL v1)', () => {
     expect(records.slice(0, 6).every((r) => r.source.variant === 'original' && r.result.durationMs === 99)).toBe(true);
     expect(records.map((r) => r.hypothesis.id).slice(0, 6)).toEqual([...records.map((r) => r.hypothesis.id).slice(0, 6)].sort());
     expect(datasetJsonl(mergeDatasetJsonl([again, fixed]).records)).toBe(datasetJsonl(records));
+  });
+
+  it('o mutante leva a fonte do original, a variante e a mutação, com id próprio', async () => {
+    const inp = await input(allPassed);
+    const ran = buildDatasetRecords({ ...inp, source: { project: 'checkout-express__sem-timeout-1', variant: 'original' } })[0]!;
+    const mutation = { operator: 'sem-timeout', file: 'src/gateways/StripeGateway.ts', line: 17, description: 'tira o signal de fetch' };
+    const m = asMutantRecord(ran, source, mutation, 'mutante:sem-timeout@src/gateways/StripeGateway.ts:17', 'offline');
+    expect(m.source).toEqual({ ...source, variant: 'mutante:sem-timeout@src/gateways/StripeGateway.ts:17', mutation });
+    expect(m.id).toBe(datasetRecordId(m.source, 'offline', ran.hypothesis.id));
+    expect(m.id).not.toBe(buildDatasetRecords(inp)[0]!.id);
+    expect(m.hypothesis).toEqual(ran.hypothesis);
   });
 
   it('com a IA: o provedor e o modelo de quem escreveu, e o que a validação descartou', async () => {

@@ -11,11 +11,11 @@
 // arnês do caos (Vitest, supertest, MSW e o que o contrato usa) sem gravar no package.json deles.
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { datasetJsonl, mergeDatasetJsonl } from '../packages/agent/src/chaos/dataset';
+import { writeCorpus } from './dataset-corpus';
 import { arg, checkout, PROJECTS } from './real-projects';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -92,21 +92,4 @@ for (const t of selected) {
   if (dir.startsWith(path.join(ROOT, 'examples'))) rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
 }
 
-const texts = readdirSync(parts)
-  .filter((f) => f.endsWith('.jsonl'))
-  .sort()
-  .map((f) => readFileSync(path.join(parts, f), 'utf8'));
-const { records, duplicates, skipped } = mergeDatasetJsonl(texts);
-mkdirSync(path.dirname(out), { recursive: true });
-writeFileSync(out, datasetJsonl(records), 'utf8');
-
-const rows = new Map<string, { variant: string; achado: number; aguentou: number; inválido: number; license: string }>();
-for (const r of records) {
-  const row = rows.get(r.source.project) ?? { variant: r.source.variant, achado: 0, aguentou: 0, inválido: 0, license: r.source.license?.value ?? '—' };
-  row[r.result.outcome]++;
-  rows.set(r.source.project, row);
-}
-console.log('\n| Projeto | Variante | Licença | Achados | Aguentou | Inválidos |');
-console.log('|---|---|---|---|---|---|');
-for (const [project, r] of rows) console.log(`| ${project} | ${r.variant} | ${r.license} | ${r.achado} | ${r.aguentou} | ${r.inválido} |`);
-console.log(`\n${records.length} registro(s) em ${out}${duplicates ? ` (${duplicates} repetido(s) por id, fica o último)` : ''}${skipped ? `; ${skipped} linha(s) fora do formato v1 ignorada(s)` : ''}`);
+writeCorpus(parts, out);

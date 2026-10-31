@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { attackSurface, buildSystemGraph, buildTopology, CodeGraph, indexFiles, listSourceFiles, readChaosConfig, silentHost, toFileId, TsParser } from '@shieldepy/core';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
-import { buildDatasetRecords, chaosOutcomes, datasetFamily, dpoPairs, routeCode, runChaosPipeline, type DatasetRecord, type DatasetSource, type TestResult } from '../../src/chaos';
+import { asMutantRecord, buildDatasetRecords, chaosOutcomes, datasetFamily, dpoPairs, routeCode, runChaosPipeline, type DatasetRecord, type DatasetSource, type TestResult } from '../../src/chaos';
 
 const EXAMPLES = fileURLToPath(new URL('../../../../examples/', import.meta.url));
 const RACE = 'POST /checkout__race_condition__stock';
@@ -59,6 +59,22 @@ describe('D5 — pares para o DPO', () => {
     expect(race.chosen).toContain('AbortSignal.timeout(STRIPE_TIMEOUT_MS)');
     expect(race.rejected).not.toContain('AbortSignal');
     expect(race.provenance.weak).toBeUndefined();
+  });
+
+  it('mutante: vira o rejected do código que aguentou, nunca o chosen', async () => {
+    const fixed = await records('checkout-express-fixed', 'fixed', () => 'passed');
+    const base = fixed[0]!.source;
+    const mutation = { operator: 'sem-estorno', file: 'src/services/CheckoutService.ts', line: 51, description: 'o estorno do catch vira false' };
+    const variant = 'mutante:sem-estorno@src/services/CheckoutService.ts:51' as const;
+    // no mutante, só a partial em orders quebra; o resto aguentou
+    const mutant = (await records('checkout-express-fixed', variant, (id) => (id.endsWith('__orders') ? 'failed' : 'passed'))).map((r) =>
+      asMutantRecord(r, base, mutation, variant, 'offline')
+    );
+    const original = await records('checkout-express', 'original', () => 'failed');
+    const pairs = dpoPairs([...original, ...fixed, ...mutant]).filter((p) => p.kind === 'correção');
+    expect(pairs.every((p) => !p.provenance.variants.chosen.startsWith('mutante:'))).toBe(true);
+    const fromMutant = pairs.filter((p) => p.provenance.variants.rejected === variant);
+    expect(fromMutant.map((p) => [p.provenance.hypothesisId, p.provenance.variants.chosen])).toEqual([['POST /checkout__partial_failure_after_external_call__orders', 'fixed']]);
   });
 
   it('diagnóstico (fraco): na mesma rota, a falha que deu achado × a que aguentou; mesma entrada, mesmos pares', async () => {

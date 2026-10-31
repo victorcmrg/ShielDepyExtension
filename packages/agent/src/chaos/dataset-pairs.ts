@@ -4,7 +4,8 @@
 //
 // - correção: o mesmo teste dá achado numa variante e "aguentou" noutra da mesma família
 //   (`original` × `fixed`, ou `mutante:*` × o código que aguentou). O prompt é o código vulnerável
-//   com o achado; o `chosen` é o código que aguentou; o `rejected`, o que ainda dá achado.
+//   com o achado; o `chosen` é o código que aguentou (nunca um mutante); o `rejected`, o que ainda
+//   dá achado.
 // - diagnóstico: na mesma rota e variante, uma falha deu achado (`chosen`) e outra aguentou
 //   (`rejected`). Fraco: "aguentou" não prova que a rota é segura (C1, seção 4).
 //
@@ -65,7 +66,8 @@ export function dpoPairs(records: DatasetRecord[]): DpoPair[] {
   }
   for (const group of byHypothesis.values()) {
     for (const bad of group.filter((r) => valid(r, 'achado'))) {
-      for (const good of group.filter((r) => valid(r, 'aguentou') && r.source.variant !== bad.source.variant)) {
+      // o chosen nunca é um mutante: ele aguentou esta falha, mas tem o defeito que a mutação pôs
+      for (const good of group.filter((r) => valid(r, 'aguentou') && r.source.variant !== bad.source.variant && !r.source.mutation)) {
         pairs.push({
           id: pairId('correção', bad.id, good.id),
           kind: 'correção',
