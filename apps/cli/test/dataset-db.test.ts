@@ -82,8 +82,28 @@ describe('0020 — o dataset vai para o banco do treino', () => {
       return { query: (t, v) => (sql.push(t.trim().split(' ')[0]!), c.query(t, v)), end: c.end };
     };
     expect(await publishDataset(many, 'x', counting)).toBe(120);
-    expect(sql).toEqual(['CREATE', 'INSERT', 'INSERT', 'INSERT']);
+    expect(sql).toEqual(['SELECT', 'CREATE', 'INSERT', 'INSERT', 'INSERT']);
     expect((await db.query(`SELECT 1 FROM ${DATASET_TABLE}`)).rows).toHaveLength(120);
+    // com a tabela já criada, não tenta criar de novo
+    sql.length = 0;
+    await publishDataset(many.slice(0, 1), 'x', counting);
+    expect(sql).toEqual(['SELECT', 'INSERT']);
+  }, 60_000);
+
+  it('um usuário que só escreve na tabela (sem CREATE no schema) consegue enviar', async () => {
+    const records = await checkoutRecords();
+    const { db, connect } = pglite();
+    await publishDataset(records.slice(0, 1), 'x', connect); // o dono cria a tabela
+    await db.exec(`REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+      CREATE ROLE shieldepy_writer NOLOGIN;
+      GRANT USAGE ON SCHEMA public TO shieldepy_writer;
+      GRANT SELECT, INSERT, UPDATE ON ${DATASET_TABLE} TO shieldepy_writer;
+      SET ROLE shieldepy_writer;`);
+    await expect(db.query('CREATE TABLE outra (x int)')).rejects.toThrow(/permission denied/);
+    expect(await publishDataset(records, 'x', connect)).toBe(6);
+    await expect(db.query(`DELETE FROM ${DATASET_TABLE}`)).rejects.toThrow(/permission denied/);
+    await db.exec('RESET ROLE');
+    expect((await db.query(`SELECT 1 FROM ${DATASET_TABLE}`)).rows).toHaveLength(6);
   }, 60_000);
 
   it('sem a variável e sem --dataset, nada sai; banco fora do ar só avisa, sem a senha no log', async () => {

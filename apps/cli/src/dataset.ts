@@ -145,7 +145,7 @@ export const DATASET_TABLE_SQL = `CREATE TABLE IF NOT EXISTS ${DATASET_TABLE} (
 
 /** O pedaço do cliente do `pg` que o envio usa (os testes injetam um falso). */
 export interface SqlClient {
-  query(text: string, values?: unknown[]): Promise<unknown>;
+  query(text: string, values?: unknown[]): Promise<{ rows: unknown[] }>;
   end(): Promise<void>;
 }
 export type SqlConnect = (url: string) => Promise<SqlClient>;
@@ -165,7 +165,10 @@ export async function publishDataset(records: DatasetRecord[], url: string, conn
   if (records.length === 0) return 0;
   const client = await connect(url);
   try {
-    await client.query(DATASET_TABLE_SQL);
+    // só cria quando falta: um usuário que só escreve na tabela não pode CREATE no schema (Postgres 15+),
+    // e o CREATE TABLE IF NOT EXISTS falharia mesmo com a tabela já existindo
+    const { rows } = await client.query('SELECT to_regclass($1) IS NOT NULL AS exists', [DATASET_TABLE]);
+    if (!(rows[0] as { exists?: boolean } | undefined)?.exists) await client.query(DATASET_TABLE_SQL);
     for (let i = 0; i < records.length; i += BATCH) {
       const batch = records.slice(i, i + BATCH);
       const values: unknown[] = [];
