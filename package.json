@@ -21,6 +21,7 @@
     "demo": "node scripts/demo/demo.mjs",
     "demo:caos": "node scripts/demo/demo.mjs --caos",
     "demo:verificar": "node scripts/demo/verificar.mjs",
+    "demo:verificar:cli": "node scripts/demo/verificar.mjs --so-cli",
     "build:vscode": "npm run build -w shieldepy",
     "package:vscode": "npm run package -w shieldepy",
     "measure:chaos": "node --import tsx scripts/measure-chaos-cost.ts",
