@@ -14,8 +14,28 @@ export const UNSUPPORTED_FRAMEWORKS: Readonly<Record<string, string>> = {
   restify: 'Restify',
 };
 
+/**
+ * Os frameworks que o mapa lê. Com um deles e 0 rotas, o padrão de registro do projeto ficou fora do alcance
+ * (MVP8: rotas num objeto registradas num laço, `for (const r of routes) app.route(r)`), e o caos também não
+ * prova nada: sem isto, tirar o Fastify da lista acima (MVP4) traria de volta o verde falso.
+ */
+export const SUPPORTED_FRAMEWORKS: Readonly<Record<string, string>> = {
+  express: 'Express',
+  fastify: 'Fastify',
+  '@nestjs/core': 'NestJS',
+};
+
+/** Os frameworks lidos pelo mapa nas dependências de um `package.json` (texto), em ordem de nome. */
+export function supportedFrameworks(packageJson: string | undefined): string[] {
+  return frameworksIn(packageJson, SUPPORTED_FRAMEWORKS);
+}
+
 /** Os frameworks não suportados nas dependências de um `package.json` (texto), em ordem de nome. */
 export function unsupportedFrameworks(packageJson: string | undefined): string[] {
+  return frameworksIn(packageJson, UNSUPPORTED_FRAMEWORKS);
+}
+
+function frameworksIn(packageJson: string | undefined, known: Readonly<Record<string, string>>): string[] {
   let pkg: { dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown>; peerDependencies?: Record<string, unknown> };
   try {
     pkg = JSON.parse(packageJson ?? '') as typeof pkg;
@@ -24,5 +44,5 @@ export function unsupportedFrameworks(packageJson: string | undefined): string[]
   }
   // as de desenvolvimento entram: um app Next costuma ter tudo em dependencies, mas há quem ponha o servidor em devDependencies
   const deps = { ...pkg.devDependencies, ...pkg.peerDependencies, ...pkg.dependencies };
-  return [...new Set(Object.keys(deps).filter((d) => d in UNSUPPORTED_FRAMEWORKS).map((d) => UNSUPPORTED_FRAMEWORKS[d]!))].sort();
+  return [...new Set(Object.keys(deps).filter((d) => d in known).map((d) => known[d]!))].sort();
 }

@@ -33,6 +33,7 @@ import {
   routeBodyReads,
   silentHost,
   TS_EXTENSIONS,
+  supportedFrameworks,
   unsupportedFrameworks,
   walkSourceTree,
   type AttackSurface,
@@ -150,10 +151,16 @@ export async function runChaosCommand(
   if (others.length > 0) io.err(`ℹ ${others.length} rota(s) de C#/Java fora do caos (só JS/TS): ${others.map((r) => r.id).join(', ')}`);
   const fullSurface = attackSurface({ ...topology, routes: topology.routes.filter((r) => isChaosSource(r.file)) });
   // C2f (MVP3): um framework que o mapa não lê dá 0 rotas, e 0 testes não é um verde
-  const unsupported = unsupportedFrameworks(existsSync(path.join(root, 'package.json')) ? readFileSync(path.join(root, 'package.json'), 'utf8') : undefined);
+  const packageJson = existsSync(path.join(root, 'package.json')) ? readFileSync(path.join(root, 'package.json'), 'utf8') : undefined;
+  const unsupported = unsupportedFrameworks(packageJson);
+  // MVP8: um framework que o mapa lê, mas registrado de um jeito que ele não segue, também dá 0 rotas
+  const supported = supportedFrameworks(packageJson);
   const jsRoutes = topology.routes.length - others.length;
-  const blind = unsupported.length > 0 && jsRoutes === 0;
-  if (blind) io.err(`⚠ o projeto usa ${unsupported.join(', ')}, que o ShielDepy ainda não lê: o mapa não achou nenhuma rota, e o caos não tem o que testar. Isso não é um "aguentou".`);
+  const blind = (unsupported.length > 0 || supported.length > 0) && jsRoutes === 0;
+  if (blind && unsupported.length === 0) {
+    const skipped = topology.skipped.length;
+    io.err(`⚠ o projeto usa ${supported.join(', ')}, mas o mapa não achou nenhuma rota${skipped ? ` (${skipped} registro(s) que não deu para ler: veja o "shieldepy topology")` : ''}: o caos não tem o que testar. Isso não é um "aguentou".`);
+  } else if (blind) io.err(`⚠ o projeto usa ${unsupported.join(', ')}, que o ShielDepy ainda não lê: o mapa não achou nenhuma rota, e o caos não tem o que testar. Isso não é um "aguentou".`);
   else if (unsupported.length > 0) io.err(`⚠ o projeto também usa ${unsupported.join(', ')}, que o ShielDepy ainda não lê: as rotas de lá ficam fora do mapa e do caos.`);
 
   // --init: o contrato inicial sai do próprio mapa; o que só o projeto sabe fica marcado
@@ -362,7 +369,7 @@ export async function runChaosCommand(
     return 2;
   }
   if (blind) {
-    io.err(`erro: nada foi provado: ${unsupported.join(', ')} ainda não é suportado pelo caos (o mapa dá 0 rotas).`);
+    io.err(unsupported.length > 0 ? `erro: nada foi provado: ${unsupported.join(', ')} ainda não é suportado pelo caos (o mapa dá 0 rotas).` : 'erro: nada foi provado: o mapa dá 0 rotas.');
     return 2;
   }
   return 0;
