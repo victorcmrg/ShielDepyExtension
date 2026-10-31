@@ -10,6 +10,7 @@
     "vitest.config.ts"
   ],
   "exclude": [
-    "apps/web/src/**"
+    "apps/web/src/**",
+    "scripts/dataset/contratos/**"
   ]
 }

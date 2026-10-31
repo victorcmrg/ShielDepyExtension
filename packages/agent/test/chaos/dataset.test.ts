@@ -8,6 +8,7 @@ import {
   buildDatasetRecords,
   chaosOutcomes,
   datasetJsonl,
+  mergeDatasetJsonl,
   routeCode,
   runChaosPipeline,
   runStatuses,
@@ -158,6 +159,20 @@ describe('D1 — o registro do dataset (JSONL v1)', () => {
     expect(records.find((r) => r.result.message!.startsWith('a falha'))!.result).toMatchObject({ control: 'passed', chaos: 'not-run', outcome: 'inválido' });
     expect(runStatuses({ status: 'invalid', message: 'o teste não carregou: x' })).toEqual({ control: 'not-run', chaos: 'not-run' });
     expect(runStatuses({ status: 'invalid', message: 'o teste de caos não rodou (skipped)' })).toEqual({ control: 'passed', chaos: 'not-run' });
+  });
+
+  it('o corpus: um registro por id (o último vence), em ordem, e linha estranha fica fora', async () => {
+    const inp = await input(allPassed);
+    const first = datasetJsonl(buildDatasetRecords(inp));
+    const again = datasetJsonl(buildDatasetRecords({ ...inp, outcomes: inp.outcomes.map((o) => ({ ...o, durationMs: 99 })) }));
+    const fixed = datasetJsonl(buildDatasetRecords({ ...inp, source: { ...source, project: 'checkout-express-fixed', variant: 'fixed' } }));
+    const { records, duplicates, skipped } = mergeDatasetJsonl([fixed, first, 'não é json\n{"schemaVersion":2,"id":"x"}\n', again]);
+    expect(records).toHaveLength(12);
+    expect(duplicates).toBe(6);
+    expect(skipped).toBe(2);
+    expect(records.slice(0, 6).every((r) => r.source.variant === 'original' && r.result.durationMs === 99)).toBe(true);
+    expect(records.map((r) => r.hypothesis.id).slice(0, 6)).toEqual([...records.map((r) => r.hypothesis.id).slice(0, 6)].sort());
+    expect(datasetJsonl(mergeDatasetJsonl([again, fixed]).records)).toBe(datasetJsonl(records));
   });
 
   it('com a IA: o provedor e o modelo de quem escreveu, e o que a validação descartou', async () => {

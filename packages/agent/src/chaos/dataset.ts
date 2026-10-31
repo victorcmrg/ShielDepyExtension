@@ -228,6 +228,40 @@ export function datasetJsonl(records: DatasetRecord[]): string {
   return records.map((r) => canonicalJson(r) + '\n').join('');
 }
 
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Junta arquivos JSONL num corpus: um registro por `id` (o último lido vence, como numa nova
+ * execução), em ordem de projeto, variante e hipótese. Linha que não é registro v1 é contada e fica fora.
+ */
+export function mergeDatasetJsonl(texts: string[]): { records: DatasetRecord[]; duplicates: number; skipped: number } {
+  const byId = new Map<string, DatasetRecord>();
+  let duplicates = 0;
+  let skipped = 0;
+  for (const text of texts) {
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      let r: DatasetRecord;
+      try {
+        r = JSON.parse(line) as DatasetRecord;
+      } catch {
+        skipped++;
+        continue;
+      }
+      if (r?.schemaVersion !== DATASET_SCHEMA_VERSION || typeof r.id !== 'string') {
+        skipped++;
+        continue;
+      }
+      if (byId.has(r.id)) duplicates++;
+      byId.set(r.id, r);
+    }
+  }
+  const records = [...byId.values()].sort(
+    (a, b) => cmp(a.source.project, b.source.project) || cmp(a.source.variant, b.source.variant) || cmp(a.hypothesis.id, b.hypothesis.id) || cmp(a.id, b.id)
+  );
+  return { records, duplicates, skipped };
+}
+
 /** Os símbolos da cadeia de uma rota: os handlers, depois cada função no caminho até um I/O, sem repetir. */
 export function chainSymbols(route: Pick<TopologyRoute, 'handlers' | 'operations'>): string[] {
   const seen = new Set<string>();
