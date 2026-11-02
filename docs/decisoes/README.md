@@ -26,3 +26,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0025](0025-arnes-de-teste-embutido.md) | O arnês de teste do caos (Vitest, supertest, MSW, PGlite) vem da CLI, emprestado por links, sem instalar nada no projeto | 2026-10-31 | valendo |
 | [0026](0026-fastify-createapp-pelo-handler.md) | No Fastify, o `createApp` do contrato devolve um handler que espera o `ready()` (`app.routing`); os templates não mudam | 2026-10-31 | valendo |
 | [0027](0027-corpo-de-exemplo-sem-pendencia.md) | O corpo de exemplo do `--init` sai dos campos lidos de `req.body`, sem a marca de pendência (o controle valida) | 2026-10-31 | valendo |
+| [0028](0028-demo-so-o-motor-e-nest-fora.md) | A demo do TCC é o motor, com a empresa só simulada (sem compra nem login); o NestJS sai do critério de pronto do MVP | 2026-11-02 | valendo |

@@ -91,6 +91,8 @@ export function workspaceRoots(): string[] {
 
 /** Relê um arquivo do disco (mudado fora do editor: git checkout, gerador, rename). */
 export async function reindexFromDisk(model: WorkspaceModel, uri: vscode.Uri): Promise<void> {
+  // o vigia de arquivos vê tudo: sem isto, os testes que o caos grava em .shieldepy/ entravam no mapa
+  if (inIgnoredFolder(uri.fsPath)) return;
   try {
     const bytes = await vscode.workspace.fs.readFile(uri);
     model.updateFile(uri.fsPath, new TextDecoder().decode(bytes));

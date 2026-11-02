@@ -239,11 +239,13 @@ function prepareWorkspace() {
   if (existsSync(join(WORKSPACE, '.git'))) {
     // uma demo de versão anterior (o ROTEIRO.md ainda no git dela) é recriada
     const ignore = existsSync(join(WORKSPACE, '.gitignore')) ? readFileSync(join(WORKSPACE, '.gitignore'), 'utf8') : '';
-    if (ignore.includes('ROTEIRO.md')) {
+    // o repositório mudou de pasta: o link do node_modules e o `npm run caos` apontam para o caminho antigo
+    const linked = existsSync(join(APP, 'node_modules', 'express'));
+    if (ignore.includes('ROTEIRO.md') && linked) {
       ok(`sistema da demo já existe: ${WORKSPACE}`);
       return;
     }
-    warn('o sistema da demo é de uma versão anterior: recriando');
+    warn(linked ? 'o sistema da demo é de uma versão anterior: recriando' : 'o sistema da demo aponta para uma pasta que não existe mais: recriando');
   }
   removeDemoDir(WORKSPACE);
   mkdirSync(WORKSPACE, { recursive: true });

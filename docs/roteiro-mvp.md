@@ -4,7 +4,7 @@ O passo a passo para mostrar o MVP de ponta a ponta: o caos achando problemas re
 
 A contribuição a mostrar é o motor: **o motor prova, a IA propõe** ([0001](decisoes/0001-motor-prova-ia-propoe.md)). Tudo abaixo roda com `--offline` (o motor sozinho, custo zero).
 
-> **O que ainda está aberto:** o fluxo da demo (DP7: só o motor, ou com a compra mockada, o download e o login) e o arnês de teste dentro da extensão (DP8). Enquanto a DP8 não sai, o caos na extensão usa o Vitest do projeto: no `checkout-express` ele existe; no `checkout-fastify`, o caos roda pela CLI (passo 2). A tela da empresa mockada (MVP7) espera a DP7.
+> **O que ainda está aberto:** o arnês de teste dentro da extensão (DP8). Enquanto a DP8 não sai, o caos na extensão usa o Vitest do projeto: no `checkout-express` ele existe; no `checkout-fastify`, o caos roda pela CLI (passo 2). A demo não tem compra, download nem login liberando a extensão ([0028](decisoes/0028-demo-so-o-motor-e-nest-fora.md)).
 
 ---
 
@@ -51,7 +51,7 @@ Rodar projeto real ao vivo é lento e frágil (instalação, `prisma generate`, 
 
 ## 4. A empresa
 
-O portal local com o histórico do caos já existe (passo 1.6). A página de plano e faturas mockada (MVP7) e um eventual fluxo de compra → download → login esperam a DP7. A recomendação, se entrar: o login pelo device flow que já existe e a execução aparecendo no portal, sem travar o mapa nem o caos atrás do login (a demo não pode depender do servidor).
+O portal local com o histórico do caos já existe (passo 1.6). A página de plano e faturas (MVP7, ainda por fazer) é uma tela real do portal, com dados fixos e o selo "demonstração": sem compra, sem formulário de cartão e sem nada travado atrás de login ([0028](decisoes/0028-demo-so-o-motor-e-nest-fora.md)).
 
 ---
 
