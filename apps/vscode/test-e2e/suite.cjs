@@ -365,7 +365,8 @@ exports.run = async function run() {
       assert(api.chaos.projects().find((p) => p.root === checkoutRoot)?.hasContract === false, 'ainda vê o contrato apagado');
       assert((await api.chaos.createContract(checkoutRoot)) === true, 'createContract falhou (veja o canal ShielDepy)');
       const text = Buffer.from(await vscode.workspace.fs.readFile(contract)).toString('utf8');
-      assert(text.includes("'POST /checkout': { path: '/checkout', body: {} }"), `contrato:\n${text}`);
+      // desde a MVP6 (0027), o corpo sai dos campos que a cadeia da rota lê de req.body
+      assert(text.includes("'POST /checkout': { path: '/checkout', body: { cardToken: 'tok_test', priceCents: 1, productId: '1', quantity: 1 } }"), `contrato:\n${text}`);
       assert(text.includes("'api.stripe.com'") && text.includes('TODO(shieldepy)'), 'faltou a API ou as marcas de pendência');
     } finally {
       await vscode.workspace.fs.writeFile(contract, original);
