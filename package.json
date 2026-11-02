@@ -26,7 +26,10 @@
     "package:vscode": "npm run package -w shieldepy",
     "measure:chaos": "node --import tsx scripts/measure-chaos-cost.ts",
     "estimate:chaos": "node --import tsx scripts/estimate-chaos-cost.ts",
-    "mapa:reais": "node --import tsx scripts/measure-real-projects.ts"
+    "mapa:reais": "node --import tsx scripts/measure-real-projects.ts",
+    "dataset:gerar": "node --import tsx scripts/dataset-generate.ts",
+    "dataset:pares": "node --import tsx scripts/dataset-pairs.ts",
+    "dataset:mutantes": "node --import tsx scripts/dataset-mutants.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

@@ -66,6 +66,7 @@ import { chaosHarness, defaultHarnessDir, linkHarness } from './chaos-harness';
 import { ChaosRunError, runChaosTests } from './chaos-run';
 import { renderGraphHtml } from '@shieldepy/viewer';
 import { buildMapOf } from './diff';
+import { exportChaosDataset } from './dataset';
 import { GitBaseError, withBaseCheckout } from '@shieldepy/core';
 
 export interface ChaosArgs {
@@ -90,6 +91,8 @@ export interface ChaosArgs {
    * pasta da CLI; `null` desliga (só o que o projeto tem).
    */
   harnessDir?: string | null;
+  /** Acrescenta a este JSONL um registro por hipótese que rodou (D2, dados para treino). */
+  dataset?: string;
 }
 
 /** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
@@ -323,6 +326,7 @@ export async function runChaosCommand(
   });
   await mkdir(path.join(root, path.dirname(CHAOS_RESULTS_FILE)), { recursive: true });
   await writeFile(path.join(root, CHAOS_RESULTS_FILE), canonicalJson(results, 2) + '\n', 'utf8');
+  await exportChaosDataset(args.dataset, io, { root, graph, topology, surface: fullSurface, state, outcomes });
   if (args.html) {
     await mkdir(path.dirname(path.resolve(args.html)), { recursive: true });
     await writeFile(args.html, renderGraphHtml(system, path.basename(root), { kind: 'inline' }, topology, { chaos: results, ...(baseDiff && { diff: baseDiff }) }), 'utf8');

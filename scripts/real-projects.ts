@@ -1,0 +1,75 @@
+// Os projetos reais de terceiros que o motor mede (etapa M) e de onde sai o corpus de treino (D3),
+// fixados num commit, e o clone deles numa pasta FORA do repositório.
+
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import * as path from 'node:path';
+
+export interface Project {
+  id: string;
+  repo: string;
+  commit: string;
+  /** Subpasta do projeto dentro do repositório (clonada com sparse checkout). */
+  sub?: string;
+  stack: string;
+}
+
+/** Os projetos medidos em 2026-10-13 (tabela no registro da etapa M de docs/historico/PLANO-CHAOS.md). */
+export const PROJECTS: Project[] = [
+  { id: 'realworld', repo: 'gothinkster/node-express-realworld-example-app', commit: '30b68e1e881462b2f4164ea09ab4c4f5699c7b0b', stack: 'TS, Express, Prisma' },
+  { id: 'prisma-express', repo: 'prisma/prisma-examples', commit: 'caa902a819be2e8fe1e0b0ec2f543e9220cf69cc', sub: 'orm/express', stack: 'TS, Express 5, Prisma 7' },
+  { id: 'pg-crud', repo: 'manfraio/rest_api_with_nodejs_and_postgres', commit: 'fdd9fc7f47b0c487000225a85fde52496ab08e10', stack: 'JS (CJS), Express, pg' },
+  { id: 'node-express-boilerplate', repo: 'hagopj13/node-express-boilerplate', commit: '179ae84efec61b14206d0305d941daed6c6d07f9', stack: 'JS (CJS), Express, Mongoose' },
+  { id: 'express-rest-boilerplate', repo: 'danielfsousa/express-rest-boilerplate', commit: 'b8bed6d7cfce3cf2ef89ec1b5e47b52dfc50e874', stack: 'JS (CJS), Express, Mongoose' },
+  { id: 'express-typescript-boilerplate', repo: 'w3tecch/express-typescript-boilerplate', commit: '17727010f7f098d8ca8b78da0a5b3c7297659381', stack: 'TS, routing-controllers, TypeORM' },
+  { id: 'hackathon-starter', repo: 'sahat/hackathon-starter', commit: '574a99344855a2f18dac7181636e400bd55ab578', stack: 'JS (CJS), Express, Mongoose' },
+  { id: 'bulletproof-nodejs', repo: 'santiq/bulletproof-nodejs', commit: '7ce1b4690c4e96659cb1ed0d367b08b3ab35a24b', stack: 'TS, Express, typedi, Mongoose' },
+  { id: 'proshop-v2', repo: 'bradtraversy/proshop-v2', commit: 'e23e3a897e5387f39da6c59fd72cdd12e46d0815', stack: 'JS (ESM), Express, Mongoose, React' },
+  { id: 'jwt-auth-mongodb', repo: 'bezkoder/node-js-jwt-auth-mongodb', commit: '90a2d72d81392ba53f093c9d12a08bc2d822c969', stack: 'JS (CJS), Express, Mongoose' },
+  { id: 'mern-memories', repo: 'adrianhajdin/project_mern_memories', commit: '9c2c4166ea359ef07417d112cb4b892ef47cb198', stack: 'JS (ESM), Express, Mongoose, React' },
+  { id: 'nest-realworld', repo: 'lujakob/nestjs-realworld-example-app', commit: 'c1c2cc4e448b279ff083272df1ac50d20c3304fa', stack: 'TS, NestJS, TypeORM' },
+  // C# (etapa L5, 2026-10-16)
+  { id: 'todoapi', repo: 'davidfowl/TodoApi', commit: '307a1eadbbd77a3004c318f2377e4818bc400af6', stack: 'C#, minimal APIs, EF Core' },
+  { id: 'aspnet-realworld', repo: 'gothinkster/aspnetcore-realworld-example-app', commit: '8aa617abed5dd645f8f9d99578a3e07b4e2e52e7', stack: 'C#, controllers, MediatR, EF Core' },
+  { id: 'clean-architecture', repo: 'jasontaylordev/CleanArchitecture', commit: '1bc2b07ce75864b0c399e8e3d481de5e17aad509', stack: 'C#, minimal APIs, MediatR, EF Core' },
+  { id: 'eshoponweb', repo: 'NimblePros/eShopOnWeb', commit: 'f21d6233b851897371c25c5e7ffa67bb8552dba8', stack: 'C#, controllers + FastEndpoints, Ardalis, EF Core' },
+  // Java (etapa J5, 2026-10-17)
+  { id: 'petclinic', repo: 'spring-projects/spring-petclinic', commit: '500158f732419217507c7656904b8e6aa1bcc0d6', stack: 'Java, Spring MVC, Spring Data JPA' },
+  { id: 'petclinic-rest', repo: 'spring-petclinic/spring-petclinic-rest', commit: 'afc8fc1d3b8ec8de69414482b3bd70a1da78cb95', stack: 'Java, Spring REST, JPA/JDBC/Spring Data' },
+  { id: 'spring-realworld', repo: 'gothinkster/spring-boot-realworld-example-app', commit: 'ee17e31aafe733d98c4853c8b9a74d7f2f6c924a', stack: 'Java, Spring MVC, MyBatis' },
+  { id: 'petclinic-microservices', repo: 'spring-petclinic/spring-petclinic-microservices', commit: '1d76b00d683e86b62867a6bf59530f8ab301244f', stack: 'Java, Spring Cloud, WebClient, Spring Data' },
+];
+
+export function arg(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+// `core.longpaths`: no Windows, uma pasta temporária funda estoura o limite de caminho ao gravar o pack
+export const git = (cwd: string, ...args: string[]) =>
+  execFileSync('git', ['-c', 'core.longpaths=true', ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+
+/** Clona só o commit fixado (`--depth 1`), ou reaproveita a pasta se ela já estiver nele. */
+export function checkout(p: Project, dir: string): string {
+  const target = path.join(dir, p.id);
+  if (!existsSync(path.join(target, '.git'))) {
+    mkdirSync(target, { recursive: true });
+    git(target, 'init', '-q');
+    git(target, 'remote', 'add', 'origin', `https://github.com/${p.repo}`);
+    if (p.sub) {
+      git(target, 'config', 'core.sparseCheckout', 'true');
+      writeFileSync(path.join(target, '.git', 'info', 'sparse-checkout'), `${p.sub}/\n`);
+    }
+  }
+  let head = '';
+  try {
+    head = git(target, 'rev-parse', 'HEAD');
+  } catch {
+    // repositório recém-criado, ainda sem commit
+  }
+  if (head !== p.commit) {
+    git(target, 'fetch', '-q', '--depth', '1', 'origin', p.commit);
+    git(target, 'checkout', '-q', 'FETCH_HEAD');
+  }
+  return p.sub ? path.join(target, p.sub) : target;
+}
