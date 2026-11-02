@@ -18,6 +18,7 @@ import {
   type DatasetRecord,
   type DatasetSource,
   type DatasetVariant,
+  type DpoPair,
 } from '@shieldepy/agent/chaos';
 
 const LICENSE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE', 'COPYING'];
@@ -184,6 +185,57 @@ export async function publishDataset(records: DatasetRecord[], url: string, conn
       );
     }
     return records.length;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+/** A tabela dos pares do DPO, que a equipe de treino lê direto (decisão 0021). */
+export const DPO_TABLE = 'shieldepy_dpo_pairs';
+
+export const DPO_TABLE_SQL = `CREATE TABLE IF NOT EXISTS ${DPO_TABLE} (
+  id text PRIMARY KEY,
+  kind text NOT NULL,
+  prompt text NOT NULL,
+  chosen text NOT NULL,
+  rejected text NOT NULL,
+  provenance jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+)`;
+
+/** Grava os pares por upsert no `id`. Devolve quantos foram. */
+export async function publishDpoPairs(pairs: DpoPair[], url: string, connect: SqlConnect = pgConnect): Promise<number> {
+  if (pairs.length === 0) return 0;
+  const client = await connect(url);
+  try {
+    const { rows } = await client.query('SELECT to_regclass($1) IS NOT NULL AS exists', [DPO_TABLE]);
+    if (!(rows[0] as { exists?: boolean } | undefined)?.exists) await client.query(DPO_TABLE_SQL);
+    for (let i = 0; i < pairs.length; i += BATCH) {
+      const values: unknown[] = [];
+      const lines = pairs.slice(i, i + BATCH).map((p) => {
+        const n = values.length;
+        values.push(p.id, p.kind, p.prompt, p.chosen, p.rejected, canonicalJson(p.provenance));
+        return `($${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}::jsonb)`;
+      });
+      await client.query(
+        `INSERT INTO ${DPO_TABLE} (id, kind, prompt, chosen, rejected, provenance) VALUES ${lines.join(', ')}
+         ON CONFLICT (id) DO UPDATE SET kind = EXCLUDED.kind, prompt = EXCLUDED.prompt, chosen = EXCLUDED.chosen, rejected = EXCLUDED.rejected, provenance = EXCLUDED.provenance, updated_at = now()`,
+        values
+      );
+    }
+    return pairs.length;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+/** Os registros que já estão no banco do treino: é de onde os pares saem. */
+export async function readDatasetRecords(url: string, connect: SqlConnect = pgConnect): Promise<DatasetRecord[]> {
+  const client = await connect(url);
+  try {
+    const { rows } = await client.query(`SELECT record FROM ${DATASET_TABLE} ORDER BY created_at, id`);
+    return rows.map((r) => (r as { record: DatasetRecord }).record);
   } finally {
     await client.end().catch(() => undefined);
   }

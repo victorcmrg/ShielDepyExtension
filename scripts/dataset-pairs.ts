@@ -1,27 +1,36 @@
-// Os pares para o DPO (D5, decisão 0016) a partir do corpus do `dataset:gerar`. Formato
-// provisório `{ id, kind, prompt, chosen, rejected, provenance }`, um por linha.
+// Os pares para o DPO (D5, decisões 0016 e 0021), no formato que a equipe de treino aprovou:
+// `{ id, kind, prompt, chosen, rejected, provenance }`.
 //
-//   npm run dataset:pares -- --in <dataset.jsonl> [--out <pares.jsonl>] [--sem-fracos]
+//   npm run dataset:pares                     → lê os registros do banco do treino e grava os pares lá
+//   npm run dataset:pares -- --in <arq.jsonl> → lê de um arquivo (e grava no banco, se houver a variável)
+//   npm run dataset:pares -- --out <arq.jsonl> → também grava os pares num arquivo
 //
-// `--sem-fracos` deixa de fora os de diagnóstico ("aguentou" não prova que a rota é segura).
+// O banco é o da variável SHIELDEPY_DATASET_DATABASE_URL (0020). `--sem-fracos` deixa de fora os de
+// diagnóstico ("aguentou" não prova que a rota é segura).
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { canonicalJson } from '../packages/core/src/index';
 import { dpoPairs } from '../packages/agent/src/chaos/dataset-pairs';
-import { mergeDatasetJsonl } from '../packages/agent/src/chaos/dataset';
+import { mergeDatasetJsonl, uniqueDatasetRecords } from '../packages/agent/src/chaos/dataset';
+import { DATASET_DB_ENV, dbHost, DPO_TABLE, publishDpoPairs, readDatasetRecords } from '../apps/cli/src/dataset';
 import { arg } from './real-projects';
 
 const input = arg('--in');
-if (!input) {
-  console.error('uso: npm run dataset:pares -- --in <dataset.jsonl> [--out <pares.jsonl>] [--sem-fracos]');
+const url = process.env[DATASET_DB_ENV]?.trim() || undefined;
+if (!input && !url) {
+  console.error(`uso: npm run dataset:pares -- [--in <dataset.jsonl>] [--out <pares.jsonl>] [--sem-fracos]\nSem --in, os registros vêm do banco da variável ${DATASET_DB_ENV}.`);
   process.exit(2);
 }
-const out = path.resolve(arg('--out') ?? path.join(path.dirname(path.resolve(input)), 'pares.jsonl'));
-const { records, skipped } = mergeDatasetJsonl([readFileSync(input, 'utf8')]);
+const read = input ? mergeDatasetJsonl([readFileSync(input, 'utf8')]).records : await readDatasetRecords(url!);
+const records = uniqueDatasetRecords(read);
 const pairs = dpoPairs(records).filter((p) => !(process.argv.includes('--sem-fracos') && p.provenance.weak));
-writeFileSync(out, pairs.map((p) => canonicalJson(p) + '\n').join(''), 'utf8');
-
 const count = (kind: string) => pairs.filter((p) => p.kind === kind).length;
-console.log(`${records.length} registro(s) lido(s)${skipped ? ` (${skipped} linha(s) fora do v1)` : ''}`);
-console.log(`${pairs.length} par(es) em ${out}: ${count('correção')} de correção, ${count('diagnóstico')} de diagnóstico (fracos)`);
+console.log(`${read.length} registro(s) lido(s), ${records.length} sem repetir; ${pairs.length} par(es): ${count('correcao')} de correção, ${count('diagnostico')} de diagnóstico (fracos)`);
+
+const out = arg('--out');
+if (out) {
+  writeFileSync(path.resolve(out), pairs.map((p) => canonicalJson(p) + '\n').join(''), 'utf8');
+  console.log(`✓ gravados em ${out}`);
+}
+if (url) console.log(`✓ ${await publishDpoPairs(pairs, url)} par(es) em ${dbHost(url)} (tabela ${DPO_TABLE})`);

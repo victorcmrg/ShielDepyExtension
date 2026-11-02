@@ -44,7 +44,7 @@ describe('D5 — pares para o DPO', () => {
     const fixed = await records('checkout-express-fixed', 'fixed', (id) => (id === PARTIAL_STOCK ? 'invalid' : 'passed'));
     expect(datasetFamily(original[0]!)).toBe(datasetFamily(fixed[0]!));
 
-    const pairs = dpoPairs([...fixed, ...original]).filter((p) => p.kind === 'correção');
+    const pairs = dpoPairs([...fixed, ...original]).filter((p) => p.kind === 'correcao');
     // o -fixed não tem a hipótese de timeout (já tem timeout), e a partial em stock saiu inválida
     expect(pairs.map((p) => p.provenance.hypothesisId)).toEqual([
       'POST /checkout__http_5xx_intermittent__api.stripe.com',
@@ -54,8 +54,11 @@ describe('D5 — pares para o DPO', () => {
     ]);
     const race = pairs.find((p) => p.provenance.hypothesisId === RACE)!;
     expect(race.provenance.variants).toEqual({ chosen: 'fixed', rejected: 'original' });
-    expect(race.prompt).toContain('O teste de caos achou: race_condition em stock: stateCheck: stockNeverNegative (Crítico).');
+    // o template que a equipe de treino especificou, na ordem
+    expect(race.prompt.startsWith('Analise o seguinte código de rota e corrija a vulnerabilidade identificada:\n[VULNERABILIDADE / ACHADO]\nRota POST /checkout: race_condition em stock: stateCheck: stockNeverNegative (Crítico)\n\n[CÓDIGO DA ROTA]\n// src/middleware/validate.ts:3\n')).toBe(true);
     expect(race.prompt).toContain('// src/services/CheckoutService.ts:24');
+    expect(race.prompt.endsWith('\n\nResponda apenas com o código corrigido.')).toBe(true);
+    expect(race.provenance).toMatchObject({ repo: 'https://github.com/exemplo/shieldepy.git', commits: { chosen: 'abc', rejected: 'abc' } });
     expect(race.chosen).toContain('AbortSignal.timeout(STRIPE_TIMEOUT_MS)');
     expect(race.rejected).not.toContain('AbortSignal');
     expect(race.provenance.weak).toBeUndefined();
@@ -71,7 +74,7 @@ describe('D5 — pares para o DPO', () => {
       asMutantRecord(r, base, mutation, variant, 'offline')
     );
     const original = await records('checkout-express', 'original', () => 'failed');
-    const pairs = dpoPairs([...original, ...fixed, ...mutant]).filter((p) => p.kind === 'correção');
+    const pairs = dpoPairs([...original, ...fixed, ...mutant]).filter((p) => p.kind === 'correcao');
     expect(pairs.every((p) => !p.provenance.variants.chosen.startsWith('mutante:'))).toBe(true);
     const fromMutant = pairs.filter((p) => p.provenance.variants.rejected === variant);
     expect(fromMutant.map((p) => [p.provenance.hypothesisId, p.provenance.variants.chosen])).toEqual([['POST /checkout__partial_failure_after_external_call__orders', 'fixed']]);
@@ -80,8 +83,9 @@ describe('D5 — pares para o DPO', () => {
   it('diagnóstico (fraco): na mesma rota, a falha que deu achado × a que aguentou; mesma entrada, mesmos pares', async () => {
     const original = await records('checkout-express', 'original', (id) => (id === RACE ? 'failed' : 'passed'));
     const pairs = dpoPairs(original);
-    expect(pairs.every((p) => p.kind === 'diagnóstico' && p.provenance.weak)).toBe(true);
+    expect(pairs.every((p) => p.kind === 'diagnostico' && p.provenance.weak)).toBe(true);
     expect(pairs).toHaveLength(5);
+    expect(pairs[0]!.prompt.startsWith('Analise o seguinte código de rota e identifique potenciais vulnerabilidades de concorrência, latência ou estado:\n\n[CÓDIGO DA ROTA]\n// src/middleware/validate.ts:3\n')).toBe(true);
     expect(new Set(pairs.map((p) => p.provenance.chosenRecord)).size).toBe(1);
     expect(pairs[0]!.chosen).toBe('race_condition em stock: stateCheck: stockNeverNegative (Crítico)');
     expect(pairs.map((p) => p.rejected)).toContain('timeout em api.stripe.com');

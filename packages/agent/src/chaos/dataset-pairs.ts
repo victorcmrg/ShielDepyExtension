@@ -1,12 +1,12 @@
-// Pares para o DPO (D5, decisão 0016) a partir dos registros do dataset. Sem rótulo humano: o par
-// sai do próprio motor. Formato provisório, `{ prompt, chosen, rejected, provenance }`, até a outra
-// equipe confirmar o dela.
+// Pares para o DPO (D5, decisões 0016 e 0021) a partir dos registros do dataset. Sem rótulo humano:
+// o par sai do próprio motor. O formato e os templates do prompt são os que a equipe de treino
+// aprovou para o Llama-3.2-1B-Instruct.
 //
-// - correção: o mesmo teste dá achado numa variante e "aguentou" noutra da mesma família
+// - correcao: o mesmo teste dá achado numa variante e "aguentou" noutra da mesma família
 //   (`original` × `fixed`, ou `mutante:*` × o código que aguentou). O prompt é o código vulnerável
 //   com o achado; o `chosen` é o código que aguentou (nunca um mutante); o `rejected`, o que ainda
 //   dá achado.
-// - diagnóstico: na mesma rota e variante, uma falha deu achado (`chosen`) e outra aguentou
+// - diagnostico: na mesma rota e variante, uma falha deu achado (`chosen`) e outra aguentou
 //   (`rejected`). Fraco: "aguentou" não prova que a rota é segura (C1, seção 4).
 //
 // Só entra registro com o controle verde (0001): o inválido nunca vira exemplo.
@@ -16,12 +16,16 @@ import type { CodeSlice, DatasetRecord } from './dataset';
 
 export interface DpoPair {
   id: string;
-  kind: 'correção' | 'diagnóstico';
+  kind: 'correcao' | 'diagnostico';
   prompt: string;
   chosen: string;
   rejected: string;
   provenance: {
     family: string;
+    /** Origem e licença do código (sem licença declarada, o campo não vem). */
+    repo?: string;
+    license?: string;
+    commits: { chosen?: string; rejected?: string };
     hypothesisId: string;
     routeId: string;
     /** Os registros do dataset de onde o par saiu (`DatasetRecord.id`). */
@@ -47,9 +51,18 @@ function finding(r: DatasetRecord): string {
   return `${r.hypothesis.failure} em ${r.hypothesis.target}${r.result.message ? `: ${r.result.message}` : ''}${r.result.severity ? ` (${r.result.severity})` : ''}`;
 }
 
-function route(r: DatasetRecord): string {
-  const ops = r.route.operations.map((o) => `${o.order}. ${o.kind} ${o.target} (${o.via}${o.operation ? ` ${o.operation}` : ''}${o.timeout ? `, timeout: ${o.timeout}` : ''}) em ${o.in}, ${o.at}`);
-  return `Rota ${r.route.id} (${r.route.at}), cadeia: ${r.route.handlers.join(' → ')}\nOperações em ordem:\n${ops.join('\n')}`;
+/** O template do `prompt` de correção, como a equipe de treino especificou. */
+const correctionPrompt = (r: DatasetRecord) =>
+  `Analise o seguinte código de rota e corrija a vulnerabilidade identificada:\n[VULNERABILIDADE / ACHADO]\nRota ${r.route.id}: ${finding(r)}\n\n[CÓDIGO DA ROTA]\n${renderCode(r.code)}\n\nResponda apenas com o código corrigido.`;
+
+/** O template do `prompt` de diagnóstico, como a equipe de treino especificou. */
+const diagnosisPrompt = (r: DatasetRecord) =>
+  `Analise o seguinte código de rota e identifique potenciais vulnerabilidades de concorrência, latência ou estado:\n\n[CÓDIGO DA ROTA]\n${renderCode(r.code)}`;
+
+function origin(chosen: DatasetRecord, rejected: DatasetRecord) {
+  const { repo, license } = rejected.source;
+  const commits = { ...(chosen.source.commit && { chosen: chosen.source.commit }), ...(rejected.source.commit && { rejected: rejected.source.commit }) };
+  return { ...(repo && { repo }), ...(license && { license: license.value }), commits };
 }
 
 const pairId = (...parts: string[]) => createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 32);
@@ -69,13 +82,14 @@ export function dpoPairs(records: DatasetRecord[]): DpoPair[] {
       // o chosen nunca é um mutante: ele aguentou esta falha, mas tem o defeito que a mutação pôs
       for (const good of group.filter((r) => valid(r, 'aguentou') && r.source.variant !== bad.source.variant && !r.source.mutation)) {
         pairs.push({
-          id: pairId('correção', bad.id, good.id),
-          kind: 'correção',
-          prompt: `${route(bad)}\n\nO teste de caos achou: ${finding(bad)}.\nCorrija o código para que a rota aguente essa falha.\n\n${renderCode(bad.code)}`,
+          id: pairId('correcao', bad.id, good.id),
+          kind: 'correcao',
+          prompt: correctionPrompt(bad),
           chosen: renderCode(good.code),
           rejected: renderCode(bad.code),
           provenance: {
             family: datasetFamily(bad),
+            ...origin(good, bad),
             hypothesisId: bad.hypothesis.id,
             routeId: bad.route.id,
             chosenRecord: good.id,
@@ -97,13 +111,14 @@ export function dpoPairs(records: DatasetRecord[]): DpoPair[] {
     for (const hit of group.filter((r) => valid(r, 'achado'))) {
       for (const held of group.filter((r) => valid(r, 'aguentou'))) {
         pairs.push({
-          id: pairId('diagnóstico', hit.id, held.id),
-          kind: 'diagnóstico',
-          prompt: `${route(hit)}\n\nQual falha de produção quebra esta rota, e que invariante ela viola?\n\n${renderCode(hit.code)}`,
+          id: pairId('diagnostico', hit.id, held.id),
+          kind: 'diagnostico',
+          prompt: diagnosisPrompt(hit),
           chosen: finding(hit),
           rejected: `${held.hypothesis.failure} em ${held.hypothesis.target}`,
           provenance: {
             family: datasetFamily(hit),
+            ...origin(hit, held),
             hypothesisId: hit.hypothesis.id,
             routeId: hit.route.id,
             chosenRecord: hit.id,

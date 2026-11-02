@@ -14,6 +14,7 @@ import {
   routeCode,
   runChaosPipeline,
   runStatuses,
+  uniqueDatasetRecords,
   type DatasetInput,
   type DatasetSource,
   type TestResult,
@@ -182,6 +183,15 @@ describe('D1 — o registro do dataset (JSONL v1)', () => {
     expect(records.slice(0, 6).every((r) => r.source.variant === 'original' && r.result.durationMs === 99)).toBe(true);
     expect(records.map((r) => r.hypothesis.id).slice(0, 6)).toEqual([...records.map((r) => r.hypothesis.id).slice(0, 6)].sort());
     expect(datasetJsonl(mergeDatasetJsonl([again, fixed]).records)).toBe(datasetJsonl(records));
+  });
+
+  it('um registro por conteúdo: a linha com o id antigo não multiplica', async () => {
+    const records = buildDatasetRecords(await input(allPassed));
+    const old = records.map((r) => ({ ...r, id: `antigo-${r.id}`, source: { ...r.source, commit: 'velho' } }));
+    const unique = uniqueDatasetRecords([...old, ...records]);
+    expect(unique).toHaveLength(6);
+    expect(unique.map((r) => r.id).sort()).toEqual(records.map((r) => r.id).sort());
+    expect(unique.every((r) => r.source.commit === 'abc123')).toBe(true); // o último vence
   });
 
   it('o mutante leva a fonte do original, a variante e a mutação, com id próprio', async () => {

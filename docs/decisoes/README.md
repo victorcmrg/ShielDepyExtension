@@ -22,3 +22,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0016](0016-dados-para-treino.md) | Dados para treinar a IA de erros de produção: JSONL pela CLI, rótulo do motor, sem código de cliente | 2026-10-30 | valendo |
 | [0017](0017-lancamento-minimo.md) | Da empresa, só o necessário para distribuir o produto (degrau 1: site estático + marketplaces; degrau 2: portal no ar) | 2026-10-30 | valendo |
 | [0020](0020-dataset-direto-no-neon.md) | O dataset vai sozinho para o Neon da equipe de IA a cada `chaos`, só com a variável que só nós temos | 2026-10-31 | valendo |
+| [0021](0021-pares-dpo-no-neon.md) | Os pares do DPO vão para o Neon (`shieldepy_dpo_pairs`), no formato aprovado pela equipe de treino | 2026-11-02 | valendo |

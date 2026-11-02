@@ -248,6 +248,20 @@ export function asMutantRecord(record: DatasetRecord, base: DatasetSource, mutat
   return { ...record, source, id: datasetRecordId({ ...record, source }, engine) };
 }
 
+/**
+ * Um registro por conteúdo, com o id atual; o último vence. Linhas gravadas com o id antigo (que
+ * dependia do commit) têm o mesmo conteúdo das novas: sem isto, elas multiplicariam os pares do DPO.
+ */
+export function uniqueDatasetRecords(records: DatasetRecord[]): DatasetRecord[] {
+  const byId = new Map<string, DatasetRecord>();
+  for (const r of records) {
+    const engine = r.hypothesis.author.engine;
+    const id = datasetRecordId(r, engine);
+    byId.set(id, { ...r, id });
+  }
+  return [...byId.values()];
+}
+
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**

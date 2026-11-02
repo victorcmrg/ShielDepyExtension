@@ -14,8 +14,8 @@ npm run dataset:gerar -- --dir <pasta-de-trabalho>
 # os mutantes do código que aguenta (na mesma pasta; refaz o corpus)
 npm run dataset:mutantes -- --dir <pasta-de-trabalho>
 
-# os pares para o DPO, a partir do corpus
-npm run dataset:pares -- --in <pasta-de-trabalho>/dataset.jsonl [--sem-fracos]
+# os pares para o DPO: lê os registros do banco e grava os pares nele (com --in, lê de um arquivo)
+npm run dataset:pares -- [--in <arq.jsonl>] [--out <pares.jsonl>] [--sem-fracos]
 ```
 
 A pasta de trabalho fica fora do repositório. Lá ficam os clones, os mutantes, uma parte por projeto em `partes/`, o `dataset.jsonl` e o `pares.jsonl`.
@@ -40,7 +40,7 @@ export SHIELDEPY_DATASET_DATABASE_URL="postgres://usuario:senha@ep-xxx.neon.tech
 - A gravação é por **upsert no `id`**: rodar de novo o mesmo projeto no mesmo commit atualiza a linha, não duplica.
 - Se o banco estiver fora do ar, o caos só avisa e segue: o resultado dele não muda. O log mostra o host, nunca a URL (ela tem a senha).
 - **Só nas nossas máquinas.** O registro leva o código das rotas. Com a variável definida, tudo em que o caos rodar vai para o banco: não use num projeto que não seja público ou nosso. Sem a variável, nada sai da máquina.
-- Para ler: `SELECT record FROM shieldepy_dataset WHERE control = 'passed' AND outcome IN ('achado', 'aguentou')`. Os pares do DPO não vão para o banco; eles saem do `npm run dataset:pares` sobre o corpus.
+- Para ler: `SELECT record FROM shieldepy_dataset WHERE control = 'passed' AND outcome IN ('achado', 'aguentou')`. Os pares do DPO não saem a cada `chaos`, porque dependem do conjunto inteiro: rode o `npm run dataset:pares`, que grava em `shieldepy_dpo_pairs`.
 
 ## Um registro
 
@@ -86,15 +86,15 @@ A partir do código que aguenta (o `checkout-express-fixed` e os reais preparado
 
 Os passos (reserva, cobrança, estorno) são reconhecidos pelo nome do método chamado. Um mutante que "aguentou" continua no corpus com esse rótulo, porque nem toda mutação quebra um teste: tirar o timeout do estorno não quebra nenhum, já que nenhum teste deixa o estorno lento.
 
-## Os pares (formato provisório)
+## Os pares (formato aprovado)
 
-Uma linha por par, `{ id, kind, prompt, chosen, rejected, provenance }`, com o texto em pt-BR:
+Ficam na tabela `shieldepy_dpo_pairs` ([0021](decisoes/0021-pares-dpo-no-neon.md)): `id`, `kind`, `prompt`, `chosen`, `rejected`, `provenance` (`jsonb`), `created_at` e `updated_at`. Um registro inválido nunca vira par.
 
-- **`correção`:** o `prompt` é a rota, as operações em ordem, o achado e o código vulnerável; o `chosen` é o código da versão que aguentou; o `rejected`, o código que ainda dá achado. O `chosen` nunca é um mutante: ele aguentou aquela falha, mas tem o defeito que a mutação pôs.
-- **`diagnóstico`** (`provenance.weak: true`): o `prompt` é a rota e o código; o `chosen` é a falha que deu achado, com a invariante; o `rejected`, uma falha que aguentou na mesma rota. É fraco porque "aguentou" não prova que a rota é segura.
-- `provenance` traz a família, a hipótese, a rota, os ids dos dois registros e as variantes.
+- **`correcao`:** o `prompt` é a instrução de correção, o achado (`[VULNERABILIDADE / ACHADO]`) e o recorte da rota (`[CÓDIGO DA ROTA]`), terminando em "Responda apenas com o código corrigido."; o `chosen` é o código da versão que aguentou; o `rejected`, o código que ainda dá achado. O `chosen` nunca é um mutante: ele aguentou aquela falha, mas tem o defeito que a mutação pôs.
+- **`diagnostico`** (`provenance.weak: true`): o `prompt` é a instrução de diagnóstico e o recorte da rota; o `chosen` é a falha que deu achado, com a invariante; o `rejected`, uma falha que aguentou na mesma rota. É fraco porque "aguentou" não prova que a rota é segura.
+- `provenance` traz a família, o repositório, a licença (quando declarada), os commits, a hipótese, a rota, os ids dos dois registros e as variantes.
 
-Esse formato é um ponto de partida. Se o de vocês for outro, só o `dpoPairs` (`packages/agent/src/chaos/dataset-pairs.ts`) muda; o dataset continua o mesmo.
+O código fica em `packages/agent/src/chaos/dataset-pairs.ts`. Os pares saem de um registro por conteúdo: linhas repetidas em `shieldepy_dataset` não os multiplicam.
 
 ## O que há hoje (2026-10-31)
 

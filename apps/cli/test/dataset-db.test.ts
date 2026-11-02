@@ -6,9 +6,9 @@ import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry } from '@shieldepy/extractors';
-import type { DatasetRecord } from '@shieldepy/agent/chaos';
+import { dpoPairs, type DatasetRecord } from '@shieldepy/agent/chaos';
 import { runChaosCommand, type ChaosTestRunner } from '../src/chaos';
-import { DATASET_DB_ENV, DATASET_TABLE, dbHost, exportChaosDataset, publishDataset, type SqlConnect } from '../src/dataset';
+import { DATASET_DB_ENV, DATASET_TABLE, dbHost, DPO_TABLE, exportChaosDataset, publishDataset, publishDpoPairs, readDatasetRecords, type SqlConnect } from '../src/dataset';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const example = (rel: string) => path.join(ROOT, 'examples', rel);
@@ -88,6 +88,24 @@ describe('0020 — o dataset vai para o banco do treino', () => {
     sql.length = 0;
     await publishDataset(many.slice(0, 1), 'x', counting);
     expect(sql).toEqual(['SELECT', 'INSERT']);
+  }, 60_000);
+
+  it('0021: os pares saem dos registros do banco e vão para shieldepy_dpo_pairs, sem duplicar', async () => {
+    const records = await checkoutRecords();
+    const { db, connect } = pglite();
+    await publishDataset(records, 'x', connect);
+    const read = await readDatasetRecords('x', connect);
+    expect(read).toHaveLength(6);
+    const pairs = dpoPairs(read);
+    expect(pairs).toHaveLength(5); // a corrida deu achado; as outras 5 falhas aguentaram
+    expect(await publishDpoPairs(pairs, 'x', connect)).toBe(5);
+    expect(await publishDpoPairs(pairs, 'x', connect)).toBe(5);
+    const rows = (await db.query<{ kind: string; prompt: string; chosen: string; rejected: string; weak: boolean }>(
+      `SELECT kind, prompt, chosen, rejected, (provenance->>'weak')::boolean AS weak FROM ${DPO_TABLE}`
+    )).rows;
+    expect(rows).toHaveLength(5);
+    expect(rows.every((r) => r.kind === 'diagnostico' && r.weak && r.prompt.startsWith('Analise o seguinte código de rota'))).toBe(true);
+    expect(rows[0]!.chosen).toBe('race_condition em stock: stateCheck: stockNeverNegative (Crítico)');
   }, 60_000);
 
   it('um usuário que só escreve na tabela (sem CREATE no schema) consegue enviar', async () => {
