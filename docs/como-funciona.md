@@ -168,6 +168,9 @@ Tudo é decidido pelo **pacote para o qual a chamada resolveu** no grafo, nunca 
   `examples/checkout-fastify` (e o `-fixed`), o mesmo checkout do Express.
 - **Banco:** `query` de `pg`, com o SQL classificado pelos tokens (verbo, tabela, `FOR UPDATE`,
   `BEGIN`); operações do Prisma (`prisma.order.create`).
+- **Cliente por parâmetro ([0030](decisoes/0030-parametro-recebe-o-pacote-de-quem-chama.md)):** o tipo
+  (`prisma: PrismaClient`, ou a união de tipos do mesmo pacote) ou, sem tipo, o que quem chama passa,
+  seguindo os repasses (`topology/params.ts`). Só o nome `prisma`, sem prova, sai `heuristic`.
 - **API externa:** `fetch` global (ou de `node-fetch`/`undici`) e `axios`, com o host da URL e o
   timeout em três estados (`yes`/`no`/`unknown`).
 - **Ordem:** handlers em ordem e, dentro de cada função, as chamadas na ordem em que terminam

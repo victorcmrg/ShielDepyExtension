@@ -9,6 +9,7 @@ import { keyOf } from '../interactions/graph';
 import { collisionKey, collisionRuleIds } from '../interactions/model';
 import { canonicalJson, relativeIds, type SystemGraph } from '../system-graph';
 import { ioOperationOf } from './io';
+import { paramValues } from './params';
 import { findExpressRoutes } from './routes';
 import type {
   IoOperation,
@@ -101,20 +102,14 @@ export function buildTopology(graph: CodeGraph, system: SystemGraph, root: strin
   const rel = relativeIds(root);
 
   // callSitesIn resolve o arquivo inteiro: uma vez por arquivo, agrupado por chamador
-  const sitesByFile = new Map<string, Map<string, CallSite[]>>();
-  const callsOf = (symbolId: string, file: string): CallSite[] => {
-    let byCaller = sitesByFile.get(file);
-    if (!byCaller) {
-      byCaller = new Map();
-      for (const site of graph.callSitesIn(file)) {
-        const list = byCaller.get(site.caller);
-        if (list) list.push(site);
-        else byCaller.set(site.caller, [site]);
-      }
-      sitesByFile.set(file, byCaller);
-    }
-    return byCaller.get(symbolId) ?? [];
-  };
+  const byCaller = new Map<string, CallSite[]>();
+  const allSites = graph.files().flatMap((file) => graph.callSitesIn(file));
+  for (const site of allSites) {
+    const list = byCaller.get(site.caller);
+    if (list) list.push(site);
+    else byCaller.set(site.caller, [site]);
+  }
+  const paramValue = paramValues(graph, allSites);
   const fileOfCallable = (id: string): string | undefined => {
     const attrs = graph.nodeAttributes(id);
     return attrs && isSymbolNode(attrs) && (attrs.kind === 'function' || attrs.kind === 'method') ? attrs.file : undefined;
@@ -136,14 +131,17 @@ export function buildTopology(graph: CodeGraph, system: SystemGraph, root: strin
       }
       result.visited.add(symbol);
       const path = [...through, symbol];
-      for (const site of callsOf(symbol, file)) {
+      for (const site of byCaller.get(symbol) ?? []) {
         // o callback que virou símbolo (`cache.get('k', async () => ...)`) continua fazendo parte de quem o
         // escreveu, e antes da própria chamada: é a mesma ordem de quando as chamadas dele eram do chamador.
         // O handler de uma rota registrada ali, não: ele roda na requisição daquela rota
         for (const callback of callbacksOf(site)) if (!routeHandlers.has(callback)) visit(callback, path, heuristic);
-        const op = ioOperationOf(site, file);
+        // o receptor é um parâmetro: quem diz o pacote é o valor que chega a ele
+        const value = paramValue(site);
+        const viaParam = value && ioOperationOf({ ...site, outcome: 'external', package: value.package, targets: [] }, file);
+        const op = viaParam ?? ioOperationOf(site, file);
         if (op) {
-          result.operations.push({ ...op, confidence: heuristic ? 'heuristic' : 'proven', through: path });
+          result.operations.push({ ...op, confidence: heuristic || (viaParam && value!.heuristic) ? 'heuristic' : 'proven', through: path });
           continue;
         }
         if (site.outcome !== 'resolved' && site.outcome !== 'heuristic') continue;

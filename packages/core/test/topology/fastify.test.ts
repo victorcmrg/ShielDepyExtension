@@ -241,6 +241,123 @@ describe('Rotas em função de plugin: as operações do callback e do serviço'
     expect(moved.routes.map((r) => r.handlers[0]!.symbols)).toEqual(direct.routes.map((r) => r.handlers[0]!.symbols));
   });
 
+  /** Uma rota que chama `svc` (do arquivo `svc.ts`) passando o cliente que `call` escolher. */
+  const routeCalling = (imports: string, setup: string, call: string) =>
+    indexFile(
+      graph,
+      fx,
+      'routes/caller.ts',
+      [
+        "import type { FastifyInstance } from 'fastify';",
+        "import { PrismaClient } from '@prisma/client';",
+        "import { svc } from '../svc';",
+        imports,
+        setup,
+        "export async function routes(app: FastifyInstance) { app.post('/x', async () => " + call + '); }',
+      ].join('\n')
+    );
+
+  it('parâmetro em união de tipos do mesmo pacote, ou com null: é o cliente', () => {
+    indexFile(
+      graph,
+      fx,
+      'svc.ts',
+      [
+        "import type { Prisma, PrismaClient } from '@prisma/client';",
+        'export async function svc(a: PrismaClient | Prisma.TransactionClient, b: PrismaClient | null, c: PrismaClient | Map<string, string>) {',
+        '  await a.one.create({ data: {} });',
+        '  await b.two.create({ data: {} });',
+        '  await c.three.create({ data: {} });',
+        '}',
+      ].join('\n')
+    );
+    routeCalling('', 'const client = new PrismaClient();\ndeclare const other: unknown;', 'svc(client, client, other)');
+    // o `c` pode não ser o cliente: a união cruza com um tipo que não é do pacote, e quem chama não prova
+    expect(ops('POST /x')).toEqual(['db_write one proven', 'db_write two proven']);
+  });
+
+  it('parâmetro sem tipo que recebe o cliente de quem chama: provado, inclusive repassado e capturado por callback', () => {
+    indexFile(graph, fx, 'lib/db.ts', "import { PrismaClient } from '@prisma/client';\nexport const client = new PrismaClient();\n");
+    indexFile(
+      graph,
+      fx,
+      'svc.ts',
+      [
+        'export async function svc(db) {',
+        '  await db.first.create({ data: {} });',
+        '  await deeper(db);',
+        '}',
+        'async function deeper(handle) { await handle.second.findMany(); }',
+      ].join('\n')
+    );
+    routeCalling("import { client } from '../lib/db';", '', 'svc(client)');
+    expect(ops('POST /x')).toEqual(['db_write first proven', 'db_read second proven']);
+
+    indexFile(
+      graph,
+      fx,
+      'routes/plugin.ts',
+      [
+        "import type { FastifyInstance } from 'fastify';",
+        'export async function ingestRoutes(app: FastifyInstance, db) {',
+        "  app.post('/y', async () => db.third.create({ data: {} }));",
+        '}',
+      ].join('\n')
+    );
+    indexFile(
+      graph,
+      fx,
+      'app.ts',
+      [
+        "import Fastify from 'fastify';",
+        "import { client } from './lib/db';",
+        "import { ingestRoutes } from './routes/plugin';",
+        'export async function build() { const app = Fastify(); await ingestRoutes(app, client); return app; }',
+      ].join('\n')
+    );
+    expect(ops('POST /y')).toEqual(['db_write third proven']);
+  });
+
+  it('o parâmetro de um callback sem símbolo não é o da função de fora, mesmo no mesmo índice', () => {
+    indexFile(
+      graph,
+      fx,
+      'svc.ts',
+      [
+        'export async function svc(db, items) {',
+        '  await Promise.all(items.map((item) => item.create({ data: {} })));',
+        '  await Promise.all(items.map((item) => other(item)));',
+        '}',
+        'async function other(thing) { await thing.save.create({ data: {} }); }',
+      ].join('\n')
+    );
+    routeCalling('', 'const client = new PrismaClient();\ndeclare const list: unknown[];', 'svc(client, list)');
+    expect(ops('POST /x')).toEqual([]);
+  });
+
+  it('nem todo chamador prova o cliente: sai `heuristic`; dois pacotes diferentes: não se escolhe', () => {
+    indexFile(graph, fx, 'svc.ts', 'export async function svc(db) { await db.order.create({ data: {} }); }\n');
+    routeCalling('', 'const client = new PrismaClient();\ndeclare const other: unknown;\nexport const again = () => svc(other);', 'svc(client)');
+    expect(ops('POST /x')).toEqual(['db_write order heuristic']);
+  });
+
+  it('só o nome `prisma`, sem tipo nem chamador que prove: sai `heuristic`; outro nome não conta', () => {
+    indexFile(graph, fx, 'svc.ts', 'export async function svc(prisma, other) {\n  await prisma.order.create({ data: {} });\n  await other.item.create({ data: {} });\n}\n');
+    routeCalling('', 'declare const a: unknown;', 'svc(a, a)');
+    expect(ops('POST /x')).toEqual(['db_write order heuristic']);
+  });
+
+  it('o nome `prisma` num projeto sem o pacote não é o Prisma', () => {
+    indexFile(graph, fx, 'svc.ts', 'export async function svc(prisma) { await prisma.order.create({ data: {} }); }\n');
+    indexFile(
+      graph,
+      fx,
+      'routes/caller.ts',
+      ["import type { FastifyInstance } from 'fastify';", "import { svc } from '../svc';", 'declare const a: unknown;', "export async function routes(app: FastifyInstance) { app.post('/x', async () => svc(a)); }"].join('\n')
+    );
+    expect(ops('POST /x')).toEqual([]);
+  });
+
   it('com o handler por nome, o `prisma` tipado por parâmetro já chegava às operações', () => {
     service();
     indexFile(

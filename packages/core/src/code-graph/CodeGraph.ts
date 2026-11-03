@@ -1004,6 +1004,10 @@ export class CodeGraph {
     if (call.ctor && call.receiver && 'type' in call.receiver) return this.resolveConstructor(fileId, call.receiver.type, ctx);
 
     if (call.receiver) {
+      if ('type' in call.receiver && call.receiver.union) {
+        const pkg = this.samePackage(fileId, call.receiver.union, ctx);
+        return pkg ? this.external(pkg) : NATIVE;
+      }
       const byType =
         'call' in call.receiver
           ? this.resolveReturnMember(fileId, call.receiver.call, call.receiver.rest, call.name, ctx, depth)
@@ -1119,6 +1123,7 @@ export class CodeGraph {
       ...(loop && { loop }),
       ...(model && { model }),
       ...(call.receiverParam !== undefined && { receiverParam: call.receiverParam }),
+      ...(call.receiverInCallback && { receiverInCallback: true }),
       ...(call.decorates && { decorates: call.decorates }),
       ...(receiverCall && { receiverCall }),
       ...(call.conditional && { conditional: true as const }),
@@ -1178,12 +1183,30 @@ export class CodeGraph {
     }
     if (arg.kind !== 'name') return arg;
     const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx, arg.owner);
+    const valuePackage = arg.chain.length === 1 ? this.packageOfValue(fileId, arg.types, origin, ctx) : undefined;
     return {
       kind: 'name',
       chain: arg.chain,
       ...this.publicResolution(this.resolveCall(fileId, arg.ref, ctx)),
       ...(origin && { origin }),
+      ...(valuePackage && { valuePackage }),
+      ...(arg.param !== undefined && { param: arg.param }),
     };
+  }
+
+  /** O pacote de um valor: pelo tipo da variável local, ou pelo que produz o valor no topo de onde ele é declarado. */
+  private packageOfValue(fileId: string, types: TypeRef[] | undefined, origin: ValueOrigin | undefined, ctx: ResolutionContext): string | undefined {
+    if (types) return this.samePackage(fileId, types, ctx);
+    if (!origin || origin.local) return undefined;
+    const type = this.moduleInfo.get(origin.file)?.valueTypes.get(origin.name);
+    if (type) return this.resolveType(origin.file, type, ctx).external;
+    return this.externalValue(origin.file, origin.name, ctx, 0)?.package;
+  }
+
+  /** O pacote de todos os tipos, se é um só: `PrismaClient | Prisma.TransactionClient`. */
+  private samePackage(fileId: string, types: TypeRef[], ctx: ResolutionContext): string | undefined {
+    const packages = new Set(types.map((t) => this.resolveType(fileId, t, ctx).external));
+    return packages.size === 1 ? [...packages][0] : undefined;
   }
 
   /**

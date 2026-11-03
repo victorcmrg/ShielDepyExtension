@@ -56,7 +56,7 @@ function valueKey(origin: ValueOrigin | undefined, chain: string[] | undefined, 
 }
 
 /** A função que declara o receptor: quem chama essa função é quem dá o valor do parâmetro. */
-const declaringFunction = (site: CallSite) => site.receiverOrigin?.owner ?? site.caller;
+export const declaringFunction = (site: CallSite) => site.receiverOrigin?.owner ?? site.caller;
 
 /** `/api` + `/orders` → `/api/orders`; `/api` + `/` → `/api`. */
 export function joinPath(prefix: string, path: string): string {

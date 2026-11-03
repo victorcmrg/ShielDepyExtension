@@ -32,3 +32,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0027](0027-corpo-de-exemplo-sem-pendencia.md) | O corpo de exemplo do `--init` sai dos campos lidos de `req.body`, sem a marca de pendência (o controle valida) | 2026-10-31 | valendo |
 | [0028](0028-demo-so-o-motor-e-nest-fora.md) | A demo do TCC é o motor, com a empresa só simulada (sem compra nem login); o NestJS sai do critério de pronto do MVP | 2026-11-02 | valendo |
 | [0029](0029-callback-de-registro-vira-simbolo.md) | Dentro de função, só o callback de registro de rota vira símbolo; a topologia desce nos outros callbacks de um chamador | 2026-11-03 | valendo |
+| [0030](0030-parametro-recebe-o-pacote-de-quem-chama.md) | Um parâmetro sem tipo vale o que quem chama passa a ele; provado só se toda chamada passa; só pelo nome `prisma` sai `heuristic` | 2026-11-03 | valendo |

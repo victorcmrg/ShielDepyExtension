@@ -169,7 +169,18 @@ export type CallArg =
   /** Callback inline; `symbolId` quando ele virou símbolo. */
   | { kind: 'function'; symbolId?: string }
   /** Identificador ou cadeia (`router`, `ctrl.create`), resolvido como referência. */
-  | { kind: 'name'; chain: string[]; outcome: CallOutcome; targets: string[]; package?: string; origin?: ValueOrigin }
+  | {
+      kind: 'name';
+      chain: string[];
+      outcome: CallOutcome;
+      targets: string[];
+      package?: string;
+      origin?: ValueOrigin;
+      /** O nome é um VALOR desse pacote (`client` com `new PrismaClient()`, ou `db: PrismaClient`), importado ou local. */
+      valuePackage?: string;
+      /** O nome é o parâmetro de índice n da função que o declara: o valor vem de quem chama essa função. */
+      param?: number;
+    }
   /**
    * Resultado de outra chamada (`express.json()`, `auth('admin')`) — ela própria aparece como chamada separada.
    * `require('./routes/orders')` traz `origin`: onde o `module.exports` daquele arquivo é declarado.
@@ -214,6 +225,8 @@ export interface CallSite {
    * o valor vem de quem chama a função (`require('./routes/auth')(app)`). As rotas usam para montar.
    */
   receiverParam?: number;
+  /** O `receiverParam` é de um callback sem símbolo dentro do chamador (`items.map((item) => item.save())`), não do chamador. */
+  receiverInCallback?: boolean;
   /** A chamada é um decorator (`@Get('/:id')`, `@Controller('cats')`) do símbolo com este id (o método ou a classe). */
   decorates?: string;
   /**

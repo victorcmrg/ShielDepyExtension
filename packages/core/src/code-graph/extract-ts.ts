@@ -61,7 +61,8 @@ export interface SymbolInfo {
  * percorrer até o método (`this.deps.repo.save()` com `deps: Deps` → type Deps, rest ['repo']).
  */
 export type Receiver =
-  | { type: TypeRef; rest: string[] }
+  /** `union`: a anotação é uma união (`a: A | ns.B`), e `type` é o primeiro membro. Só vale se todos forem do mesmo pacote. */
+  | { type: TypeRef; rest: string[]; union?: TypeRef[] }
   /** O receptor é o RESULTADO de outra chamada: `res.status(400).json()`, `const r = Router(); r.post()`. */
   | { call: CallDesc; rest: string[] };
 
@@ -107,6 +108,8 @@ export interface RawCall {
    * `module.exports = function (app) { app.post(...) }` → 0. O valor vem de quem chama a função.
    */
   receiverParam?: number;
+  /** O `receiverParam` é de um callback sem símbolo dentro do chamador (`items.map((item) => item.save())`), não do chamador. */
+  receiverInCallback?: boolean;
   /** A chamada é um decorator (`@Get('/:id')`, `@Controller('cats')`) da classe ou do método com este id. */
   decorates?: string;
   /** C#/Java: `new X()` — o alvo é o construtor de `X` (ou a própria classe, sem construtor declarado). O tipo vem em `receiver`. */
@@ -143,7 +146,17 @@ export type Scope = 'module' | 'local';
 /** Argumento como sai do parse; o `name` o CodeGraph resolve depois (vira `CallArg`). */
 export type RawArg =
   | Exclude<CallArg, { kind: 'name' | 'call' | 'array' | 'object' }>
-  | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope; owner?: string }
+  | {
+      kind: 'name';
+      chain: string[];
+      ref: CallDesc;
+      scope?: Scope;
+      owner?: string;
+      /** Variável local com tipo conhecido, ou os membros de uma união (a chamada `ref` não resolve um valor). */
+      types?: TypeRef[];
+      /** A raiz é o parâmetro de índice n da função que a declara. */
+      param?: number;
+    }
   | { kind: 'call'; callee: string[]; spec?: string; functions?: string[] }
   | { kind: 'array'; items: RawArg[] }
   | (Omit<Extract<CallArg, { kind: 'object' }>, 'values'> & { values?: Record<string, RawArg> });
@@ -285,12 +298,26 @@ const OPAQUE_VALUE_TYPES = new Set(['array', 'string', 'template_string', 'numbe
 const LOOSE_TYPES = new Set(['any', 'unknown']);
 
 /** Tipo anotado que não é nominal (`X[]`, `string`, união) → opaco; `any`/`unknown` → sem tipo (null). */
-function annotatedType(annotation: SyntaxNode | null | undefined): TypeRef | null | 'opaque' {
+function annotatedType(annotation: SyntaxNode | null | undefined): TypeRef | null | 'opaque' | { union: TypeRef[] } {
   if (!annotation) return null;
   const ref = typeRef(annotation);
   if (ref) return ref;
   const inner = annotation.type === 'type_annotation' ? annotation.namedChildren[0] : annotation;
+  if (inner?.type === 'union_type') return unionRefs(inner) ?? 'opaque';
   return inner?.type === 'predefined_type' && LOOSE_TYPES.has(inner.text) ? null : 'opaque';
+}
+
+/** `A | null` → A; `A | ns.B` → os dois, e o grafo diz se são do mesmo pacote; com membro que não é nome (`A | string`), nada. */
+function unionRefs(union: SyntaxNode): TypeRef | { union: TypeRef[] } | undefined {
+  const members = (n: SyntaxNode): SyntaxNode[] => n.namedChildren.flatMap((c) => (c.type === 'union_type' ? members(c) : [c]));
+  const refs: TypeRef[] = [];
+  for (const m of members(union)) {
+    if (m.text === 'null' || m.text === 'undefined') continue;
+    const ref = typeRef(m);
+    if (!ref) return undefined;
+    refs.push(ref);
+  }
+  return refs.length === 1 ? refs[0] : refs.length > 1 ? { union: refs } : undefined;
 }
 
 /**
@@ -316,7 +343,7 @@ function unwrap(node: SyntaxNode | null | undefined): SyntaxNode | null | undefi
   return n;
 }
 
-type LocalType = TypeRef | null | 'opaque' | { call: CallDesc } | undefined;
+type LocalType = TypeRef | null | 'opaque' | { call: CallDesc } | { union: TypeRef[] } | undefined;
 
 /**
  * Tipo de uma variável/parâmetro visível em `from`, procurando nos escopos de dentro pra fora.
@@ -377,6 +404,7 @@ function receiverOf(node: SyntaxNode, chain: string[]): Pick<CallDesc, 'receiver
   const t = localType(node, root!);
   if (t === null) return { shadowed: true };
   if (t === 'opaque') return { shadowed: true, opaque: true };
+  if (t && 'union' in t) return { receiver: { type: t.union[0]!, rest, union: t.union } };
   if (t && !Array.isArray(t)) return { receiver: { call: t.call, rest } };
   return t ? { receiver: { type: t, rest } } : {};
 }
@@ -710,6 +738,17 @@ function capturedBy(from: SyntaxNode, name: string, enclosing: Enclosing | undef
   return owner !== enclosing(from.startIndex) ? owner : undefined;
 }
 
+/**
+ * `name` é parâmetro de uma função que não é símbolo (o callback de `items.map((item) => ...)`)? Aí o índice
+ * dele não é o da função do chamador, e o valor não vem de quem chama essa função.
+ */
+function paramOfCallback(from: SyntaxNode, name: string, symbolAt: Map<number, SymbolInfo>): boolean {
+  const fn = declaringNode(from, name);
+  if (!fn || !FUNCTION_SCOPE_TYPES.has(fn.type)) return false;
+  // o símbolo começa na função ou em quem a guarda (`const f = () => {}`, `{ f: () => {} }`)
+  return !symbolAt.has(fn.startIndex) && !(fn.parent && symbolAt.has(fn.parent.startIndex));
+}
+
 /** O que dá pra saber de um argumento sem executar nada. */
 function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>, enclosing?: Enclosing): RawArg {
   const text = describeText(arg);
@@ -769,7 +808,10 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>, enclosi
       ? { name: chain[0]!, ...(localType(arg, chain[0]!) !== undefined ? { shadowed: true } : {}) }
       : { name: chain.at(-1)!, object: chain.slice(0, -1), ...receiverOf(arg, chain.slice(0, -1)) };
   const owner = scope === 'local' ? capturedBy(arg, chain[0]!, enclosing) : undefined;
-  return { kind: 'name', chain, ref, ...(scope && { scope }), ...(owner && { owner }) };
+  const local = scope === 'local' && chain.length === 1 ? localType(arg, chain[0]!) : undefined;
+  const types = Array.isArray(local) ? [local] : local && local !== 'opaque' && 'union' in local ? local.union : undefined;
+  const param = scope === 'local' && chain.length === 1 && !paramOfCallback(arg, chain[0]!, symbolAt) ? paramIndexOf(arg, chain[0]!) : undefined;
+  return { kind: 'name', chain, ref, ...(scope && { scope }), ...(owner && { owner }), ...(types && { types }), ...(param !== undefined && { param }) };
 }
 
 /** Chamadas que registram métodos num schema do Mongoose, e onde eles ficam. */
@@ -1134,6 +1176,7 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
       const loop = loopOf(node);
       const receiverParam = desc.object && scope === 'local' ? paramIndexOf(node, root) : undefined;
       const owner = desc.object && scope === 'local' ? capturedBy(node, root, enclosing) : undefined;
+      const receiverInCallback = receiverParam !== undefined && paramOfCallback(node, root, symbolAt);
       // `@Get('/:id')` no método / `@Controller('cats')` na classe (antes ou depois do `export`)
       const holder = node.parent?.type === 'decorator' ? node.parent.parent : undefined;
       let decorated = holder?.type === 'export_statement' ? holder.childForFieldName('declaration') : holder;
@@ -1149,6 +1192,7 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
         ...(chainRoot && { chainRoot }),
         ...(loop && { loop }),
         ...(receiverParam !== undefined && { receiverParam }),
+        ...(receiverInCallback && { receiverInCallback }),
         ...(owner && { owner }),
         ...(decorates && { decorates }),
         ...(isConditional(node) && { conditional: true as const }),
