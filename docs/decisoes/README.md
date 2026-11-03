@@ -25,6 +25,7 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0019](0019-banco-de-teste-prisma-pelo-socket.md) | No Prisma, o banco de teste do caos é o PGlite pela rede (`pglite-socket`), com uma conexão só | 2026-10-25 (portada em 2026-10-31) | valendo |
 | [0020](0020-dataset-direto-no-neon.md) | O dataset vai sozinho para o Neon da equipe de IA a cada `chaos`, só com a variável que só nós temos | 2026-10-31 | valendo |
 | [0021](0021-pares-dpo-no-neon.md) | Os pares do DPO vão para o Neon (`shieldepy_dpo_pairs`), no formato aprovado pela equipe de treino | 2026-11-02 | valendo |
+| [0022](0022-corpus-fechado-antes-do-envio.md) | O corpus fecha do nosso lado antes de ir para a equipe de IA, num envio só no fim; as chaves não serão trocadas | 2026-11-03 | valendo |
 | [0025](0025-arnes-de-teste-embutido.md) | O arnês de teste do caos (Vitest, supertest, MSW, PGlite) vem da CLI, emprestado por links, sem instalar nada no projeto | 2026-10-31 | valendo |
 | [0026](0026-fastify-createapp-pelo-handler.md) | No Fastify, o `createApp` do contrato devolve um handler que espera o `ready()` (`app.routing`); os templates não mudam | 2026-10-31 | valendo |
 | [0027](0027-corpo-de-exemplo-sem-pendencia.md) | O corpo de exemplo do `--init` sai dos campos lidos de `req.body`, sem a marca de pendência (o controle valida) | 2026-10-31 | valendo |

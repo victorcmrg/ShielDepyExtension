@@ -112,7 +112,7 @@ O código fica em `packages/agent/src/chaos/dataset-pairs.ts`. Os pares saem de 
 | realworld (`gothinkster/node-express-realworld-example-app`) | original | MIT | 4 | 1 | 0 |
 | express (`prisma/prisma-examples`, pasta `orm/express`; no plano, prisma-express) | original | MIT | 0 | 1 | 0 |
 
-São **74 registros** (~13 KB cada) e **38 pares** (12 de correção, 26 de diagnóstico). No Neon, ainda estão os 35 registros e os 19 pares de 2026-10-31: os novos só vão com a URL nova do banco.
+São **74 registros** (~13 KB cada) e **38 pares** (12 de correção, 26 de diagnóstico). No Neon, ainda estão os 35 registros e os 19 pares de 2026-10-31: os novos vão num envio só, quando o corpus fechar.
 
 **Os projetos reais não dão pares.** Os 8 registros deles são rótulos de código real e têm licença declarada, mas falta o outro lado: não existe versão corrigida, os mutantes não acham ponto de mutação neles (os operadores reconhecem `fetch`/`axios`, SQL e nomes como reserva e estorno, não Prisma), e o achado e o "aguentou" caem em rotas diferentes.
 
