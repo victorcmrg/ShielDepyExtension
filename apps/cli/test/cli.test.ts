@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -8,7 +9,7 @@ import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry } from '@shieldepy/extractors';
 import { ChaosRunError, vitestEntry, type TestResult } from '../src/chaos-run';
 import { runChaosCommand, type ChaosTestRunner } from '../src/chaos';
-import { findLicense, publicRemote, variantOf } from '../src/dataset';
+import { datasetSource, findLicense, publicRemote, variantOf } from '../src/dataset';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const example = (rel: string) => path.join(ROOT, 'examples', rel);
@@ -476,6 +477,29 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
     expect(r.err).toContain('portão: 2 achado(s) de caos.');
   });
 
+  it('--only-contract: só as rotas com requisição no contrato; as outras nem geram teste', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-only-'));
+    try {
+      fs.cpSync(dir, tmp, { recursive: true, filter: (src) => !['node_modules', '.shieldepy'].includes(path.basename(src)) });
+      const config = path.join(tmp, 'shieldepy.chaos.config.ts');
+      const text = fs.readFileSync(config, 'utf8');
+      const line = "'POST /checkout': { path: '/checkout', body: { productId: 'p-1', quantity: 1, priceCents: 1990, cardToken: 'tok_visa' } },";
+      expect(text).toContain(line);
+      fs.writeFileSync(config, text.replace(line, ''));
+      const asked: string[] = [];
+      const err: string[] = [];
+      const runner: ChaosTestRunner = async (root, ids) => {
+        asked.push(...ids);
+        return results({})(root, ids);
+      };
+      await runChaosCommand({ target: tmp, json: false, noRun: false, offline: true, onlyContract: true }, { out: () => {}, err: (l) => err.push(l), env: {} }, registry, runner);
+      expect(asked).toEqual([]);
+      expect(err.join('\n')).toContain('escopo: 1 de 2 rota(s) sensível(is), as que têm requisição no contrato');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('V2a: grava .shieldepy/chaos-results.json sempre, e --html põe o resultado por cima do mapa', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-v2a-'));
     const html = path.join(tmp, 'mapa.html');
@@ -688,6 +712,18 @@ describe('CLI chaos --dataset (D2)', () => {
     expect(publicRemote('git@github.com:dono/repo.git')).toBe('git@github.com:dono/repo.git');
     expect(variantOf('checkout-express-fixed')).toBe('fixed');
     expect(variantOf('checkout-express')).toBe('original');
+    // num monorepo, a pasta é a mesma nos dois lados: o `-fixed` está no nome do clone
+    const clones = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-clone-'));
+    try {
+      for (const name of ['projeto', 'projeto-fixed']) {
+        fs.mkdirSync(path.join(clones, name, 'apps', 'api'), { recursive: true });
+        execFileSync('git', ['init', '-q'], { cwd: path.join(clones, name) });
+      }
+      expect(datasetSource(path.join(clones, 'projeto', 'apps', 'api'))).toMatchObject({ project: 'api', variant: 'original', path: 'apps/api' });
+      expect(datasetSource(path.join(clones, 'projeto-fixed', 'apps', 'api'))).toMatchObject({ project: 'api', variant: 'fixed', path: 'apps/api' });
+    } finally {
+      fs.rmSync(clones, { recursive: true, force: true });
+    }
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-lic-'));
     try {
       const a = path.join(tmp, 'a');

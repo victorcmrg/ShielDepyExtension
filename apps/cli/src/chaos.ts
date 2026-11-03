@@ -93,6 +93,13 @@ export interface ChaosArgs {
   harnessDir?: string | null;
   /** Acrescenta a este JSONL um registro por hipótese que rodou (D2, dados para treino). */
   dataset?: string;
+  /** Só as rotas que têm requisição em `requests` no contrato. */
+  onlyContract?: boolean;
+}
+
+/** A superfície só com estas rotas (o resto não vai para a IA nem para os testes). */
+function onlyRoutes(surface: AttackSurface, keep: Set<string>): AttackSurface {
+  return { ...surface, routes: surface.routes.filter((r) => keep.has(r.id)), collisions: surface.collisions.filter((c) => c.routes.some((id) => keep.has(id))) };
 }
 
 /** Roda os testes gerados (o padrão é o Vitest do projeto; os testes da CLI injetam outro). */
@@ -233,9 +240,13 @@ export async function runChaosCommand(
       io.err(`erro: ${err.message}`);
       return 2;
     }
-    const keep = new Set(scope.tested);
-    surface = { ...fullSurface, routes: fullSurface.routes.filter((r) => keep.has(r.id)), collisions: fullSurface.collisions.filter((c) => c.routes.some((id) => keep.has(id))) };
+    surface = onlyRoutes(surface, new Set(scope.tested));
     io.err(scope.all ? `escopo: todas as rotas (${scope.all})` : `escopo: ${scope.tested.length} de ${fullSurface.routes.length} rota(s) sensível(is) tocada(s) desde ${args.base}`);
+  }
+  // --only-contract: num projeto grande, o contrato cobre só algumas rotas; as outras dariam "inválido" (o controle falha)
+  if (args.onlyContract) {
+    surface = onlyRoutes(surface, new Set(config.requests));
+    io.err(`escopo: ${surface.routes.length} de ${fullSurface.routes.length} rota(s) sensível(is), as que têm requisição no contrato`);
   }
 
   const provider = args.offline ? undefined : providerFromEnv(io.env, io.err);

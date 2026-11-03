@@ -11,7 +11,7 @@
 // o contrato usa (SETUP) sem gravar no package.json deles; o que faltar do arnês vem da CLI (MVP2).
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,53 @@ interface Target {
   id: string;
   /** A pasta do projeto (já preparada). */
   prepare: () => string;
+  /** Argumentos a mais do `chaos`. */
+  args?: string[];
+  /** Só estas hipóteses entram no corpus. */
+  keep?: string[];
+}
+
+/**
+ * Um par real: um commit que corrigiu um defeito que o caos reproduz. O lado de antes vai numa pasta `<id>`
+ * e o de depois em `<id>-fixed`: o sufixo é o que junta os dois. O contrato é o mesmo nos dois lados.
+ */
+interface RealPair {
+  id: string;
+  repo: string;
+  before: string;
+  after: string;
+  /** A pasta do app dentro do monorepo (o clone é inteiro: o lockfile e a licença ficam na raiz). */
+  sub: string;
+  pnpm: { version: string; filter: string };
+  /**
+   * A hipótese que o commit corrige. O caos não diz qual tabela causou o 500: as outras hipóteses de corrida da
+   * rota rodam o mesmo teste e dariam exemplos de treino com a causa errada.
+   */
+  keep: string[];
+}
+
+const REAL_PAIRS: RealPair[] = [
+  {
+    id: 'telemetry-tracker',
+    repo: 'Telemetry-Tracker/telemetry-tracker',
+    before: 'dad773bd4cce0f7683704d2f78f1951e55dc0342',
+    after: '369bba2410f4cd96c85d3399885a7b53ce27e276',
+    sub: 'apps/api',
+    pnpm: { version: '9.15.9', filter: 'api...' },
+    keep: ['POST /ingest/error__race_condition__errorGroup'],
+  },
+];
+
+/**
+ * No Windows, o Node não lê o `package.json` de um caminho com mais de 259 caracteres e só diz que o
+ * `#main-entry-point` do Prisma "não está definido". O pnpm põe ~120 caracteres depois da pasta do clone.
+ */
+const MAX_CLONE_PATH = 120;
+
+function pnpmInstall(cwd: string, pnpm: RealPair['pnpm']): void {
+  const env = { ...process.env, NODE_OPTIONS: '--use-system-ca' };
+  const r = spawnSync('npx', ['--yes', `pnpm@${pnpm.version}`, 'install', '--ignore-scripts', '--frozen-lockfile', '--filter', pnpm.filter], { cwd, stdio: ['ignore', 'pipe', 'pipe'], shell: true, encoding: 'utf8', env });
+  if (r.status !== 0) throw new Error(`pnpm install falhou em ${cwd}:\n${(r.stderr || r.stdout).slice(-1500)}`);
 }
 
 function npm(cwd: string, args: string[]): void {
@@ -79,11 +126,32 @@ const reals: Target[] = PROJECTS.filter((p) => existsSync(path.join(CONTRACTS, p
   },
 }));
 
+const pairs: Target[] = REAL_PAIRS.flatMap((p) =>
+  [
+    { id: p.id, commit: p.before },
+    { id: `${p.id}-fixed`, commit: p.after },
+  ].map(({ id, commit }) => ({
+    id,
+    args: ['--only-contract'],
+    keep: p.keep,
+    prepare: () => {
+      const clone = path.join(workDir, id);
+      if (process.platform === 'win32' && clone.length > MAX_CLONE_PATH) throw new Error(`caminho longo demais para o pnpm no Windows (${clone.length}): use um --dir mais curto`);
+      checkout({ id, repo: p.repo, commit, stack: '' }, workDir);
+      const dir = path.join(clone, p.sub);
+      cpSync(path.join(CONTRACTS, p.id), dir, { recursive: true, force: true });
+      if (!existsSync(path.join(dir, 'node_modules'))) pnpmInstall(clone, p.pnpm);
+      prismaGenerate(dir, []);
+      return dir;
+    },
+  }))
+);
+
 const workDir = path.resolve(arg('--dir') ?? path.join(os.tmpdir(), 'shieldepy-dataset'));
 const out = path.resolve(arg('--out') ?? path.join(workDir, 'dataset.jsonl'));
 const parts = path.join(workDir, 'partes');
 const only = arg('--so')?.split(',');
-const selected = [...examples, ...reals].filter((t) => !only || only.some((o) => t.id.includes(o)));
+const selected = [...examples, ...reals, ...pairs].filter((t) => !only || only.some((o) => t.id.includes(o)));
 mkdirSync(parts, { recursive: true });
 console.log(`Corpus em ${workDir} (fora do repositório). Modo offline: nenhuma chamada à IA.\n`);
 
@@ -99,8 +167,12 @@ for (const t of selected) {
   }
   rmSync(part, { force: true }); // a nova execução substitui a parte deste projeto
   const started = Date.now();
-  const r = spawnSync(process.execPath, [CLI, 'chaos', dir, '--offline', '--dataset', part], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [CLI, 'chaos', dir, '--offline', ...(t.args ?? []), '--dataset', part], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
   const secs = ((Date.now() - started) / 1000).toFixed(0);
+  if (t.keep && existsSync(part)) {
+    const lines = readFileSync(part, 'utf8').split('\n').filter((l) => l && t.keep!.includes((JSON.parse(l) as { hypothesis: { id: string } }).hypothesis.id));
+    writeFileSync(part, lines.map((l) => `${l}\n`).join(''));
+  }
   // exit 0 (nada achado) e 1 (achado) são resultados; 2 é o ambiente
   if (r.status !== 0 && r.status !== 1) console.log(`erro de ambiente (exit ${r.status}, ${secs} s):\n${(r.stderr || r.stdout).trim().split('\n').slice(-6).join('\n')}`);
   else console.log(`exit ${r.status}, ${secs} s`);

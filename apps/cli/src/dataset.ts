@@ -84,7 +84,8 @@ export function datasetSource(root: string): DatasetSource {
     ...(commit && { commit }),
     ...(top && { path: prefix ? prefix.replace(/\/$/, '') : '.' }),
     ...(license && { license }),
-    variant: variantOf(project),
+    // num monorepo, a pasta é `apps/api` nos dois lados: o `-fixed` está no nome do clone
+    variant: variantOf(project) === 'fixed' || !top ? variantOf(project) : variantOf(path.basename(top)),
   };
 }
 

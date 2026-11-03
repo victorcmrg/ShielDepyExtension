@@ -232,7 +232,9 @@ describe('MVP4 — o app Fastify e o createApp dele', () => {
     expect(parser.withTree(source, false, (r) => r.hasError)).toBe(false);
     expect(source).toContain("import { buildApp as projectApp } from './src/app';");
     expect(source).toContain('createApp: () => fastifyHandler(projectApp()),');
-    expect(source).toContain('app.ready().then(');
+    // a fábrica pode ser async: a promessa também serve
+    expect(source).toContain('Promise.resolve(app)');
+    expect(source).toContain('instance.ready().then(() => instance.routing(req, res))');
     expect(chaosSetupScaffold({ app: plan })).toBeUndefined();
   });
 });

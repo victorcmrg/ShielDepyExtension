@@ -13,8 +13,9 @@ export const CHAOS_TESTS_DIR = '.shieldepy/chaos-tests';
 export const CONTROL_TEST_NAME = 'controle: a mesma requisição, sem caos, funciona';
 
 /**
- * Começo da mensagem do teste de banco quando a gravação alvo não aconteceu depois da API (ex.: ela
- * só existe no caminho de erro). A E4 classifica como inválido: não houve falha injetada, não é achado.
+ * Começo da mensagem do teste quando a falha não chegou a acontecer: a gravação alvo não veio depois
+ * da API (ela só existe no caminho de erro), ou a rota não chamou a API naquela requisição (o e-mail
+ * que sai depois da resposta, ou sem a chave configurada). A E4 classifica como inválido: não é achado.
  */
 export const DB_NOT_FIRED = 'a falha não disparou';
 
@@ -196,8 +197,11 @@ function renderSpecFile(spec: ChaosSpec, h: Hypothesis | undefined, ctx: RenderC
     spec.kind === 'network'
       ? [
           `  it(${js(`caos: ${h?.failure ?? spec.hypothesisId} em ${spec.host}`)}, async () => {`,
-          `    server.use(...[\`https://\${HOST}/*\`, \`http://\${HOST}/*\`].map((url) => http.all(url, ${faultHandler(spec.fault, spec.host)})));`,
+          '    let fired = false;',
+          `    const respond = ${faultHandler(spec.fault, spec.host)};`,
+          `    server.use(...[\`https://\${HOST}/*\`, \`http://\${HOST}/*\`].map((url) => http.all(url, () => { fired = true; return respond(); })));`,
           `    const outcomes = [await send(${patience})];`,
+          `    expect(fired, ${js(`${DB_NOT_FIRED}: a rota não chamou ${spec.host} nesta requisição`)}).toBe(true);`,
           `    await verify(outcomes);`,
           `  });`,
         ]

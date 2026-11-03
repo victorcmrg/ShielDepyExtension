@@ -82,6 +82,9 @@ describe('E3/3e — templates', () => {
     const timeout = state.files[1]!.content;
     expect(timeout).toContain('await delay(15000);');
     expect(timeout).toContain('const outcomes = [await send(6000)];');
+    // a rota que não chamou a API não sofreu a falha: é inválido, não achado (o e-mail depois da resposta, no telemetry-tracker)
+    expect(timeout).toContain('a falha não disparou: a rota não chamou api.stripe.com nesta requisição');
+    expect(timeout.indexOf('a falha não disparou:')).toBeLessThan(timeout.indexOf('await verify(outcomes);'));
 
     // E6/D3: a espiã no pg, ligada pela chamada à API, e o estado verificado primeiro
     const partial = state.files[2]!.content;
