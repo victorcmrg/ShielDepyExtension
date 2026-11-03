@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { findExpressRoutes, joinPath, type CodeGraph, type Route } from '../../src/index';
+import { buildSystemGraph, buildTopology, findExpressRoutes, joinPath, type CodeGraph, type Route } from '../../src/index';
 import { createGraph, Fixture, indexFile, symbolId } from '../helpers';
 
 /** `GET /x: a → b` — a cadeia de handlers numa linha, pra comparar fácil. */
@@ -144,6 +144,49 @@ describe('E2/2b — rotas Express pelo receptor resolvido', () => {
     expect(ids).toContain('POST /orders');
     expect(ids).toContain('GET /a/x'); // sobe b → a e para antes de repetir b
     expect(ids.filter((id) => id.endsWith('/x'))).toEqual(['GET /a/x']);
+  });
+
+  it('rota registrada dentro de função: o callback vira handler, e o roteador capturado continua o mesmo', () => {
+    indexFile(graph, fx, 'services/orders.ts', "import type { PrismaClient } from '@prisma/client';\nexport const save = (prisma: PrismaClient) => prisma.order.create({ data: {} });\n");
+    indexFile(
+      graph,
+      fx,
+      'routes/orders.ts',
+      [
+        "import { Router } from 'express';",
+        "import type { PrismaClient } from '@prisma/client';",
+        "import { save } from '../services/orders';",
+        'export function orderRoutes(prisma: PrismaClient) {',
+        '  const router = Router();',
+        "  router.post('/orders', async (req, res) => {",
+        '    await prisma.audit.create({ data: {} });',
+        '    res.json(await save(prisma));',
+        '  });',
+        '  // o `router` dentro do callback é o de fora: a rota de dentro tem o mesmo prefixo',
+        "  router.use((req, res, next) => { router.get('/inner', async (r, s) => s.json(await prisma.inner.findMany())); next(); });",
+        '  return router;',
+        '}',
+      ].join('\n')
+    );
+    indexFile(
+      graph,
+      fx,
+      'app.ts',
+      [
+        "import express from 'express';",
+        "import { PrismaClient } from '@prisma/client';",
+        "import { orderRoutes } from './routes/orders';",
+        'const app = express();',
+        'const prisma = new PrismaClient();',
+        "app.use('/api', orderRoutes(prisma));",
+        'export default app;',
+      ].join('\n')
+    );
+    const topology = buildTopology(graph, buildSystemGraph(graph, [], fx.dir), fx.dir);
+    expect(topology.routes.map((r) => `${r.id} ${r.operations.map((o) => `${o.kind} ${o.target}`).join(', ')}`)).toEqual([
+      'GET /inner db_read inner',
+      'POST /orders db_write audit, db_write order',
+    ]);
   });
 
   it('joinPath', () => {

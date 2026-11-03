@@ -50,10 +50,13 @@ const before = (a: Position, b: Position) => a.file === b.file && (a.line < b.li
 
 /** Identidade de um roteador: onde o valor é declarado; `this.router` vale dentro do arquivo. */
 function valueKey(origin: ValueOrigin | undefined, chain: string[] | undefined, caller: string, file: string): string | undefined {
-  if (origin) return origin.local ? `${origin.file}#${caller}#${origin.name}` : `${origin.file}#${origin.name}`;
+  if (origin) return origin.local ? `${origin.file}#${origin.owner ?? caller}#${origin.name}` : `${origin.file}#${origin.name}`;
   if (chain?.[0] === 'this') return `${file}#${chain.join('.')}`;
   return undefined;
 }
+
+/** A função que declara o receptor: quem chama essa função é quem dá o valor do parâmetro. */
+const declaringFunction = (site: CallSite) => site.receiverOrigin?.owner ?? site.caller;
 
 /** `/api` + `/orders` → `/api/orders`; `/api` + `/` → `/api`. */
 export function joinPath(prefix: string, path: string): string {
@@ -113,8 +116,9 @@ function routesOnParams(
   for (const { file, site } of onParam) {
     const key = valueKey(site.receiverOrigin, site.object, site.caller, file);
     if (!key) continue;
-    let byIndex = params.get(site.caller);
-    if (!byIndex) params.set(site.caller, (byIndex = new Map()));
+    const owner = declaringFunction(site);
+    let byIndex = params.get(owner);
+    if (!byIndex) params.set(owner, (byIndex = new Map()));
     byIndex.set(site.receiverParam!, key);
   }
   if (params.size === 0) return { sites: [], mounts: [] };
@@ -401,7 +405,8 @@ function fastifyRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSi
   for (const { file, site } of [...typed, ...untyped]) {
     if (site.receiverParam !== 0) continue;
     const key = keyOf(file, site);
-    if (key && !pluginParam.has(site.caller)) pluginParam.set(site.caller, key);
+    const owner = declaringFunction(site);
+    if (key && !pluginParam.has(owner)) pluginParam.set(owner, key);
   }
 
   const live = new Set(typed.flatMap(({ file, site }) => keyOf(file, site) ?? []));
@@ -415,13 +420,12 @@ function fastifyRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSi
       if (site.name !== 'register' || !parent || !live.has(parent) || seenRegister.has(site)) continue;
       seenRegister.add(site);
       const first = site.args[0];
-      // o callback escrito ali, sem símbolo próprio: as chamadas dele ficam no chamador do `register`
-      const inline = first?.kind === 'function' && !first.symbolId && first.param ? `${file}#${site.caller}#${first.param}` : undefined;
-      const children = inline ? [inline] : functionsOf(graph, first).flatMap((fn) => pluginParam.get(fn) ?? []);
-      if (!inline && functionsOf(graph, first).length === 0) {
+      const plugins = functionsOf(graph, first);
+      if (plugins.length === 0) {
         skipped.push({ file, line: site.line, reason: 'register: plugin não seguido (não é função do projeto)' });
         continue;
       }
+      const children = plugins.flatMap((fn) => pluginParam.get(fn) ?? []);
       const opts = site.args[1];
       const prefixText = opts?.kind === 'object' ? opts.texts?.prefix : undefined;
       if (opts?.kind === 'object' && opts.keys.includes('prefix') && prefixText?.kind !== 'string') {
@@ -513,7 +517,7 @@ function appsOf(
   for (const { file, site, router } of sites) {
     const origin = site.receiverOrigin;
     if (children.has(router) || roots.has(router) || !origin || site.receiverParam !== undefined) continue;
-    roots.set(router, { file: origin.file, name: origin.name, ...(origin.local && { caller: site.caller }) });
+    roots.set(router, { file: origin.file, name: origin.name, ...(origin.local && { caller: declaringFunction(site) }) });
   }
   const creations = all.filter(({ file, site }) => isPackage(site) && createsApp(graph, file, site));
   const used = new Set<CallSite>();

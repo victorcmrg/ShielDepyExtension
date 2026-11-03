@@ -150,8 +150,7 @@ describe('Rotas em função de plugin: as operações do callback e do serviço'
       ].join('\n')
     );
 
-  // hoje dá zero operações: o callback dentro de função não vira símbolo (a tarefa seguinte tira o `.fails`)
-  it.fails('o callback escrito na função acha a chamada direta e a do serviço (telemetry-tracker em miniatura)', () => {
+  it('o callback escrito na função acha a chamada direta e a do serviço (telemetry-tracker em miniatura)', () => {
     service();
     indexFile(
       graph,
@@ -171,6 +170,75 @@ describe('Rotas em função de plugin: as operações do callback e do serviço'
       ].join('\n')
     );
     expect(ops('POST /error')).toEqual(['db_write event proven', 'db_read group proven', 'db_write group proven']);
+  });
+
+  const plugin = (...body: string[]) =>
+    indexFile(
+      graph,
+      fx,
+      'routes/plugin.ts',
+      [
+        "import type { FastifyInstance } from 'fastify';",
+        "import { PrismaClient } from '@prisma/client';",
+        'const prisma = new PrismaClient();',
+        'const wrap = (fn: unknown) => fn;',
+        'const cache = { get(key: string, load: () => unknown) { return load(); } };',
+        'export async function routes(app: FastifyInstance) {',
+        ...body,
+        '}',
+      ].join('\n')
+    );
+
+  it('o handler escrito em route({...}), o embrulhado e o hook escrito na hora entram na cadeia', () => {
+    plugin(
+      "  app.route({ method: 'GET', url: '/a', handler: async () => prisma.a.findMany() });",
+      "  app.get('/b', wrap(async () => prisma.b.findMany()));",
+      "  app.get('/c', { preHandler: async () => { await prisma.hook.findMany(); } }, async () => prisma.c.findMany());"
+    );
+    expect(ops('GET /a')).toEqual(['db_read a proven']);
+    expect(ops('GET /b')).toEqual(['db_read b proven']);
+    expect(ops('GET /c')).toEqual(['db_read hook proven', 'db_read c proven']);
+  });
+
+  it('o callback que não é de rota continua no lugar dele: dentro do handler, na ordem, e em `.map`', () => {
+    plugin(
+      "  app.post('/x', async () => {",
+      '    await prisma.first.findMany();',
+      "    await cache.get('k', async () => prisma.second.findMany());",
+      '    await Promise.all([1].map(async () => prisma.third.create({ data: {} })));',
+      '    await prisma.last.create({ data: {} });',
+      '  });'
+    );
+    expect(ops('POST /x')).toEqual(['db_read first proven', 'db_read second proven', 'db_write third proven', 'db_write last proven']);
+  });
+
+  it('o id do callback é estável: inserir código acima não muda, e a topologia não depende da ordem de indexação', async () => {
+    const files: Array<[string, string]> = [
+      ['b/service.ts', "import type { PrismaClient } from '@prisma/client';\nexport const save = (prisma: PrismaClient) => prisma.order.create({ data: {} });\n"],
+      [
+        'a/plugin.ts',
+        [
+          "import type { FastifyInstance } from 'fastify';",
+          "import type { PrismaClient } from '@prisma/client';",
+          "import { save } from '../b/service';",
+          'export async function routes(app: FastifyInstance, prisma: PrismaClient) {',
+          "  app.post('/one', async () => save(prisma));",
+          "  app.post('/two', async () => save(prisma));",
+          '}',
+        ].join('\n'),
+      ],
+    ];
+    const topologyOf = async (order: Array<[string, string]>) => {
+      const g = await createGraph();
+      for (const [name, text] of order) indexFile(g, fx, name, text);
+      return buildTopology(g, buildSystemGraph(g, [], fx.dir), fx.dir);
+    };
+    const direct = await topologyOf(files);
+    expect(direct.stats.operations).toBe(2);
+    expect((await topologyOf([...files].reverse())).contentHash).toBe(direct.contentHash);
+
+    const moved = await topologyOf([files[0]!, [files[1]![0], `// um comentário\n\n${files[1]![1]}`]]);
+    expect(moved.routes.map((r) => r.handlers[0]!.symbols)).toEqual(direct.routes.map((r) => r.handlers[0]!.symbols));
   });
 
   it('com o handler por nome, o `prisma` tipado por parâmetro já chegava às operações', () => {

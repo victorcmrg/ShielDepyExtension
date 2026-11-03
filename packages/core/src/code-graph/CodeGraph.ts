@@ -1097,7 +1097,7 @@ export class CodeGraph {
   private toCallSite(fileId: string, call: RawCall, ctx: ResolutionContext): CallSite {
     const r = this.resolveCall(fileId, call, ctx);
     const origin = call.object
-      ? this.valueOrigin(fileId, call.object, call.scope, ctx)
+      ? this.valueOrigin(fileId, call.object, call.scope, ctx, call.owner)
       : call.chainRoot && { file: fileId, name: call.chainRoot.name, ...(call.chainRoot.scope === 'local' && { local: true as const }) };
     // modelo (Mongoose) ou entidade (TypeORM) por trás do receptor: o alvo da operação de banco (`User.findOne` → `User`)
     const produced = r.outcome === 'callsExternal' ? this.modelOf(fileId, call, call.caller, ctx)?.produced : undefined;
@@ -1177,7 +1177,7 @@ export class CodeGraph {
       return { ...arg, values };
     }
     if (arg.kind !== 'name') return arg;
-    const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx);
+    const origin = this.valueOrigin(fileId, arg.chain, arg.scope, ctx, arg.owner);
     return {
       kind: 'name',
       chain: arg.chain,
@@ -1191,10 +1191,10 @@ export class CodeGraph {
    * — se veio de um import — no arquivo que a declara, atravessando barrels. `this`, globais e
    * pacotes ficam sem origem.
    */
-  private valueOrigin(fileId: string, chain: string[], scope: Scope | undefined, ctx: ResolutionContext): ValueOrigin | undefined {
+  private valueOrigin(fileId: string, chain: string[], scope: Scope | undefined, ctx: ResolutionContext, owner?: string): ValueOrigin | undefined {
     const [root, next] = chain;
     if (!root || root === 'this' || root === 'super') return undefined;
-    if (scope === 'local') return { file: fileId, name: root, local: true };
+    if (scope === 'local') return { file: fileId, name: root, local: true, ...(owner && { owner }) };
     // `const User = db.user`: a origem é a do membro
     const alias = this.moduleInfo.get(fileId)?.aliases.get(root);
     if (alias && chain.length < 16) return this.valueOrigin(fileId, [...alias, ...chain.slice(1)], undefined, ctx);

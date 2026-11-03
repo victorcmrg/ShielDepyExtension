@@ -144,6 +144,8 @@ export interface ValueOrigin {
   file: string;
   name: string;
   local?: boolean;
+  /** Em `local`: a função que declara o nome, quando não é o chamador (callback que captura uma variável de fora). */
+  owner?: string;
 }
 
 /** Argumento de uma chamada, só no que é estático (lido da AST, nunca avaliado). */
@@ -165,7 +167,7 @@ export type CallArg =
   /** Java: constante de enum ou campo estático num argumento de anotação (`RequestMethod.POST`). */
   | { kind: 'constant'; chain: string[] }
   /** Callback inline; `symbolId` quando ele virou símbolo. */
-  | { kind: 'function'; symbolId?: string; /** O primeiro parâmetro (`async (app) => ...` → `app`). */ param?: string }
+  | { kind: 'function'; symbolId?: string }
   /** Identificador ou cadeia (`router`, `ctrl.create`), resolvido como referência. */
   | { kind: 'name'; chain: string[]; outcome: CallOutcome; targets: string[]; package?: string; origin?: ValueOrigin }
   /**

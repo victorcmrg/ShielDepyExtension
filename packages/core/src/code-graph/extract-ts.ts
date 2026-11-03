@@ -96,6 +96,8 @@ export interface RawCall {
   args?: RawArg[];
   /** Onde a raiz do receptor (ou o nome chamado) é declarada: topo do arquivo ou dentro do chamador. */
   scope?: Scope;
+  /** A raiz do receptor é local, mas de uma função de fora do chamador (capturada por um callback que virou símbolo). */
+  owner?: string;
   /** `require('x')` com o especificador literal: o valor é o módulo `x` (`require('express').Router()`). */
   spec?: string;
   /** `require('./routes/auth')(app)`: o que se chama é o `module.exports` do módulo `./routes/auth`. */
@@ -141,7 +143,7 @@ export type Scope = 'module' | 'local';
 /** Argumento como sai do parse; o `name` o CodeGraph resolve depois (vira `CallArg`). */
 export type RawArg =
   | Exclude<CallArg, { kind: 'name' | 'call' | 'array' | 'object' }>
-  | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope }
+  | { kind: 'name'; chain: string[]; ref: CallDesc; scope?: Scope; owner?: string }
   | { kind: 'call'; callee: string[]; spec?: string; functions?: string[] }
   | { kind: 'array'; items: RawArg[] }
   | (Omit<Extract<CallArg, { kind: 'object' }>, 'values'> & { values?: Record<string, RawArg> });
@@ -652,13 +654,19 @@ export function paramReads(fn: SyntaxNode): string[][] {
 
 /** Onde `name`, visto de `from`, é declarado: topo do arquivo, dentro de uma função, ou fora daqui (import/global). */
 function declarationScope(from: SyntaxNode, name: string): Scope | undefined {
+  const node = declaringNode(from, name);
+  return node && (node.type === 'program' ? 'module' : 'local');
+}
+
+/** A função (parâmetro) ou o bloco (variável) que declara `name`, visto de `from`. */
+function declaringNode(from: SyntaxNode, name: string): SyntaxNode | undefined {
   for (let n = from.parent; n; n = n.parent) {
     if (FUNCTION_SCOPE_TYPES.has(n.type)) {
       const single = n.childForFieldName('parameter');
-      if (single?.type === 'identifier' && single.text === name) return 'local';
-      if ((n.childForFieldName('parameters')?.namedChildren ?? []).some((p) => paramName(p) === name)) return 'local';
+      if (single?.type === 'identifier' && single.text === name) return n;
+      if ((n.childForFieldName('parameters')?.namedChildren ?? []).some((p) => paramName(p) === name)) return n;
     }
-    if (BLOCK_TYPES.has(n.type) && declaresIn(n, name)) return n.type === 'program' ? 'module' : 'local';
+    if (BLOCK_TYPES.has(n.type) && declaresIn(n, name)) return n;
   }
   return undefined;
 }
@@ -688,8 +696,22 @@ function describeText(node: SyntaxNode): { kind: 'string'; value: string } | { k
 /** Valores de propriedade que o objeto descreve (`values`): referência, função, lista e chamada. */
 const OBJECT_VALUE_TYPES = new Set([...FUNCTION_VALUE_TYPES, 'identifier', 'member_expression', 'array', 'call_expression']);
 
+/** O símbolo mais interno que contém uma posição do arquivo. */
+type Enclosing = (index: number) => string | undefined;
+
+/**
+ * Quem declara a variável local `name`, quando não é o próprio chamador: `app` usado dentro do callback
+ * de `app.register(async () => { app.get(...) })` é o da função de fora, e o valor tem uma identidade só.
+ */
+function capturedBy(from: SyntaxNode, name: string, enclosing: Enclosing | undefined): string | undefined {
+  const declared = enclosing && declaringNode(from, name);
+  if (!declared || declared.type === 'program') return undefined;
+  const owner = enclosing(declared.startIndex);
+  return owner !== enclosing(from.startIndex) ? owner : undefined;
+}
+
 /** O que dá pra saber de um argumento sem executar nada. */
-function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg {
+function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>, enclosing?: Enclosing): RawArg {
   const text = describeText(arg);
   if (text) return text;
   if (arg.type === 'object') {
@@ -715,22 +737,21 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
         const value = p.type === 'pair' ? p.childForFieldName('value') : undefined;
         const t = value ? describeText(value) : undefined;
         if (t) texts[key] = t;
-        else if (value && OBJECT_VALUE_TYPES.has(value.type)) values[key] = describeArg(value, symbolAt);
+        else if (value && FUNCTION_VALUE_TYPES.has(value.type)) {
+          // `{ handler: async (req) => {} }`: o símbolo começa no par, não no valor
+          const symbolId = symbolAt.get(p.startIndex)?.id;
+          values[key] = symbolId ? { kind: 'function', symbolId } : { kind: 'function' };
+        } else if (value && OBJECT_VALUE_TYPES.has(value.type)) values[key] = describeArg(value, symbolAt, enclosing);
       }
     }
     return { kind: 'object', keys, ...(Object.keys(texts).length > 0 && { texts }), ...(Object.keys(values).length > 0 && { values }) };
   }
   if (FUNCTION_VALUE_TYPES.has(arg.type)) {
     const symbolId = symbolAt.get(arg.startIndex)?.id;
-    // `register(async (app) => { app.get(...) })`: sem símbolo, as chamadas de dentro ficam no chamador de
-    // fora, e o primeiro parâmetro é o que liga o callback a elas
-    const single = arg.childForFieldName('parameter');
-    const firstParam = arg.childForFieldName('parameters')?.namedChildren[0];
-    const param = single?.type === 'identifier' ? single.text : firstParam ? paramName(firstParam) : undefined;
-    return { kind: 'function', ...(symbolId && { symbolId }), ...(param && { param }) };
+    return { kind: 'function', ...(symbolId && { symbolId }) };
   }
   // `[verifySignUp.checkDuplicate, verifySignUp.checkRoles]`: middlewares em lista
-  if (arg.type === 'array') return { kind: 'array', items: arg.namedChildren.filter((a) => a.type !== 'comment').map((a) => describeArg(a, symbolAt)) };
+  if (arg.type === 'array') return { kind: 'array', items: arg.namedChildren.filter((a) => a.type !== 'comment').map((a) => describeArg(a, symbolAt, enclosing)) };
   if (arg.type === 'call_expression') {
     const callee = memberChain(arg.childForFieldName('function'));
     const spec = requireSpecOf(arg);
@@ -747,7 +768,8 @@ function describeArg(arg: SyntaxNode, symbolAt: Map<number, SymbolInfo>): RawArg
     chain.length === 1
       ? { name: chain[0]!, ...(localType(arg, chain[0]!) !== undefined ? { shadowed: true } : {}) }
       : { name: chain.at(-1)!, object: chain.slice(0, -1), ...receiverOf(arg, chain.slice(0, -1)) };
-  return { kind: 'name', chain, ref, ...(scope && { scope }) };
+  const owner = scope === 'local' ? capturedBy(arg, chain[0]!, enclosing) : undefined;
+  return { kind: 'name', chain, ref, ...(scope && { scope }), ...(owner && { owner }) };
 }
 
 /** Chamadas que registram métodos num schema do Mongoose, e onde eles ficam. */
@@ -845,6 +867,24 @@ function wrappedName(call: SyntaxNode): string | undefined {
   return undefined;
 }
 
+/** Os métodos cujo callback é handler, middleware ou plugin: nas rotas do Express e do Fastify. */
+const REGISTRAR_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'all', 'use', 'register', 'addHook']);
+
+/**
+ * `app.post('/x', async () => {})` dentro de uma função, ou embrulhado (`app.post('/x', wrap(async () => {}))`).
+ * Só esses callbacks viram símbolo: é o que a rota aponta. Os outros (`items.map(...)`) continuam
+ * fazendo parte de quem os escreveu. Lê só a forma: quem diz se é mesmo uma rota é a topologia.
+ */
+function registersCallback(call: SyntaxNode): boolean {
+  const registrar = (c: SyntaxNode) => {
+    const fn = c.childForFieldName('function');
+    return fn?.type === 'member_expression' && REGISTRAR_METHODS.has(fn.childForFieldName('property')?.text ?? '') && fn.childForFieldName('object')?.text !== 'Promise';
+  };
+  if (registrar(call)) return true;
+  const outer = call.parent?.type === 'arguments' ? call.parent.parent : undefined;
+  return outer?.type === 'call_expression' && registrar(outer);
+}
+
 /** `app.post('/checkout')` — rótulo de um callback anônimo passado num nível em que não há função envolvente. */
 function callbackLabel(call: SyntaxNode): string {
   const fn = call.childForFieldName('function');
@@ -857,7 +897,8 @@ function callbackLabel(call: SyntaxNode): string {
 /**
  * Funções, métodos, classes, `const f = () => {}`, campo `handle = () => {}`, funções em objeto
  * literal, `exports.f = function`, e callbacks anônimos no topo do arquivo (`app.post('/x', async () => {})`)
- * — sem este último, as chamadas de dentro de um handler Express inline se perdiam.
+ * ou, dentro de uma função, os de registro de rota (ver `registersCallback`) — sem estes dois últimos, as
+ * chamadas de dentro de um handler inline se perdiam.
  */
 export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
   const results: SymbolInfo[] = [];
@@ -940,7 +981,7 @@ export function extractSymbols(root: SyntaxNode, fileId: string): SymbolInfo[] {
         else if (name && ownerPath) push(node, 'method', name, right, { container: ownerPath });
         else if (name) push(node, 'function', name, right);
       }
-    } else if (node.type === 'arguments' && node.parent?.type === 'call_expression' && !insideFunction(node)) {
+    } else if (node.type === 'arguments' && node.parent?.type === 'call_expression' && (!insideFunction(node) || registersCallback(node.parent))) {
       const callbacks = node.namedChildren.filter((arg) => FUNCTION_VALUE_TYPES.has(arg.type));
       // `userSchema.pre('save', fn)` / `userSchema.method('x', fn)`: o callback é do schema (o `this` dele é o documento)
       const schema = schemaCallback(node.parent);
@@ -1092,6 +1133,7 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
       const chainRoot = !desc.object && desc.receiver && 'call' in desc.receiver ? chainRootOf(node) : undefined;
       const loop = loopOf(node);
       const receiverParam = desc.object && scope === 'local' ? paramIndexOf(node, root) : undefined;
+      const owner = desc.object && scope === 'local' ? capturedBy(node, root, enclosing) : undefined;
       // `@Get('/:id')` no método / `@Controller('cats')` na classe (antes ou depois do `export`)
       const holder = node.parent?.type === 'decorator' ? node.parent.parent : undefined;
       let decorated = holder?.type === 'export_statement' ? holder.childForFieldName('declaration') : holder;
@@ -1107,12 +1149,13 @@ export function extractCalls(root: SyntaxNode, symbols: SymbolInfo[], fileId?: s
         ...(chainRoot && { chainRoot }),
         ...(loop && { loop }),
         ...(receiverParam !== undefined && { receiverParam }),
+        ...(owner && { owner }),
         ...(decorates && { decorates }),
         ...(isConditional(node) && { conditional: true as const }),
         line: node.startPosition.row,
         column: node.startPosition.column,
         end: node.endIndex,
-        args: args.map((a) => describeArg(a, symbolAt)),
+        args: args.map((a) => describeArg(a, symbolAt, enclosing)),
         ...(scope && { scope }),
       });
       return;

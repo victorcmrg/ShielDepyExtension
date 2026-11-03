@@ -85,6 +85,11 @@ export function sensitivityTags(ops: TagInput[]): RouteTag[] {
     .sort((a, b) => (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0));
 }
 
+/** Os callbacks escritos nos argumentos de uma chamada, direto ou embrulhados (`wrap(async () => {})`). */
+function callbacksOf(site: CallSite): string[] {
+  return site.args.flatMap((a) => (a.kind === 'function' && a.symbolId ? [a.symbolId] : a.kind === 'call' ? (a.functions ?? []) : []));
+}
+
 interface Walk {
   operations: Array<Omit<RouteOperation, 'order'>>;
   visited: Set<string>;
@@ -115,6 +120,9 @@ export function buildTopology(graph: CodeGraph, system: SystemGraph, root: strin
     return attrs && isSymbolNode(attrs) && (attrs.kind === 'function' || attrs.kind === 'method') ? attrs.file : undefined;
   };
 
+  const scan = findExpressRoutes(graph);
+  const routeHandlers = new Set(scan.routes.flatMap((r) => r.handlers.flatMap((h) => h.symbols)));
+
   /** Percorre os handlers em ordem e, dentro de cada um, as chamadas em ordem — em profundidade. */
   const walk = (route: Route): Walk => {
     const result: Walk = { operations: [], visited: new Set(), truncated: false };
@@ -129,6 +137,10 @@ export function buildTopology(graph: CodeGraph, system: SystemGraph, root: strin
       result.visited.add(symbol);
       const path = [...through, symbol];
       for (const site of callsOf(symbol, file)) {
+        // o callback que virou símbolo (`cache.get('k', async () => ...)`) continua fazendo parte de quem o
+        // escreveu, e antes da própria chamada: é a mesma ordem de quando as chamadas dele eram do chamador.
+        // O handler de uma rota registrada ali, não: ele roda na requisição daquela rota
+        for (const callback of callbacksOf(site)) if (!routeHandlers.has(callback)) visit(callback, path, heuristic);
         const op = ioOperationOf(site, file);
         if (op) {
           result.operations.push({ ...op, confidence: heuristic ? 'heuristic' : 'proven', through: path });
@@ -155,7 +167,6 @@ export function buildTopology(graph: CodeGraph, system: SystemGraph, root: strin
     routes: [],
   }));
 
-  const scan = findExpressRoutes(graph);
   const routes: TopologyRoute[] = scan.routes.map((route) => {
     const w = walk(route);
     const visited = new Set([...w.visited].map(rel));

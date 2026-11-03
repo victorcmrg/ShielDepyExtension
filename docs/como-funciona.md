@@ -124,7 +124,7 @@ Uma chamada é resolvida nesta ordem:
 3. **Símbolo do próprio arquivo.**
 4. **Fallback por nome.** A aresta sai marcada `heuristic: true`.
 
-Não se adivinha quando o receptor é sabidamente de fora do projeto (`X[]`, `Map`, `console`, `res.status().json()`). Função passada como valor, como `app.post('/x', auth, ctrl.create)`, vira aresta `references`, que não conta para ciclos. Callback anônimo no topo do arquivo vira símbolo próprio, como `app.post('/checkout')`.
+Não se adivinha quando o receptor é sabidamente de fora do projeto (`X[]`, `Map`, `console`, `res.status().json()`). Função passada como valor, como `app.post('/x', auth, ctrl.create)`, vira aresta `references`, que não conta para ciclos. Callback anônimo no topo do arquivo vira símbolo próprio, como `app.post('/checkout')`. Dentro de uma função, só o de registro de rota vira ([0029](decisoes/0029-callback-de-registro-vira-simbolo.md)): o de `items.map(...)` continua sendo parte de quem o escreveu.
 
 `shieldepy graph <pasta>` mede a qualidade do mapa:
 - **cobertura:** % das chamadas internas provadas, por heurística ou sem alvo;
