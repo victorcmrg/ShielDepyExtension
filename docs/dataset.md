@@ -105,11 +105,11 @@ O código fica em `packages/agent/src/chaos/dataset-pairs.ts`. Os pares saem de 
 | checkout-express-fixed | 4 mutantes | — | 4 | 15 | 3 |
 | pg-crud (`manfraio/rest_api_with_nodejs_and_postgres`) | original | ISC | 1 | 1 | 0 |
 
-São **35 registros** (~13 KB cada) e **19 pares** (6 de correção, 13 de diagnóstico). Os exemplos deste repositório ainda não têm licença declarada. O realworld e o prisma-express entram quando o banco de teste do Prisma estiver na `main`.
+São **35 registros** (~13 KB cada) e **19 pares** (6 de correção, 13 de diagnóstico). Os exemplos deste repositório ainda não têm licença declarada. O banco de teste do Prisma já está na `main`; falta guardar os contratos do realworld e do prisma-express em `scripts/dataset/contratos/`.
 
 ## Limites
 
-- **Alcance:** Express + `pg`/Prisma + `fetch`/`axios`, em JS/TS. O MVP acrescenta Fastify e NestJS. C# e Java têm mapa e rotas, mas não têm caos.
+- **Alcance:** Express e Fastify + `pg`/Prisma + `fetch`/`axios`, em JS/TS. O NestJS tem mapa e rotas, mas o caos ainda não sobe o app dele ([0028](decisoes/0028-demo-so-o-motor-e-nest-fora.md)). C# e Java também têm mapa e rotas, sem caos.
 - **Volume:** são dezenas de registros, não milhares. A mutação aumenta os pares, mas cada mutante custa uma execução do caos (~15 s).
 - **Catálogo fixo:** `timeout`, `http_5xx_intermittent`, `malformed_response`, `race_condition`, `partial_failure_after_external_call` (e `retry_storm`, sem teste no MVP).
 - **Só código público ou nosso:** os `examples/` deste repositório e projetos públicos fixados por commit. Nada que o CI de um cliente publica entra no treino.
