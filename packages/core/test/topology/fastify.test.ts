@@ -118,6 +118,84 @@ describe('MVP4 — rotas Fastify pela instância do pacote', () => {
   });
 });
 
+describe('Rotas em função de plugin: as operações do callback e do serviço', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const ops = (id: string) => {
+    const topology = buildTopology(graph, buildSystemGraph(graph, [], fx.dir), fx.dir);
+    return topology.routes.find((r) => r.id === id)?.operations.map((o) => `${o.kind} ${o.target} ${o.confidence}`);
+  };
+
+  /** O serviço recebe o cliente por parâmetro tipado, em outro arquivo. */
+  const service = () =>
+    indexFile(
+      graph,
+      fx,
+      'services/groups.ts',
+      [
+        "import type { PrismaClient } from '@prisma/client';",
+        'export async function findOrCreateGroup(prisma: PrismaClient, fingerprint: string) {',
+        '  const existing = await prisma.group.findUnique({ where: { fingerprint } });',
+        '  if (existing) return existing;',
+        '  return prisma.group.create({ data: { fingerprint } });',
+        '}',
+      ].join('\n')
+    );
+
+  // hoje dá zero operações: o callback dentro de função não vira símbolo (a tarefa seguinte tira o `.fails`)
+  it.fails('o callback escrito na função acha a chamada direta e a do serviço (telemetry-tracker em miniatura)', () => {
+    service();
+    indexFile(
+      graph,
+      fx,
+      'routes/ingest.ts',
+      [
+        "import type { FastifyInstance } from 'fastify';",
+        "import type { PrismaClient } from '@prisma/client';",
+        "import { findOrCreateGroup } from '../services/groups';",
+        'export async function ingestRoutes(app: FastifyInstance, prisma: PrismaClient) {',
+        "  app.post('/error', async (request, reply) => {",
+        '    await prisma.event.create({ data: {} });',
+        "    const group = await findOrCreateGroup(prisma, 'x');",
+        '    return reply.send(group);',
+        '  });',
+        '}',
+      ].join('\n')
+    );
+    expect(ops('POST /error')).toEqual(['db_write event proven', 'db_read group proven', 'db_write group proven']);
+  });
+
+  it('com o handler por nome, o `prisma` tipado por parâmetro já chegava às operações', () => {
+    service();
+    indexFile(
+      graph,
+      fx,
+      'routes/ingest.ts',
+      [
+        "import type { FastifyInstance } from 'fastify';",
+        "import type { PrismaClient } from '@prisma/client';",
+        "import { findOrCreateGroup } from '../services/groups';",
+        'async function handle(request: unknown, prisma: PrismaClient) {',
+        '  await prisma.event.create({ data: {} });',
+        "  return findOrCreateGroup(prisma, 'x');",
+        '}',
+        'export async function ingestRoutes(app: FastifyInstance) {',
+        "  app.post('/error', handle);",
+        '}',
+      ].join('\n')
+    );
+    expect(ops('POST /error')).toEqual(['db_write event proven', 'db_read group proven', 'db_write group proven']);
+  });
+});
+
 describe('MVP4 — os exemplos checkout-fastify: a topologia com as operações em ordem', () => {
   for (const [name, ops] of [
     // lê o estoque, cobra (sem timeout) e só depois grava: a janela da corrida

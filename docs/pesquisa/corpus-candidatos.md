@@ -58,6 +58,10 @@ export async function ingestRoutes(app, prisma) {
 }
 ```
 
-O callback dentro de função não vira símbolo. É o limite anotado na MVP4c, que vale também para o Express. Além disso, o `prisma` chega por parâmetro. Ainda não foi medido se resolver o callback basta, nem por que há 995 rotas (o mapa repete, por exemplo, `GET /ingest`).
+O callback dentro de função não vira símbolo. É o limite anotado na MVP4c, que vale também para o Express.
+
+**Medido em 2026-11-03** (teste em `packages/core/test/topology/fastify.test.ts`): numa miniatura com o callback, a rota dá zero operações; com o mesmo corpo num handler por nome, ela dá as três, inclusive a do serviço em outro arquivo que recebe `prisma: PrismaClient`. Então, com o tipo simples, **a causa é só o símbolo do callback**, e a resolução de chamadas do `CodeGraph` não precisa ser reescrita.
+
+O trecho acima simplifica o projeto: lá, `ingestRoutes` recebe `(app, _opts)` e o `prisma` é um import de `../lib/db.js`. Só o serviço o recebe por parâmetro. Ainda falta medir o tipo em união (`PrismaClient | Prisma.TransactionClient`, que o projeto usa), o parâmetro sem tipo e por que há 995 rotas (o mapa repete, por exemplo, `GET /ingest`).
 
 Rodar o `telemetry-tracker` também é mais caro que os outros: é um monorepo com pnpm, Stripe e S3, e o contrato teria de valer em cada commit antigo.
