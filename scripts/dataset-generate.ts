@@ -73,6 +73,15 @@ const REAL_PAIRS: RealPair[] = [
     pnpm: { version: '9.15.9', filter: 'api...' },
     keep: ['POST /ingest/error__race_condition__errorGroup'],
   },
+  {
+    id: 'telemetry-tracker-sessao',
+    repo: 'Telemetry-Tracker/telemetry-tracker',
+    before: 'dcbbc6a2912691b90a7167d3058683f0cab286bc',
+    after: '4639cc51f51bda7055b8e9d191dd74039edfb3c4',
+    sub: 'apps/api',
+    pnpm: { version: '9.15.9', filter: 'api...' },
+    keep: ['POST /ingest/session__race_condition__session'],
+  },
 ];
 
 /**
