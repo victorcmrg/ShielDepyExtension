@@ -43,11 +43,12 @@ function npm(cwd: string, args: string[]): void {
 
 const hasVitest = (dir: string) => existsSync(path.join(dir, 'node_modules', 'vitest', 'vitest.mjs'));
 
-const examples: Target[] = ['checkout-express', 'checkout-express-fixed'].map((id) => ({
+// o arnês dos exemplos Fastify é o da CLI (MVP2): basta o node_modules deles, sem Vitest
+const examples: Target[] = ['checkout-express', 'checkout-express-fixed', 'checkout-fastify', 'checkout-fastify-fixed'].map((id) => ({
   id,
   prepare: () => {
     const dir = path.join(ROOT, 'examples', id);
-    if (!hasVitest(dir)) npm(dir, ['install', '--ignore-scripts']);
+    if (!existsSync(path.join(dir, 'node_modules'))) npm(dir, ['install', '--ignore-scripts']);
     return dir;
   },
 }));

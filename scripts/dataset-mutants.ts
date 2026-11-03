@@ -1,4 +1,4 @@
-// Mutantes para o DPO (D4, decisão 0016): a partir do código que aguenta (o checkout-express-fixed
+// Mutantes para o DPO (D4, decisão 0016): a partir do código que aguenta (os exemplos `-fixed`
 // e os reais já preparados pelo `dataset:gerar` na mesma pasta), uma mutação pela AST por mutante,
 // numa cópia fora do repositório; roda o `chaos --offline --dataset` em cada um e grava a parte
 // dele com a fonte do original e a variante `mutante:<operador>@<arquivo>:<linha>`. Depois junta o
@@ -36,6 +36,7 @@ delete childEnv[DATASET_DB_ENV];
 /** O código que aguenta: o exemplo corrigido e os reais com contrato que o `dataset:gerar` já preparou. */
 const bases = [
   { id: 'checkout-express-fixed', dir: path.join(ROOT, 'examples', 'checkout-express-fixed') },
+  { id: 'checkout-fastify-fixed', dir: path.join(ROOT, 'examples', 'checkout-fastify-fixed') },
   ...PROJECTS.filter((p) => existsSync(path.join(CONTRACTS, p.id)) && existsSync(path.join(workDir, p.id))).map((p) => ({
     id: p.id,
     dir: p.sub ? path.join(workDir, p.id, p.sub) : path.join(workDir, p.id),

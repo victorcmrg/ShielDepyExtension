@@ -20,6 +20,8 @@ npm run dataset:pares -- [--in <arq.jsonl>] [--out <pares.jsonl>] [--sem-fracos]
 
 A pasta de trabalho fica fora do repositório. Lá ficam os clones, os mutantes, uma parte por projeto em `partes/`, o `dataset.jsonl` e o `pares.jsonl`.
 
+No PowerShell, o `--` do `npm run` se perde e o `--dir` não chega ao script, que usa a pasta padrão sem avisar. Chame direto: `node --import tsx scripts/dataset-generate.ts --dir <pasta>`.
+
 - O projeto precisa do `shieldepy.chaos.config.ts` e das dependências instaladas (`npm install`), porque o caos roda o Vitest do próprio projeto.
 - No modo `--offline`, as hipóteses e as specs são do motor e o custo é zero. Nada vai para a rede, a não ser o envio ao banco de vocês, quando a variável dele existe (abaixo).
 - Sem `--offline`, a IA (Anthropic ou Gemini, com a chave do usuário) escreve as hipóteses e as specs. É chamada paga: estime antes com `npm run estimate:chaos`.
@@ -96,16 +98,23 @@ Ficam na tabela `shieldepy_dpo_pairs` ([0021](decisoes/0021-pares-dpo-no-neon.md
 
 O código fica em `packages/agent/src/chaos/dataset-pairs.ts`. Os pares saem de um registro por conteúdo: linhas repetidas em `shieldepy_dataset` não os multiplicam.
 
-## O que há hoje (2026-10-31)
+## O que há hoje (2026-11-03)
 
 | Projeto | Variante | Licença | Achados | Aguentou | Inválidos |
 |---|---|---|---|---|---|
 | checkout-express | original | — | 6 | 0 | 0 |
 | checkout-express-fixed | fixed | — | 0 | 4 | 1 |
 | checkout-express-fixed | 4 mutantes | — | 4 | 15 | 3 |
+| checkout-fastify | original | — | 6 | 0 | 0 |
+| checkout-fastify-fixed | fixed | — | 0 | 4 | 1 |
+| checkout-fastify-fixed | 4 mutantes | — | 4 | 15 | 3 |
 | pg-crud (`manfraio/rest_api_with_nodejs_and_postgres`) | original | ISC | 1 | 1 | 0 |
 
-São **35 registros** (~13 KB cada) e **19 pares** (6 de correção, 13 de diagnóstico). Os exemplos deste repositório ainda não têm licença declarada. O banco de teste do Prisma já está na `main`; falta guardar os contratos do realworld e do prisma-express em `scripts/dataset/contratos/`.
+São **68 registros** (~13 KB cada) e **38 pares** (12 de correção, 26 de diagnóstico). No Neon, ainda estão os 35 registros e os 19 pares de 2026-10-31: os novos só vão com a URL nova do banco.
+
+**Não conte os 38 pares como independentes.** Todos saem do mesmo checkout, e o domínio do Fastify é uma cópia do Express: só o handler e a validação mudam, e o prompt do Fastify repete cerca de 70% das linhas do Express. Nos 13 pares de diagnóstico do Fastify, o `chosen` e o `rejected` são iguais aos do Express; só o código do prompt muda. Ao todo são 18 prompts distintos. Para avaliar o modelo, **separe treino e teste por domínio, não por par nem por `provenance.family`**: `checkout-express` e `checkout-fastify` ficam do mesmo lado, senão o teste vaza.
+
+Os exemplos deste repositório ainda não têm licença declarada. O banco de teste do Prisma já está na `main`; falta guardar os contratos do realworld e do prisma-express em `scripts/dataset/contratos/`.
 
 ## Limites
 
