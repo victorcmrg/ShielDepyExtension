@@ -109,12 +109,20 @@ O código fica em `packages/agent/src/chaos/dataset-pairs.ts`. Os pares saem de 
 | checkout-fastify-fixed | fixed | — | 0 | 4 | 1 |
 | checkout-fastify-fixed | 4 mutantes | — | 4 | 15 | 3 |
 | pg-crud (`manfraio/rest_api_with_nodejs_and_postgres`) | original | ISC | 1 | 1 | 0 |
+| realworld (`gothinkster/node-express-realworld-example-app`) | original | MIT | 4 | 1 | 0 |
+| express (`prisma/prisma-examples`, pasta `orm/express`; no plano, prisma-express) | original | MIT | 0 | 1 | 0 |
 
-São **68 registros** (~13 KB cada) e **38 pares** (12 de correção, 26 de diagnóstico). No Neon, ainda estão os 35 registros e os 19 pares de 2026-10-31: os novos só vão com a URL nova do banco.
+São **74 registros** (~13 KB cada) e **38 pares** (12 de correção, 26 de diagnóstico). No Neon, ainda estão os 35 registros e os 19 pares de 2026-10-31: os novos só vão com a URL nova do banco.
+
+**Os projetos reais não dão pares.** Os 8 registros deles são rótulos de código real e têm licença declarada, mas falta o outro lado: não existe versão corrigida, os mutantes não acham ponto de mutação neles (os operadores reconhecem `fetch`/`axios`, SQL e nomes como reserva e estorno, não Prisma), e o achado e o "aguentou" caem em rotas diferentes.
+
+**O "aguentou" do `PUT /publish/:id` (prisma-examples) é um rótulo fraco de verdade:** a rota lê e grava sem transação e perde atualizações, mas nenhuma invariante enxerga isso (seção 4 de [`caos-projetos-reais.md`](pesquisa/caos-projetos-reais.md)). Não use esse registro como exemplo de código seguro.
+
+**Os achados do realworld são erros de resposta, não de integridade:** quem perde a corrida recebe 500 em vez de 404 ou 422, e as restrições do banco seguram os dados. O "Crítico" exagera.
 
 **Não conte os 38 pares como independentes.** Todos saem do mesmo checkout, e o domínio do Fastify é uma cópia do Express: só o handler e a validação mudam, e o prompt do Fastify repete cerca de 70% das linhas do Express. Nos 13 pares de diagnóstico do Fastify, o `chosen` e o `rejected` são iguais aos do Express; só o código do prompt muda. Ao todo são 18 prompts distintos. Para avaliar o modelo, **separe treino e teste por domínio, não por par nem por `provenance.family`**: `checkout-express` e `checkout-fastify` ficam do mesmo lado, senão o teste vaza.
 
-Os exemplos deste repositório ainda não têm licença declarada. O banco de teste do Prisma já está na `main`; falta guardar os contratos do realworld e do prisma-express em `scripts/dataset/contratos/`.
+Os exemplos deste repositório ainda não têm licença declarada.
 
 ## Limites
 

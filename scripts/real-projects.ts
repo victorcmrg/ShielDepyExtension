@@ -68,7 +68,8 @@ export function checkout(p: Project, dir: string): string {
     // repositório recém-criado, ainda sem commit
   }
   if (head !== p.commit) {
-    git(target, 'fetch', '-q', '--depth', '1', 'origin', p.commit);
+    // com subpasta, baixa só os arquivos dela: o prisma-examples inteiro chegou a cair no meio do fetch
+    git(target, 'fetch', '-q', '--depth', '1', ...(p.sub ? ['--filter=blob:none'] : []), 'origin', p.commit);
     git(target, 'checkout', '-q', 'FETCH_HEAD');
   }
   return p.sub ? path.join(target, p.sub) : target;

@@ -7,8 +7,8 @@
 //   npm run dataset:gerar -- --out <arq.jsonl>      → o corpus (padrão: <dir>/dataset.jsonl)
 //   npm run dataset:gerar -- --so checkout,pg-crud  → só esses
 //
-// Os reais são clonados no commit fixado e instalados com `npm install --ignore-scripts`, mais o
-// arnês do caos (Vitest, supertest, MSW e o que o contrato usa) sem gravar no package.json deles.
+// Os reais são clonados no commit fixado e instalados com `npm install --ignore-scripts`, mais o que
+// o contrato usa (SETUP) sem gravar no package.json deles; o que faltar do arnês vem da CLI (MVP2).
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
@@ -24,9 +24,14 @@ const CONTRACTS = path.join(ROOT, 'scripts', 'dataset', 'contratos');
 
 /** O arnês que os testes gerados importam, nas versões em que o caos foi medido (C1). */
 const HARNESS = ['vitest@2.1.9', 'supertest@7', 'msw@2'];
-/** O que cada contrato guardado usa além do arnês. */
-const CONTRACT_DEPS: Record<string, string[]> = {
-  'pg-crud': ['@electric-sql/pglite@0.5.11'],
+/** As versões do PGlite medidas com o Prisma (0019): as da raiz deste repositório. */
+const PGLITE_SOCKET = ['@electric-sql/pglite@0.5.11', '@electric-sql/pglite-socket@0.2.14'];
+/** Como preparar cada projeto com contrato guardado. `prisma` são os argumentos do `prisma generate`. */
+const SETUP: Record<string, { install?: string[]; noSave: string[]; prisma?: string[] }> = {
+  'pg-crud': { noSave: [...HARNESS, '@electric-sql/pglite@0.5.11'] },
+  // --omit=dev: as dependências de desenvolvimento dele (Nx, Jest) não são usadas e demoram; o prisma é o da versão do cliente
+  realworld: { install: ['--omit=dev'], noSave: ['prisma@4.16.2'], prisma: ['--schema', 'src/prisma/schema.prisma'] },
+  'prisma-express': { noSave: PGLITE_SOCKET, prisma: [] },
 };
 
 interface Target {
@@ -41,7 +46,12 @@ function npm(cwd: string, args: string[]): void {
   if (r.status !== 0) throw new Error(`npm ${args.join(' ')} falhou em ${cwd}:\n${(r.stderr || r.stdout).slice(-1500)}`);
 }
 
-const hasVitest = (dir: string) => existsSync(path.join(dir, 'node_modules', 'vitest', 'vitest.mjs'));
+/** O Prisma 7 lê a URL só para carregar a configuração: o generate não conecta em nada. Atrás de proxy, ele precisa dos certificados do sistema. */
+function prismaGenerate(cwd: string, args: string[]): void {
+  const env = { ...process.env, DATABASE_URL: 'postgresql://u:p@localhost:5432/x', NODE_OPTIONS: '--use-system-ca' };
+  const r = spawnSync('npx', ['prisma', 'generate', ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'], shell: true, encoding: 'utf8', env });
+  if (r.status !== 0) throw new Error(`prisma generate falhou em ${cwd}:\n${(r.stderr || r.stdout).slice(-1500)}`);
+}
 
 // o arnês dos exemplos Fastify é o da CLI (MVP2): basta o node_modules deles, sem Vitest
 const examples: Target[] = ['checkout-express', 'checkout-express-fixed', 'checkout-fastify', 'checkout-fastify-fixed'].map((id) => ({
@@ -59,8 +69,12 @@ const reals: Target[] = PROJECTS.filter((p) => existsSync(path.join(CONTRACTS, p
     const dir = checkout(p, workDir);
     // o contrato por cima do clone: shieldepy.chaos.config.ts e chaos/ (o código do projeto não muda)
     cpSync(path.join(CONTRACTS, p.id), dir, { recursive: true, force: true });
-    if (!existsSync(path.join(dir, 'node_modules'))) npm(dir, ['install', '--ignore-scripts']);
-    if (!hasVitest(dir)) npm(dir, ['install', '--ignore-scripts', '--no-save', ...HARNESS, ...(CONTRACT_DEPS[p.id] ?? [])]);
+    const setup = SETUP[p.id] ?? { noSave: HARNESS };
+    if (!existsSync(path.join(dir, 'node_modules'))) {
+      npm(dir, ['install', '--ignore-scripts', ...(setup.install ?? [])]);
+      npm(dir, ['install', '--ignore-scripts', '--no-save', ...(setup.install ?? []), ...setup.noSave]);
+    }
+    if (setup.prisma) prismaGenerate(dir, setup.prisma);
     return dir;
   },
 }));
