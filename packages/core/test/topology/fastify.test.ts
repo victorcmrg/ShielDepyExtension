@@ -118,6 +118,51 @@ describe('MVP4 — rotas Fastify pela instância do pacote', () => {
   });
 });
 
+describe('Plugins escritos no register dentro de uma função', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  it('com o mesmo nome de parâmetro, cada um fica com o seu prefixo: as rotas não se multiplicam (telemetry-tracker)', () => {
+    indexFile(graph, fx, 'routes/inner.ts', "import type { FastifyInstance } from 'fastify';\nexport async function inner(app: FastifyInstance) { app.get('/in', async () => 1); }\n");
+    indexFile(
+      graph,
+      fx,
+      'app.ts',
+      [
+        "import Fastify from 'fastify';",
+        "import { inner } from './routes/inner';",
+        'export async function createApp() {',
+        '  const app = Fastify();',
+        "  await app.register(async function publicSurface(f) { f.get('/', async () => 1); });",
+        "  await app.register(async function ingestScope(f) { await f.register(inner); }, { prefix: '/ingest' });",
+        "  await app.register(async (f) => { f.get('/ping', async () => 1); }, { prefix: '/api' });",
+        // a instância de fora, capturada: a rota é dela, sem o prefixo do plugin de dentro
+        "  await app.register(async () => { app.get('/direct', async () => 1); }, { prefix: '/nope' });",
+        '  return app;',
+        '}',
+      ].join('\n')
+    );
+    expect(findExpressRoutes(graph).routes.map((r) => r.id)).toEqual(['GET /', 'GET /api/ping', 'GET /direct', 'GET /ingest/in']);
+  });
+
+  it('o app montado num arquivo de teste não define rota: nem cópia sem prefixo, nem app', () => {
+    indexFile(graph, fx, 'routes/inner.ts', "import type { FastifyInstance } from 'fastify';\nexport async function inner(app: FastifyInstance) { app.get('/in', async () => 1); }\n");
+    indexFile(graph, fx, 'app.ts', "import Fastify from 'fastify';\nimport { inner } from './routes/inner';\nexport const app = Fastify();\napp.register(inner, { prefix: '/api' });\n");
+    const harness = "import Fastify from 'fastify';\nimport { inner } from '../routes/inner';\nconst app = Fastify();\napp.register(inner);\napp.get('/only-in-test', async () => 1);\n";
+    for (const name of ['routes/inner.test.ts', 'routes/inner.spec.js', '__tests__/inner.ts']) indexFile(graph, fx, name, harness);
+    const scan = findExpressRoutes(graph);
+    expect(scan.routes.map((r) => r.id)).toEqual(['GET /api/in']);
+    expect(scan.apps).toHaveLength(1);
+  });
+});
+
 describe('Rotas em função de plugin: as operações do callback e do serviço', () => {
   let graph: CodeGraph;
   let fx: Fixture;

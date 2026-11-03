@@ -62,6 +62,17 @@ O callback dentro de função não vira símbolo. É o limite anotado na MVP4c, 
 
 **Medido em 2026-11-03** (teste em `packages/core/test/topology/fastify.test.ts`): numa miniatura com o callback, a rota dá zero operações; com o mesmo corpo num handler por nome, ela dá as três, inclusive a do serviço em outro arquivo que recebe `prisma: PrismaClient`. Então, com o tipo simples, **a causa é só o símbolo do callback**, e a resolução de chamadas do `CodeGraph` não precisa ser reescrita.
 
-O trecho acima simplifica o projeto: lá, `ingestRoutes` recebe `(app, _opts)` e o `prisma` é um import de `../lib/db.js`. Só o serviço o recebe por parâmetro. Ainda falta medir o tipo em união (`PrismaClient | Prisma.TransactionClient`, que o projeto usa), o parâmetro sem tipo e por que há 995 rotas (o mapa repete, por exemplo, `GET /ingest`).
+O trecho acima simplifica o projeto: lá, `ingestRoutes` recebe `(app, _opts)` e o `prisma` é um import de `../lib/db.js`. Só o serviço o recebe por parâmetro, em 207 de 222 casos com o tipo simples e em 8 com uma união (`PrismaClient | Prisma.TransactionClient`).
+
+**As 995 rotas eram dois defeitos do motor, não rotas de verdade:**
+1. Os plugins escritos no `register` usam todos o parâmetro `f`, e a identidade de um plugin sem símbolo era `arquivo#chamador#f`. Todos viravam a mesma instância, e cada rota saía uma vez por prefixo: o `GET /ingest` era a rota `/` do `publicSurface` com o prefixo de outro plugin. Com o callback virando símbolo ([0029](../decisoes/0029-callback-de-registro-vira-simbolo.md)), cada plugin tem identidade própria.
+2. Os `*.test.ts` dentro de `src/` montam os plugins em apps próprios, sem os prefixos. Cada um era mais uma raiz. Agora um arquivo de teste não define rota nem app.
+
+| Commit | Rotas antes | Rotas agora | Repetidas agora |
+|---|---|---|---|
+| `369bba2~1` | 481 | 97 | 0 |
+| `9974b4a` (o topo em 2026-11-03) | 995 | 132 | 0 |
+
+Conferido contra o fonte em `369bba2~1`: 95 registros nos arquivos de rota, mais 2 no `app.ts`, e nenhum `arquivo:linha` se perdeu. O `project-dashboard.ts` caiu de 350 para 50 rotas no topo.
 
 Rodar o `telemetry-tracker` também é mais caro que os outros: é um monorepo com pnpm, Stripe e S3, e o contrato teria de valer em cada commit antigo.

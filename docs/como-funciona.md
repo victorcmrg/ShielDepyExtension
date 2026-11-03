@@ -154,7 +154,7 @@ e em APIs externas, e em que ordem?*
     tags: external-io, no-timeout, no-transaction(stock), read-then-write(stock), write-after-api-call(orders,stock)
 ```
 
-Tudo é decidido pelo **pacote para o qual a chamada resolveu** no grafo, nunca pelo nome:
+Tudo é decidido pelo **pacote para o qual a chamada resolveu** no grafo, nunca pelo nome. Arquivos de teste (`*.test.*`, `*.spec.*`, `__tests__/`) ficam no grafo, mas não definem rota nem app: o app que um teste monta é outro, sem os prefixos do de verdade.
 - **Rota:** `.get/.post/...` num valor que vem de `express`, com path literal. Os prefixos de
   `app.use('/api', router)` são compostos seguindo `router` até onde ele é declarado (import,
   barrel). Middlewares de `use` entram na cadeia só se foram registrados antes da rota.

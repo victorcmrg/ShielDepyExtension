@@ -202,13 +202,19 @@ function decoratorRoutes(graph: CodeGraph, all: Array<{ file: string; site: Call
   return routes;
 }
 
+/** `auth.test.ts`, `auth.spec.js`: o nome do arquivo, não o código. */
+const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+
 /** Todas as rotas Express do grafo, com o caminho completo e a cadeia de handlers em ordem. */
 export function findExpressRoutes(graph: CodeGraph): RouteScan {
   const all: Array<{ file: string; site: CallSite }> = [];
   for (const file of graph.files()) {
     // o contrato do caos é arnês de teste: quando o `createApp` dele remonta os roteadores (app que
     // chama `listen` no topo), cada rota sairia duas vezes (C1, pg-crud). Ele continua no grafo.
-    if (file.split(/[\\/]/).pop() === CHAOS_CONFIG_FILE) continue;
+    // O mesmo vale para os testes do projeto: `Fastify().register(authRoutes)` no `auth.test.ts` é outro
+    // app, sem os prefixos do de verdade, e cada rota saía de novo (telemetry-tracker).
+    const segments = file.split(/[\\/]/);
+    if (segments.at(-1) === CHAOS_CONFIG_FILE || segments.includes('__tests__') || TEST_FILE.test(segments.at(-1)!)) continue;
     for (const site of graph.callSitesIn(file)) all.push({ file, site });
   }
 
