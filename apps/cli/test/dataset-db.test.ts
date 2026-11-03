@@ -14,6 +14,20 @@ const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const example = (rel: string) => path.join(ROOT, 'examples', rel);
 const RACE = 'POST /checkout__race_condition__stock';
 
+/**
+ * Uma cópia do checkout-express numa pasta temporária (com o mesmo nome, para os registros saírem
+ * iguais). O caos grava em `<projeto>/.shieldepy/chaos-tests`, e o cli.test.ts usa essa pasta do
+ * exemplo ao mesmo tempo, noutro fork: rodando no exemplo, um apagava a pasta do outro.
+ */
+function checkoutCopy(): { dir: string; cleanup: () => void } {
+  const src = example('checkout-express');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-db-ex-'));
+  const dir = path.join(tmp, 'checkout-express');
+  const skip = new Set(['node_modules', '.shieldepy']);
+  fs.cpSync(src, dir, { recursive: true, filter: (from) => !skip.has(path.relative(src, from).split(path.sep)[0]!) });
+  return { dir, cleanup: () => fs.rmSync(tmp, { recursive: true, force: true }) };
+}
+
 /** Um Postgres de verdade (PGlite, no processo) atrás da interface que o envio usa. */
 function pglite(): { db: PGlite; connect: SqlConnect; ended: () => number } {
   const db = new PGlite();
@@ -32,7 +46,7 @@ function pglite(): { db: PGlite; connect: SqlConnect; ended: () => number } {
 
 /** Os registros reais do checkout-express, pelo `chaos --dataset` com o runner injetado. */
 async function checkoutRecords(): Promise<DatasetRecord[]> {
-  const dir = example('checkout-express');
+  const { dir, cleanup } = checkoutCopy();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-db-'));
   const file = path.join(tmp, 'd.jsonl');
   const runner: ChaosTestRunner = async (_root, ids) =>
@@ -42,8 +56,7 @@ async function checkoutRecords(): Promise<DatasetRecord[]> {
     return fs.readFileSync(file, 'utf8').trimEnd().split('\n').map((l) => JSON.parse(l));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
-    fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
-    fs.rmSync(path.join(dir, '.shieldepy', 'chaos-results.json'), { force: true });
+    cleanup();
   }
 }
 
@@ -140,16 +153,14 @@ describe('0020 — o dataset vai para o banco do treino', () => {
     // com resultado: o envio falha, o caos segue
     const records = await checkoutRecords();
     expect(records).toHaveLength(6);
-    const dir = example('checkout-express');
+    const { dir, cleanup } = checkoutCopy();
     const lines: string[] = [];
     const code = await runChaosCommand(
       { target: dir, json: false, noRun: false, offline: true },
       { out: () => {}, err: (l) => lines.push(l), env: { [DATASET_DB_ENV]: 'postgres://usuario:segredo@127.0.0.1:1/treino' } },
       () => loadRegistry(defaultWasmDir()),
       async (_root, ids) => ids.map((id) => ({ hypothesisId: id, status: 'passed', durationMs: 1 }))
-    );
-    fs.rmSync(path.join(dir, '.shieldepy', 'chaos-tests'), { recursive: true, force: true });
-    fs.rmSync(path.join(dir, '.shieldepy', 'chaos-results.json'), { force: true });
+    ).finally(cleanup);
     expect(code).toBe(0); // o portão é o do caos
     const log = lines.join('\n');
     expect(log).toContain('⚠ dataset: não deu para enviar a 127.0.0.1:1');
