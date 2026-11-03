@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -7,6 +6,7 @@ import { CMD } from '../constants';
 import type { AiService } from '../services/AiService';
 import type { WorkspaceModel } from '../workspace/WorkspaceModel';
 import type { ChaosArgs, ChaosIo } from './run-chaos';
+import { diffBase } from './scope';
 
 /** Onde a CLI grava o resultado (`CHAOS_RESULTS_FILE` do agent; importar o agent/chaos puxaria o LangGraph). */
 const RESULTS_FILE = path.join('.shieldepy', 'chaos-results.json');
@@ -14,8 +14,6 @@ const RESULTS_FILE = path.join('.shieldepy', 'chaos-results.json');
 const REPORT_FILE = path.join('.shieldepy', 'chaos-report.md');
 /** O que os testes gerados importam. O Vitest tem que estar na raiz do projeto (é ele que roda). */
 const TEST_PACKAGES = ['vitest', 'supertest', 'msw'];
-/** A base do "só o que mudou", na ordem de preferência. */
-const BASE_REFS = ['origin/main', 'origin/master', 'main', 'master'];
 
 export interface ChaosProject {
   root: string;
@@ -209,7 +207,7 @@ export class ChaosCommand implements vscode.Disposable {
   }
 
   private async pickOptions(root: string): Promise<ChaosRunOptions | undefined> {
-    const base = await firstRef(root);
+    const base = await diffBase(root);
     const scopes = [
       ...(base ? [{ label: `$(git-pull-request) Só o que mudou desde ${base}`, description: 'as rotas sensíveis que esta branch tocou, como no CI', base }] : []),
       { label: '$(list-flat) Todas as rotas sensíveis', description: 'o projeto inteiro', base: undefined as string | undefined },
@@ -314,17 +312,6 @@ function installedFrom(root: string, pkg: string): boolean {
     if (existsSync(path.join(dir, 'node_modules', pkg, 'package.json'))) return true;
     if (path.dirname(dir) === dir) return false;
   }
-}
-
-/** O primeiro ref de `BASE_REFS` que existe no repositório (nenhum = não é git, ou sem main). */
-async function firstRef(root: string): Promise<string | undefined> {
-  for (const ref of BASE_REFS) {
-    const ok = await new Promise<boolean>((resolve) =>
-      execFile('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: root }, (err) => resolve(!err))
-    );
-    if (ok) return ref;
-  }
-  return undefined;
 }
 
 function readResults(root: string): { hits: number; outcomes: unknown[] } | undefined {
