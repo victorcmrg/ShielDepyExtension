@@ -6,7 +6,6 @@
 //
 //   npm run dataset:mutantes -- --dir <pasta do dataset:gerar> [--out <arq.jsonl>] [--so sem-timeout]
 
-import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -16,11 +15,10 @@ import { defaultWasmDir } from '../packages/core/src/wasm-path';
 import { asMutantRecord, datasetJsonl, mergeDatasetJsonl } from '../packages/agent/src/chaos/dataset';
 import { applyEdits, findMutations, mutantVariant, type Mutation } from '../packages/agent/src/chaos/mutations';
 import { DATASET_DB_ENV, datasetSource, dbHost, publishDataset } from '../apps/cli/src/dataset';
-import { writeCorpus } from './dataset-corpus';
+import { runChaosChild, writeCorpus } from './dataset-corpus';
 import { arg, PROJECTS } from './real-projects';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const CLI = path.join(ROOT, 'apps', 'cli', 'bin', 'shieldepy.js');
 const CONTRACTS = path.join(ROOT, 'scripts', 'dataset', 'contratos');
 
 const workDir = path.resolve(arg('--dir') ?? path.join(os.tmpdir(), 'shieldepy-dataset'));
@@ -30,8 +28,6 @@ const only = arg('--so')?.split(',');
 mkdirSync(parts, { recursive: true });
 /** Com a variável do banco do treino (0020), os registros corrigidos vão para lá. */
 const dbUrl = process.env[DATASET_DB_ENV]?.trim() || undefined;
-const childEnv = { ...process.env };
-delete childEnv[DATASET_DB_ENV];
 
 /** O código que aguenta: o exemplo corrigido e os reais com contrato que o `dataset:gerar` já preparou. */
 const bases = [
@@ -79,7 +75,7 @@ for (const base of bases) {
     const tmp = path.join(dir, '.shieldepy', 'dataset.jsonl');
     const started = Date.now();
     // o filho não envia ao banco: o registro dele tem a fonte da cópia; quem envia é este script, já corrigido
-    const r = spawnSync(process.execPath, [CLI, 'chaos', dir, '--offline', '--dataset', tmp], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', env: childEnv });
+    const r = runChaosChild(dir, tmp);
     const secs = ((Date.now() - started) / 1000).toFixed(0);
     const records = existsSync(tmp) ? mergeDatasetJsonl([readFileSync(tmp, 'utf8')]).records : [];
     const mutated = records.map((rec) => asMutantRecord(rec, source, { operator: m.operator, file: m.file, line: m.line, description: m.description }, variant, 'offline'));

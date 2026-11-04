@@ -1,9 +1,20 @@
 // O corpus de treino a partir das partes (uma por projeto ou mutante, em <dir>/partes/): junta por
 // id e imprime o resumo. Usado pelo `dataset:gerar` (D3) e pelo `dataset:mutantes` (D4).
 
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { datasetJsonl, mergeDatasetJsonl } from '../packages/agent/src/chaos/dataset';
+import { envWithoutDatasetDb } from '../apps/cli/src/dataset';
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url));
+const CLI = path.join(ROOT, 'apps', 'cli', 'bin', 'shieldepy.js');
+
+/** Um `chaos --offline --dataset` sem a variável do banco: quem envia é o `dataset:enviar`, com o corpus pronto. */
+export function runChaosChild(dir: string, file: string, args: string[] = [], cli: string = CLI): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [cli, 'chaos', dir, '--offline', ...args, '--dataset', file], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', env: envWithoutDatasetDb(process.env) });
+}
 
 export function writeCorpus(parts: string, out: string): void {
   const texts = readdirSync(parts)
