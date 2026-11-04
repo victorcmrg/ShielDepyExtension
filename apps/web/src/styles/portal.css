@@ -1080,3 +1080,21 @@ fieldset.field-group legend { padding: 0; }
 .chaos-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 0 !important; }
 .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: var(--tone); margin-left: 6px; }
 .legend-dot:first-child { margin-left: 0; }
+
+/* Plano e faturas (MVP7): dados fixos, com o selo de demonstração */
+.plan-demo-note { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; padding: 12px 16px; border-radius: 14px; font-size: 13.5px; color: var(--foreground); border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border)); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.plan-demo-note .sd-icon { color: var(--warn); flex-shrink: 0; }
+.plan-value { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.plan-value strong { color: var(--foreground); font-size: 2.2rem; font-weight: 700; letter-spacing: -0.02em; }
+.plan-renewal { margin: 4px 0 18px; color: var(--muted); font-size: 13px; }
+.plan-includes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.plan-includes li { display: flex; align-items: flex-start; gap: 8px; }
+.plan-includes .sd-icon { color: var(--brand-to); flex-shrink: 0; }
+.invoice-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.invoice-table th { padding: 0 8px 10px 0; text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); }
+.invoice-table td { padding: 12px 8px 12px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.invoice-table td:nth-child(3) { white-space: nowrap; }
+.invoice-table tr:last-child td { border-bottom: 0; }
+.invoice-table td strong, .invoice-table td span:not(.badge) { display: block; }
+.invoice-table td strong { font-weight: 600; }
+.invoice-table td span:not(.badge) { color: var(--muted); font-size: 12px; font-family: var(--font-mono); }

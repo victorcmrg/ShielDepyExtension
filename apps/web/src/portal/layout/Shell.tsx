@@ -1,6 +1,6 @@
 // Casca das telas logadas: gate de login + menu lateral (empresa e papel, navegação, conta) igual em
 // todas as páginas. A navegação depende do papel:
-//   membro → Projetos, Minha conta
+//   membro → Projetos, Plano e faturas, Minha conta
 //   dono   → + Equipe
 //   admin da plataforma → + Plataforma
 // O conteúdo da página só monta depois da checagem — nada de flash pra quem não está logado.
@@ -12,7 +12,7 @@ import { initial } from '../format';
 import type { Me } from '../types';
 import { Icon, type IconName } from '../ui/Icon';
 
-export type PageKey = 'projects' | 'project' | 'team' | 'account' | 'platform';
+export type PageKey = 'projects' | 'project' | 'team' | 'account' | 'plan' | 'platform';
 
 const ROLE_LABEL: Record<string, string> = { owner: 'Dono da empresa', member: 'Membro' };
 
@@ -153,6 +153,7 @@ function Sidebar({ me, page, onLogout }: { me: Me; page: PageKey; onLogout: () =
       <nav className="side-nav" aria-label="Navegação principal">
         <NavItem to="/projects" label="Projetos" icon="grid" active={page === 'projects' || page === 'project'} />
         {me.role === 'owner' && <NavItem to="/team" label="Equipe" icon="users" active={page === 'team'} />}
+        <NavItem to="/plan" label="Plano e faturas" icon="key" active={page === 'plan'} />
         <NavItem to="/account" label="Minha conta" icon="user" active={page === 'account'} />
         {me.isAdmin && <NavItem to="/admin" label="Plataforma" icon="globe" active={page === 'platform'} />}
       </nav>

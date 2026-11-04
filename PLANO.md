@@ -24,7 +24,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 
 **Frente MVP (a demo do TCC):**
 1. **M1 ✅ (2026-11-04):** os parâmetros de rota (`:id`, `:slug`) a partir dos registros do `reset`; as pendências caíram para 2, 2, 1, 0 e 0.
-2. **M2, sem o usuário:** a MVP7, a página simulada de plano e faturas. O screenshot pede o Chrome: perguntar antes.
+2. **M2 ✅ (2026-11-04):** a MVP7, a página `/plan` do portal, com dados fixos e o selo "Demonstração", conferida em screenshot (claro, escuro e celular).
 3. **M3, usuário:** responder a DP8 (o arnês na extensão). Não bloqueia a demo: sem ela, o Fastify fica pela CLI ou em vídeo.
 4. **M4, com o usuário:** ensaiar o [`docs/roteiro-mvp.md`](docs/roteiro-mvp.md) com a janela de verdade e gravar o vídeo de plano B, depois de M1 e M2.
 
@@ -116,7 +116,7 @@ Ordem: **S ✅ → P1 ✅ → MVP ([0018](docs/decisoes/0018-mvp-caos-e-framewor
 |---|---|---|
 | S | Separação produto × empresa + DDD na API ([0008](docs/decisoes/0008-produto-e-empresa.md), [0013](docs/decisoes/0013-api-ddd-por-dominio.md)) | ✅ (S1 a S7) |
 | P1 | Postgres e migrations com Drizzle ([0012](docs/decisoes/0012-postgres.md), [0015](docs/decisoes/0015-drizzle.md)) | ✅ (P1a a P1c; na `main`) |
-| **MVP** | **Caos utilizável em Express, Fastify e NestJS, empresa mockada** ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md)): MVP1 a MVP9, versão enxuta | **em andamento**; MVP1 a MVP4, MVP6 e MVP8 ✅, MVP9 sem o ensaio no VS Code; falta a MVP7; MVP5 opcional (branch `feat/mvp-caos`) |
+| **MVP** | **Caos utilizável em Express, Fastify e NestJS, empresa mockada** ([0018](docs/decisoes/0018-mvp-caos-e-frameworks.md)): MVP1 a MVP9, versão enxuta | **em andamento**; MVP1 a MVP4, MVP6 e MVP8 ✅, MVP7 ✅; MVP9 sem o ensaio com a janela de verdade; MVP5 opcional |
 | C | Motor: terminar o caos utilizável (C1 restante, C2, C2f, C4, F) | C1 ✅, C2d1 ✅, C2a ✅ (na `main`); o resto da C2 e a F rápida viraram tarefas do MVP; C4 parada |
 | LM | **Lançamento mínimo** ([0017](docs/decisoes/0017-lancamento-minimo.md)): degrau 1 (site estático + marketplaces) e degrau 2 (portal e API no ar) | parado até o fim do MVP (0018) |
 | W | Landing honesta | parado (0018) |

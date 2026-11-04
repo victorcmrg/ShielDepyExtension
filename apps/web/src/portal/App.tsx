@@ -11,6 +11,7 @@ const Project = lazy(() => import('./pages/Project'));
 const Run = lazy(() => import('./pages/Run'));
 const Team = lazy(() => import('./pages/Team'));
 const Account = lazy(() => import('./pages/Account'));
+const Plan = lazy(() => import('./pages/Plan'));
 const Admin = lazy(() => import('./pages/Admin'));
 
 export function App() {
@@ -56,6 +57,14 @@ export function App() {
           element={
             <Shell page="account" title="Minha conta">
               <Account />
+            </Shell>
+          }
+        />
+        <Route
+          path="/plan"
+          element={
+            <Shell page="plan" title="Plano e faturas">
+              <Plan />
             </Shell>
           }
         />

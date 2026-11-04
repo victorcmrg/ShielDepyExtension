@@ -51,7 +51,7 @@ Rodar projeto real ao vivo é lento e frágil (instalação, `prisma generate`, 
 
 ## 4. A empresa
 
-O portal local com o histórico do caos já existe (passo 1.6). A página de plano e faturas (MVP7, ainda por fazer) é uma tela real do portal, com dados fixos e o selo "demonstração": sem compra, sem formulário de cartão e sem nada travado atrás de login ([0028](decisoes/0028-demo-so-o-motor-e-nest-fora.md)).
+O portal local com o histórico do caos já existe (passo 1.6). A página **Plano e faturas** (`/plan`, no menu do portal) é uma tela real, com o selo "Demonstração", com dados fixos e o selo "demonstração": sem compra, sem formulário de cartão e sem nada travado atrás de login ([0028](decisoes/0028-demo-so-o-motor-e-nest-fora.md)).
 
 ---
 
