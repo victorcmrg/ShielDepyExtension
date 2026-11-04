@@ -3,8 +3,8 @@
 // do bundler dele). Só NOMES saem daqui: é o que o gerador de testes e a IA podem ver.
 
 import { chaosAppContract, type ChaosAppPlan } from './chaos-app';
-import { sampleBody, type RouteBodyReads } from './chaos-body';
-import { CHAOS_SCHEMA_FILE, CHAOS_SETUP_FILE, chaosSchemaPending, type ChaosDbPlan } from './chaos-db';
+import { sampleBody, words, type RouteBodyReads } from './chaos-body';
+import { CHAOS_SCHEMA_FILE, CHAOS_SEED_TEXT, CHAOS_SETUP_FILE, chaosSchemaPending, schemaName, type ChaosDbPlan, type ChaosSeedFacts } from './chaos-db';
 import { propertyKey } from './code-graph/extract-module';
 import type { SyntaxNode } from './code-graph/parser';
 import type { AttackSurface } from './topology/surface';
@@ -120,12 +120,30 @@ export function readChaosConfig(root: SyntaxNode): ChaosConfigFacts | undefined 
 /** String TS entre aspas simples. */
 const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
-/** `/orders/:id` → `/orders/1`: um valor de exemplo no lugar de cada parâmetro do Express. */
-const samplePath = (routePath: string) =>
-  routePath
+/** O valor de um parâmetro de rota no registro que o `resetDb` gerado grava (0031); `undefined`: não dá para dizer. */
+function seededParam(name: string, seed: ChaosSeedFacts): string | undefined {
+  if (words(name).at(-1) === 'id') return seed.uuid ? undefined : '1';
+  return seed.names?.has(schemaName(name)) ? CHAOS_SEED_TEXT : undefined;
+}
+
+/**
+ * `/orders/:id` → `/orders/1`: um valor de exemplo no lugar de cada parâmetro do Express. `value` diz o
+ * valor de um parâmetro; sem ele, sai `1` e a rota fica pendente (`pending`).
+ */
+function samplePath(routePath: string, value: (param: string) => string | undefined): { path: string; pending: boolean } {
+  let pending = false;
+  const path = routePath
     .split('/')
-    .map((segment) => (segment.startsWith(':') ? '1' : segment === '*' ? 'x' : segment))
+    .map((segment) => {
+      if (segment === '*') pending = true;
+      if (!segment.startsWith(':')) return segment === '*' ? 'x' : segment;
+      const sample = value(segment.slice(1));
+      if (sample === undefined) pending = true;
+      return sample ?? '1';
+    })
     .join('/');
+  return { path, pending };
+}
 
 const WITH_BODY = new Set(['POST', 'PUT', 'PATCH']);
 
@@ -150,11 +168,12 @@ function literal(v: unknown): string {
  * app, zerar o estado, as invariantes, corpos válidos) sai marcado com `CHAOS_CONFIG_TODO`. O
  * arquivo compila como está: sem `app`, o `createApp` lança um erro claro até ser preenchido. Com `db`
  * (C2d), o banco de teste gerado (`chaosDbScaffold`) entra no `setupFiles` e no `reset`, sem pendência.
- * Com `app` (C2a), o `createApp` importa o app do projeto (`chaosAppContract`), sem pendência.
+ * Com `app` (C2a), o `createApp` importa o app do projeto (`chaosAppContract`), sem pendência. Com `seed`
+ * (M1: o `chaos/db.ts` grava o registro de exemplo), os parâmetros de rota usam os valores dele.
  */
 export function chaosConfigScaffold(
   surface: AttackSurface,
-  { db, app, bodies = {} }: { db?: ChaosDbPlan; app?: ChaosAppPlan; bodies?: Record<string, RouteBodyReads> } = {}
+  { db, app, bodies = {}, seed }: { db?: ChaosDbPlan; app?: ChaosAppPlan; bodies?: Record<string, RouteBodyReads>; seed?: ChaosSeedFacts } = {}
 ): string {
   const hosts = [...new Set(surface.routes.flatMap((r) => r.operations.filter((o) => o.kind === 'api_call' && o.target !== 'dynamic').map((o) => o.target)))].sort();
   const routes = [...surface.routes].sort((a, b) => a.id.localeCompare(b.id));
@@ -165,12 +184,14 @@ export function chaosConfigScaffold(
     : ['    // nenhuma API externa nas rotas sensíveis'];
   const requests = routes.length
     ? routes.map((r) => {
-        const sample = samplePath(r.path);
+        // M1: só a rota que usa o banco gerado acha o registro do reset; o controle do teste gerado diz se o valor vale
+        const usesDb = !!seed && r.operations.some((o) => o.kind !== 'api_call' && o.via === db?.driver);
+        const { path: sample, pending } = samplePath(r.path, (name) => (usesDb ? seededParam(name, seed) : undefined));
         const withBody = WITH_BODY.has(r.method);
         // MVP6: o corpo pelos campos que a cadeia lê de req.body; o controle do teste gerado diz se ele vale
         const read = withBody ? bodies[r.id] : undefined;
         const fields = [`path: ${quoted(sample)}`, ...(withBody ? [`body: ${literal(read ? sampleBody(read.paths) : {})}`] : [])];
-        const param = sample !== r.path ? `${T}: confira o parâmetro` : undefined;
+        const param = pending ? `${T}: confira o parâmetro` : sample !== r.path ? 'parâmetro pelo registro de exemplo do chaos/db.ts (confira)' : undefined;
         const todo = withBody && !read
           ? `${T}: um corpo válido`
           : [read && (read.paths.length ? `corpo pelos campos que ${read.from.join(', ')} lê (confira os valores)` : 'sem corpo: os handlers do projeto não leem req.body'), param].filter(Boolean).join('; ') || 'pronta';
@@ -205,7 +226,7 @@ export function chaosConfigScaffold(
       : ['  /** Carregados antes de cada teste gerado (ex.: trocar o banco por um em memória). */', '  setupFiles: [],'];
   const reset = db
     ? [
-        '  /** Estado limpo antes de cada teste: o banco vazio (e os dados que as requisições abaixo usam, no chaos/db.ts). */',
+        '  /** Estado limpo antes de cada teste: o banco com um registro de exemplo por tabela (e os dados que você puser no chaos/db.ts). */',
         '  async reset(): Promise<void> {',
         '    await resetDb();',
         '  },',

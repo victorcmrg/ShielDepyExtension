@@ -361,7 +361,16 @@ describe('CLI chaos (E3)', () => {
       // MVP2: o que a CLI tem (o arnês) é emprestado, não pedido
       expect(created.err).toMatch(/o projeto não tem supertest, msw, @electric-sql\/pglite: o caos usa os do ShielDepy, sem instalar nada no projeto/);
       expect(created.err).not.toMatch(/npm install -D/);
-      expect(fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8')).not.toMatch(/não tem \.sql de esquema/);
+      const contract = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
+      expect(contract).not.toMatch(/não tem \.sql de esquema/);
+      // M1: o chaos/db.ts do projeto não grava o registro de exemplo, então o :id continua pendência
+      expect(contract).toMatch(/'GET \/orders\/:id': .*TODO\(shieldepy\): confira o parâmetro/);
+      // sem ele, o gerado grava, e a marca sai
+      fs.rmSync(path.join(tmp, 'chaos', 'db.ts'));
+      fs.rmSync(path.join(tmp, 'shieldepy.chaos.config.ts'));
+      expect((await run('chaos', tmp, '--init')).code).toBe(0);
+      const seeded = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
+      expect(seeded).toMatch(/'GET \/orders\/:id': \{ path: '\/orders\/1' \}, \/\/ parâmetro pelo registro de exemplo/);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

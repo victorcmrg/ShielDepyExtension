@@ -19,11 +19,14 @@ import {
   diffSystemGraphs,
   CHAOS_CONFIG_FILE,
   CHAOS_CONFIG_TODO,
+  CHAOS_DB_FILE,
+  CHAOS_SCHEMA_FILE,
   CHAOS_SETUP_FILE,
   chaosAppPlan,
   chaosConfigScaffold,
   chaosDbPlan,
   chaosDbScaffold,
+  chaosSeedFacts,
   chaosSetupScaffold,
   CodeGraph,
   findExpressRoutes,
@@ -38,7 +41,9 @@ import {
   walkSourceTree,
   type AttackSurface,
   type ChaosDbPlan,
+  type ChaosSeedFacts,
   type MapDiff,
+  type PrismaSchemaFile,
   type SystemGraph,
   type TopologyGraph,
 } from '@shieldepy/core';
@@ -122,6 +127,19 @@ const CONFIG_TEMPLATE = `export default {
   requests: { 'POST /checkout': { path: '/checkout', body: {} } }, // uma requisição válida por rota
 };`;
 
+/**
+ * O que o esquema do projeto diz sobre o registro de exemplo. `undefined` quando um `chaos/db.ts` antigo
+ * (o `--init` não sobrescreve) não grava esse registro: aí os parâmetros seguem como pendência.
+ */
+function seedFacts(root: string, db: ChaosDbPlan, prismaSchemas: PrismaSchemaFile[]): ChaosSeedFacts | undefined {
+  const read = (rel: string) => readFileSync(path.join(root, rel), 'utf8');
+  if (existsSync(path.join(root, CHAOS_DB_FILE)) && !read(CHAOS_DB_FILE).includes('seedDb(')) return undefined;
+  const written = existsSync(path.join(root, CHAOS_SCHEMA_FILE)) ? [read(CHAOS_SCHEMA_FILE)] : [];
+  const diff = db.prisma?.diff?.sql;
+  const sql = [...db.schemaFiles.map(read), ...written, ...(diff ? [diff] : [])];
+  return chaosSeedFacts({ sql, prisma: prismaSchemas.find((s) => s.file.split('\\').join('/') === db.prisma?.schema)?.text });
+}
+
 export async function runChaosCommand(
   args: ChaosArgs,
   io: ChaosIoLike,
@@ -186,7 +204,9 @@ export async function runChaosCommand(
     const app = chaosAppPlan(scan.apps, fullSurface, root);
     // os corpos (MVP6): os campos que a cadeia de cada rota lê de req.body
     const bodies = routeBodyReads(graph, scan.routes);
-    await writeFile(configPath, chaosConfigScaffold(fullSurface, { db, app, bodies }), 'utf8');
+    // os parâmetros (M1): os valores do registro de exemplo que o chaos/db.ts grava
+    const seed = db && seedFacts(root, db, prismaSchemas);
+    await writeFile(configPath, chaosConfigScaffold(fullSurface, { db, app, bodies, seed }), 'utf8');
     io.err(`✓ ${CHAOS_CONFIG_FILE} criado com ${fullSurface.routes.length} rota(s) sensível(is).`);
     if (app) {
       const how =

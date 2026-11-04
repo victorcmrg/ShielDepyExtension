@@ -71,7 +71,7 @@ function passedReads(graph: CodeGraph, caller: string, file: string, passes: Arr
 }
 
 /** As palavras de um nome de campo, em minúsculas: `priceCents` → price, cents; `card_token` → card, token. */
-function words(name: string): string[] {
+export function words(name: string): string[] {
   const out: string[] = [];
   let current = '';
   for (const c of name) {

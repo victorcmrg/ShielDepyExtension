@@ -146,6 +146,30 @@ export function schemaFilesOf(sqlFiles: string[]): string[] {
   return migrations.length > 0 ? migrations : files;
 }
 
+/** O que o esquema diz sobre o registro de exemplo do `resetDb`, para o contrato usar nos parâmetros (M1). */
+export interface ChaosSeedFacts {
+  /** Os nomes do esquema (`schemaName`); `undefined` quando ele ainda não foi escrito. */
+  names?: Set<string>;
+  /** Há coluna do tipo uuid: um id de rota pode não ser o `1`. */
+  uuid: boolean;
+}
+
+/** `user_name`, `"userName"` e `username` são o mesmo nome: o Postgres dobra a caixa e o Prisma mapeia o camelCase. */
+export const schemaName = (name: string) => name.split('"').join('').split('_').join('').toLowerCase();
+
+/**
+ * Lê os nomes do esquema por tokens, sem interpretar o SQL (decisão 0002): serve só para dizer se um
+ * `:slug` tem coluna, e quem confere é o controle do teste gerado. `sql` são os textos que montam o
+ * banco; sem eles, vale o `schema.prisma`. No Prisma, `uuid()` é a função do default (a coluna é TEXT),
+ * e o tipo é o `@db.Uuid`.
+ */
+export function chaosSeedFacts({ sql, prisma }: { sql: string[]; prisma?: string }): ChaosSeedFacts {
+  const tokens = sql.length > 0 ? sql.flatMap(prismaTokens) : prismaTokens(prisma ?? '');
+  if (tokens.length === 0) return { uuid: false };
+  const uuid = sql.length > 0 ? tokens.some((t) => t.toLowerCase() === 'uuid') : tokens.includes('Uuid');
+  return { names: new Set(tokens.map(schemaName)), uuid };
+}
+
 /** Falta escrever o esquema à mão: sem `.sql` no projeto e sem o SQL do `prisma migrate diff`. */
 export const chaosSchemaPending = (plan: ChaosDbPlan) => plan.schemaFiles.length === 0 && !plan.prisma?.diff?.sql;
 
