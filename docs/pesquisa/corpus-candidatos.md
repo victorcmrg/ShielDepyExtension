@@ -1,6 +1,6 @@
 # Projetos do GitHub para dar variedade ao corpus
 
-**Data:** 2026-11-03 · **Modo:** só leitura e mapa; nenhum caos rodou nestes projetos · **Licenças:** só permissivas ([0023](../decisoes/0023-corpus-so-licencas-permissivas.md))
+**Data:** 2026-11-03 · **Modo:** só leitura e mapa; o caos rodou só no `telemetry-tracker`, em `--offline` (seção 6) · **Licenças:** só permissivas ([0023](../decisoes/0023-corpus-so-licencas-permissivas.md))
 
 A pergunta: projetos públicos dão pares para o DPO, e não só registros? Um par real precisa de um commit que corrigiu um defeito que o caos reproduz: achado antes da correção, "aguentou" depois.
 
