@@ -10,7 +10,8 @@
 - **Nos 4 exemplos, o motor acerta tudo e não inventa nada.** O `checkout-express` e o `checkout-fastify` (o mesmo checkout em dois frameworks) dão os mesmos 6 achados; as versões `-fixed` dão 4 "aguentou" e 1 inválido, e o portão sai 0. Todo achado tem o controle (a mesma requisição, sem caos) passando.
 - **Nos 3 projetos Express reais da C1, o `--init` escreve quase tudo.** Na C1 (2026-10-24), nenhum contrato rodou sem escrever código. Agora o app, o banco de teste e os corpos saem gerados; o que sobra é o esquema SQL (só onde o projeto não tem) e os parâmetros de rota (`:id`, `:slug`).
 - **O pg-crud deu de novo o achado da C1** (`POST /categories`, Crítico, verdadeiro), com o app, o banco e os corpos gerados. À mão: o esquema, 2 registros e a invariante.
-- **O primeiro Fastify real (fastify-prisma) mostrou um limite:** as rotas são declaradas num objeto e registradas num laço (`for (const route of renderRoutes) fastify.route(route)`), e o mapa não segue isso: 0 rotas. O caos agora avisa e sai **2** ("nada foi provado"), em vez de um verde falso. Era uma regressão aberta pela MVP4 (o Fastify saiu da lista da MVP3), corrigida nesta tarefa.
+- **O primeiro Fastify real (fastify-prisma) mostrou um limite:** as rotas são declaradas num objeto e registradas num laço (`for (const route of renderRoutes) fastify.route(route)`), e o mapa não seguia isso: 0 rotas. Com 0 rotas, o caos avisa e sai **2** ("nada foi provado"), em vez de um verde falso. Era uma regressão aberta pela MVP4 (o Fastify saiu da lista da MVP3), corrigida nesta tarefa.
+- **Atualização (2026-11-03): o mapa segue esse laço.** O fastify-prisma dá 4 rotas (3 sensíveis) e o `--init` deixa 1 pendência, o esquema. O caos não gera nenhum teste nele: cada rota faz uma operação só no banco, sem API externa, e o catálogo não tem hipótese para isso. O exit 0 quer dizer "nada a testar", não "seguro". Achado real em Fastify veio do `telemetry-tracker`: os 2 pares de [`corpus-candidatos.md`](corpus-candidatos.md).
 
 ## 2. A tabela
 
@@ -23,7 +24,7 @@
 | pg-crud `fdd9fc7` | JS (CommonJS), Express 4, `pg` | 10 (10) | 10 → 7 (esquema, 6 parâmetros) | 1 achado, 1 aguentou | 1 / 0 | o esquema (2 tabelas), 2 registros no `resetDb` e a invariante `nomeDeCategoriaUnico` |
 | realworld `30b68e1` | TS, Express 4, Prisma 4, `express-jwt` | 20 (19) | 17 → 11 (11 parâmetros) | 4 achados (da MVP1**) | 4 / 0 | os parâmetros, os registros, o JWT em 13 requisições e as invariantes |
 | prisma-express `caa902a` | TS, Express 5, Prisma 7 | 9 (9) | 9 → 6 (esquema pelo `migrate diff`, 5 parâmetros) | 0 achados, aguentou (da MVP1**) | — | o esquema (um comando), os registros e as invariantes |
-| fastify-prisma `24fb6c5` | TS, Fastify 3, Prisma 3 | **0** (rotas num laço) | — | **exit 2**, "nada foi provado" | — | — |
+| fastify-prisma `24fb6c5` | TS, Fastify 3, Prisma 3 | **0** (rotas num laço); 4 (3) desde 2026-11-03 | — → 1 (esquema) | **exit 2**, "nada foi provado"; desde 2026-11-03, 0 hipóteses, exit 0 (nada a testar) | — | o esquema (1 tabela) |
 | nest-realworld `c1c2cc4` | TS, NestJS, TypeORM | 21 (20) | — | o caos ainda não roda no NestJS (MVP5) | — | — |
 
 \* No `checkout-fastify`, o contrato foi gerado antes da MVP6 (com a pendência do corpo); com a MVP6, o corpo sai dos campos que o `validateCheckout` lê.
@@ -52,10 +53,10 @@ O contrato tem 6 partes: subir o app, o banco de teste, zerar o estado, as invar
 
 ## 4. Os limites que a tabela mostra
 
-- **Rotas registradas num laço** (o fastify-prisma): `routes = { a: { method, url, handler } }` e `for (const r of Object.values(routes)) app.route(r)`. O Express já segue o `routes.forEach((r) => router.use(r.path, r.route))` sobre uma lista literal; o mesmo para o `for...of` e o `Object.values` de um objeto literal é a próxima fatia natural do Fastify. Até lá, o caos não dá verde: avisa e sai 2.
+- **Rotas registradas num laço** (o fastify-prisma): resolvido em 2026-11-03 para uma lista ou um objeto literal do topo de um arquivo, em `for...of` e `forEach`, com `Object.values` ou sem ele. Uma lista que só existe em runtime continua fora: o registro vai para `skipped` e, com 0 rotas, o caos sai 2.
 - **Autenticação:** no realworld, 13 requisições precisam de um JWT, e o `--init` não sabe gerar (C2b, depois do MVP).
 - **Os "aguentou" que não provam nada** continuam (seção 4 do relatório da C1): requisições iguais no teste de corrida e invariantes sem as respostas (C2g, depois do MVP).
-- **O `bcrypt` nativo** do fastify-prisma não compila com `--ignore-scripts`; com rotas no mapa, o app talvez nem subisse no teste (o controle falharia e sairia inválido). Não chegou a ser testado.
+- **O `bcrypt` nativo** do fastify-prisma não compila com `--ignore-scripts`; o app talvez nem subisse no teste (o controle falharia e sairia inválido). Continua sem teste: com 0 hipóteses, nada sobe o app.
 - **NestJS:** o mapa lê as rotas pelos decorators (21 no nest-realworld), mas o caos ainda não sobe o app (MVP5, opcional desde a [0028](../decisoes/0028-demo-so-o-motor-e-nest-fora.md)).
 
 ## 5. Como repetir
