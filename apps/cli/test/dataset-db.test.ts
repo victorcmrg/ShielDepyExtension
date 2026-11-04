@@ -6,9 +6,10 @@ import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
 import { defaultWasmDir } from '@shieldepy/core/wasm-path';
 import { loadRegistry } from '@shieldepy/extractors';
-import { dpoPairs, type DatasetRecord } from '@shieldepy/agent/chaos';
+import { datasetJsonl, dpoPairs, type DatasetRecord } from '@shieldepy/agent/chaos';
 import { runChaosCommand, type ChaosTestRunner } from '../src/chaos';
-import { DATASET_DB_ENV, DATASET_TABLE, dbHost, DPO_TABLE, exportChaosDataset, publishDataset, publishDpoPairs, readDatasetRecords, type SqlConnect } from '../src/dataset';
+import { DATASET_DB_ENV, DATASET_TABLE, dbHost, DPO_TABLE, exportChaosDataset, publishDataset, publishDatasetFile, publishDpoPairs, readDatasetRecords, type SqlConnect } from '../src/dataset';
+import { runChaosChild } from '../../../scripts/dataset-corpus';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const example = (rel: string) => path.join(ROOT, 'examples', rel);
@@ -136,6 +137,69 @@ describe('0020 — o dataset vai para o banco do treino', () => {
     await db.exec('RESET ROLE');
     expect((await db.query(`SELECT 1 FROM ${DATASET_TABLE}`)).rows).toHaveLength(6);
   }, 60_000);
+
+  it('o envio do arquivo final: um registro por id, e o filtro por updated_at separa o envio das linhas antigas', async () => {
+    const records = await checkoutRecords();
+    const { db, connect } = pglite();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-envio-'));
+    try {
+      await publishDataset(records.slice(0, 2), 'x', connect); // o que já estava no banco e o corpus repete
+      const antiga = { ...records[0]!, id: 'linha-antiga' };
+      await publishDataset([antiga], 'x', connect); // o que o corpus não tem
+      await db.exec(`UPDATE ${DATASET_TABLE} SET created_at = now() - interval '3 days', updated_at = now() - interval '3 days'`);
+
+      const file = path.join(tmp, 'dataset.jsonl');
+      fs.writeFileSync(file, datasetJsonl([...records, records[0]!]));
+      const { rows } = await db.query<{ t: string }>('SELECT now()::text AS t');
+      expect(await publishDatasetFile(file, 'x', connect)).toEqual({ sent: 6, duplicates: 1 });
+
+      const since = (await db.query<{ id: string }>(`SELECT id FROM ${DATASET_TABLE} WHERE updated_at >= $1::timestamptz`, [rows[0]!.t])).rows;
+      expect(since.map((r) => r.id).sort()).toEqual(records.map((r) => r.id).sort());
+      expect((await db.query(`SELECT 1 FROM ${DATASET_TABLE}`)).rows).toHaveLength(7); // a antiga fica
+      // o upsert mantém o created_at: filtrar por ele deixaria de fora o que já existia
+      const kept = (await db.query(`SELECT 1 FROM ${DATASET_TABLE} WHERE id = $1 AND created_at < $2::timestamptz`, [records[0]!.id, rows[0]!.t])).rows;
+      expect(kept).toHaveLength(1);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('arquivo com linha fora do formato ou vazio: recusa sem gravar nada', async () => {
+    const records = await checkoutRecords();
+    const { db, connect } = pglite();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-envio-'));
+    try {
+      const broken = path.join(tmp, 'quebrado.jsonl');
+      fs.writeFileSync(broken, `${datasetJsonl(records)}{ corte no meio\n`);
+      await expect(publishDatasetFile(broken, 'x', connect)).rejects.toThrow(/1 linha\(s\).*nada foi enviado/);
+      const empty = path.join(tmp, 'vazio.jsonl');
+      fs.writeFileSync(empty, '');
+      await expect(publishDatasetFile(empty, 'x', connect)).rejects.toThrow(/nenhum registro/);
+      expect((await db.query('SELECT to_regclass($1) AS t', [DATASET_TABLE])).rows).toEqual([{ t: null }]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('o filho do dataset:gerar e do dataset:mutantes roda sem a variável do banco', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-filho-'));
+    const before = process.env[DATASET_DB_ENV];
+    try {
+      // uma CLI falsa que grava o que recebeu: o que importa é o ambiente e os argumentos do processo de verdade
+      const cli = path.join(tmp, 'cli.mjs');
+      const seen = path.join(tmp, 'visto.json');
+      fs.writeFileSync(cli, `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(seen)}, JSON.stringify({ url: process.env.${DATASET_DB_ENV} ?? null, path: Boolean(process.env.PATH ?? process.env.Path), argv: process.argv.slice(2) }));\n`);
+      process.env[DATASET_DB_ENV] = 'postgres://usuario:segredo@neon.exemplo/treino';
+      const r = runChaosChild('alvo', 'parte.jsonl', ['--only-contract'], cli);
+      expect(r.status).toBe(0);
+      expect(JSON.parse(fs.readFileSync(seen, 'utf8'))).toEqual({ url: null, path: true, argv: ['chaos', 'alvo', '--offline', '--only-contract', '--dataset', 'parte.jsonl'] });
+      expect(process.env[DATASET_DB_ENV]).toContain('segredo'); // quem gera não perde a variável
+    } finally {
+      if (before === undefined) delete process.env[DATASET_DB_ENV];
+      else process.env[DATASET_DB_ENV] = before;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 
   it('sem a variável e sem --dataset, nada sai; banco fora do ar só avisa, sem a senha no log', async () => {
     const err: string[] = [];

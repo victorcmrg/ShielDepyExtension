@@ -12,6 +12,7 @@ import { canonicalJson, toFileId, type AttackSurface, type CodeGraph, type Topol
 import {
   buildDatasetRecords,
   datasetJsonl,
+  mergeDatasetJsonl,
   routeCode,
   type ChaosOutcome,
   type ChaosStateType,
@@ -132,6 +133,16 @@ export function chaosDatasetRecords(run: ChaosRunForDataset & { outcomes: ChaosO
 export const DATASET_DB_ENV = 'SHIELDEPY_DATASET_DATABASE_URL';
 export const DATASET_TABLE = 'shieldepy_dataset';
 
+/**
+ * O ambiente de um `chaos` que só gera o corpus: sem a variável, o filho não envia. Quem gera filtra os
+ * registros depois (o `keep` dos pares reais, a fonte dos mutantes), e o filho enviaria antes do filtro.
+ */
+export function envWithoutDatasetDb(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const child = { ...env };
+  delete child[DATASET_DB_ENV];
+  return child;
+}
+
 export const DATASET_TABLE_SQL = `CREATE TABLE IF NOT EXISTS ${DATASET_TABLE} (
   id text PRIMARY KEY,
   schema_version integer NOT NULL,
@@ -189,6 +200,17 @@ export async function publishDataset(records: DatasetRecord[], url: string, conn
   } finally {
     await client.end().catch(() => undefined);
   }
+}
+
+/**
+ * Envia um `dataset.jsonl` pronto, um registro por `id`. Linha fora do formato recusa o arquivo antes de
+ * qualquer gravação: o envio é do corpus conferido, não de parte dele.
+ */
+export async function publishDatasetFile(file: string, url: string, connect: SqlConnect = pgConnect): Promise<{ sent: number; duplicates: number }> {
+  const { records, duplicates, skipped } = mergeDatasetJsonl([readFileSync(file, 'utf8')]);
+  if (skipped > 0) throw new Error(`${skipped} linha(s) de ${file} fora do formato v1: nada foi enviado`);
+  if (records.length === 0) throw new Error(`nenhum registro em ${file}: nada foi enviado`);
+  return { sent: await publishDataset(records, url, connect), duplicates };
 }
 
 /** A tabela dos pares do DPO, que a equipe de treino lê direto (decisão 0021). */

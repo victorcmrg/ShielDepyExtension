@@ -15,11 +15,10 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeCorpus } from './dataset-corpus';
+import { runChaosChild, writeCorpus } from './dataset-corpus';
 import { arg, checkout, PROJECTS } from './real-projects';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const CLI = path.join(ROOT, 'apps', 'cli', 'bin', 'shieldepy.js');
 const CONTRACTS = path.join(ROOT, 'scripts', 'dataset', 'contratos');
 
 /** O arnês que os testes gerados importam, nas versões em que o caos foi medido (C1). */
@@ -176,7 +175,8 @@ for (const t of selected) {
   }
   rmSync(part, { force: true }); // a nova execução substitui a parte deste projeto
   const started = Date.now();
-  const r = spawnSync(process.execPath, [CLI, 'chaos', dir, '--offline', ...(t.args ?? []), '--dataset', part], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  // o filho não envia ao banco: ele gravaria todas as hipóteses, antes de o `keep` filtrar
+  const r = runChaosChild(dir, part, t.args);
   const secs = ((Date.now() - started) / 1000).toFixed(0);
   if (t.keep && existsSync(part)) {
     const lines = readFileSync(part, 'utf8').split('\n').filter((l) => l && t.keep!.includes((JSON.parse(l) as { hypothesis: { id: string } }).hypothesis.id));

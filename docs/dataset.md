@@ -16,6 +16,9 @@ npm run dataset:mutantes -- --dir <pasta-de-trabalho>
 
 # os pares para o DPO: lê os registros do banco e grava os pares nele (com --in, lê de um arquivo)
 npm run dataset:pares -- [--in <arq.jsonl>] [--out <pares.jsonl>] [--sem-fracos]
+
+# o envio do corpus pronto ao banco (pede a variável abaixo); os pares vão depois, com --in no mesmo arquivo
+npm run dataset:enviar -- --in <dataset.jsonl>
 ```
 
 A pasta de trabalho fica fora do repositório. Lá ficam os clones, os mutantes, uma parte por projeto em `partes/`, o `dataset.jsonl` e o `pares.jsonl`.
@@ -28,7 +31,9 @@ No PowerShell, o `--` do `npm run` se perde e o `--dir` não chega ao script, qu
 - O `--dataset` **acrescenta** ao arquivo. Rodar duas vezes o mesmo projeto no mesmo commit dá registros com o mesmo `id`, que você pode deduplicar por ele (o `dataset:gerar` já faz isso).
 ## Direto no banco de vocês (automático)
 
-Com a variável `SHIELDEPY_DATASET_DATABASE_URL` apontando para o Postgres de vocês (o Neon), **cada execução do caos** grava os registros sozinha. Vale para o `shieldepy chaos` na CLI, para o plugin do VS Code (que lê o mesmo ambiente) e para os scripts acima. A decisão é a [0020](decisoes/0020-dataset-direto-no-neon.md).
+Com a variável `SHIELDEPY_DATASET_DATABASE_URL` apontando para o Postgres de vocês (o Neon), **cada execução do caos** grava os registros sozinha. Vale para o `shieldepy chaos` na CLI e para o plugin do VS Code (que lê o mesmo ambiente). A decisão é a [0020](decisoes/0020-dataset-direto-no-neon.md).
+
+**O corpus não vai por esse caminho.** O `dataset:gerar` e o `dataset:mutantes` rodam o caos sem a variável: o filho gravaria todas as hipóteses, antes de o `keep` dos pares reais filtrar. O corpus sai só pelo `dataset:enviar`, com o `dataset.jsonl` final. Uma linha fora do formato recusa o arquivo inteiro, antes de gravar. (Com a variável ligada, o `dataset:mutantes` ainda envia os mutantes um a um, já com a fonte do original; o `dataset:gerar` não envia nada.)
 
 ```sh
 # PowerShell (Windows), na máquina que gera; feche e reabra o VS Code para o plugin ler

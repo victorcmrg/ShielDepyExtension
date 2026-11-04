@@ -23,7 +23,7 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 4. **M4, com o usuário:** ensaiar o [`docs/roteiro-mvp.md`](docs/roteiro-mvp.md) com a janela de verdade e gravar o vídeo de plano B, depois de M1 e M2.
 
 **Frente IA (o envio único da [0022](docs/decisoes/0022-corpus-fechado-antes-do-envio.md)):**
-1. **I1, sem o usuário, antes de qualquer envio:** consertar o caminho do envio. O `dataset:gerar` não tira a variável do Neon do processo filho, e o `chaos` envia todos os registros da execução antes de o `keep` filtrar. Com a variável ligada, as outras hipóteses de corrida do `telemetry-tracker`, com a causa errada, iriam para o banco. Também não existe comando que envie o `dataset.jsonl` pronto. Fazer como o `dataset:mutantes` (filho sem a variável) e criar o envio do arquivo final, com teste no PGlite.
+1. **I1 ✅ (2026-11-03):** o caminho do envio. O `dataset:gerar` e o `dataset:mutantes` rodam o filho pelo mesmo `runChaosChild`, sem a variável do Neon (antes, o `chaos` do `gerar` enviaria todos os registros antes de o `keep` filtrar), e o `npm run dataset:enviar -- --in <dataset.jsonl>` envia o arquivo final. Teste no PGlite, em `apps/cli/test/dataset-db.test.ts`.
 2. **I2, usuário:** DP2 ou, ao menos, a licença dos `examples/`: 38 dos 40 pares vêm deles, sem licença declarada.
 3. **I3, usuário:** DP6. Recomendação: só offline, sem gasto; a IA fica para quando a equipe pedir.
 4. **I4, usuário:** pedir push e merge da `feat/mvp-fechamento` na `main`, para o corpus sair de um commit que a equipe enxerga.
