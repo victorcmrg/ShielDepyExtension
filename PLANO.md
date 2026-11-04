@@ -9,22 +9,21 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 3. Ler as decisões que a etapa cita, em [`docs/decisoes/`](docs/decisoes/README.md).
 4. Rodar `git log --oneline -15` para ver as últimas tarefas feitas.
 
-## Onde estamos (2026-11-03)
+## Onde estamos (2026-11-04)
 
 - **Fechamento do MVP (2026-11-03, branch `feat/mvp-fechamento`):** saiu da `feat/mapa-rotas-em-plugin`, e não da `main`, porque o laço do Fastify mexe no mesmo `routes.ts`, que ainda não foi para a `main`. Ela leva os 17 commits que faltam na `main` (`feat/dataset-corpus` e `feat/mapa-rotas-em-plugin` inclusive), e nada disso foi para o GitHub. **O que falta, nas duas frentes, está em "Roteiro até o fim", logo abaixo.**
 - **Neon (2026-11-03): o corpus novo NÃO foi enviado.** Pelo registro, lá seguem os 35 registros (mais as 46 linhas antigas) e os 19 pares de 2026-10-31; nesta máquina não há a URL, então isso não foi conferido no banco.
 
-- **M1 em andamento (2026-11-03, branch `feat/mvp-parametros`, no worktree `..\ShielDepy-mvp`, a partir da `feat/mvp-fechamento`):** o `resetDb` gerado já grava um registro por tabela ([0031](docs/decisoes/0031-registro-de-exemplo-pelo-catalogo.md)), e o `--init` usa esses valores nos parâmetros. **Parado a pedido do usuário, no meio da fatia 2.**
-  - **Pendências do `--init`, medidas:** pg-crud 7 → 1, realworld 11 → 0, prisma-express 6 → 1, `checkout-express` 3 → 2 (o critério pede 1 ou 2). O zero do realworld é só a contagem: as 13 requisições com JWT não têm marca e devem dar inválido.
-  - **Conferido de ponta a ponta só no pg-crud:** com o contrato gerado e só o esquema copiado, 2 aguentou e 0 inválido; sem o `seedDb`, o `PUT /categories/:id` volta a inválido; com a invariante da C1, volta o achado Crítico em `POST /categories`, sem registro à mão.
-  - **Falta conferir nesta fatia:** o `chaos-params.test.ts` depois de corrigir os 2 testes que estavam errados (a rodada foi interrompida; antes, 6 de 8), o typecheck (não rodou) e o `npm run check` (confirmar antes com o usuário se a outra sessão não está rodando nada pesado).
-  - **Falta na M1:** o caos com o contrato gerado no realworld e no prisma-express (em `%TEMP%\mvpr`; o `prisma generate` precisa de `DATABASE_URL` falsa e `NODE_OPTIONS=--use-system-ca`; no realworld ele não terminou em 5 min, talvez o download do motor); atualizar `docs/pesquisa/mvp-resultados.md` e `docs/como-funciona.md`; responder ao usuário se os testes gerados mudaram. **Indício, sem medir:** não devem mudar, porque os contratos do corpus estão versionados em `scripts/dataset/contratos/` e a topologia não mudou. Falta comparar a saída do `--no-run` com a da `feat/mvp-fechamento`.
-  - **Depois:** M2 (MVP7). Scripts da medição: `init-medir.ps1` e `caos-gerado.ps1`, no scratchpad da sessão (fora do repositório).
+- **M1 ✅ (2026-11-04, branch `feat/mvp-parametros`, que já juntou a `feat/mvp-fechamento`):** o `resetDb` gerado grava um registro por tabela ([0031](docs/decisoes/0031-registro-de-exemplo-pelo-catalogo.md)) e o `--init` usa esses valores nos parâmetros. Pendências do `--init`: `checkout-express` 3 → 2, `checkout-fastify` 3 → 2, pg-crud 7 → 1, realworld 11 → 0, prisma-express 6 → 0 (critério: 1 ou 2). O zero do realworld é só contagem: o JWT não tem marca.
+  - **De ponta a ponta só com o contrato gerado:** pg-crud (2 aguentou; com a invariante da C1, o achado Crítico em `POST /categories`); realworld (1 achado, `POST /api/users`, o mesmo da C1, e 4 inválidos por falta de JWT); prisma-express (aguentou, como na C1). O `prisma generate` levou segundos; a demora de 2026-11-03 não se repetiu.
+  - **Corpus:** a M1 não muda os testes gerados, pela leitura do código: ela só toca o `--init` (`chaos-config.ts`, `chaos-db.ts`, `chaos-body.ts`, `chaos.ts`), e os contratos do corpus estão versionados em `scripts/dataset/contratos/`. A saída do `--no-run` não foi comparada.
+  - **Nesta máquina (2026-11-04):** o `node_modules/@shieldepy/*` do `C:\dev` eram cópias de 2026-11-02, não links, efeito da mudança de pasta: a CLI rodava um motor velho. O `npm install` da raiz refez os links. Noutra cópia do repositório, conferir com `npm ls --depth=0` (não pode sair `invalid`).
+  - **Conferido:** typecheck, `npm run check` com 562 de 562 e `npm run demo:verificar:cli`.
 
 ### Roteiro até o fim (2026-11-03)
 
 **Frente MVP (a demo do TCC):**
-1. **M1, sem o usuário:** os parâmetros de rota (`:id`, `:slug`) a partir dos registros do `reset`. Pronto quando as pendências do `--init` caírem nos projetos da MVP8 (hoje 3, 7, 11 e 6; o critério pede 1 ou 2).
+1. **M1 ✅ (2026-11-04):** os parâmetros de rota (`:id`, `:slug`) a partir dos registros do `reset`; as pendências caíram para 2, 2, 1, 0 e 0.
 2. **M2, sem o usuário:** a MVP7, a página simulada de plano e faturas. O screenshot pede o Chrome: perguntar antes.
 3. **M3, usuário:** responder a DP8 (o arnês na extensão). Não bloqueia a demo: sem ela, o Fastify fica pela CLI ou em vídeo.
 4. **M4, com o usuário:** ensaiar o [`docs/roteiro-mvp.md`](docs/roteiro-mvp.md) com a janela de verdade e gravar o vídeo de plano B, depois de M1 e M2.

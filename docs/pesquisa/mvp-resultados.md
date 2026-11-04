@@ -17,13 +17,13 @@
 
 | Projeto | Pilha | Rotas no mapa (sensíveis) | Pendências do `--init`: C1 → agora | Resultado do caos | Achados verdadeiros / falsos | À mão, além do `--init` |
 |---|---|---|---|---|---|---|
-| `checkout-express` (exemplo) | TS, Express 4, `pg` | 2 (1) | — → 3 (esquema, Stripe, parâmetro do `GET`) | 6 achados, exit 1 | 6 / 0 | o contrato do exemplo é escrito à mão desde a E4 |
+| `checkout-express` (exemplo) | TS, Express 4, `pg` | 2 (1) | — → 3 → 2 (esquema, Stripe) | 6 achados, exit 1 | 6 / 0 | o contrato do exemplo é escrito à mão desde a E4 |
 | `checkout-express-fixed` | idem, corrigido | 2 (1) | — | 4 aguentou, 1 inválido, exit 0 | — | idem |
-| `checkout-fastify` (exemplo, MVP4) | TS, Fastify 5, `pg`, plugin com `prefix` | 2 (1) | — → 3 (esquema, Stripe, corpo*) | 6 achados, exit 1 | 6 / 0 | o esquema, 1 registro, a resposta do Stripe, o corpo* e as invariantes |
+| `checkout-fastify` (exemplo, MVP4) | TS, Fastify 5, `pg`, plugin com `prefix` | 2 (1) | — → 3 → 2 (esquema, Stripe) | 6 achados, exit 1 | 6 / 0 | o esquema, 1 registro, a resposta do Stripe, o corpo* e as invariantes |
 | `checkout-fastify-fixed` | idem, corrigido | 2 (1) | — | 4 aguentou, 1 inválido, exit 0 | — | idem |
-| pg-crud `fdd9fc7` | JS (CommonJS), Express 4, `pg` | 10 (10) | 10 → 7 (esquema, 6 parâmetros) | 1 achado, 1 aguentou | 1 / 0 | o esquema (2 tabelas), 2 registros no `resetDb` e a invariante `nomeDeCategoriaUnico` |
-| realworld `30b68e1` | TS, Express 4, Prisma 4, `express-jwt` | 20 (19) | 17 → 11 (11 parâmetros) | 4 achados (da MVP1**) | 4 / 0 | os parâmetros, os registros, o JWT em 13 requisições e as invariantes |
-| prisma-express `caa902a` | TS, Express 5, Prisma 7 | 9 (9) | 9 → 6 (esquema pelo `migrate diff`, 5 parâmetros) | 0 achados, aguentou (da MVP1**) | — | o esquema (um comando), os registros e as invariantes |
+| pg-crud `fdd9fc7` | JS (CommonJS), Express 4, `pg` | 10 (10) | 10 → 7 → 1 (esquema) | 1 achado, 1 aguentou | 1 / 0 | o esquema (2 tabelas) e a invariante `nomeDeCategoriaUnico`; os registros já saem do `seedDb` (M1) |
+| realworld `30b68e1` | TS, Express 4, Prisma 4, `express-jwt` | 20 (19) | 17 → 11 → 0 (o zero é só contagem: o JWT não tem marca) | 4 achados (da MVP1**); só com o contrato gerado (M1): 1 achado, `POST /api/users`, e 4 inválidos por falta de JWT | 4 / 0 | o JWT em 13 requisições e as invariantes |
+| prisma-express `caa902a` | TS, Express 5, Prisma 7 | 9 (9) | 9 → 6 → 0 (com o `migrate diff` funcionando) | 0 achados, aguentou (repetido em 2026-11-04 só com o contrato gerado) | — | as invariantes |
 | fastify-prisma `24fb6c5` | TS, Fastify 3, Prisma 3 | **0** (rotas num laço); 4 (3) desde 2026-11-03 | — → 1 (esquema) | **exit 2**, "nada foi provado"; desde 2026-11-03, 0 hipóteses, exit 0 (nada a testar) | — | o esquema (1 tabela) |
 | nest-realworld `c1c2cc4` | TS, NestJS, TypeORM | 21 (20) | — | o caos ainda não roda no NestJS (MVP5) | — | — |
 
@@ -48,7 +48,7 @@ O contrato tem 6 partes: subir o app, o banco de teste, zerar o estado, as invar
 | Invariantes | à mão | à mão (é o que só o projeto sabe) |
 | Respostas das APIs | pendência | pendência (C2e, depois do MVP) |
 | Corpos | 16 pendências nos 3 | gerados pelos campos lidos, inclusive no serviço para onde o corpo vai (MVP6, MVP6b) |
-| Parâmetros de rota | `1` em todos (14 pendências) | igual: `1`, com pendência quando não é número óbvio (C2c, depois do MVP) |
+| Parâmetros de rota | `1` em todos (14 pendências) | pelo registro que o `seedDb` grava (M1, [0031](../decisoes/0031-registro-de-exemplo-pelo-catalogo.md)): `1` no id, `registro-1` no texto; a marca fica com uuid e rota fora do banco gerado |
 | Arnês de teste | `npm install -D` em cada projeto | emprestado da CLI, nada instalado (MVP2) |
 
 ## 4. Os limites que a tabela mostra
