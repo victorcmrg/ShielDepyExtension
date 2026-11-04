@@ -6,6 +6,7 @@
 
 ## 1. Resumo
 
+- **São 17 achados verdadeiros e nenhum falso: 12 de defeitos plantados nos exemplos e 5 de projetos reais.**
 - **Nos 4 exemplos, o motor acerta tudo e não inventa nada.** O `checkout-express` e o `checkout-fastify` (o mesmo checkout em dois frameworks) dão os mesmos 6 achados; as versões `-fixed` dão 4 "aguentou" e 1 inválido, e o portão sai 0. Todo achado tem o controle (a mesma requisição, sem caos) passando.
 - **Nos 3 projetos Express reais da C1, o `--init` escreve quase tudo.** Na C1 (2026-10-24), nenhum contrato rodou sem escrever código. Agora o app, o banco de teste e os corpos saem gerados; o que sobra é o esquema SQL (só onde o projeto não tem) e os parâmetros de rota (`:id`, `:slug`).
 - **O pg-crud deu de novo o achado da C1** (`POST /categories`, Crítico, verdadeiro), com o app, o banco e os corpos gerados. À mão: o esquema, 2 registros e a invariante.
@@ -28,10 +29,11 @@
 \* No `checkout-fastify`, o contrato foi gerado antes da MVP6 (com a pendência do corpo); com a MVP6, o corpo sai dos campos que o `validateCheckout` lê.
 \** O realworld e o prisma-express rodaram de ponta a ponta na MVP1 (2026-10-31, mesmo motor de caos, banco do Prisma pelo `pglite-socket`): os 4 achados da C1 em 3 rodadas no realworld; no prisma-express, o mesmo "aguentou" da C1. Nesta tarefa, só o `--init` foi refeito neles (a MVP6 mudou o contrato, não os testes).
 
-**Os achados verdadeiros**, todos conferidos na C1 lendo o teste e repetindo a requisição:
-- **checkout (Express e Fastify):** a corrida no estoque (lê, cobra no Stripe e só depois grava, sem transação: vende o último item duas vezes), o Stripe sem timeout (o cliente fica pendurado), o 5xx e a resposta inválida do Stripe viram 500, e o pedido não gravado depois de cobrar deixa o cliente cobrado sem pedido (duas hipóteses).
-- **pg-crud, `POST /categories`:** checa se o nome existe e depois insere, sem transação nem restrição: 10 requisições simultâneas criam 10 categorias iguais.
-- **realworld:** os dois `DELETE` (`findFirst` e depois `delete`: quem perde a corrida recebe 500 em vez de 404) e os dois `POST` de criação (a unicidade checada antes de criar: 500 em vez de 422). Reais, mas "Crítico" exagera: as restrições do banco seguraram a integridade.
+**Os 17 achados verdadeiros são de dois tipos, e só os 5 dos projetos reais medem o motor em código que ele não conhecia.** Os 12 do `checkout` são defeitos plantados de propósito no exemplo: os testes de aceitação conferem que o motor os acha, e a mesma lista aparece nos dois frameworks. Os 5 reais (1 no pg-crud, 4 no realworld) foram conferidos na C1, lendo o teste e repetindo a requisição.
+
+- **checkout (Express e Fastify, 6 em cada, plantados):** a corrida no estoque (lê, cobra no Stripe e só depois grava, sem transação: vende o último item duas vezes), o Stripe sem timeout (o cliente fica pendurado), o 5xx e a resposta inválida do Stripe viram 500, e o pedido não gravado depois de cobrar deixa o cliente cobrado sem pedido (duas hipóteses).
+- **pg-crud, `POST /categories` (1, real):** checa se o nome existe e depois insere, sem transação nem restrição: 10 requisições simultâneas criam 10 categorias iguais.
+- **realworld (4, reais):** os dois `DELETE` (`findFirst` e depois `delete`: quem perde a corrida recebe 500 em vez de 404) e os dois `POST` de criação (a unicidade checada antes de criar: 500 em vez de 422). Reais, mas "Crítico" exagera: as restrições do banco seguraram a integridade.
 
 ## 3. Quanto do contrato saiu automático
 
@@ -54,7 +56,7 @@ O contrato tem 6 partes: subir o app, o banco de teste, zerar o estado, as invar
 - **Autenticação:** no realworld, 13 requisições precisam de um JWT, e o `--init` não sabe gerar (C2b, depois do MVP).
 - **Os "aguentou" que não provam nada** continuam (seção 4 do relatório da C1): requisições iguais no teste de corrida e invariantes sem as respostas (C2g, depois do MVP).
 - **O `bcrypt` nativo** do fastify-prisma não compila com `--ignore-scripts`; com rotas no mapa, o app talvez nem subisse no teste (o controle falharia e sairia inválido). Não chegou a ser testado.
-- **NestJS:** o mapa lê as rotas pelos decorators (21 no nest-realworld), mas o caos ainda não sobe o app (MVP5, que espera a DP7).
+- **NestJS:** o mapa lê as rotas pelos decorators (21 no nest-realworld), mas o caos ainda não sobe o app (MVP5, opcional desde a [0028](../decisoes/0028-demo-so-o-motor-e-nest-fora.md)).
 
 ## 5. Como repetir
 
