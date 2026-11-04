@@ -6,6 +6,7 @@
 
 **Decisão.**
 - **A demo abre no pg-crud** (`manfraio/rest_api_with_nodejs_and_postgres`, commit `fdd9fc7`), numa cópia em `~/ShielDepy-real/pg-crud`, com a extensão instalada pelo `.vsix` no VS Code do usuário.
+- **Atualização (2026-11-04, depois do teste do usuário):** o pg-crud pareceu simples demais, e a abertura passou para o realworld (`gothinkster/node-express-realworld-example-app`, commit `30b68e1`), em `~/ShielDepy-real/realworld`: login com JWT, artigos, comentários e Prisma, com 19 rotas sensíveis. No teste com o conteúdo do `.vsix`: 140 nós, 94 chamadas provadas, 4 achados e 1 aguentou. O JWT do contrato foi escrito à mão. O pg-crud fica como reserva.
 - **Depois vem o `checkout`,** que continua sendo a parte com os 6 achados, a branch de correção e o portal.
 - **A abertura é por atalhos `.cmd` na Área de Trabalho,** sem digitar nada no terminal. Dentro de um `.cmd`, o `npm` é o `npm.cmd`, que a política do PowerShell não bloqueia.
 
