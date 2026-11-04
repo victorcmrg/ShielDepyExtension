@@ -18,6 +18,9 @@ export const CHAOS_DB_FILE = 'chaos/db.ts';
 export const CHAOS_SETUP_FILE = 'chaos/setup.ts';
 /** Onde fica o esquema quando o projeto não tem `.sql` (o pg-crud da C1) nem migrations do Prisma. */
 export const CHAOS_SCHEMA_FILE = 'chaos/schema.sql';
+/** Os valores do registro de exemplo que o `resetDb` gerado grava em cada tabela (M1). */
+export const CHAOS_SEED_TEXT = 'registro-1';
+export const CHAOS_SEED_UUID = '00000000-0000-4000-8000-000000000001';
 
 export interface ChaosPrismaPlan {
   /** O `schema.prisma` (relativo à raiz, com `/`). */
@@ -148,8 +151,93 @@ export const chaosSchemaPending = (plan: ChaosDbPlan) => plan.schemaFiles.length
 
 const list = (items: string[]) => `[${items.map((s) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}]`;
 
+// M1 (decisão 0031): um registro por tabela depois do TRUNCATE, para as rotas com parâmetro acharem o que
+// buscar. Quem diz as colunas é o catálogo do banco já montado, e não uma leitura dos .sql: assim valem os
+// ALTER das migrations, os enums e o esquema que o usuário escreve depois do --init. Os valores são estes:
+// o contrato usa os mesmos nas rotas (`seededParam`), e diferem dos corpos de exemplo de propósito, senão o
+// POST bateria no UNIQUE do registro e o controle falharia. Coluna `serial` não recebe valor: a sequência
+// dá o 1, e o próximo INSERT do app sai 2; com o 1 escrito à mão, ele daria conflito, e isso viraria achado.
+const SEED_DB = [
+  '/** Os valores do registro de exemplo. O contrato usa os mesmos nas rotas com parâmetro. */',
+  `const SEED_TEXT = '${CHAOS_SEED_TEXT}';`,
+  `const SEED_UUID = '${CHAOS_SEED_UUID}';`,
+  '',
+  'type SeedColumn = { tbl: string; name: string; type: string; udt: string; nullable: boolean; defaulted: boolean; auto: boolean; max: number | null };',
+  '',
+  '/** Um registro por tabela, com as chaves estrangeiras apontando para os das outras. O esquema vem do catálogo do banco. */',
+  'async function seedDb(): Promise<void> {',
+  '  const columns = (await db.query<SeedColumn>(`',
+  '    SELECT c.table_name AS tbl, c.column_name AS name, c.data_type AS type, c.udt_name AS udt, c.is_nullable = \'YES\' AS nullable,',
+  '      c.column_default IS NOT NULL AS defaulted, c.character_maximum_length AS max,',
+  "      c.is_identity = 'YES' OR c.is_generated = 'ALWAYS' OR coalesce(c.column_default, '') LIKE 'nextval(%' AS auto",
+  '    FROM information_schema.columns c',
+  '    JOIN pg_tables t ON t.tablename = c.table_name AND t.schemaname = c.table_schema',
+  "    WHERE c.table_schema = 'public' AND c.table_name <> '_prisma_migrations'",
+  '    ORDER BY c.table_name, c.ordinal_position`)).rows;',
+  '  const keys = (await db.query<{ tbl: string; col: string; kind: string; ref_tbl: string | null; ref_col: string | null }>(`',
+  '    SELECT t.relname AS tbl, a.attname AS col, k.contype::text AS kind, rt.relname AS ref_tbl, ra.attname AS ref_col',
+  '    FROM pg_constraint k',
+  "    JOIN pg_class t ON t.oid = k.conrelid AND t.relnamespace = 'public'::regnamespace",
+  '    JOIN unnest(k.conkey) WITH ORDINALITY AS own(attnum, pos) ON true',
+  '    JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = own.attnum',
+  '    LEFT JOIN unnest(k.confkey) WITH ORDINALITY AS ref(attnum, pos) ON ref.pos = own.pos',
+  '    LEFT JOIN pg_class rt ON rt.oid = k.confrelid',
+  '    LEFT JOIN pg_attribute ra ON ra.attrelid = k.confrelid AND ra.attnum = ref.attnum',
+  "    WHERE k.contype IN ('p', 'f')`)).rows;",
+  '  const labels = (await db.query<{ typname: string; label: string }>(',
+  '    `SELECT t.typname, e.enumlabel AS label FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid ORDER BY e.enumsortorder`',
+  '  )).rows;',
+  '',
+  "  const keyOf = (c: SeedColumn, kind: string) => keys.find((k) => k.kind === kind && k.tbl === c.tbl && k.col === c.name);",
+  "  const isText = (c: SeedColumn) => c.type === 'text' || c.type.startsWith('character');",
+  '  /** O valor como texto do SQL: o Postgres converte para o tipo da coluna. */',
+  '  const value = (c: SeedColumn, seen: SeedColumn[] = []): string => {',
+  "    const fk = keyOf(c, 'f');",
+  '    const parent = fk && columns.find((x) => x.tbl === fk.ref_tbl && x.name === fk.ref_col);',
+  '    if (parent && !seen.includes(parent)) return value(parent, [...seen, c]);',
+  "    if (c.type === 'ARRAY' || c.type.startsWith('json')) return '{}';",
+  "    if (c.type === 'boolean') return 'true';",
+  "    if (c.type === 'uuid') return SEED_UUID;",
+  "    if (c.type === 'bytea') return '\\\\x00';",
+  "    if (c.type === 'date' || c.type.startsWith('timestamp')) return '2026-01-01 00:00:00+00';",
+  "    if (c.type.startsWith('time')) return '00:00:00';",
+  "    if (c.type === 'interval') return '1 day';",
+  "    if (c.type === 'USER-DEFINED') return labels.find((l) => l.typname === c.udt)?.label ?? SEED_TEXT;",
+  "    if (!isText(c)) return '1';",
+  "    const id = keyOf(c, 'p') && c.name.toLowerCase().endsWith('id');",
+  "    return (id ? '1' : SEED_TEXT).slice(0, c.max ?? undefined);",
+  '  };',
+  '  /** O que fica de fora: a sequência, o default, e o opcional que não é texto (um `deleted_at` preenchido esconderia o registro). */',
+  '  const filled = (c: SeedColumn) => {',
+  '    if (c.auto) return false;',
+  "    const fk = keyOf(c, 'f');",
+  '    if (fk) return !c.nullable || fk.ref_tbl !== c.tbl;',
+  "    return !!keyOf(c, 'p') || (!c.defaulted && (!c.nullable || isText(c)));",
+  '  };',
+  '',
+  '  const ident = (s: string) => `"${s.replace(/"/g, \'""\')}"`;',
+  '  const literal = (s: string) => `\'${s.replace(/\'/g, "\'\'")}\'`;',
+  '  // sem os gatilhos das chaves estrangeiras, a ordem das tabelas e os ciclos entre elas não importam',
+  "  await db.exec('SET session_replication_role = replica');",
+  '  try {',
+  '    for (const tbl of new Set(columns.map((c) => c.tbl))) {',
+  '      const cols = columns.filter((c) => c.tbl === tbl && filled(c));',
+  '      const values = cols.length ? `(${cols.map((c) => ident(c.name)).join(\', \')}) VALUES (${cols.map((c) => literal(value(c))).join(\', \')})` : \'DEFAULT VALUES\';',
+  '      try {',
+  '        await db.exec(`INSERT INTO ${ident(tbl)} ${values}`);',
+  '      } catch (err) {',
+  '        console.warn(`chaos/db.ts: a tabela ${tbl} ficou sem registro de exemplo (${(err as Error).message}); escreva o INSERT no resetDb.`);',
+  '      }',
+  '    }',
+  '  } finally {',
+  "    await db.exec('SET session_replication_role = origin');",
+  '  }',
+  '}',
+  '',
+];
+
 const RESET_DB = [
-  '/** Esvazia todas as tabelas (e zera os ids). Os dados de que as requisições do contrato precisam entram depois. */',
+  '/** Esvazia todas as tabelas, zera os ids e põe o registro de exemplo de cada uma. */',
   'export async function resetDb(): Promise<void> {',
   '  await ready;',
   '  await db.exec(`DO $$ DECLARE t record; BEGIN',
@@ -157,6 +245,7 @@ const RESET_DB = [
   "      EXECUTE 'TRUNCATE ' || quote_ident(t.tablename) || ' RESTART IDENTITY CASCADE';",
   '    END LOOP;',
   '  END $$;`);',
+  '  await seedDb();',
 ];
 
 /**
@@ -245,8 +334,9 @@ function prismaDb(plan: ChaosDbPlan, schema: string[]): string {
     '  // sem o `pg` instalado: Prisma 4 a 6, com o motor próprio',
     '}',
     '',
+    ...SEED_DB,
     ...RESET_DB,
-    '  // ex.: o registro de id 1 que as rotas com :id do contrato usam (os nomes são os do esquema, com aspas)',
+    '  // ex.: outros dados de que o contrato precisa (os nomes são os do esquema, com aspas)',
     '  // await db.exec(`INSERT INTO "User" (email, name) VALUES (\'a@exemplo.com\', \'Ana\')`);',
     '}',
     '',
@@ -321,8 +411,9 @@ function pgDb(schema: string[]): string {
     '  }',
     '}',
     '',
+    ...SEED_DB,
     ...RESET_DB,
-    '  // ex.: o registro de id 1 que as rotas com :id do contrato usam',
+    '  // ex.: outros dados de que o contrato precisa',
     "  // await db.exec(`INSERT INTO category (name) VALUES ('Livros')`);",
     '}',
     '',

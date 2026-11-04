@@ -14,6 +14,8 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 - **Fechamento do MVP (2026-11-03, branch `feat/mvp-fechamento`):** saiu da `feat/mapa-rotas-em-plugin`, e não da `main`, porque o laço do Fastify mexe no mesmo `routes.ts`, que ainda não foi para a `main`. Ela leva os 17 commits que faltam na `main` (`feat/dataset-corpus` e `feat/mapa-rotas-em-plugin` inclusive), e nada disso foi para o GitHub. **O que falta, nas duas frentes, está em "Roteiro até o fim", logo abaixo.**
 - **Neon (2026-11-03): o corpus novo NÃO foi enviado.** Pelo registro, lá seguem os 35 registros (mais as 46 linhas antigas) e os 19 pares de 2026-10-31; nesta máquina não há a URL, então isso não foi conferido no banco.
 
+- **M1 em andamento (2026-11-03, branch `feat/mvp-parametros`, no worktree `..\ShielDepy-mvp`, a partir da `feat/mvp-fechamento`):** o `resetDb` gerado já grava um registro por tabela ([0031](docs/decisoes/0031-registro-de-exemplo-pelo-catalogo.md)). Falta o contrato usar esses valores nos parâmetros.
+
 ### Roteiro até o fim (2026-11-03)
 
 **Frente MVP (a demo do TCC):**
