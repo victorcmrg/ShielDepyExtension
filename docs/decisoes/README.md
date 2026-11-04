@@ -34,3 +34,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0029](0029-callback-de-registro-vira-simbolo.md) | Dentro de função, só o callback de registro de rota vira símbolo; a topologia desce nos outros callbacks de um chamador | 2026-11-03 | valendo |
 | [0030](0030-parametro-recebe-o-pacote-de-quem-chama.md) | Um parâmetro sem tipo vale o que quem chama passa a ele; provado só se toda chamada passa; só pelo nome `prisma` sai `heuristic` | 2026-11-03 | valendo |
 | [0031](0031-registro-de-exemplo-pelo-catalogo.md) | O `reset` gerado grava um registro por tabela, lido do catálogo do banco, com valores fixos e diferentes dos corpos de exemplo | 2026-11-03 | valendo |
+| [0032](0032-demo-abre-em-projeto-real.md) | A demo abre num projeto real (pg-crud), com a extensão instalada pelo `.vsix`, e segue para o `checkout`; os atalhos ficam na Área de Trabalho |

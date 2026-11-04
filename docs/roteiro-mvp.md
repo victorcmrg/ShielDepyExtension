@@ -24,6 +24,12 @@ npm run package:vscode        # gera o .vsix em apps/vscode/ (vsce package)
 
 Para conferir sem abrir janela nenhuma: `npm run demo:verificar:cli` (o passo 2, pela CLI, ~30 s). O ensaio completo, que abre um VS Code de teste e o portal local, é o `npm run demo:verificar` (~3 min). Grave um vídeo da demo inteira como plano B.
 
+## 0. A abertura: um projeto real, com a extensão instalada ([0032](decisoes/0032-demo-abre-em-projeto-real.md))
+
+Dois cliques no atalho **ShielDepy 1 - Projeto real**, na Área de Trabalho. Ele abre o pg-crud, um CRUD real do GitHub, no VS Code normal, com a extensão instalada pelo `.vsix`. Clique no escudo, em **◇ Ver grafo do sistema** e em **⚡ Rodar testes de caos**: em uns 7 s sai 1 achado Crítico, a corrida em `POST /categories`, marcada em `controllers/categoryController.js:28`, e o `PUT /categories/:id` aguenta. **Diga que o contrato veio pronto:** o esquema e a invariante foram escritos à mão.
+
+Para o resto, use o atalho **ShielDepy 2 - Demo da loja** e deixe a janela preta aberta. No PowerShell, o `npm` pode estar bloqueado: use `npm.cmd run demo`.
+
 ## 1. Express, ao vivo, na extensão
 
 1. **Instalar:** no VS Code, *Extensões → … → Instalar do VSIX* e escolha o `.vsix` gerado (ou `code --install-extension apps/vscode/shieldepy-<versão>.vsix`). Para a apresentação, o `npm run demo` faz tudo de uma vez: monta o sistema da loja fora do repositório (`~/ShielDepy-demo`), sobe o portal local já logado e abre o VS Code com o `ROTEIRO.md` da demo ao lado. A partir daqui, siga o `ROTEIRO.md` que abre; os pontos principais são:
