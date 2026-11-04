@@ -11,7 +11,7 @@ import { FindingsManager } from './analysis/FindingsManager';
 import { ScanAnimator } from './analysis/ScanAnimator';
 import { ChaosCommand, type ChaosRunOptions } from './chaos/ChaosCommand';
 import { ChatViewProvider, type FindingAttachment } from './chat/ChatViewProvider';
-import { explainWorkspaceCollisions, exportTopology, login, logout, refreshAccess, reviewImpact, setApiKey } from './commands';
+import { explainWorkspaceCollisions, exportTopology, login, logout, readAndShowMap, refreshAccess, reviewImpact, setApiKey } from './commands';
 import { config } from './config';
 import { CMD, FILE_GLOB, INLINE_LANGUAGES, MODULE_CONFIG_GLOB, SECRET_AUTH_TOKEN, VIEW_CHAT, VIEW_PANEL, VIEW_SETTINGS } from './constants';
 import { InlineSuggestionProvider } from './inline/InlineSuggestionProvider';
@@ -181,7 +181,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<TestAp
       if (typeof file === 'string') return openLocation(file, Number(line));
     }),
     vscode.commands.registerCommand(CMD.scanWorkspace, () => chat.runFullScan()),
-    vscode.commands.registerCommand(CMD.showMap, () => mapPanel.show()),
+    vscode.commands.registerCommand(CMD.showMap, () => readAndShowMap(workspace, log, () => collisions.publish(), () => mapPanel.show())),
     vscode.commands.registerCommand(CMD.runChaos, () => chaosCommand.run()),
     vscode.commands.registerCommand(CMD.gettingStarted, () =>
       vscode.commands.executeCommand('workbench.action.openWalkthrough', `${context.extension.id}#start`, false)

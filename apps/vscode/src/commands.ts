@@ -9,6 +9,7 @@ import { CMD } from './constants';
 import { t } from './i18n';
 import type { AiService } from './services/AiService';
 import type { AuthService } from './services/AuthService';
+import { indexWorkspace } from './workspace/files';
 import type { WorkspaceModel } from './workspace/WorkspaceModel';
 
 /** "Configurar Chave da IA": escolhe o provedor e guarda a chave no Secret Storage. */
@@ -148,6 +149,37 @@ export async function exportTopology(workspace: WorkspaceModel, showMap: () => v
       else if (pick === 'Ver rotas no mapa') showMap();
     });
   return topology;
+}
+
+/**
+ * "Ver grafo do sistema": lê o código de novo e só então abre o mapa, para o clique mostrar o trabalho
+ * real. O tempo é o da leitura, sem espera artificial: num projeto pequeno, ela leva menos de um segundo.
+ */
+export async function readAndShowMap(
+  workspace: WorkspaceModel,
+  log: (m: string) => void,
+  afterIndex: () => void,
+  show: () => void | Promise<void>
+): Promise<void> {
+  const started = Date.now();
+  const report = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: 'ShielDepy: lendo o código' },
+    async (progress) => {
+      let last = 0;
+      return indexWorkspace(workspace, log, (done, total) => {
+        const percent = (100 * done) / total;
+        progress.report({ message: `${done} de ${total} arquivos`, increment: percent - last });
+        last = percent;
+      });
+    }
+  );
+  afterIndex();
+  await show();
+  const stats = workspace.graph.stats;
+  const seconds = ((Date.now() - started) / 1000).toFixed(1).replace('.', ',');
+  void vscode.window.showInformationMessage(
+    `ShielDepy: ${report.indexed} arquivo(s) lido(s) em ${seconds} s: ${stats.nodes} nós, ${stats.callsResolved} chamada(s) provada(s), ${stats.callsHeuristic} por nome.`
+  );
 }
 
 async function showMarkdown(content: string): Promise<void> {

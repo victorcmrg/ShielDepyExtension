@@ -42,7 +42,11 @@ export interface IndexReport {
 }
 
 /** Indexação inicial (sem IA): grafo estrutural + regras de todos os arquivos do workspace. */
-export async function indexWorkspace(model: WorkspaceModel, log: (m: string) => void): Promise<IndexReport> {
+export async function indexWorkspace(
+  model: WorkspaceModel,
+  log: (m: string) => void,
+  onFile?: (done: number, total: number) => void
+): Promise<IndexReport> {
   const limit = config.maxIndexedFiles();
   // pede um a mais: é assim que se sabe que o workspace passou do teto
   const found = await findWorkspaceFiles(limit + 1);
@@ -50,7 +54,9 @@ export async function indexWorkspace(model: WorkspaceModel, log: (m: string) => 
   const files = truncated ? found.slice(0, limit) : found;
   log(`[index] ${files.length} arquivo(s) encontrado(s)${truncated ? ` — teto de ${limit} atingido, mapa PARCIAL` : ''}.`);
   let skipped = 0;
+  let done = 0;
   for (const uri of files) {
+    onFile?.(++done, files.length);
     try {
       const stat = await vscode.workspace.fs.stat(uri);
       if (stat.size > MAX_ANALYZABLE_BYTES) {
