@@ -111,16 +111,30 @@ O código fica em `packages/agent/src/chaos/dataset-pairs.ts`. Os pares saem de 
 | pg-crud (`manfraio/rest_api_with_nodejs_and_postgres`) | original | ISC | 1 | 1 | 0 |
 | realworld (`gothinkster/node-express-realworld-example-app`) | original | MIT | 4 | 1 | 0 |
 | express (`prisma/prisma-examples`, pasta `orm/express`; no plano, prisma-express) | original | MIT | 0 | 1 | 0 |
+| api (`Telemetry-Tracker/telemetry-tracker`, pasta `apps/api`) | original | MIT | 2 | 0 | 0 |
+| api (`Telemetry-Tracker/telemetry-tracker`, pasta `apps/api`) | fixed | MIT | 0 | 2 | 0 |
 
-São **74 registros** (~13 KB cada) e **38 pares** (12 de correção, 26 de diagnóstico). No Neon, ainda estão os 35 registros e os 19 pares de 2026-10-31: os novos vão num envio só, quando o corpus fechar.
+São **78 registros** e **40 pares** (14 de correção, 26 de diagnóstico). No Neon, ainda estão os 35 registros e os 19 pares de 2026-10-31: os novos vão num envio só, quando o corpus fechar.
 
-**Os projetos reais não dão pares.** Os 8 registros deles são rótulos de código real e têm licença declarada, mas falta o outro lado: não existe versão corrigida, os mutantes não acham ponto de mutação neles (os operadores reconhecem `fetch`/`axios`, SQL e nomes como reserva e estorno, não Prisma), e o achado e o "aguentou" caem em rotas diferentes.
+**Dos 14 pares de correção, 2 são reais:** um commit de verdade corrigiu o defeito que o caos reproduz, com o achado antes e o "aguentou" depois, igual em 3 rodadas. Os outros 12 são do checkout.
+
+| Commit | Rota | Falha | Antes | Depois |
+|---|---|---|---|---|
+| `369bba2` | `POST /ingest/error` | `race_condition` em `errorGroup`: 500 com fingerprint duplicado | Achado em `dad773b` | Aguentou |
+| `4639cc5` | `POST /ingest/session` | `race_condition` em `session`: duas linhas, sem 500 (invariante `sessaoUnica`) | Achado em `dcbbc6a` | Aguentou |
+
+Cuidados com esses dois pares (o detalhe está na seção 6 de [`corpus-candidatos.md`](pesquisa/corpus-candidatos.md)):
+- **Só a hipótese que o commit corrige entra.** As outras hipóteses de corrida da rota rodam o mesmo teste e dão o mesmo resultado, com a causa errada. A escolha vem da leitura do commit, não do motor.
+- **Eles vêm de um projeto só:** para avaliar o modelo, os dois ficam do mesmo lado da separação entre treino e teste.
+- **O prompt é grande** (~36 KB no primeiro par): a cadeia da rota tem 38 funções, e só uma muda.
+
+**Os outros projetos reais não dão pares.** Os 8 registros deles são rótulos de código real e têm licença declarada, mas falta o outro lado: não existe versão corrigida, os mutantes não acham ponto de mutação neles (os operadores reconhecem `fetch`/`axios`, SQL e nomes como reserva e estorno, não Prisma), e o achado e o "aguentou" caem em rotas diferentes.
 
 **O "aguentou" do `PUT /publish/:id` (prisma-examples) é um rótulo fraco de verdade:** a rota lê e grava sem transação e perde atualizações, mas nenhuma invariante enxerga isso (seção 4 de [`caos-projetos-reais.md`](pesquisa/caos-projetos-reais.md)). Não use esse registro como exemplo de código seguro.
 
 **Os achados do realworld são erros de resposta, não de integridade:** quem perde a corrida recebe 500 em vez de 404 ou 422, e as restrições do banco seguram os dados. O "Crítico" exagera.
 
-**Não conte os 38 pares como independentes.** Todos saem do mesmo checkout, e o domínio do Fastify é uma cópia do Express: só o handler e a validação mudam, e o prompt do Fastify repete cerca de 70% das linhas do Express. Nos 13 pares de diagnóstico do Fastify, o `chosen` e o `rejected` são iguais aos do Express; só o código do prompt muda. Ao todo são 18 prompts distintos. Para avaliar o modelo, **separe treino e teste por domínio, não por par nem por `provenance.family`**: `checkout-express` e `checkout-fastify` ficam do mesmo lado, senão o teste vaza.
+**Não conte os 38 pares do checkout como independentes.** Todos saem do mesmo checkout, e o domínio do Fastify é uma cópia do Express: só o handler e a validação mudam, e o prompt do Fastify repete cerca de 70% das linhas do Express. Nos 13 pares de diagnóstico do Fastify, o `chosen` e o `rejected` são iguais aos do Express; só o código do prompt muda. Ao todo são 18 prompts distintos. Para avaliar o modelo, **separe treino e teste por domínio, não por par nem por `provenance.family`**: `checkout-express` e `checkout-fastify` ficam do mesmo lado, senão o teste vaza.
 
 Os exemplos deste repositório ainda não têm licença declarada.
 

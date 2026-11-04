@@ -256,11 +256,13 @@ devolve a reserva.
 **Execução e portão.** O comando roda os testes gerados e classifica cada hipótese:
 - **achado:** o controle passou e o caos falhou;
 - **aguentou:** os dois passaram;
-- **inválido:** o controle falhou, o arquivo não carregou ou a falha no banco não disparou. Não conta no portão.
+- **inválido:** o controle falhou, o arquivo não carregou ou a falha não disparou (a gravação alvo não veio depois da API, ou a rota não chamou a API naquela requisição). Não conta no portão.
 
 A severidade sai do motor: corrida ou estado corrompido é Crítico; rota pendurada ou 500 é Alto; status inesperado é Médio. Os códigos de saída são:
 - **exit 1:** há achado com severidade `--fail-on` ou pior (sem `--fail-on`, qualquer achado);
 - **exit 2:** erro de ambiente (o Vitest não rodou, ou todos os testes saíram inválidos).
+
+Num projeto grande, o `--only-contract` testa só as rotas que têm requisição em `requests`, e as outras nem geram teste.
 
 O `--report chaos-report.md` grava o relatório em markdown para o resumo do CI e o comentário do PR. Ele traz:
 - a tabela de achados com a invariante violada;
@@ -520,10 +522,12 @@ Do Projeto18:
   `pg`/Prisma/`fetch`/`axios` como I/O. Ficam de fora `router.route('/x').get(...)`, roteador
   recebido como parâmetro (sai sem o prefixo de quem chama), SQL que não é literal
   (`db_unknown`) e chamadas dentro de callbacks passados a funções (`prisma.$transaction(async (tx) => ...)`:
-  o `tx` não tem tipo, então as operações de dentro não aparecem).
+  o `tx` não tem tipo, então as operações de dentro não aparecem). Um hook que sai de uma fábrica
+  (`addHook('preHandler', createAuth(prisma))`) fica opaco: a cadeia mostra a chamada, sem as operações dela.
 - Caos: falhas de rede, de concorrência e no banco depois da chamada externa têm teste. A falha
   no banco só é injetada no `pg` (Prisma, TypeORM e Knex ficam como hipótese sem teste), e não há
-  falha no meio de uma transação. O banco de teste gerado (`pg` e Prisma) tem uma sessão só, então
+  falha no meio de uma transação. As hipóteses de corrida de uma rota rodam o mesmo teste: o resultado não diz
+  qual tabela causou a falha. O banco de teste gerado (`pg` e Prisma) tem uma sessão só, então
   transações de requisições diferentes rodam uma de cada vez: a corrida entre duas transações abertas
   ao mesmo tempo não aparece. `retry_storm` aparece como hipótese, mas sem teste. Host
   de API dinâmico (URL montada em runtime) não gera teste de rede, porque não se sabe o que interceptar.

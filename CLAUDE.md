@@ -31,7 +31,7 @@
 - Se um processo travar, avisar em vez de matar e relançar várias vezes. No Windows, o `tsx` do servidor pode sobreviver ao terminal: encerrar o que você subiu.
 
 ## Comandos (da raiz do repositório)
-- `npm run check`: typecheck + testes unitários (524 passando em 2026-11-02, com o MVP e a D juntos; com o `npm install` em `examples/checkout-express`, `checkout-fastify` e os `-fixed`, os testes que rodam o caos neles entram).
+- `npm run check`: typecheck + testes unitários (539 passando em 2026-11-03; com o `npm install` em `examples/checkout-express`, `checkout-fastify` e os `-fixed`, os testes que rodam o caos neles entram).
 - `npm run build:vscode`: a extensão (`dist/extension.js` ~740 KB e `dist/chaos.js` ~1,9 MB; se o primeiro crescer muito, algo puxou o LangGraph).
 - `npm run demo:verificar:cli`: só o passo do Fastify do [`docs/roteiro-mvp.md`](docs/roteiro-mvp.md), pela CLI (sem VS Code nem portal; não precisa perguntar).
 - `npm run cli -- graph|topology|chaos <pasta>`: o motor pela CLI. `chaos examples/checkout-express --offline [--report arq.md]` sai com 1 no vulnerável e 0 no `-fixed`.
