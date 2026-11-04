@@ -98,6 +98,18 @@ function itemArg(arg: CallArg, param: string, item: Record<string, CallArg>): Ca
   return arg.chain.length === 2 ? item[arg.chain[1]!] ?? { kind: 'other' } : { kind: 'other' };
 }
 
+/** `app.route(r)` dentro de `for (const r of routes)`: o item inteiro é o objeto de opções; `r.url` vale como no `itemArg`. */
+function wholeItemArg(arg: CallArg, param: string, item: Record<string, CallArg>): CallArg {
+  if (arg.kind !== 'name' || arg.chain.length !== 1 || arg.chain[0] !== param) return itemArg(arg, param, item);
+  const texts: Extract<CallArg, { kind: 'object' }>['texts'] = {};
+  const values: Record<string, CallArg> = {};
+  for (const [key, value] of Object.entries(item)) {
+    if (value.kind === 'string') texts[key] = value;
+    else values[key] = value;
+  }
+  return { kind: 'object', keys: Object.keys(item), texts, values };
+}
+
 /**
  * Registros num roteador que chega como parâmetro, sem tipo: `module.exports = function (app) { app.post(...) }`
  * chamado com `require('./routes/auth')(app)` (ou `authRoutes(app)`). O parâmetro vale o roteador que
@@ -457,35 +469,40 @@ function fastifyRoutes(graph: CodeGraph, all: Array<{ file: string; site: CallSi
   for (const { file, site, instance } of sites) {
     const pos: Position = { file, line: site.line, column: site.column };
     const method = VERBS[site.name];
-    if (method) {
-      // `app.get(path, handler)` / `app.get(path, opts, handler)` / `app.get(path, { handler })`
-      const [first, ...rest] = site.args;
-      if (rest.length === 0) continue;
-      if (first?.kind !== 'string') {
-        skipped.push({ ...pos, reason: `${method}: caminho não literal` });
-        continue;
+    // `for (const r of routes) app.route(r)`: uma chamada por item da lista, como no Express
+    const loop = site.loop;
+    const runs = loop ? graph.arrayItems(loop.array).map((item) => site.args.map((a) => wholeItemArg(a, loop.param, item))) : [site.args];
+    for (const args of runs) {
+      if (method) {
+        // `app.get(path, handler)` / `app.get(path, opts, handler)` / `app.get(path, { handler })`
+        const [first, ...rest] = args;
+        if (rest.length === 0) continue;
+        if (first?.kind !== 'string') {
+          skipped.push({ ...pos, reason: `${method}: caminho não literal` });
+          continue;
+        }
+        const opts = rest.find((a) => a.kind === 'object');
+        const { hooks, handler } = fastifyOptions(graph, opts);
+        const last = rest.filter((a) => a.kind !== 'object').at(-1);
+        const main = last ? handlerOf(graph, last) : handler;
+        registrations.push({ ...pos, router: instance, method, path: first.value, handlers: [...hooks, ...(main ? [main] : [])] });
+      } else if (site.name === 'route') {
+        const opts = args[0];
+        const url = opts?.kind === 'object' ? opts.texts?.url ?? opts.texts?.path : undefined;
+        const methods = opts?.kind === 'object' ? fastifyMethods(opts) : undefined;
+        if (opts?.kind !== 'object' || url?.kind !== 'string' || !methods) {
+          skipped.push({ ...pos, reason: 'route(): método ou caminho não literal' });
+          continue;
+        }
+        const { hooks, handler } = fastifyOptions(graph, opts);
+        for (const m of methods) registrations.push({ ...pos, router: instance, method: m, path: url.value, handlers: [...hooks, ...(handler ? [handler] : [])] });
+      } else if (site.name === 'addHook') {
+        // `app.addHook('preHandler', auth)`: vale para as rotas da instância (e dos plugins registrados depois)
+        const [name, fn] = args;
+        if (name?.kind !== 'string' || !FASTIFY_HOOKS.includes(name.value) || !fn) continue;
+        const handler = handlerOf(graph, fn);
+        if (handler) middlewares.push({ ...pos, router: instance, prefix: '', handler: { ...handler, middleware: true } });
       }
-      const opts = rest.find((a) => a.kind === 'object');
-      const { hooks, handler } = fastifyOptions(graph, opts);
-      const last = rest.filter((a) => a.kind !== 'object').at(-1);
-      const main = last ? handlerOf(graph, last) : handler;
-      registrations.push({ ...pos, router: instance, method, path: first.value, handlers: [...hooks, ...(main ? [main] : [])] });
-    } else if (site.name === 'route') {
-      const opts = site.args[0];
-      const url = opts?.kind === 'object' ? opts.texts?.url ?? opts.texts?.path : undefined;
-      const methods = opts?.kind === 'object' ? fastifyMethods(opts) : undefined;
-      if (opts?.kind !== 'object' || url?.kind !== 'string' || !methods) {
-        skipped.push({ ...pos, reason: 'route(): método ou caminho não literal' });
-        continue;
-      }
-      const { hooks, handler } = fastifyOptions(graph, opts);
-      for (const m of methods) registrations.push({ ...pos, router: instance, method: m, path: url.value, handlers: [...hooks, ...(handler ? [handler] : [])] });
-    } else if (site.name === 'addHook') {
-      // `app.addHook('preHandler', auth)`: vale para as rotas da instância (e dos plugins registrados depois)
-      const [name, fn] = site.args;
-      if (name?.kind !== 'string' || !FASTIFY_HOOKS.includes(name.value) || !fn) continue;
-      const handler = handlerOf(graph, fn);
-      if (handler) middlewares.push({ ...pos, router: instance, prefix: '', handler: { ...handler, middleware: true } });
     }
   }
   return { ...climbRoutes(registrations, mounts, middlewares), sites, mounts };

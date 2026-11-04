@@ -323,14 +323,14 @@ describe('CLI chaos (E3)', () => {
       expect(mixed.code).toBe(0);
       expect(mixed.err).toMatch(/o projeto também usa Koa, que o ShielDepy ainda não lê: as rotas de lá ficam fora/);
 
-      // MVP8: um framework que o mapa lê, mas registrado num laço que ele não segue (o fastify-prisma real):
+      // MVP8: um framework que o mapa lê, mas registrado num laço sobre uma lista que só existe em runtime:
       // 0 rotas também não é verde
       fs.rmSync(path.join(tmp, 'app.ts'));
       fs.rmSync(path.join(tmp, 'main.ts'));
       fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { fastify: '3' } }));
       fs.writeFileSync(
         path.join(tmp, 'app.ts'),
-        "import { fastify } from 'fastify';\nconst routes = { health: { method: 'GET', url: '/health', handler: async () => 'ok' } };\nexport const app = fastify();\nfor (const route of Object.values(routes)) app.route(route);\n"
+        "import { fastify } from 'fastify';\nimport { loadRoutes } from './load';\nexport const app = fastify();\nfor (const route of loadRoutes()) app.route(route);\n"
       );
       const looped = await run('chaos', tmp, '--offline');
       expect(looped.code).toBe(2);

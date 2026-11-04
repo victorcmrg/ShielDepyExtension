@@ -2,7 +2,7 @@
 // Funções puras — não sabem nada do grafo; o CodeGraph decide o que fazer com o resultado.
 // Tudo aqui é lido da AST: nada de regex sobre o texto do código.
 
-import { constructedType, FUNCTION_VALUE_TYPES, memberChain, typeRef, walk, type TypeRef } from './ast';
+import { constructedType, FUNCTION_VALUE_TYPES, listName, memberChain, typeRef, walk, type TypeRef } from './ast';
 import { DEFAULT_EXPORT_NAME, propertyKey } from './extract-module';
 import type { SyntaxNode } from './parser';
 import { bodyHash } from './fingerprint';
@@ -1059,16 +1059,26 @@ export function stableIds(symbols: SymbolInfo[], fileId: string): void {
 
 const LOOP_METHODS = new Set(['forEach', 'map']);
 
-/** `lista.forEach((item) => { <node> })`: a lista e o nome do item (ver `RawCall.loop`). Só o callback mais próximo conta. */
+/**
+ * `lista.forEach((item) => { <node> })` ou `for (const item of lista) { <node> }`, com `Object.values(lista)` no
+ * lugar da lista: a lista e o nome do item (ver `RawCall.loop`). Só o laço mais próximo conta.
+ */
 function loopOf(node: SyntaxNode): RawCall['loop'] {
-  for (let n = node.parent; n; n = n.parent) {
+  for (let n = node.parent, from = node; n; from = n, n = n.parent) {
+    if (n.type === 'for_in_statement' && n.childForFieldName('body')?.startIndex === from.startIndex) {
+      const left = n.childForFieldName('left');
+      const array = n.children.some((c) => c.type === 'of') ? listName(n.childForFieldName('right')) : undefined;
+      return array && left?.type === 'identifier' ? { array, param: left.text } : undefined;
+    }
     if (!FUNCTION_SCOPE_TYPES.has(n.type)) continue;
     const call = n.parent?.type === 'arguments' ? n.parent.parent : undefined;
-    const chain = call?.type === 'call_expression' ? memberChain(call.childForFieldName('function')) : undefined;
-    if (!chain || chain.length !== 2 || !LOOP_METHODS.has(chain[1]!)) return undefined;
+    const fn = call?.type === 'call_expression' ? call.childForFieldName('function') : undefined;
+    const method = fn?.type === 'member_expression' ? fn.childForFieldName('property')?.text : undefined;
+    const array = method && LOOP_METHODS.has(method) ? listName(fn!.childForFieldName('object')) : undefined;
+    if (!array) return undefined;
     const param = n.childForFieldName('parameter') ?? n.childForFieldName('parameters')?.namedChildren[0];
     const name = param ? paramName(param) : undefined;
-    return name ? { array: chain[0]!, param: name } : undefined;
+    return name ? { array, param: name } : undefined;
   }
   return undefined;
 }

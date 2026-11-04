@@ -4,7 +4,7 @@
 // chamadas eram ligadas só pelo nome, e qualquer alias ou barrel quebrava a cadeia.
 // Função pura: não sabe nada de disco nem do grafo.
 
-import { constructedType, memberChain, typeRef, type TypeRef } from './ast';
+import { constructedType, listName, memberChain, typeRef, type TypeRef } from './ast';
 import type { SyntaxNode } from './parser';
 
 /** Ligação local criada por um import. `imported` é o nome exportado, `default` ou `*` (namespace/require). */
@@ -46,7 +46,8 @@ export interface ModuleInfo {
   /**
    * Listas literais de objetos no topo: `const routes = [{ path: '/auth', route: authRoute }]` → routes:
    * [{ path: '/auth' (texto), route: authRoute (nome) }]. É o que liga `routes.forEach((r) => router.use(r.path, r.route))`
-   * a cada montagem — o padrão de vários boilerplates Express.
+   * a cada montagem — o padrão de vários boilerplates Express. Um objeto de objetos vale a lista dos valores
+   * (`const routes = { a: {...} }`), e `const list = Object.values(routes)` vale a mesma lista.
    */
   arrays: Map<string, ArrayItem[]>;
   /** Nomes do topo que só repetem um membro: `const User = db.user` → User: ['db', 'user']. */
@@ -58,8 +59,19 @@ export interface ModuleInfo {
   objectRequires: Map<string, string>;
 }
 
-/** Um objeto de uma lista literal: só os valores estáticos (texto ou nome). */
-export type ArrayItem = Record<string, { kind: 'string'; value: string } | { kind: 'name'; chain: string[] }>;
+/**
+ * Um valor de um objeto de lista literal. `function`: `line` é a do par (0-based), onde começa o símbolo dele;
+ * sem ela, a função não virou símbolo. `other`: o valor existe, mas não dá para ler sem executar.
+ */
+export type ArrayValue =
+  | { kind: 'string'; value: string }
+  | { kind: 'name'; chain: string[] }
+  | { kind: 'array'; items: ArrayValue[] }
+  | { kind: 'function'; line?: number }
+  | { kind: 'other' };
+
+/** Um objeto de uma lista literal: as chaves e o que se sabe de cada valor. */
+export type ArrayItem = Record<string, ArrayValue>;
 
 /** Nome dado ao símbolo de `export default function () {}` / `export default () => {}`. */
 export const DEFAULT_EXPORT_NAME = 'default';
@@ -96,25 +108,41 @@ function collectObjectRefs(object: SyntaxNode, path: string, out: Map<string, st
   }
 }
 
-/** Os objetos de uma lista literal, com os valores que são texto ou nome; o que não for objeto fica vazio. */
+function arrayValue(value: SyntaxNode | null): ArrayValue {
+  const text = stringValue(value);
+  if (text !== undefined) return { kind: 'string', value: text };
+  const chain = memberChain(value);
+  if (chain) return { kind: 'name', chain };
+  if (value?.type === 'array') return { kind: 'array', items: value.namedChildren.filter((el) => el.type !== 'comment').map(arrayValue) };
+  return value && FUNCTION_VALUE_TYPES.has(value.type) ? { kind: 'function' } : { kind: 'other' };
+}
+
+function objectItem(object: SyntaxNode): ArrayItem {
+  const item: ArrayItem = {};
+  for (const p of object.namedChildren) {
+    if (p.type === 'shorthand_property_identifier') item[p.text] = { kind: 'name', chain: [p.text] };
+    if (p.type === 'method_definition') {
+      const name = propertyKey(p.childForFieldName('name'));
+      if (name) item[name] = { kind: 'function', line: p.startPosition.row };
+    }
+    if (p.type !== 'pair') continue;
+    const key = propertyKey(p.childForFieldName('key'));
+    const value = arrayValue(p.childForFieldName('value'));
+    if (key) item[key] = value.kind === 'function' ? { kind: 'function', line: p.startPosition.row } : value;
+  }
+  return item;
+}
+
+/** Os objetos de uma lista literal; o que não for objeto fica vazio. */
 function arrayItems(array: SyntaxNode): ArrayItem[] {
-  return array.namedChildren
-    .filter((el) => el.type !== 'comment')
-    .map((el) => {
-      const item: ArrayItem = {};
-      if (el.type !== 'object') return item;
-      for (const p of el.namedChildren) {
-        if (p.type === 'shorthand_property_identifier') item[p.text] = { kind: 'name', chain: [p.text] };
-        if (p.type !== 'pair') continue;
-        const key = propertyKey(p.childForFieldName('key'));
-        const value = p.childForFieldName('value');
-        const text = stringValue(value);
-        const chain = memberChain(value);
-        if (key && text !== undefined) item[key] = { kind: 'string', value: text };
-        else if (key && chain) item[key] = { kind: 'name', chain };
-      }
-      return item;
-    });
+  return array.namedChildren.filter((el) => el.type !== 'comment').map((el) => (el.type === 'object' ? objectItem(el) : {}));
+}
+
+/** `{ a: {...}, b: {...} }`: os valores, se todos são objetos. Outro objeto do topo (configuração, mapa de nomes) não é lista. */
+function objectValues(object: SyntaxNode): ArrayItem[] | undefined {
+  const pairs = object.namedChildren.filter((p) => p.type !== 'comment');
+  const values = pairs.map((p) => (p.type === 'pair' ? p.childForFieldName('value') : null));
+  return values.length > 0 && values.every((v) => v?.type === 'object') ? values.map((v) => objectItem(v!)) : undefined;
 }
 
 function hasToken(node: SyntaxNode, token: string): boolean {
@@ -356,6 +384,8 @@ export function extractModuleInfo(root: SyntaxNode): ModuleInfo {
       if (type) valueTypes.set(name.text, type);
       if (value?.type === 'object') collectObjectRefs(value, name.text, objectRefs);
       if (value?.type === 'array') arrays.set(name.text, arrayItems(value));
+      const items = value?.type === 'object' ? objectValues(value) : value?.type === 'call_expression' ? arrays.get(listName(value) ?? '') : undefined;
+      if (items) arrays.set(name.text, items);
       // `const User = db.user`: o nome é só outro jeito de chegar no mesmo valor
       const chain = value?.type === 'member_expression' ? memberChain(value) : undefined;
       if (chain && chain[0] !== 'this') aliases.set(name.text, chain);

@@ -3,7 +3,7 @@ import Graph from 'graphology';
 import type { Host } from '../host';
 import { extOf, toFileId } from '../paths';
 import { findCycleThrough } from './cycles';
-import type { ImportBinding, ModuleInfo } from './extract-module';
+import type { ArrayValue, ImportBinding, ModuleInfo } from './extract-module';
 import { looksGenerated } from './generated';
 import type { CallDesc, RawArg, RawCall, Scope, TypeRef } from './extract-ts';
 import { csharpFrontend, javaFrontend, tsFrontend, type LanguageFrontend, type LanguageId, type NamespaceScope } from './frontend';
@@ -1146,18 +1146,22 @@ export class CodeGraph {
     const items = this.moduleInfo.get(array.file)?.arrays.get(array.name);
     if (!items) return [];
     const ctx = this.resolutionContext(array.file);
-    return items.map((item) => {
-      const out: Record<string, CallArg> = {};
-      for (const [key, v] of Object.entries(item)) {
-        if (v.kind === 'string') out[key] = v;
-        else {
-          const ref: CallDesc = v.chain.length === 1 ? { name: v.chain[0]! } : { name: v.chain.at(-1)!, object: v.chain.slice(0, -1) };
-          // sem `scope`: o nome pode ser import (`const authRoute = require(...)`) — o `valueOrigin` segue até a declaração
-          out[key] = this.resolveArg(array.file, { kind: 'name', chain: v.chain, ref }, ctx);
-        }
+    const resolve = (key: string, v: ArrayValue): CallArg => {
+      if (v.kind === 'string' || v.kind === 'other') return v;
+      if (v.kind === 'array') return { kind: 'array', items: v.items.map((i) => resolve(key, i)) };
+      if (v.kind === 'function') {
+        // o símbolo de `{ handler: () => {} }` começa no par e leva a chave como nome; dois na mesma linha ficam sem
+        const found = this.ownedSymbols(array.file).filter((id) => {
+          const attrs = this.graph.getNodeAttributes(id);
+          return isSymbolNode(attrs) && attrs.startLine === v.line && attrs.name === key;
+        });
+        return { kind: 'function', ...(found.length === 1 && { symbolId: found[0]! }) };
       }
-      return out;
-    });
+      const ref: CallDesc = v.chain.length === 1 ? { name: v.chain[0]! } : { name: v.chain.at(-1)!, object: v.chain.slice(0, -1) };
+      // sem `scope`: o nome pode ser import (`const authRoute = require(...)`) — o `valueOrigin` segue até a declaração
+      return this.resolveArg(array.file, { kind: 'name', chain: v.chain, ref }, ctx);
+    };
+    return items.map((item) => Object.fromEntries(Object.entries(item).map(([key, v]) => [key, resolve(key, v)])));
   }
 
   private publicResolution(r: CallResolution): { outcome: PublicCallOutcome; targets: string[]; package?: string } {

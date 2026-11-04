@@ -22,6 +22,15 @@ export function memberChain(node: SyntaxNode | null | undefined): string[] | und
   return head && prop?.type === 'property_identifier' ? [...head, prop.text] : undefined;
 }
 
+/** O nome da lista em `routes` ou `Object.values(routes)`. */
+export function listName(node: SyntaxNode | null | undefined): string | undefined {
+  if (node?.type === 'identifier') return node.text;
+  if (node?.type !== 'call_expression') return undefined;
+  const chain = memberChain(node.childForFieldName('function'));
+  const args = node.childForFieldName('arguments')?.namedChildren.filter((a) => a.type !== 'comment');
+  return chain?.join('.') === 'Object.values' && args?.length === 1 && args[0]!.type === 'identifier' ? args[0]!.text : undefined;
+}
+
 /** Tipo nomeado de uma anotação/expressão de tipo: `Repo`, `Repo<X>`, `db.Pool`. União, array etc. → undefined. */
 export function typeRef(node: SyntaxNode | null | undefined): TypeRef | undefined {
   if (!node) return undefined;

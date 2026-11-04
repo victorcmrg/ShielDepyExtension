@@ -426,6 +426,127 @@ describe('Rotas em função de plugin: as operações do callback e do serviço'
   });
 });
 
+describe('Rotas registradas num laço sobre uma lista literal', () => {
+  let graph: CodeGraph;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    graph = await createGraph();
+    fx = new Fixture();
+  });
+
+  afterEach(() => fx.cleanup());
+
+  const app = (body: string[]) =>
+    ["import Fastify from 'fastify';", "async function create() {}", "async function list() {}", 'export const app = Fastify();', ...body].join('\n');
+
+  it('o fastify-prisma: objeto de rotas, `Object.values` em outro arquivo, `for...of` no plugin', () => {
+    indexFile(graph, fx, 'controllers/user.ts', 'export async function signup() {}\nexport async function getAllUsers() {}\n');
+    indexFile(graph, fx, 'controllers/index.ts', "export * from './user';\n");
+    indexFile(graph, fx, 'middleware/index.ts', 'export async function validateRequest() {}\n');
+    const routesFile = indexFile(
+      graph,
+      fx,
+      'routes/routes.ts',
+      [
+        "import { RouteOptions } from 'fastify';",
+        "import * as controllers from '../controllers';",
+        "import * as middleware from '../middleware';",
+        'const routes: Record<string, RouteOptions> = {',
+        "  healthCheck: { method: 'GET', url: '/health', handler: (_, res) => { res.status(200).send(); } },",
+        "  signup: { method: 'POST', url: '/signup', handler: controllers.signup },",
+        "  getAllUsers: { method: 'GET', url: '/user', preHandler: [middleware.validateRequest], handler: controllers.getAllUsers },",
+        '};',
+        'export const renderRoutes = Object.values(routes);',
+      ].join('\n')
+    );
+    indexFile(
+      graph,
+      fx,
+      'routes/index.ts',
+      [
+        "import { FastifyInstance, FastifyPluginCallback } from 'fastify';",
+        "import { renderRoutes } from './routes';",
+        'export const router: FastifyPluginCallback = (fastify: FastifyInstance, opts, next) => {',
+        '  for (let route of renderRoutes) {',
+        '    fastify.route(route);',
+        '  }',
+        '  next();',
+        '};',
+      ].join('\n')
+    );
+    indexFile(graph, fx, 'app.ts', ["import { fastify } from 'fastify';", "import { router } from './routes/index';", 'const app = fastify();', 'app.register(router);', 'export { app };'].join('\n'));
+
+    const { routes, skipped } = findExpressRoutes(graph);
+    expect(routes.map(show)).toEqual(['GET /health: <inline>', 'POST /signup: controllers.signup', 'GET /user: middleware.validateRequest → controllers.getAllUsers']);
+    expect(skipped).toEqual([]);
+    // o handler escrito na lista é o símbolo do par, não uma rota sem corpo
+    expect(routes[0]!.handlers[0]!.symbols).toHaveLength(1);
+    expect(graph.nodeAttributes(routes[0]!.handlers[0]!.symbols[0]!)).toMatchObject({ name: 'handler', file: routesFile });
+    expect(routes.find((r) => r.id === 'GET /user')!.handlers[0]!.middleware).toBe(true);
+    expect(routes.find((r) => r.id === 'POST /signup')!.handlers[0]!.opaque).toBeUndefined();
+  });
+
+  it('`for...of` sobre `Object.values` direto, e `forEach` nele', () => {
+    indexFile(
+      graph,
+      fx,
+      'app.ts',
+      app([
+        "const routes = { a: { method: 'POST', url: '/a', handler: create } };",
+        "const others = { b: { method: ['GET', 'HEAD'], url: '/b', handler: list } };",
+        'for (const r of Object.values(routes)) app.route(r);',
+        'Object.values(others).forEach((r) => app.route(r));',
+      ])
+    );
+    expect(findExpressRoutes(graph).routes.map(show)).toEqual(['POST /a: create', 'GET /b: list', 'HEAD /b: list']);
+  });
+
+  it('o verbo com os campos do item', () => {
+    indexFile(graph, fx, 'app.ts', app(["const routes = [{ url: '/a', handler: create }, { url: '/b', handler: list }];", 'for (const r of routes) app.post(r.url, r.handler);']));
+    expect(findExpressRoutes(graph).routes.map(show)).toEqual(['POST /a: create', 'POST /b: list']);
+  });
+
+  it('o handler que a lista não sabe ler sai opaco, sem sumir', () => {
+    indexFile(graph, fx, 'app.ts', app(["const routes = [{ method: 'POST', url: '/a', handler: wrap(create) }];", 'for (const r of routes) app.route(r);']));
+    const [route] = findExpressRoutes(graph).routes;
+    expect(route).toMatchObject({ id: 'POST /a' });
+    expect(route!.handlers[0]!.opaque).toBe(true);
+  });
+
+  it('a lista que não é literal fica em `skipped`, sem inventar rota', () => {
+    indexFile(graph, fx, 'app.ts', app(['function build() { return []; }', 'for (const r of build()) app.route(r);', 'for (const k in { a: 1 }) app.route(k);']));
+    const { routes, skipped } = findExpressRoutes(graph);
+    expect(routes).toEqual([]);
+    expect(skipped.map((s) => s.reason)).toEqual(['route(): método ou caminho não literal', 'route(): método ou caminho não literal']);
+  });
+
+  it('a chamada na expressão do `for...of` não é do laço', () => {
+    indexFile(graph, fx, 'app.ts', app(["const routes = [{ url: '/a', handler: create }];", "for (const r of (app.get('/fora', list), routes)) app.post(r.url, r.handler);"]));
+    const { routes, skipped } = findExpressRoutes(graph);
+    // a vírgula esconde a lista: o `POST` fica em `skipped`, e o `GET` sai uma vez só, fora do laço
+    expect(routes.map(show)).toEqual(['GET /fora: list']);
+    expect(skipped.map((s) => s.reason)).toEqual(['POST: caminho não literal']);
+  });
+
+  it('no Express, `for...of` monta os roteadores da lista como o `forEach`', () => {
+    indexFile(graph, fx, 'orders.ts', ["import { Router } from 'express';", 'export const orders = Router();', "orders.get('/', async () => {});"].join('\n'));
+    indexFile(
+      graph,
+      fx,
+      'app.ts',
+      [
+        "import express from 'express';",
+        "import { orders } from './orders';",
+        'const app = express();',
+        "const routes = [{ path: '/orders', route: orders }];",
+        'for (const r of routes) app.use(r.path, r.route);',
+      ].join('\n')
+    );
+    expect(findExpressRoutes(graph).routes.map((r) => r.id)).toEqual(['GET /orders']);
+  });
+});
+
 describe('MVP4 — os exemplos checkout-fastify: a topologia com as operações em ordem', () => {
   for (const [name, ops] of [
     // lê o estoque, cobra (sem timeout) e só depois grava: a janela da corrida
