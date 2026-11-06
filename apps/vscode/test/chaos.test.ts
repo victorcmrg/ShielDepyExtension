@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ChaosResults } from '@shieldepy/agent/chaos';
-import { chaosToFindings } from '../src/chaos/chaosFindings';
+import { chaosToFindings, formatRanAt } from '../src/chaos/chaosFindings';
 
 const op = (order: number, kind: string, target: string, at: string, inFn: string) => ({ order, kind, target, via: kind === 'api_call' ? 'fetch' : 'pg', at, in: inFn, confidence: 'proven' as const });
 const outcome = (failure: string, target: string, status: 'failed' | 'passed' | 'invalid', message?: string, severity?: string) => ({
@@ -86,6 +86,20 @@ describe('o resultado do caos vira erro na linha da operação atingida', () => 
       '.shieldepy/chaos-tests/POST__checkout__partial_failure_after_external_call__orders.spec.ts:1',
       'src/routes/checkout.ts:8',
     ]);
+  });
+
+  it('o achado leva quando o resultado foi gravado, sem mudar a identidade dele', () => {
+    const ranAt = Date.UTC(2026, 10, 6, 19, 52);
+    const withTime = chaosToFindings(results, dir, ranAt);
+    expect(withTime.every((f) => f.ranAt === ranAt)).toBe(true);
+    expect(withTime.map((f) => f.key)).toEqual(findings.map((f) => f.key));
+    expect(findings[0]).not.toHaveProperty('ranAt');
+  });
+
+  it('o horário sai curto e no idioma da extensão', () => {
+    const ranAt = new Date(2026, 10, 6, 19, 52).getTime();
+    expect(formatRanAt(ranAt, 'pt-BR')).toBe('06/11 19:52');
+    expect(formatRanAt(ranAt, 'ru')).toBe('06.11 19:52');
   });
 
   it('sem a topologia no resultado, o achado vai para a rota (ou some, se nem ela houver)', () => {

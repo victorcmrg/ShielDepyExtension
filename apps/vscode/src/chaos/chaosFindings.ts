@@ -45,9 +45,9 @@ function hitOperations(o: Outcome, ops: Operation[]): Operation[] {
 
 /**
  * Um achado por operação atingida de cada teste que quebrou (controle passou, caos falhou).
- * Sem a topologia no resultado, o achado vai para a linha da rota.
+ * Sem a topologia no resultado, o achado vai para a linha da rota. `ranAt` é quando o resultado foi gravado.
  */
-export function chaosToFindings(results: ChaosResults, projectDir: string): Finding[] {
+export function chaosToFindings(results: ChaosResults, projectDir: string, ranAt?: number): Finding[] {
   const routes = new Map((results.surface?.routes ?? []).map((r) => [r.id, r]));
   const findings: Finding[] = [];
   for (const o of results.outcomes) {
@@ -77,8 +77,14 @@ export function chaosToFindings(results: ChaosResults, projectDir: string): Find
         related,
         confidence: 100,
         key: `caos:${o.hypothesisId}:${p.at.file}:${p.at.line}`,
+        ...(ranAt !== undefined && { ranAt }),
       });
     }
   }
   return findings;
+}
+
+/** O horário de um resultado salvo, curto, no idioma da extensão: `06/11 19:52`. */
+export function formatRanAt(ranAt: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(ranAt).replace(',', '');
 }

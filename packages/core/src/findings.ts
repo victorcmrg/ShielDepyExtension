@@ -35,4 +35,6 @@ export interface Finding {
    * o que muda toda vez que a IA reescreve a frase. Ex.: o símbolo do ciclo, a chave da colisão.
    */
   key?: string;
+  /** Quando saiu o resultado salvo de onde o achado veio (ms desde 1970): ele reaparece ao abrir o projeto. */
+  ranAt?: number;
 }

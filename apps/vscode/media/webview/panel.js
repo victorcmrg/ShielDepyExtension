@@ -11,6 +11,7 @@
   const T = (key, vars) => (STR[key] || key).replace(/\{(\w+)\}/g, (m, name) => (vars && name in vars ? String(vars[name]) : m));
   const SEVERITIES = { error: T('sevError'), warning: T('sevWarning'), info: T('sevInfo') };
   const COUNT_IDS = { error: 'countError', warning: 'countWarning', info: 'countInfo' };
+  const SOURCES = { grafo: T('sourceGraph'), colisao: T('sourceCollision'), ia: T('sourceAi'), caos: T('sourceChaos') };
 
   const openFiles = new Set(); // gavetas abertas sobrevivem aos re-renders
   const openBalloons = new Set(); // balões abertos idem
@@ -129,14 +130,18 @@
     }
   }
 
+  function setFilter(severity) {
+    severityFilter = severity;
+    tilesEl.classList.toggle('filtering', Boolean(severityFilter));
+    tilesEl.querySelectorAll('.tile').forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.severity === severityFilter)));
+    renderGroups(lastGroups, lastSystemDisabled);
+  }
+
   tilesEl.querySelectorAll('.tile').forEach((tile) => {
     tile.addEventListener('click', () => {
       const sev = tile.dataset.severity;
-      severityFilter = severityFilter === sev ? null : sev;
       replay(tile, 'tapped');
-      tilesEl.classList.toggle('filtering', Boolean(severityFilter));
-      tilesEl.querySelectorAll('.tile').forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.severity === severityFilter)));
-      renderGroups(lastGroups, lastSystemDisabled);
+      setFilter(severityFilter === sev ? null : sev);
     });
   });
 
@@ -189,6 +194,13 @@
   }
 
   // --- achados ---------------------------------------------------------------------------
+  /** De onde veio o achado. O do caos é um resultado salvo: leva o horário, para não parecer análise de agora. */
+  function renderOrigin(item) {
+    const origin = el('span', 'origin', item.when ? T('sourceChaosAt', { when: item.when }) : SOURCES[item.source] || item.source);
+    if (item.source === 'caos') origin.title = T('sourceChaosHint');
+    return origin;
+  }
+
   function renderFinding(item) {
     const finding = el('div', 'finding ' + (SEVERITIES[item.severity] ? item.severity : 'info'));
     const conflictNames = item.conflicts.map((c) => c.fileName).join(', ');
@@ -201,7 +213,7 @@
     const text = el('span', 'finding-text');
     text.appendChild(el('span', 'finding-message', item.message));
     const meta = el('span', 'finding-meta');
-    meta.append(el('span', 'ref', '#' + item.ref), el('span', '', T('lineN', { n: item.line + 1 })));
+    meta.append(el('span', 'ref', '#' + item.ref), el('span', '', T('lineN', { n: item.line + 1 })), renderOrigin(item));
     if (conflictNames) meta.appendChild(el('span', 'conflict', T('conflictWith', { files: conflictNames })));
     text.appendChild(meta);
     row.appendChild(text);
@@ -241,19 +253,24 @@
       .map((g) => ({ ...g, items: severityFilter ? g.items.filter((i) => i.severity === severityFilter) : g.items }))
       .filter((g) => g.items.length > 0);
     if (visible.length === 0) {
-      // Uma área vazia só, com uma frase no meio — o resumo fica no fim dela. Sem filtro, a
-      // lista vazia vira o ponto de partida: o mapa, o caos e os primeiros passos.
+      // Uma área vazia só, com uma frase no meio — o resumo fica no fim dela. Com filtro, diz que é
+      // o filtro e como tirar. Sem filtro, a lista vazia vira o ponto de partida: o mapa, o caos e
+      // os primeiros passos.
       findingsEl.classList.add('is-empty');
-      const empty = el('div', 'empty', severityFilter ? T('emptyState') : T('emptyNext'));
-      if (!severityFilter) {
-        const actions = el('div', 'next-steps');
+      const empty = el('div', 'empty', severityFilter ? T('emptyFiltered', { severity: SEVERITIES[severityFilter] }) : T('emptyNext'));
+      const actions = el('div', 'next-steps');
+      if (severityFilter) {
+        const clear = el('button', 'text-btn', T('clearFilter'));
+        clear.addEventListener('click', () => setFilter(null));
+        actions.appendChild(clear);
+      } else {
         for (const [key, type] of [['actionShowMap', 'showMap'], ['actionRunChaos', 'runChaos'], ['actionWalkthrough', 'walkthrough']]) {
           const btn = el('button', 'text-btn', T(key));
           btn.addEventListener('click', () => vscode.postMessage({ type }));
           actions.appendChild(btn);
         }
-        empty.appendChild(actions);
       }
+      empty.appendChild(actions);
       findingsEl.appendChild(empty);
       return;
     }

@@ -8,6 +8,7 @@ import type { AiService } from '../services/AiService';
 import type { AuthService } from '../services/AuthService';
 import type { WorkspaceModel } from '../workspace/WorkspaceModel';
 import { readSnippet } from '../analysis/conflictSnippet';
+import { formatRanAt } from '../chaos/chaosFindings';
 import { strings, t } from '../i18n';
 import { escapeHtml, renderWebview } from './webview';
 
@@ -210,6 +211,7 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
             message: f.message,
             impact: f.impact ?? '',
             source: f.source,
+            when: f.ranAt === undefined ? undefined : formatRanAt(f.ranAt, config.languageCode()),
             // O balão mostra o código: a outra ponta numa colisão; o próprio trecho nos demais.
             conflicts: (f.related ?? []).map((r) => readSnippet(r, 2, texts)).filter((x) => x !== undefined),
             snippet: f.related?.length ? undefined : readSnippet({ file: fileId, line: f.startLine, message: '' }, 2, texts),

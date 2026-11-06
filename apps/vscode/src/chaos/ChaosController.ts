@@ -2,7 +2,7 @@
 // "Testar Caos", pela CLI ou pelo CI) vira erro na Lista de erros e no Problems, na linha da operação
 // atingida. O observador de arquivos mantém tudo em dia: rodou de novo, os achados mudam; apagou, somem.
 // Quem roda o caos é o `ChaosCommand`.
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ChaosResults } from '@shieldepy/agent/chaos';
@@ -33,13 +33,15 @@ export class ChaosController implements vscode.Disposable {
   async loadResults(uri: vscode.Uri): Promise<ChaosResults | undefined> {
     const projectDir = path.dirname(path.dirname(uri.fsPath));
     let results: ChaosResults;
+    let ranAt: number;
     try {
       results = JSON.parse(await readFile(uri.fsPath, 'utf8')) as ChaosResults;
+      ranAt = (await stat(uri.fsPath)).mtimeMs; // a CLI grava o arquivo a cada execução
     } catch {
       return undefined; // ainda sendo gravado, ou apagado
     }
     const byFile = new Map<string, ReturnType<typeof chaosToFindings>>();
-    for (const f of chaosToFindings(results, projectDir)) byFile.set(f.file, [...(byFile.get(f.file) ?? []), f]);
+    for (const f of chaosToFindings(results, projectDir, ranAt)) byFile.set(f.file, [...(byFile.get(f.file) ?? []), f]);
     for (const file of this.published.get(projectDir) ?? []) if (!byFile.has(file)) this.findings.clear(file, 'caos');
     for (const [file, list] of byFile) this.findings.set(file, 'caos', list);
     this.published.set(projectDir, new Set(byFile.keys()));
