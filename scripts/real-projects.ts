@@ -40,6 +40,11 @@ export const PROJECTS: Project[] = [
   { id: 'petclinic-microservices', repo: 'spring-petclinic/spring-petclinic-microservices', commit: '1d76b00d683e86b62867a6bf59530f8ab301244f', stack: 'Java, Spring Cloud, WebClient, Spring Data' },
 ];
 
+/** O arnês que os testes gerados importam, nas versões em que o caos foi medido (C1). */
+export const HARNESS = ['vitest@2.1.9', 'supertest@7', 'msw@2'];
+/** As versões do PGlite medidas com o Prisma (0019): as da raiz deste repositório. */
+export const PGLITE_SOCKET = ['@electric-sql/pglite@0.5.11', '@electric-sql/pglite-socket@0.2.14'];
+
 export function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;

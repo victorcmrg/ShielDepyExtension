@@ -19,6 +19,7 @@
     "web": "npm run build -w @shieldepy/web && npm start -w @shieldepy/api",
     "web:dev": "npm run dev -w @shieldepy/web",
     "demo": "node scripts/demo/demo.mjs",
+    "demo:real": "node --import tsx scripts/demo/preparar-real.ts",
     "demo:caos": "node scripts/demo/demo.mjs --caos",
     "demo:verificar": "node scripts/demo/verificar.mjs",
     "demo:verificar:cli": "node scripts/demo/verificar.mjs --so-cli",

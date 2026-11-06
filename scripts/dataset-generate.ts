@@ -16,15 +16,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runChaosChild, writeCorpus } from './dataset-corpus';
-import { arg, checkout, PROJECTS } from './real-projects';
+import { arg, checkout, HARNESS, PGLITE_SOCKET, PROJECTS } from './real-projects';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const CONTRACTS = path.join(ROOT, 'scripts', 'dataset', 'contratos');
 
-/** O arnês que os testes gerados importam, nas versões em que o caos foi medido (C1). */
-const HARNESS = ['vitest@2.1.9', 'supertest@7', 'msw@2'];
-/** As versões do PGlite medidas com o Prisma (0019): as da raiz deste repositório. */
-const PGLITE_SOCKET = ['@electric-sql/pglite@0.5.11', '@electric-sql/pglite-socket@0.2.14'];
 /** Como preparar cada projeto com contrato guardado. `prisma` são os argumentos do `prisma generate`. */
 const SETUP: Record<string, { install?: string[]; noSave: string[]; prisma?: string[] }> = {
   'pg-crud': { noSave: [...HARNESS, '@electric-sql/pglite@0.5.11'] },
