@@ -15,9 +15,9 @@ export function serviceFromFileName(name: string): string {
  * Nome do serviço = a primeira subpasta abaixo da raiz
  * (services/pricing/PricingListener.java -> "pricing"); arquivo solto na raiz usa o próprio nome.
  */
-export function scanDir(root: string, registry: Registry): ServiceRule[] {
+export function scanDir(root: string, registry: Registry, tree: string[] = walkSourceTree(root)): ServiceRule[] {
   const out: ServiceRule[] = [];
-  for (const rel of walkSourceTree(root)) {
+  for (const rel of tree) {
     const segments = rel.split(/[\\/]/);
     const extractor = registry.forPath(rel);
     if (!extractor) continue;

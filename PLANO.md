@@ -12,9 +12,9 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 ## Onde estamos (2026-11-06)
 
 - **A apresentação do TCC foi adiada para a semana que vem (2026-11-06, data a confirmar).** Vale no lugar do "sábado" das notas abaixo; o que estava preso até lá pode entrar, com o usuário.
-- **Próxima tarefa: correções da extensão vistas no teste do usuário (2026-11-06), na branch `feat/contrato-monorepo`.** Nada disso foi implementado:
-  1. **A raiz do repositório aparece como projeto de caos.** A extensão já pergunta qual projeto testar, separando por `package.json`. A raiz entra na lista com 4 rotas porque `examples/pedidos-aspnet` e `examples/pedidos-springboot` (C# e Java) não têm `package.json`, e o `packageRoot` (`apps/vscode/src/chaos/ChaosCommand.ts`) sobe até ela. Ajuste: rota de linguagem sem caos não conta no `projects()`.
-  2. **O `--init` mistura os projetos das subpastas.** Na raiz, ele leu a pasta inteira e pegou as rotas JS dos 4 `checkout-*`, com chaves repetidas em `requests` e o `createApp` de um app só. Ajuste: não entrar em subpasta que é outro projeto.
+- **Em andamento: correções da extensão vistas no teste do usuário (2026-11-06), na branch `feat/contrato-monorepo`:**
+  1. ✅ **A raiz do repositório aparecia como projeto de caos** ([0034](docs/decisoes/0034-um-projeto-de-caos-por-package-json.md)): rota de C# ou Java não conta mais (`apps/vscode/src/chaos/projects.ts`).
+  2. ✅ **O `--init` misturava os projetos das subpastas** (0034): o caos não entra em subpasta com `package.json` próprio. Na raiz deste repositório, ele sai 2 e lista os 12 subprojetos, sem criar contrato.
   3. **Contrato e "Motor ou IA" parecem a mesma escolha.** O contrato sai do mapa, sem IA, e pode sobrar um TODO; a escolha "Motor (grátis)" ou "Com IA" vem depois e é sobre quem propõe as hipóteses. Decidir com o usuário como deixar isso claro.
   4. **Lista de erros sem origem nem data.** Um resultado salvo reaparece ao abrir o projeto e parece análise feita agora. Mostrar de onde vem cada erro (grafo, colisão, IA, caos) e o horário do resultado do caos.
   5. **"Inválido" soa como erro.** No `-fixed`, o "1 inválido" é o esperado: a correção reserva o estoque antes de cobrar, e não há gravação depois da API para a falha atingir. Avaliar um texto como "não se aplica".

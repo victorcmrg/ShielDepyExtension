@@ -31,14 +31,14 @@ import {
   CodeGraph,
   findExpressRoutes,
   indexFiles,
+  isChaosSource,
   listSourceFiles,
+  projectTree,
   readChaosConfig,
   routeBodyReads,
   silentHost,
-  TS_EXTENSIONS,
   supportedFrameworks,
   unsupportedFrameworks,
-  walkSourceTree,
   type AttackSurface,
   type ChaosDbPlan,
   type ChaosSeedFacts,
@@ -148,8 +148,10 @@ export async function runChaosCommand(
 ): Promise<number> {
   const root = path.resolve(args.target);
   // os testes gerados são Vitest + supertest: o caos só vale para JS/TS. C# e Java têm mapa e topologia (etapa L).
-  const sources = await listSourceFiles(root);
-  if (!sources.some(isChaosSource) && sources.some((f) => !isWebAsset(f))) {
+  // um projeto por vez (0034): a subpasta com package.json próprio não entra no contrato nem nos testes
+  const { files: tree, nested } = projectTree(root);
+  const sources = await listSourceFiles(root, undefined, tree);
+  if (nested.length === 0 && !sources.some(isChaosSource) && sources.some((f) => !isWebAsset(f))) {
     io.err(`erro: o caos gera testes Vitest/supertest e só roda em projetos JS/TS; ${args.target} não tem código JS/TS.`);
     io.err(`O mapa e as rotas sensíveis deste projeto saem com: shieldepy topology ${args.target}`);
     return 2;
@@ -171,7 +173,7 @@ export async function runChaosCommand(
   const wasmDir = args.wasmDir ?? defaultWasmDir();
   const graph = await CodeGraph.create(wasmDir, silentHost);
   await indexFiles(graph, sources, silentHost);
-  const { rules } = loadRulesFromPath(root, await registry());
+  const { rules } = loadRulesFromPath(root, await registry(), tree);
   const system = buildSystemGraph(graph, rules, root);
   const topology = buildTopology(graph, system, root);
   // num repositório misto, as rotas de C#/Java ficam fora do caos (o teste gerado não as alcança)
@@ -184,6 +186,12 @@ export async function runChaosCommand(
   // MVP8: um framework que o mapa lê, mas registrado de um jeito que ele não segue, também dá 0 rotas
   const supported = supportedFrameworks(packageJson);
   const jsRoutes = topology.routes.length - others.length;
+  if (nested.length > 0 && jsRoutes === 0) {
+    io.err(`erro: ${args.target} não tem rota própria; os projetos estão nas subpastas: ${nested.join(', ')}.`);
+    io.err(`Rode em um deles, por exemplo: shieldepy chaos ${path.join(args.target, nested[0]!)}${args.init ? ' --init' : ''}`);
+    return 2;
+  }
+  if (nested.length > 0) io.err(`ℹ ${nested.length} subprojeto(s) fora deste caos (têm package.json próprio): ${nested.join(', ')}`);
   const blind = (unsupported.length > 0 || supported.length > 0) && jsRoutes === 0;
   if (blind && unsupported.length === 0) {
     const skipped = topology.skipped.length;
@@ -195,7 +203,6 @@ export async function runChaosCommand(
   if (args.init) {
     // o banco de teste (C2d): PGlite no lugar do banco, com o esquema do projeto (os .sql, as migrations
     // do Prisma ou, sem elas, o SQL que o `prisma migrate diff` gera do schema.prisma)
-    const tree = walkSourceTree(root);
     const prismaSchemas = tree.filter((f) => f.endsWith('.prisma')).map((file) => ({ file, text: readFileSync(path.join(root, file), 'utf8') }));
     const db = chaosDbPlan(fullSurface, tree, prismaSchemas);
     if (db?.prisma && db.schemaFiles.length === 0) db.prisma.diff = prismaSchemaSql(root, db.prisma.schema, db.prisma.envVars);
@@ -422,7 +429,7 @@ async function scopeAgainstBase(
   wasmDir: string
 ): Promise<{ scope: ChaosScope; diff: { base: string; commit: string; diff: MapDiff } }> {
   return withBaseCheckout(root, ref, async (baseDir, info) => {
-    const before = await buildMapOf(baseDir, registry, wasmDir);
+    const before = await buildMapOf(baseDir, registry, wasmDir, true);
     const baseTopology = buildTopology(before.graph, before.system, baseDir);
     const diff = diffSystemGraphs(before.system, system);
     const result = affectedRoutes(baseTopology, topology, diff, info.changedFiles, setupFiles);
@@ -501,11 +508,6 @@ function printChaos(state: ChaosStateType, label: string, cost: ReturnType<CostM
     if (noRun) out(`  rodar à mão: npx vitest run --config ${CHAOS_TESTS_DIR}/vitest.config.ts`);
     out('');
   } else out('nenhum teste gerado (nenhuma rota sensível com falha testável)\n');
-}
-
-/** Código que o caos alcança (o teste gerado importa o app): JS/TS. */
-function isChaosSource(file: string): boolean {
-  return TS_EXTENSIONS.includes(path.extname(file).toLowerCase() as (typeof TS_EXTENSIONS)[number]);
 }
 
 function isWebAsset(file: string): boolean {

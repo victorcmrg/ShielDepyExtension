@@ -19,10 +19,10 @@ export interface LoadedRules {
  *   arquivo .json  → fixture `Rule[]` (validada)
  *   arquivo código → extrator da extensão
  */
-export function loadRulesFromPath(target: string, registry: Registry): LoadedRules {
+export function loadRulesFromPath(target: string, registry: Registry, tree?: string[]): LoadedRules {
   const stat = statSync(target);
   if (stat.isDirectory()) {
-    const items = scanDir(target, registry);
+    const items = scanDir(target, registry, tree);
     return { label: target, rules: toRules(items), skipped: [] };
   }
   return loadRulesFromFiles([{ name: target, content: readFileSync(target, 'utf8') }], registry);

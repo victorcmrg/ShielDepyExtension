@@ -262,6 +262,45 @@ describe('CLI chaos (E3)', () => {
     }
   });
 
+  it('--init num repositório com vários projetos: não mistura as rotas das subpastas', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      for (const f of ['src', 'package.json', 'tsconfig.json']) fs.cpSync(path.join(example('checkout-express'), f), path.join(tmp, f), { recursive: true });
+      for (const name of ['checkout-express-fixed', 'checkout-fastify']) {
+        for (const f of ['src', 'package.json']) fs.cpSync(path.join(example(name), f), path.join(tmp, 'examples', name, f), { recursive: true });
+      }
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(0);
+      expect(created.err).toMatch(/criado com 2 rota\(s\) sensível\(is\)/);
+      expect(created.err).toMatch(/2 subprojeto\(s\) fora deste caos/);
+      expect(created.err).not.toMatch(/outros apps no projeto/);
+      const config = fs.readFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'utf8');
+      expect(config.split("'POST /checkout':").length - 1).toBe(1);
+      expect(config).not.toContain('/api/checkout');
+      expect(config).toContain("from './src/app';");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('a raiz sem rota própria: aponta os projetos das subpastas, não cria contrato e sai 2', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'package.json'), '{ "name": "raiz", "private": true }');
+      for (const f of ['src', 'package.json']) fs.cpSync(path.join(example('checkout-express'), f), path.join(tmp, 'examples', 'loja', f), { recursive: true });
+      const created = await run('chaos', tmp, '--init');
+      expect(created.code).toBe(2);
+      expect(created.err).toMatch(/não tem rota própria/);
+      expect(created.err).toContain(path.join('examples', 'loja'));
+      expect(fs.existsSync(path.join(tmp, 'shieldepy.chaos.config.ts'))).toBe(false);
+      // com um contrato velho na raiz, 0 testes também não é um verde
+      fs.writeFileSync(path.join(tmp, 'shieldepy.chaos.config.ts'), 'export default { requests: {} };');
+      expect((await run('chaos', tmp, '--offline')).code).toBe(2);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('--init (C2a): o app CommonJS que abre porta no topo sai guardado pelo setup, sem pendência no createApp', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shieldepy-init-'));
     try {

@@ -13,6 +13,7 @@ import {
   diffSystemGraphs,
   indexFiles,
   listSourceFiles,
+  projectTree,
   silentHost,
   type AffectedRoutes,
   type MapDiff,
@@ -29,12 +30,16 @@ interface DiffIo {
   err: (line: string) => void;
 }
 
-/** O mapa de uma pasta (grafo de código + regras), com ids relativos a ela. Pasta inexistente = mapa vazio. */
-export async function buildMapOf(dir: string, registry: () => Promise<Registry>, wasmDir = defaultWasmDir()): Promise<{ graph: CodeGraph; system: SystemGraph }> {
+/**
+ * O mapa de uma pasta (grafo de código + regras), com ids relativos a ela. Pasta inexistente = mapa vazio.
+ * `ownOnly`: sem as subpastas que são outro projeto (o caos compara a base com o que ele mesmo leu).
+ */
+export async function buildMapOf(dir: string, registry: () => Promise<Registry>, wasmDir = defaultWasmDir(), ownOnly = false): Promise<{ graph: CodeGraph; system: SystemGraph }> {
   const graph = await CodeGraph.create(wasmDir, silentHost);
   if (!existsSync(dir)) return { graph, system: buildSystemGraph(graph, [], dir) };
-  await indexFiles(graph, await listSourceFiles(dir), silentHost);
-  const { rules } = loadRulesFromPath(dir, await registry());
+  const tree = ownOnly ? projectTree(dir).files : undefined;
+  await indexFiles(graph, await listSourceFiles(dir, undefined, tree), silentHost);
+  const { rules } = loadRulesFromPath(dir, await registry(), tree);
   return { graph, system: buildSystemGraph(graph, rules, dir) };
 }
 

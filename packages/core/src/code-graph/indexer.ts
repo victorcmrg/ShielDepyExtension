@@ -1,8 +1,9 @@
-import { readdirSync, type Dirent } from 'node:fs';
+import { readdirSync, readFileSync, type Dirent } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { Host } from '../host';
 import { CodeGraph } from './CodeGraph';
+import { TS_EXTENSIONS } from './frontend';
 
 // `.shieldepy`: artefatos do próprio ShielDepy (topologia exportada, testes de caos gerados) não entram no mapa;
 // `.vscode-test`: o VS Code que o @vscode/test-electron baixa para os testes E2E (milhares de arquivos JS);
@@ -58,6 +59,38 @@ export function walkSourceTree(root: string): string[] {
   return out.sort();
 }
 
+/** O `package.json` define um projeto? Só com `"type": "module"`, ele é configuração de pasta, não outro projeto. */
+export function isProjectManifest(text: string): boolean {
+  try {
+    const pkg = JSON.parse(text) as unknown;
+    return typeof pkg === 'object' && pkg !== null && ['name', 'dependencies', 'devDependencies', 'scripts', 'workspaces'].some((key) => key in pkg);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Os arquivos do projeto de `root`, sem entrar nas subpastas que são outro projeto (0034), e essas
+ * subpastas, só a de cima quando elas se aninham. O caos testa um app por vez: juntar os `examples/` de
+ * um repositório daria chaves repetidas no contrato e o `createApp` de um app só.
+ */
+export function projectTree(root: string): { files: string[]; nested: string[] } {
+  const tree = walkSourceTree(root);
+  const nested: string[] = [];
+  const inside = (file: string) => nested.some((dir) => file.startsWith(dir + path.sep));
+  const manifests = tree.filter((f) => path.basename(f) === 'package.json' && path.dirname(f) !== '.');
+  // do mais raso para o mais fundo: a pasta dentro de outro projeto já está fora
+  for (const file of manifests.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length)) {
+    if (!inside(file) && isProjectManifest(readFileSync(path.join(root, file), 'utf8'))) nested.push(path.dirname(file));
+  }
+  return { files: tree.filter((f) => !inside(f)), nested: nested.sort() };
+}
+
+/** Código que o caos alcança (o teste gerado importa o app): JS/TS. */
+export function isChaosSource(file: string): boolean {
+  return TS_EXTENSIONS.includes(path.extname(file).toLowerCase() as (typeof TS_EXTENSIONS)[number]);
+}
+
 const MAX_INDEX_FILE_BYTES = 2 * 1024 * 1024; // 2MB — evita travar em bundle/arquivo gerado gigante
 
 /**
@@ -85,9 +118,9 @@ export async function indexFiles(graph: CodeGraph, fsPaths: string[], host: Host
 }
 
 /** Lista recursiva de arquivos suportados pelo grafo, ignorando node_modules/dist/out/.git/.shieldepy. */
-export async function listSourceFiles(root: string, limit = 2000): Promise<string[]> {
+export async function listSourceFiles(root: string, limit = 2000, tree: string[] = walkSourceTree(root)): Promise<string[]> {
   const out: string[] = [];
-  for (const rel of walkSourceTree(root)) {
+  for (const rel of tree) {
     if (out.length >= limit) break;
     const full = path.join(root, rel);
     if (CodeGraph.isSupported(full)) out.push(full);

@@ -36,3 +36,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0031](0031-registro-de-exemplo-pelo-catalogo.md) | O `reset` gerado grava um registro por tabela, lido do catálogo do banco, com valores fixos e diferentes dos corpos de exemplo | 2026-11-03 | valendo |
 | [0032](0032-demo-abre-em-projeto-real.md) | A demo abre num projeto real (pg-crud), com a extensão instalada pelo `.vsix`, e segue para o `checkout`; os atalhos ficam na Área de Trabalho |
 | [0033](0033-atalhos-da-demo-no-repositorio.md) | Os atalhos da demo ficam no repositório e preparam o realworld sozinhos; o resultado do caos é apagado a cada abertura | 2026-11-06 | valendo |
+| [0034](0034-um-projeto-de-caos-por-package-json.md) | O caos testa um projeto por vez: a subpasta com `package.json` próprio fica de fora, e rota de C#/Java não conta como projeto | 2026-11-06 | valendo |

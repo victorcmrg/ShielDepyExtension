@@ -5,6 +5,7 @@ import { attackSurface, buildSystemGraph, buildTopology, CHAOS_CONFIG_FILE, CHAO
 import { CMD } from '../constants';
 import type { AiService } from '../services/AiService';
 import type { WorkspaceModel } from '../workspace/WorkspaceModel';
+import { chaosProjectOf } from './projects';
 import type { ChaosArgs, ChaosIo } from './run-chaos';
 import { diffBase } from './scope';
 
@@ -111,7 +112,7 @@ export class ChaosCommand implements vscode.Disposable {
       const sensitive = new Set(attackSurface(topology).routes.map((r) => r.id));
       for (const route of topology.routes) {
         if (!sensitive.has(route.id)) continue;
-        const root = packageRoot(path.join(top, route.file), top);
+        const root = chaosProjectOf(path.join(top, route.file), top);
         if (root) add(root, 1);
       }
     }
@@ -295,14 +296,6 @@ function canonical(dir: string): string {
     return realpathSync.native(dir);
   } catch {
     return dir;
-  }
-}
-
-/** A pasta com `package.json` mais perto do arquivo, sem subir além de `top`. */
-function packageRoot(file: string, top: string): string | undefined {
-  for (let dir = path.dirname(file); ; dir = path.dirname(dir)) {
-    if (existsSync(path.join(dir, 'package.json'))) return dir;
-    if (path.relative(top, dir) === '' || path.dirname(dir) === dir) return undefined;
   }
 }
 
