@@ -5,7 +5,7 @@ import { attackSurface, buildSystemGraph, buildTopology, CHAOS_CONFIG_FILE, CHAO
 import { CMD } from '../constants';
 import type { AiService } from '../services/AiService';
 import type { WorkspaceModel } from '../workspace/WorkspaceModel';
-import { chaosProjectOf } from './projects';
+import { chaosProjectOf, contractCreatedMessage } from './projects';
 import type { ChaosArgs, ChaosIo } from './run-chaos';
 import { diffBase } from './scope';
 
@@ -31,7 +31,7 @@ export interface ChaosRunOptions {
 /**
  * "ShielDepy: Testar Caos" (R3): o `shieldepy chaos` da CLI dentro do editor, com o caminho guiado.
  * 1. qual projeto (o que tem rotas sensíveis no mapa ou já tem contrato);
- * 2. sem contrato: oferece criar um a partir do mapa (`--init`) e abre o arquivo;
+ * 2. sem contrato: oferece criar um a partir do mapa (`--init`, sem IA) e abre o arquivo; sem pendência, segue;
  * 3. contrato com pendências ou pacotes de teste faltando: diz o que falta e como resolver;
  * 4. escopo (o que mudou desde a main, como no CI, ou tudo) e quem propõe as hipóteses (motor ou IA);
  * 5. roda num terminal próprio; no fim, o resultado no mapa e o relatório.
@@ -69,13 +69,14 @@ export class ChaosCommand implements vscode.Disposable {
     if (!project.hasContract) {
       const create = 'Criar o contrato';
       const choice = await vscode.window.showInformationMessage(
-        `ShielDepy: para testar o caos em ${this.label(root)}, falta o contrato (${CHAOS_CONFIG_FILE}): como subir o app sem abrir porta, zerar o estado e uma requisição válida por rota. Ele sai do mapa já com as ${project.routes} rota(s) sensível(is) e as APIs; você completa só o que vier marcado.`,
+        `ShielDepy: para testar o caos em ${this.label(root)}, falta o contrato (${CHAOS_CONFIG_FILE}): como subir o app sem abrir porta, zerar o estado e uma requisição válida por rota. Ele sai do mapa, sem IA, já com as ${project.routes} rota(s) sensível(is) e as APIs; você completa só o que vier marcado.`,
         create
       );
-      if (choice === create) await this.createContract(root);
-      return;
+      if (choice !== create || !(await this.createContract(root))) return;
+      if (chaosConfigPending(readFileSync(configPath, 'utf8')) > 0) return;
     }
 
+    // o contrato recém-criado já passou por aqui: com pendência, o createContract abriu o arquivo e parou
     const pending = chaosConfigPending(readFileSync(configPath, 'utf8'));
     if (pending > 0) {
       const open = 'Abrir o contrato';
@@ -130,9 +131,7 @@ export class ChaosCommand implements vscode.Disposable {
     }
     const file = vscode.Uri.file(path.join(root, CHAOS_CONFIG_FILE));
     await vscode.window.showTextDocument(file);
-    void vscode.window.showInformationMessage(
-      `ShielDepy: contrato criado. Complete as linhas marcadas com ${CHAOS_CONFIG_TODO} (subir o app, zerar o estado, as respostas das APIs e os corpos) e rode "Testar Caos" de novo.`
-    );
+    void vscode.window.showInformationMessage(contractCreatedMessage(chaosConfigPending(readFileSync(file.fsPath, 'utf8'))));
     return true;
   }
 
@@ -218,10 +217,10 @@ export class ChaosCommand implements vscode.Disposable {
 
     if (!(await this.ai.provider())) return { base: scope.base, offline: true };
     const engines = [
-      { label: '$(zap) Motor (grátis)', description: 'hipóteses do catálogo, sem chamar a IA', offline: true },
-      { label: '$(sparkle) Com IA', description: 'a IA propõe as hipóteses e explica o resultado; usa a sua chave (o custo sai no fim)', offline: false },
+      { label: '$(zap) Motor (grátis)', description: 'catálogo fixo de falhas, sem chamar a IA', offline: true },
+      { label: '$(sparkle) Com IA', description: 'a IA propõe as falhas e explica o resultado; usa a sua chave (o custo sai no fim)', offline: false },
     ];
-    const engine = await vscode.window.showQuickPick(engines, { title: 'ShielDepy: quem propõe as hipóteses?' });
+    const engine = await vscode.window.showQuickPick(engines, { title: 'ShielDepy, passo 2 de 2 (o contrato já está pronto): quem propõe as falhas a testar?' });
     return engine && { base: scope.base, offline: engine.offline };
   }
 

@@ -1,7 +1,14 @@
 // De qual projeto de caos é uma rota do mapa. Puro, sem `vscode`: testável e usado pelo ChaosCommand.
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { isChaosSource, isProjectManifest } from '@shieldepy/core';
+import { CHAOS_CONFIG_TODO, isChaosSource, isProjectManifest } from '@shieldepy/core';
+
+/** O aviso depois do `--init`: o contrato sai do mapa, sem IA (0036). Sem pendência, o teste segue sozinho. */
+export function contractCreatedMessage(pending: number): string {
+  const created = 'ShielDepy: contrato criado a partir do mapa, sem IA.';
+  if (pending === 0) return `${created} Sem pendências: seguindo para o teste.`;
+  return `${created} Falta completar ${pending} linha(s) marcada(s) com ${CHAOS_CONFIG_TODO}; depois, rode "Testar Caos" de novo.`;
+}
 
 /**
  * A pasta do projeto com o arquivo: o `package.json` de projeto mais perto, sem subir além de `top`,

@@ -38,3 +38,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0033](0033-atalhos-da-demo-no-repositorio.md) | Os atalhos da demo ficam no repositório e preparam o realworld sozinhos; o resultado do caos é apagado a cada abertura | 2026-11-06 | valendo |
 | [0034](0034-um-projeto-de-caos-por-package-json.md) | O caos testa um projeto por vez: a subpasta com `package.json` próprio fica de fora, e rota de C#/Java não conta como projeto | 2026-11-06 | valendo |
 | [0035](0035-nao-se-aplica.md) | Com o controle verde e a falha sem disparar, o resultado é "não se aplica", com o motivo ao lado; o controle que falhou segue "inválido" | 2026-11-06 | valendo |
+| [0036](0036-contrato-antes-da-escolha-da-ia.md) | O contrato sai do mapa, sem IA, e sem pendência o teste segue sozinho; "Motor ou IA" vira o passo 2, sobre quem propõe as falhas | 2026-11-06 | valendo |
