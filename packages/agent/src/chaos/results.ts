@@ -30,6 +30,8 @@ export interface TestResult {
   status: TestStatus;
   /** `failed`: a invariante violada; `invalid`: por que o resultado não vale. */
   message?: string;
+  /** `invalid` com o controle verde: a falha não disparou, porque esta requisição não passa por ali (0035). */
+  notApplicable?: boolean;
   /** Duração do teste de caos (ou do controle, quando só ele rodou). */
   durationMs: number;
 }

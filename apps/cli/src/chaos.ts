@@ -407,7 +407,7 @@ export async function runChaosCommand(
     return 1;
   }
   if (allInvalid) {
-    io.err('erro de ambiente: nenhum teste de caos foi válido (todos os controles falharam ou não rodaram). Nada foi provado.');
+    io.err('erro de ambiente: nenhum teste de caos foi válido (os controles falharam, não rodaram ou a falha não disparou). Nada foi provado.');
     return 2;
   }
   if (blind) {
@@ -458,13 +458,14 @@ const STATUS_LABEL = { passed: '✓ aguentou', failed: '✖', invalid: '? invál
 
 function printOutcomes(outcomes: ChaosOutcome[], out: (line: string) => void): void {
   const failed = outcomes.filter((o) => o.status === 'failed').length;
-  const invalid = outcomes.filter((o) => o.status === 'invalid').length;
-  out(`🔥 resultado: ${failed} achado(s), ${outcomes.length - failed - invalid} aguentou(aram), ${invalid} inválido(s)`);
+  const notApplicable = outcomes.filter((o) => o.notApplicable).length;
+  const invalid = outcomes.filter((o) => o.status === 'invalid').length - notApplicable;
+  out(`🔥 resultado: ${failed} achado(s), ${outcomes.length - failed - invalid - notApplicable} aguentou(aram), ${invalid} inválido(s)${notApplicable ? `, ${notApplicable} não se aplica(m)` : ''}`);
   for (const o of outcomes) {
-    const label = o.status === 'failed' ? `${STATUS_LABEL.failed} ${o.severity}` : STATUS_LABEL[o.status];
+    const label = o.status === 'failed' ? `${STATUS_LABEL.failed} ${o.severity}` : o.notApplicable ? '– não se aplica' : STATUS_LABEL[o.status];
     const secs = (o.durationMs / 1000).toFixed(1).replace('.', ',');
     out(`   ${label.padEnd(11)} ${o.failure.padEnd(36)} ${o.routeId.padEnd(18)} ${o.target.padEnd(16)} ${secs} s`);
-    if (o.message) out(`        ${o.status === 'invalid' ? 'não conta: ' : ''}${o.message}`);
+    if (o.message) out(`        ${o.status === 'invalid' && !o.notApplicable ? 'não conta: ' : ''}${o.message}`);
   }
   out('');
 }

@@ -55,7 +55,7 @@ export interface ViewerChaos {
   failOn: string;
   hits: number;
   scope?: { base: string; commit: string; all?: string; tested: string[]; affected: { id: string; why: string[] }[]; untouched: string[] };
-  outcomes: { hypothesisId: string; routeId: string; failure: string; target: string; status: 'passed' | 'failed' | 'invalid'; severity?: string; message?: string; durationMs: number; testFile: string }[];
+  outcomes: { hypothesisId: string; routeId: string; failure: string; target: string; status: 'passed' | 'failed' | 'invalid'; notApplicable?: boolean; severity?: string; message?: string; durationMs: number; testFile: string }[];
   untested: { id: string; routeId: string; failure: string; target: string; reason: string }[];
 }
 
@@ -588,7 +588,8 @@ const APP = String.raw`
     sec.hidden = false;
     const failed = CHAOS.outcomes.filter((o) => o.status === 'failed');
     const passed = CHAOS.outcomes.filter((o) => o.status === 'passed');
-    const invalid = CHAOS.outcomes.filter((o) => o.status === 'invalid');
+    const notApplicable = CHAOS.outcomes.filter((o) => o.notApplicable);
+    const invalid = CHAOS.outcomes.filter((o) => o.status === 'invalid' && !o.notApplicable);
     let html = '<h2>Caos</h2>';
     const stale = typeof CHAOS.stale === 'boolean' ? CHAOS.stale : !!TOPOLOGY && CHAOS.topologyHash !== TOPOLOGY.contentHash;
     html += '<p class="muted small">Projeto: ' + escape(CHAOS.project) + '</p>';
@@ -598,7 +599,7 @@ const APP = String.raw`
     else if (CHAOS.hits > 0) html += '<div class="banner bad"><b>Bloqueado:</b> ' + CHAOS.hits + ' achado(s)' + (CHAOS.failOn === 'Baixo' ? '' : ' com severidade ' + escape(CHAOS.failOn) + ' ou pior') + '.</div>';
     else if (CHAOS.scope && CHAOS.scope.tested.length === 0) html += '<div class="banner ok">Nenhuma rota sensível tocada pelo PR.</div>';
     else html += '<div class="banner ok">O código aguentou ' + (failed.length ? 'o portão (' + failed.length + ' achado(s) abaixo dele)' : 'todas as falhas injetadas') + '.</div>';
-    html += '<p class="small"><span class="chip ' + (failed.length ? 'bad' : 'muted') + '">' + failed.length + ' achado(s)</span><span class="chip ' + (passed.length ? 'ok' : 'muted') + '">' + passed.length + ' aguentou</span><span class="chip muted">' + invalid.length + ' inválido(s)</span><span class="chip muted">' + CHAOS.untested.length + ' sem teste</span></p>';
+    html += '<p class="small"><span class="chip ' + (failed.length ? 'bad' : 'muted') + '">' + failed.length + ' achado(s)</span><span class="chip ' + (passed.length ? 'ok' : 'muted') + '">' + passed.length + ' aguentou</span><span class="chip muted">' + invalid.length + ' inválido(s)</span>' + (notApplicable.length ? '<span class="chip muted">' + notApplicable.length + ' não se aplica(m)</span>' : '') + '<span class="chip muted">' + CHAOS.untested.length + ' sem teste</span></p>';
     if (CHAOS.scope) html += '<p class="muted small">Escopo: ' + (CHAOS.scope.all ? 'todas as rotas (' + escape(CHAOS.scope.all) + ')' : CHAOS.scope.tested.length + ' rota(s) tocada(s) desde ' + escape(CHAOS.scope.base)) + '</p>';
     sec.innerHTML = html;
     for (const o of failed) {
@@ -627,10 +628,11 @@ const APP = String.raw`
     };
     list('Aguentou', passed.map((o) => '✓ ' + o.routeId + ' · ' + o.failure + ' em ' + o.target));
     list('Inválidos (não contam no portão)', invalid.map((o) => '? ' + o.routeId + ' · ' + o.failure + ': ' + (o.message || '')));
+    list('Não se aplica (a falha não disparou; não contam no portão)', notApplicable.map((o) => '– ' + o.routeId + ' · ' + o.failure + ': ' + (o.message || '')));
     list('Sem teste nesta execução', CHAOS.untested.map((u) => '○ ' + u.routeId + ' · ' + u.failure + ' em ' + u.target + ': ' + u.reason));
     const legend = document.createElement('p');
     legend.className = 'muted small';
-    legend.innerHTML = '<span class="chip bad">rota</span> quebrou · <span class="chip ok">rota</span> aguentou · <span class="chip muted">tracejada</span> inválida · operação de I/O com borda vermelha = alvo de um achado';
+    legend.innerHTML = '<span class="chip bad">rota</span> quebrou · <span class="chip ok">rota</span> aguentou · <span class="chip muted">tracejada</span> nenhum teste valeu · operação de I/O com borda vermelha = alvo de um achado';
     sec.appendChild(legend);
   }
 

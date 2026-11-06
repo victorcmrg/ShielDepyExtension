@@ -61,7 +61,13 @@ describe('runner dos testes de caos (E4/4a)', () => {
     expect(classifyVitestReport(r, [RACE])[0]).toMatchObject({
       status: 'invalid',
       message: 'a falha não disparou: nenhuma gravação em stock depois da chamada à API nesta requisição',
+      notApplicable: true,
     });
+  });
+
+  it('só a falha que não disparou é "não se aplica": o controle que falhou segue inválido', () => {
+    const results = classifyVitestReport(report(), [CONTROL_FAILED, NOT_LOADED]);
+    expect(results.filter((r) => r.notApplicable)).toEqual([]);
   });
 
   it('chama o Vitest do projeto com o reporter JSON num arquivo temporário (processo injetado)', async () => {

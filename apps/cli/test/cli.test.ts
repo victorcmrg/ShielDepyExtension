@@ -620,6 +620,13 @@ describe('CLI chaos: portão (E4/4b, runner injetado)', () => {
     const allInvalid = await gate(async (_root, ids) => ids.map((id) => ({ hypothesisId: id, status: 'invalid' as const, message: 'controle falhou', durationMs: 0 })));
     expect(allInvalid.code).toBe(2);
     expect(allInvalid.err).toMatch(/nenhum teste de caos foi válido/);
+
+    // "não se aplica" é só um nome melhor: se nenhum teste valeu, continua sem prova
+    const noneApply = await gate(async (_root, ids) => ids.map((id) => ({ hypothesisId: id, status: 'invalid' as const, notApplicable: true, message: 'a falha não disparou: x', durationMs: 0 })));
+    expect(noneApply.code).toBe(2);
+    expect(noneApply.out).toMatch(/0 inválido\(s\), \d+ não se aplica\(m\)/);
+    expect(noneApply.out).toMatch(/– não se aplica[\s\S]*a falha não disparou: x/);
+    expect(noneApply.out).not.toMatch(/não conta: a falha não disparou/);
   });
 });
 

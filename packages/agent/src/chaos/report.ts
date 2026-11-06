@@ -61,7 +61,8 @@ export function renderChaosReport(input: ChaosReportInput): string {
   const routes = new Map(surface.routes.map((r) => [r.id, r]));
   const failed = outcomes?.filter((o) => o.status === 'failed') ?? [];
   const passed = outcomes?.filter((o) => o.status === 'passed') ?? [];
-  const invalid = outcomes?.filter((o) => o.status === 'invalid') ?? [];
+  const notApplicable = outcomes?.filter((o) => o.notApplicable) ?? [];
+  const invalid = outcomes?.filter((o) => o.status === 'invalid' && !o.notApplicable) ?? [];
   const tested = new Set(outcomes?.map((o) => o.hypothesisId));
   const untested = input.hypotheses.filter((h) => !tested.has(h.id));
   const out: string[] = [CHAOS_REPORT_MARKER, `## 🔥 ShielDepy — engenharia de caos em ${code(input.label)}`, ''];
@@ -70,11 +71,11 @@ export function renderChaosReport(input: ChaosReportInput): string {
   else if (input.runError) out.push(`> ⚠️ **Os testes não rodaram (erro de ambiente).** ${cell(input.runError.split('\n', 1)[0]!)}`);
   else if (!outcomes) out.push('> Testes gerados, mas não executados (`--no-run`).');
   else if (input.hits > 0) out.push(`> ❌ **Bloqueado:** ${input.hits} achado(s)${input.failOn === 'Baixo' ? '' : ` com severidade ${input.failOn} ou pior`}.`);
-  else if (outcomes.length > 0 && invalid.length === outcomes.length) out.push('> ⚠️ **Nada foi provado:** todos os testes saíram inválidos (o controle, sem caos, falhou).');
+  else if (outcomes.length > 0 && invalid.length + notApplicable.length === outcomes.length) out.push('> ⚠️ **Nada foi provado:** nenhum teste valeu (o controle, sem caos, falhou, ou a falha não disparou).');
   else if (failed.length > 0) out.push(`> ✅ **Passou no portão** (${input.failOn} ou pior), com ${failed.length} achado(s) abaixo dele.`);
   else out.push('> ✅ **Passou:** o código aguentou todas as falhas injetadas.');
   out.push('');
-  if (outcomes) out.push(`**${failed.length}** achado(s) · **${passed.length}** aguentou(aram) · **${invalid.length}** inválido(s) · **${untested.length}** hipótese(s) sem teste`, '');
+  if (outcomes) out.push(`**${failed.length}** achado(s) · **${passed.length}** aguentou(aram) · **${invalid.length}** inválido(s)${notApplicable.length ? ` · **${notApplicable.length}** não se aplica(m)` : ''} · **${untested.length}** hipótese(s) sem teste`, '');
 
   if (input.scope) {
     const s = input.scope;
@@ -108,6 +109,11 @@ export function renderChaosReport(input: ChaosReportInput): string {
   if (invalid.length > 0) {
     out.push('### Inválidos (não contam no portão)', '');
     for (const o of invalid) out.push(`- ⚠️ ${code(o.routeId)} · ${o.failure} em ${code(o.target)}: ${cell(o.message ?? '')}`);
+    out.push('');
+  }
+  if (notApplicable.length > 0) {
+    out.push('### Não se aplica (a falha não disparou; não contam no portão)', '');
+    for (const o of notApplicable) out.push(`- ${code(o.routeId)} · ${o.failure} em ${code(o.target)}: ${cell(o.message ?? '')}`);
     out.push('');
   }
   if (untested.length > 0) {

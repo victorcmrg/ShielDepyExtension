@@ -37,3 +37,4 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0032](0032-demo-abre-em-projeto-real.md) | A demo abre num projeto real (pg-crud), com a extensão instalada pelo `.vsix`, e segue para o `checkout`; os atalhos ficam na Área de Trabalho |
 | [0033](0033-atalhos-da-demo-no-repositorio.md) | Os atalhos da demo ficam no repositório e preparam o realworld sozinhos; o resultado do caos é apagado a cada abertura | 2026-11-06 | valendo |
 | [0034](0034-um-projeto-de-caos-por-package-json.md) | O caos testa um projeto por vez: a subpasta com `package.json` próprio fica de fora, e rota de C#/Java não conta como projeto | 2026-11-06 | valendo |
+| [0035](0035-nao-se-aplica.md) | Com o controle verde e a falha sem disparar, o resultado é "não se aplica", com o motivo ao lado; o controle que falhou segue "inválido" | 2026-11-06 | valendo |

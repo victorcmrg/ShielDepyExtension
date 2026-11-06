@@ -66,8 +66,8 @@ export function classifyVitestReport(report: VitestJson, expected: string[]): Te
       } else if (chaos.status === 'failed') {
         const message = cleanFailureMessage(chaos.failureMessages?.[0]);
         // DB_Chaos sem a gravação alvo depois da API: nada foi injetado, então não é achado
-        const status = message.startsWith(DB_NOT_FIRED) ? 'invalid' : 'failed';
-        results.set(id, { hypothesisId: id, status, message, durationMs: ms(chaos) });
+        const notFired = message.startsWith(DB_NOT_FIRED);
+        results.set(id, { hypothesisId: id, status: notFired ? 'invalid' : 'failed', message, durationMs: ms(chaos), ...(notFired && { notApplicable: true }) });
       } else results.set(id, { hypothesisId: id, status: 'passed', durationMs: ms(chaos) });
     }
   }

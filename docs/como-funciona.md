@@ -244,8 +244,8 @@ Conferido no realworld (Prisma 4, as 4 migrations do projeto): os mesmos 4 achad
 faz a primeira gravação na tabela alvo falhar, trocando o `query` do `Pool`/`Client` do `pg`. Os
 invariantes recebem `ctx.apiCalls` (as chamadas às APIs que deram certo), e daí sai, por exemplo,
 `noChargeWithoutOrder`: nenhum cliente cobrado sem pedido. Se a gravação alvo não acontece depois
-da API (ex.: só existe no caminho de erro), o resultado é inválido ("a falha não disparou"), não
-achado. Só `pg` por enquanto: gravação via Prisma fica como hipótese sem teste.
+da API (ex.: só existe no caminho de erro), o resultado é "não se aplica" ("a falha não disparou"),
+não achado. Só `pg` por enquanto: gravação via Prisma fica como hipótese sem teste.
 
 No `examples/checkout-express`, os 6 testes de caos falham (corrida no estoque, Stripe sem
 timeout, a rota pendurada com 5xx ou corpo inválido, e a falha parcial em `orders` e em `stock`:
@@ -256,11 +256,12 @@ devolve a reserva.
 **Execução e portão.** O comando roda os testes gerados e classifica cada hipótese:
 - **achado:** o controle passou e o caos falhou;
 - **aguentou:** os dois passaram;
-- **inválido:** o controle falhou, o arquivo não carregou ou a falha não disparou (a gravação alvo não veio depois da API, ou a rota não chamou a API naquela requisição). Não conta no portão.
+- **inválido:** o controle falhou ou o arquivo não carregou. Não conta no portão.
+- **não se aplica:** o controle passou, mas a falha não disparou (a gravação alvo não veio depois da API, ou a rota não chamou a API naquela requisição). No `chaos-results.json`, é `status: 'invalid'` com `notApplicable: true` ([0035](decisoes/0035-nao-se-aplica.md)). Não conta no portão nem prova nada.
 
 A severidade sai do motor: corrida ou estado corrompido é Crítico; rota pendurada ou 500 é Alto; status inesperado é Médio. Os códigos de saída são:
 - **exit 1:** há achado com severidade `--fail-on` ou pior (sem `--fail-on`, qualquer achado);
-- **exit 2:** erro de ambiente (o Vitest não rodou, ou todos os testes saíram inválidos).
+- **exit 2:** erro de ambiente (o Vitest não rodou, ou nenhum teste valeu).
 
 Num projeto grande, o `--only-contract` testa só as rotas que têm requisição em `requests`, e as outras nem geram teste.
 

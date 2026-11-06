@@ -80,6 +80,11 @@ describe('E4/4c — relatório markdown', () => {
     const md = renderChaosReport({ ...base, outcomes: allInvalid, failOn: 'Baixo', hits: 0 });
     expect(md).toContain('> ⚠️ **Nada foi provado:**');
     expect(md).toContain('o controle (sem caos) falhou: x \\| y'); // `|` escapado
+    const notFired = below.map((o) => (o.status === 'failed' ? o : { ...o, status: 'invalid' as const, notApplicable: true, message: 'a falha não disparou: x' }));
+    const mixed = renderChaosReport({ ...base, outcomes: notFired, failOn: 'Crítico', hits: 0 });
+    expect(mixed).toContain('**0** inválido(s) · **' + (notFired.length - 1) + '** não se aplica(m)');
+    expect(mixed).toContain('### Não se aplica (a falha não disparou; não contam no portão)');
+    expect(mixed).not.toContain('### Inválidos');
     expect(renderChaosReport({ ...base, failOn: 'Baixo', hits: 0, runError: 'o Vitest não está instalado em x\nmais' })).toContain('> ⚠️ **Os testes não rodaram (erro de ambiente).** o Vitest não está instalado em x');
     expect(renderChaosReport({ ...base, failOn: 'Baixo', hits: 0 })).toContain('não executados (`--no-run`)');
   });
