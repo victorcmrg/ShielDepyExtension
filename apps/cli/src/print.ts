@@ -4,7 +4,7 @@ import { AGENT_NAME, AGENT_TAGLINE, type DiagnosisReport, type Severity } from '
 type Out = (line: string) => void;
 
 const ICON: Record<Severity, string> = { Crítico: '🔴', Alto: '🟠', Médio: '🟡', Baixo: '🟢' };
-const ENGINE: Record<DiagnosisReport['engine'], string> = { anthropic: 'IA (Claude)', gemini: 'IA (Gemini)', offline: 'explicador offline' };
+const ENGINE: Record<DiagnosisReport['engine'], string> = { anthropic: 'IA (Claude)', gemini: 'IA (Gemini)', ollama: 'IA local (Ollama)', offline: 'explicador offline' };
 
 /** `report`: só os fatos do motor. */
 export function printCollisions(collisions: Collision[], rules: Rule[], label: string, out: Out): void {

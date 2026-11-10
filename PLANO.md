@@ -9,6 +9,10 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 3. Ler as decisões que a etapa cita, em [`docs/decisoes/`](docs/decisoes/README.md).
 4. Rodar `git log --oneline -15` para ver as últimas tarefas feitas.
 
+## Onde estamos (2026-11-10)
+
+- **IA local pelo Ollama ✅ (2026-11-10, branch `feat/ia-local-ollama`, sem push; [0037](docs/decisoes/0037-ia-local-pelo-ollama.md)):** a equipe de IA mandou o primeiro GGUF (`Llama-3.2-1B-Instruct.Q4_K_M.gguf`, SHA-256 `e281eec9…7583`, **de teste: treinado com dados simulados**). Entrou o provedor `ollama` (extensão: `shieldepy.aiProvider: "ollama"`; CLI: `SHIELDEPY_AI=ollama`), com custo zero no relatório, e o `ia-local/Modelfile` (`ollama create shieldepy -f Modelfile`, com o GGUF copiado para `ia-local/`, que o git ignora). Nesta máquina: Ollama 0.40.16 pelo winget, modelo `shieldepy` 100% na GPU (1,5 GB). **Conferido:** `npm run check` com 592 de 592; o `build:vscode` (751 KB e 2,1 MB); o `chaos examples/checkout-express` com `SHIELDEPY_AI=ollama` deu "IA (ollama)", 8 chamadas, US$ 0, as 6 propostas recusadas na validação ("não é JSON válido") e os mesmos 6 achados do offline. **O modelo de teste nos 40 pares** (14 correção, 6 prompts distintos de diagnóstico; ~10 s por resposta): na correção, 1 das 307 linhas da correção apareceu, 5 vezes devolveu o código com defeito inteiro, e quase sempre responde com texto e markdown, não "apenas o código"; no diagnóstico, 0 de 6 citou a falha certa ou qualquer falha do catálogo. É o Llama 1B sem treino, como esperado de um teste. **Falta:** o GGUF definitivo (trocar = `ollama create` de novo, com o mesmo nome); a opção "Ollama (local)" na tela de configurações não foi vista em screenshot.
+
 ## Onde estamos (2026-11-06)
 
 - **A apresentação do TCC foi adiada para a semana que vem (2026-11-06, data a confirmar).** Vale no lugar do "sábado" das notas abaixo; o que estava preso até lá pode entrar, com o usuário.

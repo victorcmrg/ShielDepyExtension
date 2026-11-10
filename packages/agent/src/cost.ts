@@ -25,6 +25,8 @@ const CACHE_WRITE_MULTIPLIER = 1.25;
 
 /** Preço do modelo; aceita o id com data (`claude-haiku-4-5-20251001`). */
 export function priceOf(model: string): ModelPrice | undefined {
+  // modelo local (Ollama): roda na máquina, não há cobrança
+  if (model.startsWith('ollama:')) return { input: 0, output: 0, cacheRead: 0 };
   const exact = ANTHROPIC_PRICES[model];
   if (exact) return exact;
   const base = Object.keys(ANTHROPIC_PRICES).find((id) => model.startsWith(`${id}-`));

@@ -18,6 +18,7 @@ const PROVIDERS: Array<{ code: string; label?: string; labelKey?: Key; hintKey?:
   { code: 'auto', labelKey: 'provAuto', hintKey: 'provAutoHint' },
   { code: 'anthropic', label: 'Claude (Anthropic)' },
   { code: 'gemini', label: 'Gemini (Google)' },
+  { code: 'ollama', label: 'Ollama (local)' },
   { code: 'offline', labelKey: 'provOffline', hintKey: 'provOfflineHint' },
 ];
 
