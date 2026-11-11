@@ -237,6 +237,7 @@ body { display: flex; overflow: hidden; background: var(--bg); color: var(--text
 .canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 #cy, #flow { position: absolute; inset: 0; }
 #flow { background: var(--bg); }
+#cy.panning, #cy.panning *, #flow.panning, #flow.panning * { cursor: grabbing !important; }
 /* Pulse dos nós com erro: camada HTML por cima do grafo, animada só com transform/opacity
    (fica no compositor; o Cytoscape não redesenha nada por causa dela). */
 #pulses { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
@@ -620,7 +621,11 @@ const APP = String.raw`
       { selector: '.k-package', style: { 'background-color': css('--pkg'), shape: 'diamond', width: 22, height: 22, 'font-weight': 600 } },
       { selector: ':parent', style: { 'background-color': css('--file'), 'background-opacity': 1, 'border-color': css('--file-border'), 'border-width': 1, shape: 'round-rectangle', 'text-valign': 'top', 'text-halign': 'center', 'font-size': 11, color: css('--muted'), padding: 10 } },
       { selector: '.k-file:childless', style: { 'background-color': css('--file-border'), shape: 'round-rectangle', width: 16, height: 12 } },
-      { selector: 'edge', style: { width: 1.2, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'line-color': css('--calls'), 'target-arrow-color': css('--calls'), opacity: 0.75 } },
+      // events: 'no' nas arestas: nada no mapa reage a clique ou passagem por aresta, e era o teste
+      // de "o mouse está em cima de qual aresta?" (a cada movimento, aresta por aresta) que travava
+      // o mapa grande parado (~13 ms por movimento no repositório inteiro; sem as arestas, ~2,5 ms).
+      // O desenho não muda.
+      { selector: 'edge', style: { events: 'no', width: 1.2, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'line-color': css('--calls'), 'target-arrow-color': css('--calls'), opacity: 0.75 } },
       { selector: '.e-references', style: { 'line-style': 'dashed', 'line-color': css('--refs'), 'target-arrow-color': css('--refs') } },
       { selector: '.e-imports', style: { 'line-color': css('--imports'), 'target-arrow-color': css('--imports'), opacity: 0.5 } },
       { selector: '.heuristic', style: { 'line-style': 'dashed', 'line-color': css('--heur'), 'target-arrow-color': css('--heur') } },
@@ -767,6 +772,89 @@ const APP = String.raw`
     });
   }
 
+  /**
+   * Paredes em volta do grafo: o centro da tela não sai da caixa que contém os nós, então o grafo
+   * nunca some da vista; e o zoom para longe para na metade do tamanho que mostra o grafo inteiro.
+   * A caixa é medida depois do layout e quando um nó é solto em outro lugar.
+   */
+  function walls(inst) {
+    let box = null;
+    let clamping = false;
+    const measure = () => {
+      const bb = inst.elements().boundingBox();
+      box = bb && isFinite(bb.x1) && (bb.w > 0 || bb.h > 0) ? bb : null;
+      const w = inst.width();
+      const h = inst.height();
+      if (!box || !w || !h) return;
+      const fit = Math.min(w / (box.w + 60), h / (box.h + 60));
+      inst.minZoom(Math.max(0.01, Math.min(fit * 0.5, 1)));
+    };
+    const clamp = () => {
+      const w = inst.width();
+      const h = inst.height();
+      if (clamping || !box || !w || !h) return;
+      const z = inst.zoom();
+      const p = inst.pan();
+      // o centro da tela, em coordenadas do grafo
+      const mx = (w / 2 - p.x) / z;
+      const my = (h / 2 - p.y) / z;
+      const nx = Math.min(Math.max(mx, box.x1), box.x2);
+      const ny = Math.min(Math.max(my, box.y1), box.y2);
+      if (nx === mx && ny === my) return;
+      clamping = true;
+      inst.pan({ x: w / 2 - nx * z, y: h / 2 - ny * z });
+      clamping = false;
+    };
+    measure();
+    inst.on('viewport', clamp);
+    inst.on('dragfree', measure);
+    inst.on('resize', () => { measure(); clamp(); });
+  }
+
+  /**
+   * Botão do meio arrasta o grafo em qualquer lugar, inclusive em cima de nó ou da caixa de um
+   * arquivo (onde o esquerdo pegaria o nó). Escuta na captura, antes do Cytoscape, e durante o
+   * gesto marca o arrasto no renderizador para ele usar a imagem pronta do grafo, como no arrasto
+   * normal (senão cada quadro redesenharia milhares de elementos).
+   */
+  function middlePan(container, instOf) {
+    container.addEventListener('mousedown', (e) => {
+      if (e.button !== 1) return;
+      const inst = instOf();
+      if (!inst || inst.destroyed()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = inst.renderer();
+      const fast = !!(r && r.hoverData && r.textureOnViewport);
+      if (fast) r.hoverData.dragging = true;
+      container.classList.add('panning');
+      let lx = e.clientX;
+      let ly = e.clientY;
+      const move = (ev) => {
+        ev.stopPropagation();
+        inst.panBy({ x: ev.clientX - lx, y: ev.clientY - ly });
+        lx = ev.clientX;
+        ly = ev.clientY;
+      };
+      const end = (ev) => {
+        if (ev && ev.type === 'mouseup' && ev.button !== 1) return;
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        window.removeEventListener('mousemove', move, true);
+        window.removeEventListener('mouseup', end, true);
+        window.removeEventListener('blur', end);
+        container.classList.remove('panning');
+        if (fast && !inst.destroyed()) { r.hoverData.dragging = false; inst.forceRender(); }
+      };
+      window.addEventListener('mousemove', move, true);
+      window.addEventListener('mouseup', end, true);
+      window.addEventListener('blur', end);
+    }, true);
+    // sem a rolagem automática do botão do meio (Windows) e sem colar no Linux
+    container.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+  }
+  middlePan($('cy'), () => main);
+  middlePan($('flow'), () => cy);
+
   function create(container, els, layout) {
     // Sem os elementos no construtor: com eles, o Cytoscape roda um layout padrão que o fcose
     // joga fora logo depois.
@@ -775,6 +863,7 @@ const APP = String.raw`
     const inst = cytoscape({ container, style: makeStyle(), minZoom: 0.05, textureOnViewport: els.length > 2000 });
     inst.add(els);
     inst.layout(layout).run();
+    walls(inst);
     inst.on('tap', 'node', (ev) => select(ev.target));
     inst.on('tap', (ev) => { if (ev.target === inst) { inst.elements().unselect(); clearHighlight(); } });
     return inst;
