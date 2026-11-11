@@ -237,8 +237,7 @@ body { display: flex; overflow: hidden; background: var(--bg); color: var(--text
 .canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 #cy, #flow { position: absolute; inset: 0; }
 #flow { background: var(--bg); }
-#cy.panning, #cy.panning *, #flow.panning, #flow.panning * { cursor: grabbing !important; }
-/* Pulse dos nós com erro: camada HTML por cima do grafo, animada só com transform/opacity
+#cy.panning, #cy.panning *, #flow.panning, #flow.panning * { cursor: grabbing !important; }/* Pulse dos nós com erro: camada HTML por cima do grafo, animada só com transform/opacity
    (fica no compositor; o Cytoscape não redesenha nada por causa dela). */
 #pulses { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
 .pulse { position: absolute; left: 0; top: 0; will-change: transform; transition: opacity 0.2s var(--ease); }
@@ -447,6 +446,8 @@ const APP = String.raw`
       const st = makeStyle();
       main.style(st);
       if (cy && cy !== main) cy.style(st);
+      const ov = overviewOf(main);
+      if (ov) ov.clear();
     }, 0);
   }
   $('theme').onclick = () => {
@@ -614,6 +615,8 @@ const APP = String.raw`
     const cs = getComputedStyle(document.body);
     const css = (name) => cs.getPropertyValue(name).trim();
     return [
+      // fora da foto do arrasto: transparente, para a imagem de fundo do grafo (overview) aparecer
+      { selector: 'core', style: { 'outside-texture-bg-opacity': 0 } },
       { selector: 'node', style: { label: 'data(label)', 'font-size': 10, 'min-zoomed-font-size': 7, color: css('--text'), 'text-valign': 'bottom', 'text-margin-y': 3, width: 14, height: 14, 'background-color': css('--fn'), 'text-max-width': 140, 'text-wrap': 'ellipsis' } },
       { selector: '.k-method', style: { 'background-color': css('--method') } },
       { selector: '.k-class', style: { 'background-color': css('--class'), shape: 'round-rectangle', width: 18, height: 14 } },
@@ -855,6 +858,79 @@ const APP = String.raw`
   middlePan($('cy'), () => main);
   middlePan($('flow'), () => cy);
 
+  /**
+   * As bordas do arrasto. No mapa grande, ao arrastar ou dar zoom, o Cytoscape mostra uma foto do
+   * que estava na tela (redesenhar milhares de elementos por quadro é lento demais), e fora dela
+   * ficava o vazio. Aqui fica uma imagem do grafo inteiro, em coordenadas do mapa, que se preenche
+   * copiando a tela já desenhada sempre que o grafo para (~1 ms, sem redesenhar nada); a abertura
+   * mostra o grafo inteiro, então ela já nasce completa. Durante o gesto, depois de cada quadro da
+   * foto, ela é desenhada no próprio canvas do Cytoscape, atrás do que ele desenhou e só fora da
+   * área da foto: uma cópia de imagem por quadro (no navegador, na placa de vídeo). Um elemento
+   * HTML recortado por cima custava caro no zoom (o recorte era refeito a cada quadro). Ao soltar,
+   * o Cytoscape desenha tudo em qualidade cheia. Mudou o desenho (realce, tema, nó arrastado): ela
+   * é zerada e volta a se preencher.
+   */
+  const OVERVIEW_MAX = 2560;
+  function overview(inst) {
+    const r = inst.renderer();
+    if (!r || !r.textureOnViewport || !r.data || !r.data.canvases || !r.data.contexts) return null;
+    const bb = inst.elements().boundingBox();
+    if (!bb || !isFinite(bb.x1) || bb.w <= 0 || bb.h <= 0) return null;
+    const box = { x1: bb.x1 - 40, y1: bb.y1 - 40, w: bb.w + 80, h: bb.h + 80 };
+    const s = Math.min(OVERVIEW_MAX / box.w, OVERVIEW_MAX / box.h, 4);
+    const el = document.createElement('canvas');
+    el.width = Math.ceil(box.w * s);
+    el.height = Math.ceil(box.h * s);
+    const ctx = el.getContext('2d');
+    let timer = 0;
+    const copy = () => {
+      timer = 0;
+      if (inst.destroyed() || r.textureDrawLastFrame) return;
+      const z = inst.zoom();
+      const p = inst.pan();
+      const w = inst.width();
+      const h = inst.height();
+      if (!w || !h) return;
+      const dx = (-p.x / z - box.x1) * s;
+      const dy = (-p.y / z - box.y1) * s;
+      const dw = (w / z) * s;
+      const dh = (h / z) * s;
+      ctx.clearRect(dx, dy, dw, dh);
+      ctx.drawImage(r.data.canvases[r.NODE], dx, dy, dw, dh);
+      ctx.drawImage(r.data.canvases[r.DRAG], dx, dy, dw, dh);
+    };
+    const onRender = () => {
+      const v = r.textureDrawLastFrame && r.textureCache && r.textureCache.viewport;
+      if (v) {
+        // mesma transformação que o Cytoscape usa para colar a foto (coordenadas do mapa)
+        const c = r.data.contexts[r.NODE];
+        const pr = r.getPixelRatio();
+        const z = inst.zoom();
+        const p = inst.pan();
+        c.save();
+        c.setTransform(z * pr, 0, 0, z * pr, p.x * pr, p.y * pr);
+        // só fora da foto: o retângulo do grafo menos o retângulo da foto
+        c.beginPath();
+        c.rect(box.x1, box.y1, box.w, box.h);
+        c.rect(v.mpan.x, v.mpan.y, v.width / pr / v.zoom, v.height / pr / v.zoom);
+        c.clip('evenodd');
+        c.globalCompositeOperation = 'destination-over';
+        c.drawImage(el, box.x1, box.y1, box.w, box.h);
+        c.restore();
+      } else {
+        clearTimeout(timer);
+        timer = setTimeout(copy, 120);
+      }
+    };
+    inst.on('render', onRender);
+    inst.on('dragfree', () => ctx.clearRect(0, 0, el.width, el.height));
+    return {
+      clear() { ctx.clearRect(0, 0, el.width, el.height); },
+      destroy() { clearTimeout(timer); el.width = 0; el.height = 0; },
+    };
+  }
+  const overviewOf = (inst) => (inst && !inst.destroyed() ? inst.scratch('_overview') : null);
+
   function create(container, els, layout) {
     // Sem os elementos no construtor: com eles, o Cytoscape roda um layout padrão que o fcose
     // joga fora logo depois.
@@ -864,12 +940,18 @@ const APP = String.raw`
     inst.add(els);
     inst.layout(layout).run();
     walls(inst);
+    inst.scratch('_overview', overview(inst));
     inst.on('tap', 'node', (ev) => select(ev.target));
     inst.on('tap', (ev) => { if (ev.target === inst) { inst.elements().unselect(); clearHighlight(); } });
     return inst;
   }
+  function destroy(inst) {
+    const ov = overviewOf(inst);
+    if (ov) ov.destroy();
+    inst.destroy();
+  }
   function closeFlow() {
-    if (cy && cy !== main) cy.destroy();
+    if (cy && cy !== main) destroy(cy);
     cy = main;
     $('flow').hidden = true;
     $('flowbar').hidden = true;
@@ -878,7 +960,7 @@ const APP = String.raw`
   }
   function build() {
     closeFlow();
-    if (main) main.destroy();
+    if (main) destroy(main);
     $('details').hidden = true;
     const els = elements();
     const sig = signature();
@@ -907,7 +989,7 @@ const APP = String.raw`
       return { group: el.isEdge() ? 'edges' : 'nodes', data, classes: el.classes().filter((c) => c !== 'faded' && c !== 'hl').join(' ') };
     });
     const rootId = root.id();
-    if (cy && cy !== main) cy.destroy();
+    if (cy && cy !== main) destroy(cy);
     $('flowbar').hidden = false;
     $('flow').hidden = false;
     $('details').hidden = true;
@@ -930,9 +1012,11 @@ const APP = String.raw`
       collection.parents().removeClass('faded');
     });
     inst.scratch('_hl', true);
+    const ov = overviewOf(inst);
+    if (ov) ov.clear();
   }
   function clearHighlight() {
-    if (cy && cy.scratch('_hl')) cy.batch(() => cy.elements().removeClass('faded hl'));
+    if (cy && cy.scratch('_hl')) { cy.batch(() => cy.elements().removeClass('faded hl')); const ov = overviewOf(cy); if (ov) ov.clear(); }
     if (cy) cy.scratch('_hl', false);
     $('details').hidden = true;
     setActiveTile(null);
