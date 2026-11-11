@@ -177,7 +177,7 @@ ${csp}
 </aside>
 <main id="stage">
   <div id="flowbar" hidden><button id="back" class="btn" type="button">Voltar ao mapa</button><span id="flowtitle"></span></div>
-  <div class="canvas"><div id="cy" aria-label="Grafo do sistema"></div><div id="flow" aria-label="Fluxo escolhido" hidden></div></div>
+  <div class="canvas"><div id="cy" aria-label="Grafo do sistema"></div><div id="flow" aria-label="Fluxo escolhido" hidden></div><div id="pulses" aria-hidden="true"></div></div>
   <div id="loading" class="loading" role="status"><span class="blob"></span><span>Montando o mapa…</span></div>
   <button id="theme" class="theme" type="button" aria-label="Mudar para o tema claro" title="Mudar para o tema claro">${ICON_SUN}${ICON_MOON}</button>
 </main>
@@ -224,7 +224,9 @@ html:not([data-theme]) body.vscode-dark, html:not([data-theme]) body.vscode-high
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
-body { display: flex; background: var(--bg); color: var(--text); font: 12.5px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+/* A página não rola: quem rola é o painel lateral, e o grafo tem o próprio pan. */
+html { overflow: hidden; }
+body { display: flex; overflow: hidden; background: var(--bg); color: var(--text); font: 12.5px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -232,9 +234,17 @@ body { display: flex; background: var(--bg); color: var(--text); font: 12.5px/1.
 
 #side { width: 320px; flex: none; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 18px 14px 14px; display: flex; flex-direction: column; gap: 18px; scrollbar-gutter: stable; }
 #stage { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
-.canvas { position: relative; flex: 1; min-height: 0; }
+.canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 #cy, #flow { position: absolute; inset: 0; }
 #flow { background: var(--bg); }
+/* Pulse dos nós com erro: camada HTML por cima do grafo, animada só com transform/opacity
+   (fica no compositor; o Cytoscape não redesenha nada por causa dela). */
+#pulses { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.pulse { position: absolute; left: 0; top: 0; will-change: transform; transition: opacity 0.2s var(--ease); }
+.pulse::before, .pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 2px var(--g-bad), 0 0 10px 2px color-mix(in srgb, var(--g-bad) 55%, transparent); opacity: 0; animation: node-pulse 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite; }
+.pulse::after { animation-delay: 1.2s; }
+.pulse.dim { opacity: 0.1; }
+@keyframes node-pulse { 0% { transform: scale(0.9); opacity: 0.55; } 100% { transform: scale(2.1); opacity: 0; } }
 
 .head h1 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
 .head .sub { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
@@ -272,7 +282,9 @@ h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
 .shape.ok { background: var(--green); border-radius: 50%; }
 .shape.off { border: 1.5px dashed var(--muted); border-radius: 50%; }
 
-.toggle { display: flex; align-items: center; gap: 10px; padding: 7px 10px; cursor: pointer; }
+/* position: relative segura o input escondido aqui dentro; sem isso ele se posiciona pela
+   página e, com o painel rolado, empurrava a página para além do fim. */
+.toggle { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 10px; cursor: pointer; }
 .toggle:hover { background: var(--fill); }
 .toggle-text { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
@@ -301,6 +313,16 @@ h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
 .tiles.four .tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .tile.bad b { color: var(--red); }
 .tile.ok b { color: var(--green); }
+/* Cartões do caos viram filtro do grafo (como os do painel da extensão). */
+button.tile { --c: var(--muted); border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background 0.15s ease, opacity 0.2s var(--ease), box-shadow 0.2s var(--ease), transform 0.35s var(--spring); }
+button.tile.bad { --c: var(--red); }
+button.tile.ok { --c: var(--green); }
+button.tile:hover:not(:disabled) { background: var(--fill-strong); }
+button.tile:active:not(:disabled) { transform: scale(0.96); transition-duration: 0.08s; }
+button.tile:disabled { cursor: default; }
+button.tile[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 16%, transparent); box-shadow: inset 0 0 0 1.5px var(--c); }
+button.tile[aria-pressed="true"] span { color: var(--text); }
+.tiles.filtering button.tile[aria-pressed="false"] { opacity: 0.45; }
 
 .cov { display: flex; align-items: baseline; gap: 10px; }
 .big { font-size: 26px; font-weight: 650; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -380,6 +402,9 @@ html[data-theme="light"] .theme .moon { transform: none; opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  /* sem movimento: o anel fica parado, só marcando o nó */
+  .pulse::before { animation: none !important; transform: scale(1.35); opacity: 0.45; }
+  .pulse::after { display: none; }
 }
 `;
 
@@ -697,6 +722,51 @@ const APP = String.raw`
   // então "Voltar ao mapa" não refaz nada. cy é a que está na tela.
   let main;
   let cy;
+
+  // ---- pulse dos nós com erro (rota que quebrou e operação alvo de achado). Os anéis são
+  // elementos HTML com animação CSS por cima do grafo: o Cytoscape só avisa quando redesenhou
+  // (pan, zoom, arrasto, realce) e a gente reposiciona os poucos anéis, um quadro por vez.
+  const pulseLayer = $('pulses');
+  const pulse = { inst: null, nodes: null, raf: 0 };
+  function attachPulses(inst) {
+    if (pulse.inst && !pulse.inst.destroyed()) pulse.inst.off('render', schedulePulses);
+    pulse.inst = inst;
+    pulse.nodes = null;
+    pulseLayer.textContent = '';
+    if (!inst || !CHAOS) return;
+    const nodes = inst.nodes('.chaos-failed, .chaos-target');
+    if (nodes.empty()) return;
+    pulse.nodes = nodes;
+    const frag = document.createDocumentFragment();
+    nodes.forEach(() => { const el = document.createElement('span'); el.className = 'pulse'; frag.append(el); });
+    pulseLayer.append(frag);
+    inst.on('render', schedulePulses);
+    schedulePulses();
+  }
+  function schedulePulses() {
+    if (!pulse.raf) pulse.raf = requestAnimationFrame(placePulses);
+  }
+  function placePulses() {
+    pulse.raf = 0;
+    if (!pulse.nodes || pulse.inst.destroyed()) return;
+    const w = pulseLayer.clientWidth;
+    const h = pulseLayer.clientHeight;
+    const rings = pulseLayer.children;
+    pulse.nodes.forEach((n, i) => {
+      const el = rings[i];
+      const p = n.renderedPosition();
+      const size = Math.max(n.renderedOuterWidth(), n.renderedOuterHeight());
+      // fora da tela (ou pequeno demais para se ver): sem anel
+      const off = size < 3 || p.x < -size || p.y < -size || p.x > w + size || p.y > h + size;
+      el.hidden = off;
+      if (off) return;
+      el.style.width = size + 'px';
+      el.style.height = size + 'px';
+      el.style.transform = 'translate(' + (p.x - size / 2) + 'px,' + (p.y - size / 2) + 'px)';
+      el.classList.toggle('dim', n.hasClass('faded'));
+    });
+  }
+
   function create(container, els, layout) {
     // Sem os elementos no construtor: com eles, o Cytoscape roda um layout padrão que o fcose
     // joga fora logo depois.
@@ -715,6 +785,7 @@ const APP = String.raw`
     $('flow').hidden = true;
     $('flowbar').hidden = true;
     if (main) main.resize();
+    if (pulse.inst !== cy) attachPulses(cy);
   }
   function build() {
     closeFlow();
@@ -732,6 +803,8 @@ const APP = String.raw`
       cy = main;
       saveLayout(sig);
     }
+    attachPulses(cy);
+    setActiveTile(null);
   }
 
   /**
@@ -751,6 +824,8 @@ const APP = String.raw`
     $('details').hidden = true;
     cy = create($('flow'), els, { name: 'breadthfirst', directed: true, roots: (n) => n.id() === rootId, spacingFactor: 1.15, animate: false, nodeDimensionsIncludeLabels: true, padding: 40 });
     $('flowtitle').textContent = title;
+    attachPulses(cy);
+    setActiveTile(null);
   }
   $('back').onclick = () => { closeFlow(); $('details').hidden = true; };
 
@@ -771,6 +846,36 @@ const APP = String.raw`
     if (cy && cy.scratch('_hl')) cy.batch(() => cy.elements().removeClass('faded hl'));
     if (cy) cy.scratch('_hl', false);
     $('details').hidden = true;
+    setActiveTile(null);
+  }
+
+  // ---- cartões do caos como filtro: clicar em "achados" apaga o resto do grafo e deixa só os
+  // nós daquele grupo; clicar de novo (ou no fundo do grafo) volta tudo.
+  const tileFilter = { active: null, nodes: {} };
+  function setActiveTile(key) {
+    tileFilter.active = key;
+    const tiles = document.querySelector('#chaos .tiles');
+    if (!tiles) return;
+    tiles.classList.toggle('filtering', !!key);
+    for (const b of tiles.querySelectorAll('button[data-tile]')) b.setAttribute('aria-pressed', String(b.dataset.tile === key));
+  }
+  function filterByTile(key) {
+    if (tileFilter.active === key) { clearHighlight(); return; }
+    if (!state.filters.routes) { state.filters.routes = true; const box = document.querySelector('[data-filter=routes]'); if (box) box.checked = true; build(); }
+    closeFlow();
+    main.elements().unselect();
+    const sel = tileFilter.nodes[key];
+    let col = main.collection();
+    for (const id of sel.routes) col = col.union(main.getElementById(routeId({ id })));
+    if (sel.targets) col = col.union(main.nodes('.chaos-target'));
+    if (col.empty()) return;
+    highlight(col);
+    $('details').hidden = true;
+    setActiveTile(key);
+    // enquadra o grupo, sem passar do zoom de leitura (com um nó só, o fit encheria a tela)
+    const bb = col.boundingBox();
+    const zoom = Math.min(1.4, (main.width() - 160) / Math.max(bb.w, 1), (main.height() - 160) / Math.max(bb.h, 1));
+    main.animate({ center: { eles: col }, zoom: Math.max(zoom, main.minZoom()) }, { duration: 300 });
   }
   function chain(node, dir) {
     let frontier = node.collection();
@@ -789,6 +894,7 @@ const APP = String.raw`
     node.cy().elements().unselect();
     node.select();
     highlight(node.closedNeighborhood().union(node.descendants()));
+    setActiveTile(null);
     const rows = [];
     if (raw.route) {
       const r = raw.route;
@@ -983,10 +1089,25 @@ const APP = String.raw`
     // nenhum teste valeu: não dá para dizer que o código aguentou
     else if (!failed.length && !passed.length && invalid.length) html += '<div class="banner warn">Nenhum teste valeu: ' + (invalid.length === 1 ? 'o único foi inválido' : 'os ' + invalid.length + ' foram inválidos') + '. O motivo está logo abaixo.</div>';
     else html += '<div class="banner ok">O código aguentou ' + (failed.length ? 'o portão (' + failed.length + ' achado(s) abaixo dele)' : 'todas as falhas injetadas') + '.</div>';
-    const tile = (n, one, many, tone) => '<div class="tile' + (n && tone ? ' ' + tone : '') + '"><b>' + fmt(n) + '</b><span>' + (n === 1 ? one : many) + '</span></div>';
-    html += '<div class="tiles four">' + tile(failed.length, 'achado', 'achados', 'bad') + tile(passed.length, 'aguentou', 'aguentaram', 'ok') + tile(invalid.length, 'inválido', 'inválidos') + tile(CHAOS.untested.length, 'sem teste', 'sem teste') + (notApplicable.length ? tile(notApplicable.length, 'não se aplica', 'não se aplicam') : '') + '</div>';
+    // cada cartão é um botão que filtra o grafo pelas rotas daquele grupo (sem rota no mapa: desligado)
+    const routesOf = (list) => [...new Set(list.map((o) => o.routeId))];
+    tileFilter.nodes = {
+      failed: { routes: routesOf(failed), targets: true },
+      passed: { routes: routesOf(passed) },
+      invalid: { routes: routesOf(invalid) },
+      untested: { routes: routesOf(CHAOS.untested) },
+      notApplicable: { routes: routesOf(notApplicable) },
+    };
+    const onMap = (key) => !!TOPOLOGY && tileFilter.nodes[key].routes.some((id) => TOPOLOGY.routes.some((r) => r.id === id));
+    const tile = (key, n, one, many, tone) => {
+      const label = n === 1 ? one : many;
+      const can = n > 0 && onMap(key);
+      return '<button type="button" class="tile' + (n && tone ? ' ' + tone : '') + '" data-tile="' + key + '" aria-pressed="false"' + (can ? ' title="Mostrar só ' + label + ' no grafo"' : ' disabled') + '><b>' + fmt(n) + '</b><span>' + label + '</span></button>';
+    };
+    html += '<div class="tiles four">' + tile('failed', failed.length, 'achado', 'achados', 'bad') + tile('passed', passed.length, 'aguentou', 'aguentaram', 'ok') + tile('invalid', invalid.length, 'inválido', 'inválidos') + tile('untested', CHAOS.untested.length, 'sem teste', 'sem teste') + (notApplicable.length ? tile('notApplicable', notApplicable.length, 'não se aplica', 'não se aplicam') : '') + '</div>';
     if (CHAOS.scope) html += '<p class="note">Escopo: ' + (CHAOS.scope.all ? 'todas as rotas (' + escape(CHAOS.scope.all) + ')' : CHAOS.scope.tested.length + ' rota(s) tocada(s) desde ' + escape(CHAOS.scope.base)) + '</p>';
     sec.innerHTML = html;
+    for (const b of sec.querySelectorAll('button[data-tile]')) b.onclick = () => filterByTile(b.dataset.tile);
     for (const o of failed) {
       const card = document.createElement('div');
       card.className = 'finding' + (o.severity === 'Crítico' ? '' : ' alto');
@@ -1019,7 +1140,7 @@ const APP = String.raw`
     if (CHAOS.untested.length) sec.append(fold('Sem teste nesta execução', CHAOS.untested.length, byReason(CHAOS.untested, (u) => u.reason, (u) => u.failure + ' em ' + u.target), false));
     const legend = document.createElement('p');
     legend.className = 'note';
-    legend.textContent = 'No mapa: rota vermelha quebrou, borda verde aguentou, borda tracejada: nenhum teste valeu; operação com borda vermelha é o alvo de um achado.';
+    legend.textContent = 'No mapa: rota vermelha (pulsando) quebrou, borda verde aguentou, borda tracejada: nenhum teste valeu; operação com borda vermelha (pulsando) é o alvo de um achado. Os números acima filtram o grafo.';
     sec.append(legend);
   }
 
