@@ -19,3 +19,6 @@ apps/api/data/
 # saídas geradas pelo shieldepy (mapa, topologia, testes de caos)
 mapa*.html
 .shieldepy/
+
+# modelos de IA local (0037): o GGUF fica fora do git
+*.gguf

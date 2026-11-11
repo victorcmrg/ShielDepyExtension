@@ -39,4 +39,5 @@ Uma decisão por arquivo: o contexto, o que foi decidido e o que isso obriga. Pa
 | [0034](0034-um-projeto-de-caos-por-package-json.md) | O caos testa um projeto por vez: a subpasta com `package.json` próprio fica de fora, e rota de C#/Java não conta como projeto | 2026-11-06 | valendo |
 | [0035](0035-nao-se-aplica.md) | Com o controle verde e a falha sem disparar, o resultado é "não se aplica", com o motivo ao lado; o controle que falhou segue "inválido" | 2026-11-06 | valendo |
 | [0036](0036-contrato-antes-da-escolha-da-ia.md) | O contrato sai do mapa, sem IA, e sem pendência o teste segue sozinho; "Motor ou IA" vira o passo 2, sobre quem propõe as falhas | 2026-11-06 | valendo |
+| [0037](0037-ia-local-pelo-ollama.md) | A IA local entra pelo Ollama como mais um provedor, só quando escolhida (`aiProvider: ollama` ou `SHIELDEPY_AI=ollama`), com custo zero e a mesma validação; o GGUF fica fora do git | 2026-11-10 | valendo |
 | [0038](0038-mapa-guarda-posicoes-e-tema.md) | O mapa guarda as posições já calculadas (memória e pasta temporária) e tem botão sol/lua; o desenho do grafo não muda | 2026-11-06 | valendo |

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { languageName } from '@shieldepy/agent';
 
-export type AiProviderSetting = 'auto' | 'anthropic' | 'gemini' | 'offline';
+export type AiProviderSetting = 'auto' | 'anthropic' | 'gemini' | 'ollama' | 'offline';
 export type AnalysisTrigger = 'onType' | 'onSave';
 export type MinSeverity = 'info' | 'warning' | 'error';
 
@@ -19,6 +19,10 @@ export const config = {
       deep: this.raw.get<string>('deepModel', ''),
       gemini: this.raw.get<string>('geminiModel', ''),
     };
+  },
+  /** A IA local (0037): o modelo no Ollama e onde ele escuta. */
+  ollama(): { model: string; url: string } {
+    return { model: this.raw.get<string>('ollamaModel', '').trim(), url: this.raw.get<string>('ollamaUrl', '').trim() };
   },
   inlineEnabled(): boolean {
     return this.raw.get<boolean>('inlineSuggestions.enabled', true);

@@ -5,6 +5,7 @@ export * from './cost';
 export * from './text';
 export { AnthropicProvider, DEFAULT_ANTHROPIC_MODELS, type AnthropicProviderOptions } from './providers/anthropic';
 export { GeminiProvider, DEFAULT_GEMINI_MODEL, type GeminiProviderOptions } from './providers/gemini';
+export { OllamaProvider, DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL, normalizeOllamaUrl, type OllamaProviderOptions } from './providers/ollama';
 
 export * from './collisions/types';
 export { AGENT_NAME, AGENT_TAGLINE, PERSONA } from './collisions/persona';

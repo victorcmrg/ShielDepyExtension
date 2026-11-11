@@ -229,12 +229,14 @@
             "auto",
             "anthropic",
             "gemini",
+            "ollama",
             "offline"
           ],
           "enumDescriptions": [
             "Usa a primeira chave configurada: Anthropic, depois Gemini. Sem chave, modo offline.",
             "Sempre Claude (Anthropic).",
             "Sempre Google Gemini.",
+            "IA local pelo Ollama, sem chave e sem custo (o modelo em shieldepy.ollamaModel). Nunca é escolhida no automático.",
             "Nunca chama IA: só os achados determinísticos (ciclos e colisões)."
           ],
           "default": "auto",
@@ -254,6 +256,16 @@
           "type": "string",
           "default": "gemini-3.6-flash",
           "description": "Modelo usado quando a IA ativa é o Gemini."
+        },
+        "shieldepy.ollamaModel": {
+          "type": "string",
+          "default": "shieldepy",
+          "description": "Modelo do Ollama usado quando a IA ativa é o Ollama (o nome em \"ollama list\")."
+        },
+        "shieldepy.ollamaUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "description": "Endereço do Ollama."
         },
         "shieldepy.inlineSuggestions.enabled": {
           "type": "boolean",

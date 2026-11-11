@@ -44,7 +44,7 @@ export class AiService implements vscode.Disposable {
         if (e.key === SECRET_ANTHROPIC || e.key === SECRET_GEMINI) this.invalidate();
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (['aiProvider', 'fastModel', 'deepModel', 'geminiModel'].some((k) => e.affectsConfiguration(`shieldepy.${k}`))) this.invalidate();
+        if (['aiProvider', 'fastModel', 'deepModel', 'geminiModel', 'ollamaModel', 'ollamaUrl'].some((k) => e.affectsConfiguration(`shieldepy.${k}`))) this.invalidate();
       }),
       auth.onDidChangeAuth(() => this.invalidate()),
       this.changeEmitter
@@ -70,7 +70,9 @@ export class AiService implements vscode.Disposable {
     const provider =
       choice === 'offline'
         ? undefined
-        : selectProvider({
+        : choice === 'ollama'
+          ? selectProvider({ ollama: config.ollama() })
+          : selectProvider({
             anthropicKey: choice === 'gemini' ? undefined : anthropicKey,
             geminiKey: choice === 'anthropic' ? undefined : geminiKey,
             anthropicModels: { fast: models.fast, deep: models.deep },
@@ -100,11 +102,16 @@ export class AiService implements vscode.Disposable {
     const env: NodeJS.ProcessEnv = { ...process.env };
     delete env.ANTHROPIC_API_KEY;
     delete env.GEMINI_API_KEY;
+    delete env.SHIELDEPY_AI;
     const choice = config.aiProvider();
     if (choice === 'offline' || !(await this.auth.hasAiAccess())) return env;
     const models = config.models();
     const anthropicKey = (await this.secrets.get(SECRET_ANTHROPIC)) || process.env.ANTHROPIC_API_KEY;
     const geminiKey = (await this.secrets.get(SECRET_GEMINI)) || process.env.GEMINI_API_KEY;
+    if (choice === 'ollama') {
+      const { model, url } = config.ollama();
+      return Object.assign(env, { SHIELDEPY_AI: 'ollama', ...(model && { OLLAMA_MODEL: model }), ...(url && { OLLAMA_HOST: url }) });
+    }
     if (choice !== 'gemini' && anthropicKey) Object.assign(env, { ANTHROPIC_API_KEY: anthropicKey, SHIELDEPY_FAST_MODEL: models.fast, SHIELDEPY_DEEP_MODEL: models.deep });
     if (choice !== 'anthropic' && geminiKey) Object.assign(env, { GEMINI_API_KEY: geminiKey, GEMINI_MODEL: models.gemini });
     return env;
