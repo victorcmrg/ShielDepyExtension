@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <!-- Verde ShielDepy: várias camadas de "tinta" sobre um degradê verde → lima → menta → rosa esverdeado.
+       Cada mancha é ruído de baixa frequência virando a transparência de uma cor chapada. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12e27c"/>
+      <stop offset="0.36" stop-color="#6fe46c"/>
+      <stop offset="0.6" stop-color="#9fe870"/>
+      <stop offset="0.8" stop-color="#cdeec0"/>
+      <stop offset="1" stop-color="#ecd2dc"/>
+    </linearGradient>
+    <filter id="deep" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.0045 0.008" numOctaves="4" seed="4" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.03  0 0 0 0 0.66  0 0 0 0 0.34  0 7 0 0 -3.95"/>
+    </filter>
+    <filter id="pink" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.004 0.007" numOctaves="4" seed="11" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.84  0 0 0 0 0.84  6.5 0 0 0 -3.75"/>
+    </filter>
+    <filter id="mint" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.009 0.016" numOctaves="3" seed="23" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.9  0 0 0 0 1  0 0 0 0 0.86  0 0 6 0 -3.55"/>
+    </filter>
+    <filter id="lime" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.006 0.003" numOctaves="3" seed="31" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.62  0 0 0 0 0.91  0 0 0 0 0.44  5 0 0 0 -2.7"/>
+    </filter>
+    <!-- pinceladas: ruído esticado na horizontal, girado -->
+    <filter id="streak" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.002 0.045" numOctaves="3" seed="2"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.4 0 0 0 -1.35"/>
+    </filter>
+    <!-- grão do papel -->
+    <filter id="grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="9" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.02  0 0 0 0 0.16  0 0 0 0 0.08  1.1 0 0 0 -0.48"/>
+    </filter>
+    <filter id="speck" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="1" seed="14" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 1.3 0 0 -0.72"/>
+    </filter>
+  </defs>
+  <rect width="600" height="600" fill="url(#base)"/>
+  <rect width="600" height="600" filter="url(#lime)"/>
+  <rect width="600" height="600" filter="url(#deep)"/>
+  <rect width="600" height="600" filter="url(#pink)"/>
+  <rect width="600" height="600" filter="url(#mint)"/>
+  <g transform="rotate(-22 300 300)" opacity="0.3">
+    <rect x="-200" y="-200" width="1000" height="1000" filter="url(#streak)"/>
+  </g>
+  <rect width="600" height="600" filter="url(#grain)" opacity="0.45"/>
+  <rect width="600" height="600" filter="url(#speck)" opacity="0.3"/>
+</svg>

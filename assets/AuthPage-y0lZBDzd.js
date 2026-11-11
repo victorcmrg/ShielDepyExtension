@@ -1,0 +1,1 @@
+import{t as e}from"./react-DZjC8YOF.js";var t=e();function n({children:e}){return(0,t.jsx)(`div`,{className:`auth-page`,children:(0,t.jsxs)(`div`,{className:`auth-page-inner`,children:[(0,t.jsxs)(`div`,{className:`auth-logo`,children:[(0,t.jsx)(`img`,{src:`/logo-mark.svg`,alt:``}),(0,t.jsx)(`span`,{children:`ShielDepy`})]}),e]})})}export{n as t};
