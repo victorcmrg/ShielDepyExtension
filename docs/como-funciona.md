@@ -85,6 +85,8 @@ as regras duas a duas:
 
 As bibliotecas (Cytoscape + fcose) vêm de `media/vendor/` com a CSP por nonce, como nos outros webviews.
 
+O layout (fcose) é a parte demorada num projeto grande: as posições calculadas ficam guardadas por combinação de filtros, na memória e num arquivo na pasta temporária do sistema, e a próxima abertura só as reaplica ([0038](decisoes/0038-mapa-guarda-posicoes-e-tema.md)). O botão sol/lua, no canto do mapa, troca o tema; sem escolha, ele segue o do VS Code.
+
 No **chat** você pergunta sobre um achado, citando o `#id` ou usando "Ask AI" na lista. Se pedir
 uma correção, a IA propõe o arquivo inteiro corrigido. **Antes de mostrar o botão "Aplicar"**, a
 extensão testa a proposta numa cópia do grafo e confere se ela cria um ciclo ou uma colisão nova.

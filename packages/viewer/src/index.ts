@@ -26,6 +26,13 @@ export function viewerLibraryPaths(): string[] {
   return VIEWER_LIBRARIES.map((lib) => require.resolve(lib.specifier));
 }
 
+/**
+ * Posições já calculadas, por combinação de filtros: `{ [filtros]: { [id do nó]: [x, y] } }`.
+ * O fcose leva segundos num projeto grande; reaplicar posições leva décimos. Quem guarda é a
+ * extensão (enquanto ela vive) ou o `localStorage` do navegador (HTML da CLI).
+ */
+export type ViewerLayout = Record<string, Record<string, [number, number]>>;
+
 export type ViewerMode =
   | { kind: 'inline' }
   | {
@@ -34,6 +41,10 @@ export type ViewerMode =
       libraryUris: string[];
       nonce: string;
       cspSource: string;
+      /** Posições guardadas de uma abertura anterior (o webview manda `{ type: 'layout' }` ao calcular). */
+      layout?: ViewerLayout;
+      /** Tema escolhido no botão sol/lua (o webview manda `{ type: 'theme' }`); sem ele, segue o VS Code. */
+      theme?: 'light' | 'dark';
     };
 
 /**
@@ -73,11 +84,21 @@ export interface ViewerOverlay {
 
 /** JSON seguro dentro de <script>: `<` vira `<` (no JSON, `<` só aparece dentro de strings). */
 function embedJson(value: unknown): string {
-  return JSON.stringify(value).split('<').join('\u003c');
+  return JSON.stringify(value).split('<').join('<');
 }
 
 function escapeHtml(text: string): string {
   return text.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;');
+}
+
+const ICON_SEARCH = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const ICON_SUN =
+  '<svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><g stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.35 5.35l1.63 1.63M17.02 17.02l1.63 1.63M5.35 18.65l1.63-1.63M17.02 6.98l1.63-1.63"/></g></svg>';
+const ICON_MOON = '<svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.6A8.4 8.4 0 0 1 9.4 3.8a8.4 8.4 0 1 0 10.8 10.8Z" fill="currentColor"/></svg>';
+
+/** Uma linha de filtro: o texto (com a amostra da linha, se houver) e o switch. */
+function toggle(attr: string, text: string, checked: boolean, swatch = ''): string {
+  return `<label class="toggle"><span class="toggle-text">${swatch ? `<span class="sw ${swatch}"></span>` : ''}${text}</span><input type="checkbox" ${attr}${checked ? ' checked' : ''}><span class="switch" aria-hidden="true"></span></label>`;
 }
 
 /**
@@ -102,9 +123,11 @@ export function renderGraphHtml(
       : viewerLibraryPaths()
           .map((file) => `<script>${readFileSync(file, 'utf8').split('</script').join('<\/script')}</script>`)
           .join('\n');
+  const saved = mode.kind === 'webview' ? { layout: mode.layout ?? null, theme: mode.theme ?? null } : { layout: null, theme: null };
+  const theme = saved.theme ? ` data-theme="${saved.theme}"` : '';
 
   return `<!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR"${theme}>
 <head>
 <meta charset="utf-8">
 ${csp}
@@ -115,126 +138,301 @@ ${csp}
 <style${nonce} id="__________cytoscape_stylesheet">.__________cytoscape_container { position: relative; }</style>
 </head>
 <body>
-<aside id="side">
-  <header>
+<aside id="side" aria-label="Painel do mapa">
+  <header class="head">
     <h1>Mapa do sistema</h1>
-    <p class="muted" id="label">${escapeHtml(label)}</p>
+    <p class="sub" id="label">${escapeHtml(label)}</p>
   </header>
+  <div class="search">
+    ${ICON_SEARCH}
+    <input id="search" type="search" placeholder="Buscar símbolo ou arquivo" aria-label="Buscar símbolo ou arquivo (Enter)" autocomplete="off" spellcheck="false">
+  </div>
+  <p class="hint" id="searchHint" hidden></p>
+  <section id="details" class="card" hidden></section>
   <section id="chaos" hidden></section>
   <section id="diff" hidden></section>
   <section id="coverage"></section>
-  <section>
-    <input id="search" type="search" placeholder="Buscar símbolo ou arquivo (Enter)" autocomplete="off">
+  <section class="filters" aria-labelledby="filtersTitle">
+    <div class="sec-head"><h2 id="filtersTitle">Exibir</h2></div>
+    ${overlay.diff ? `<div class="group">${toggle('data-filter="changed"', 'Só o que o PR mudou e os vizinhos', false)}</div>` : ''}
+    <p class="group-label">Ligações</p>
+    <div class="group">
+      ${topology ? toggle('data-filter="routes"', 'Rotas e operações de I/O', true, 'route') : ''}
+      ${toggle('data-filter="calls"', 'Chamadas', true, 'calls')}
+      ${toggle('data-filter="references"', 'Referências (handler passado como valor)', true, 'references')}
+      ${toggle('data-filter="imports"', 'Imports entre arquivos', false, 'imports')}
+    </div>
+    <p class="group-label">Elementos</p>
+    <div class="group">
+      ${toggle('data-filter="packages"', 'Pacotes externos', true)}
+      ${toggle('data-filter="tests"', 'Arquivos de teste', false)}
+      ${toggle('data-filter="isolated"', 'Símbolos sem ligação', false)}
+      ${toggle('id="group"', 'Agrupar símbolos por arquivo', true)}
+    </div>
+    <p class="legend"><span class="sw heuristic"></span>Tracejado laranja: chamada ligada só pelo nome (heurística)</p>
   </section>
-  <section class="filters">
-    <h2>Mostrar</h2>
-    ${overlay.diff ? '<label><input type="checkbox" data-filter="changed"> só o que o PR mudou (e os vizinhos)</label>' : ''}
-    ${topology ? '<label><input type="checkbox" data-filter="routes" checked> <span class="sw route"></span> rotas e operações de I/O</label>' : ''}
-    <label><input type="checkbox" data-filter="calls" checked> <span class="sw calls"></span> chamadas</label>
-    <label><input type="checkbox" data-filter="references" checked> <span class="sw references"></span> referências (handler passado como valor)</label>
-    <label><input type="checkbox" data-filter="imports"> <span class="sw imports"></span> imports entre arquivos</label>
-    <label><input type="checkbox" data-filter="packages" checked> pacotes externos</label>
-    <label><input type="checkbox" data-filter="tests"> arquivos de teste</label>
-    <label><input type="checkbox" data-filter="isolated"> símbolos sem ligação</label>
-    <label><input type="checkbox" id="group" checked> agrupar símbolos por arquivo</label>
-    <p class="muted small"><span class="sw heuristic"></span> chamada ligada só por nome (heurística)</p>
-  </section>
-  <section id="details" hidden></section>
   <section id="routes" hidden></section>
   <section id="weak"></section>
-  <footer class="muted small">hash <code id="hash"></code></footer>
+  <footer class="foot">Hash do mapa <code id="hash"></code></footer>
 </aside>
 <main id="stage">
-  <div id="flowbar" hidden><span id="flowtitle"></span><button id="back">Voltar ao mapa</button></div>
-  <div id="cy" aria-label="Grafo do sistema"></div>
+  <div id="flowbar" hidden><button id="back" class="btn" type="button">Voltar ao mapa</button><span id="flowtitle"></span></div>
+  <div class="canvas"><div id="cy" aria-label="Grafo do sistema"></div><div id="flow" aria-label="Fluxo escolhido" hidden></div></div>
+  <div id="loading" class="loading" role="status"><span class="blob"></span><span>Montando o mapa…</span></div>
+  <button id="theme" class="theme" type="button" aria-label="Mudar para o tema claro" title="Mudar para o tema claro">${ICON_SUN}${ICON_MOON}</button>
 </main>
 ${libraries}
-<script${nonce}>const SYSTEM = ${embedJson(system)}; const TOPOLOGY = ${embedJson(topology ?? null)}; const OVERLAY = ${embedJson(overlay)};</script>
+<script${nonce}>const SYSTEM = ${embedJson(system)}; const TOPOLOGY = ${embedJson(topology ?? null)}; const OVERLAY = ${embedJson(overlay)}; const SAVED = ${embedJson(saved)};</script>
 <script${nonce}>${APP}</script>
 </body>
 </html>
 `;
 }
 
-const STYLE = `
-:root {
-  --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0;
+// As cores do grafo são as de antes (o desenho não muda); as da interface seguem os tokens da
+// extensão (common.css): verde-guarda, hortelã e o semáforo do macOS.
+const LIGHT = `
+  --bg: #f5f6f7; --panel: #ffffff; --text: #1d1d1f; --muted: #6b6b72;
+  --line: rgba(0, 0, 0, 0.09); --fill: rgba(0, 0, 0, 0.045); --fill-strong: rgba(0, 0, 0, 0.085); --shadow: rgba(0, 0, 0, 0.12);
+  --green: #0b9e55; --on-green: #ffffff; --mint: #1f9d63; --red: #e5484d; --yellow: #c98a00; --route-ui: #c2255c;
   --file: #eef2f7; --file-border: #c9d3e0; --fn: #2f6fdf; --method: #7a4fd1; --class: #0f8a6a;
   --pkg: #b5651d; --calls: #4a5568; --refs: #2f6fdf; --imports: #b9bcc4; --heur: #e0861a;
   --hl: #e5484d; --accent: #2f6fdf; --route: #c2255c; --db: #0b7285; --api: #d9480f;
-  --bad: #d92d20; --ok: #12854a; --warn: #b54708; --bad-bg: #fdecea; --ok-bg: #e7f6ec; --warn-bg: #fef4e6;
+  --g-bad: #d92d20; --g-ok: #12854a; --g-warn: #b54708;
+  color-scheme: light;`;
+const DARK = `
+  --bg: #141416; --panel: #1c1c1f; --text: #ececee; --muted: #9a9aa2;
+  --line: rgba(255, 255, 255, 0.08); --fill: rgba(255, 255, 255, 0.05); --fill-strong: rgba(255, 255, 255, 0.09); --shadow: rgba(0, 0, 0, 0.45);
+  --green: #10ef7c; --on-green: #04210f; --mint: #a8f5cb; --red: #ff5f57; --yellow: #febc2e; --route-ui: #f06595;
+  --file: #22262e; --file-border: #3a4150; --fn: #6aa0ff; --method: #b294ff; --class: #3fcf9f;
+  --pkg: #e3a15c; --calls: #a0a7b4; --refs: #6aa0ff; --imports: #4a4e57; --heur: #f0a040;
+  --hl: #ff6b6f; --accent: #6aa0ff; --route: #f06595; --db: #3bc9db; --api: #ff922b;
+  --g-bad: #ff6b6b; --g-ok: #4ad685; --g-warn: #f5a524;
+  color-scheme: dark;`;
+
+const STYLE = `
+body {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --radius: 10px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  ${LIGHT}
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141416; --panel: #1c1c1f; --text: #ececee; --muted: #9a9aa2; --line: #2c2c31;
-    --file: #22262e; --file-border: #3a4150; --fn: #6aa0ff; --method: #b294ff; --class: #3fcf9f;
-    --pkg: #e3a15c; --calls: #a0a7b4; --refs: #6aa0ff; --imports: #4a4e57; --heur: #f0a040;
-    --hl: #ff6b6f; --accent: #6aa0ff; --route: #f06595; --db: #3bc9db; --api: #ff922b;
-    --bad: #ff6b6b; --ok: #4ad685; --warn: #f5a524; --bad-bg: #3a1d1d; --ok-bg: #16301f; --warn-bg: #3a2a12;
-  }
-}
+/* Sem escolha no botão: segue o VS Code (classe do body) e, fora dele, o sistema. */
+@media (prefers-color-scheme: dark) { html:not([data-theme]) body:not(.vscode-light):not(.vscode-high-contrast-light) { ${DARK} } }
+html:not([data-theme]) body.vscode-dark, html:not([data-theme]) body.vscode-high-contrast:not(.vscode-high-contrast-light), html[data-theme="dark"] body { ${DARK} }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
-body { display: flex; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-#side { width: 340px; flex: none; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 16px; }
-#stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-#cy { flex: 1; min-height: 0; }
-#flowbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-weight: 600; }
-#flowbar[hidden] { display: none; }
-h1 { font-size: 18px; margin: 0; }
-h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
-.muted { color: var(--muted); margin: 2px 0 0; word-break: break-all; }
-.small { font-size: 12px; }
-section { display: flex; flex-direction: column; gap: 4px; }
-label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-input[type=search] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
-.sw { display: inline-block; width: 18px; height: 0; border-top: 2px solid; flex: none; }
+body { display: flex; background: var(--bg); color: var(--text); font: 12.5px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background-clip: padding-box; background-color: var(--fill-strong); }
+
+#side { width: 320px; flex: none; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 18px 14px 14px; display: flex; flex-direction: column; gap: 18px; scrollbar-gutter: stable; }
+#stage { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+.canvas { position: relative; flex: 1; min-height: 0; }
+#cy, #flow { position: absolute; inset: 0; }
+#flow { background: var(--bg); }
+
+.head h1 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+.head .sub { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.search { position: relative; margin-top: -6px; }
+.search svg { position: absolute; left: 10px; top: 9px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
+.search input { width: 100%; height: 32px; padding: 0 10px 0 31px; border-radius: 8px; border: 1px solid transparent; background: var(--fill); color: var(--text); font: inherit; outline: none; transition: border-color 0.2s var(--ease), background 0.2s var(--ease); }
+.search input::placeholder { color: var(--muted); }
+.search input:focus { border-color: var(--green); background: var(--panel); }
+.hint { margin: -12px 2px 0; font-size: 11.5px; color: var(--muted); }
+
+section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sec-head { display: flex; align-items: baseline; gap: 8px; }
+h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.sec-meta { margin-left: auto; font-size: 11.5px; color: var(--muted); text-align: right; overflow-wrap: anywhere; }
+.count { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.note { margin: 0; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Lista agrupada, como a lista de problemas do painel. */
+.group { border-radius: var(--radius); background: var(--fill); overflow: hidden; }
+.group > * + * { border-top: 1px solid var(--line); }
+.group-label { margin: 2px 2px -4px; font-size: 11.5px; color: var(--muted); }
+.row-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background 0.15s ease; }
+.row-btn:hover { background: var(--fill); }
+.row-btn:active { background: var(--fill-strong); }
+.row-main { flex: 1; min-width: 0; }
+.row-title { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.row-sub { display: block; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.method { margin-right: 6px; font-size: 10.5px; font-weight: 700; color: var(--route-ui); }
+.chevron { width: 6px; height: 6px; flex: none; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); }
+
+/* Formas do semáforo: quadrado vermelho, triângulo amarelo, círculo verde. */
+.shape { display: inline-block; width: 9px; height: 9px; flex: none; }
+.shape.bad { background: var(--red); border-radius: 2px; }
+.shape.warn { background: var(--yellow); clip-path: polygon(50% 4%, 100% 96%, 0% 96%); }
+.shape.ok { background: var(--green); border-radius: 50%; }
+.shape.off { border: 1.5px dashed var(--muted); border-radius: 50%; }
+
+.toggle { display: flex; align-items: center; gap: 10px; padding: 7px 10px; cursor: pointer; }
+.toggle:hover { background: var(--fill); }
+.toggle-text { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.switch { position: relative; width: 30px; height: 18px; flex: none; border-radius: 999px; background: var(--fill-strong); transition: background 0.25s var(--ease); }
+.switch::before { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.4s var(--spring); }
+.toggle input:checked + .switch { background: var(--green); }
+.toggle input:checked + .switch::before { transform: translateX(12px); }
+.toggle input:focus-visible + .switch { outline: 2px solid var(--green); outline-offset: 2px; }
+.sw { display: inline-block; width: 16px; height: 0; border-top: 2px solid; flex: none; }
 .sw.calls { border-color: var(--calls); }
 .sw.references { border-color: var(--refs); border-top-style: dashed; }
 .sw.imports { border-color: var(--imports); }
 .sw.heuristic { border-color: var(--heur); border-top-style: dashed; }
 .sw.route { border-color: var(--route); border-top-width: 3px; }
-.route-item { text-align: left; display: block; width: 100%; }
-.route-item small { display: block; color: var(--muted); }
-.meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
-.meter > div { height: 100%; background: var(--accent); }
-.big { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
-dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 0 0; font-size: 13px; }
-dt { color: var(--muted); }
-dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
-button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
-button:hover { border-color: var(--accent); }
-.row { display: flex; gap: 6px; flex-wrap: wrap; }
-.weak-item { text-align: left; display: block; width: 100%; word-break: break-all; white-space: normal; }
-code { font-size: 12px; }
-.banner { padding: 8px 10px; border-radius: 8px; font-size: 13px; }
-.banner.bad { background: var(--bad-bg); color: var(--bad); }
-.banner.ok { background: var(--ok-bg); color: var(--ok); }
-.banner.warn { background: var(--warn-bg); color: var(--warn); }
-.finding { text-align: left; display: block; width: 100%; border-left: 4px solid var(--bad); }
-.finding small, .finding code { display: block; color: var(--muted); }
-.finding code { word-break: break-all; white-space: normal; }
-.finding .sev { font-weight: 700; color: var(--bad); }
-.finding.alto { border-left-color: var(--warn); }
-.finding.alto .sev { color: var(--warn); }
-.chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; margin-right: 4px; }
-.chip.bad { background: var(--bad-bg); color: var(--bad); }
-.chip.ok { background: var(--ok-bg); color: var(--ok); }
-.chip.warn { background: var(--warn-bg); color: var(--warn); }
-.chip.muted { background: var(--line); color: var(--muted); }
-ul.plain { list-style: none; padding: 0; margin: 4px 0 0; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
-@media (max-width: 720px) { body { flex-direction: column; } #side { width: 100%; max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--line); } }
+.legend { display: flex; align-items: center; gap: 8px; margin: 0 2px; font-size: 11.5px; color: var(--muted); }
+
+.tiles { display: grid; gap: 6px; }
+.tiles.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tile { min-width: 0; padding: 8px 9px 7px; border-radius: var(--radius); background: var(--fill); }
+.tile b { display: block; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tile span { display: block; font-size: 11px; line-height: 1.25; color: var(--muted); overflow-wrap: anywhere; }
+.tiles.four .tile { display: flex; align-items: baseline; gap: 6px; padding: 7px 10px; }
+.tiles.four .tile b, .tiles.four .tile span { display: inline; }
+.tiles.four .tile span { font-size: 11.5px; }
+.tiles.four .tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.tile.bad b { color: var(--red); }
+.tile.ok b { color: var(--green); }
+
+.cov { display: flex; align-items: baseline; gap: 10px; }
+.big { font-size: 26px; font-weight: 650; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.cov-sub { font-size: 11.5px; color: var(--muted); }
+.bar { display: flex; gap: 2px; height: 6px; border-radius: 999px; overflow: hidden; background: var(--fill-strong); }
+.seg { height: 100%; flex: none; }
+.seg.ok { background: var(--green); }
+.seg.warn { background: var(--yellow); }
+.seg.bad { background: var(--red); }
+.keys { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--muted); }
+.keys li { display: flex; align-items: center; gap: 6px; }
+.keys b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.facts { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin: 0; padding: 8px 10px; border-radius: var(--radius); background: var(--fill); font-size: 12px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.banner { padding: 8px 10px; border-radius: 8px; font-size: 12px; }
+.banner.bad { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.banner.ok { background: color-mix(in srgb, var(--green) 13%, transparent); color: var(--green); }
+.banner.warn { background: color-mix(in srgb, var(--yellow) 15%, transparent); color: var(--yellow); }
+.finding { border-radius: var(--radius); background: var(--fill); box-shadow: inset 3px 0 0 var(--red); overflow: hidden; }
+.finding.alto { box-shadow: inset 3px 0 0 var(--yellow); }
+.finding .row-btn { align-items: flex-start; padding-left: 13px; }
+.finding .sev { font-weight: 700; color: var(--red); margin-right: 4px; }
+.finding.alto .sev { color: var(--yellow); }
+.finding code { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.finding .actions { padding: 0 10px 9px 13px; }
+
+details.fold > summary { display: flex; align-items: center; gap: 8px; padding: 4px 2px; list-style: none; cursor: pointer; font-weight: 600; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary .chevron { transition: transform 0.35s var(--spring); }
+details.fold[open] > summary .chevron { transform: rotate(45deg); }
+details.fold > .group, details.fold > .stack { margin-top: 6px; }
+.stack { display: flex; flex-direction: column; gap: 6px; }
+.reason { padding: 8px 10px; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.reason b { color: var(--text); font-weight: 600; }
+
+.btn { font: inherit; font-size: 12px; padding: 5px 10px; border: 0; border-radius: 8px; background: var(--fill-strong); color: var(--text); cursor: pointer; transition: background 0.15s ease, transform 0.35s var(--spring); }
+.btn:hover { background: color-mix(in srgb, var(--text) 14%, transparent); }
+.btn:active { transform: scale(0.97); transition-duration: 0.08s; }
+.btn.primary { background: var(--green); color: var(--on-green); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.06); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.icon-btn { display: grid; place-items: center; width: 24px; height: 24px; flex: none; margin: -2px -4px 0 auto; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; }
+.icon-btn:hover { background: var(--fill-strong); color: var(--text); }
+
+.card { padding: 12px; border-radius: var(--radius); background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); gap: 10px; }
+.card-head { display: flex; align-items: flex-start; gap: 8px; }
+.card-head h2 { overflow-wrap: anywhere; }
+.kind { display: block; font-size: 11px; color: var(--muted); }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12px; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+.foot { margin-top: auto; font-size: 11px; color: var(--muted); }
+code { font-size: 11px; }
+
+#flowbar { display: flex; align-items: center; gap: 12px; padding: 10px 60px 10px 12px; border-bottom: 1px solid var(--line); background: var(--panel); font-weight: 600; }
+#flowtitle { min-width: 0; overflow-wrap: anywhere; }
+.loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; color: var(--muted); pointer-events: none; }
+.loading .blob { width: 12px; height: 12px; border-radius: 50%; background: var(--green); animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(0.6); opacity: 0.5; } }
+
+/* Sol e lua: mostra o tema para onde o clique leva. */
+.theme { position: absolute; top: 12px; right: 12px; z-index: 5; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--text); cursor: pointer; box-shadow: 0 2px 10px var(--shadow); transition: transform 0.35s var(--spring), background 0.2s ease; }
+.theme:hover { background: color-mix(in srgb, var(--text) 8%, var(--panel)); }
+.theme:active { transform: scale(0.9); transition-duration: 0.08s; }
+.theme svg { grid-area: 1 / 1; width: 17px; height: 17px; transition: transform 0.5s var(--spring), opacity 0.2s var(--ease); }
+.theme .sun { color: var(--yellow); }
+.theme .moon { transform: rotate(-90deg) scale(0.4); opacity: 0; }
+html[data-theme="light"] .theme .sun { transform: rotate(90deg) scale(0.4); opacity: 0; }
+html[data-theme="light"] .theme .moon { transform: none; opacity: 1; }
+
+@media (max-width: 720px) {
+  body { flex-direction: column; }
+  #side { width: 100%; max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
 `;
 
 // Roda no navegador. Mantido como string pra o HTML sair num arquivo só, sem build.
 const APP = String.raw`
 (() => {
-  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const $ = (id) => document.getElementById(id);
   const isTest = (id) => id.includes('/test/') || id.includes('/tests/') || id.includes('.test.') || id.includes('.spec.') || id.includes('test-e2e/');
   const fileOf = (n) => (n.kind === 'file' ? n.id : n.file);
+  const fmt = (n) => Number(n).toLocaleString('pt-BR');
+  const plural = (n, one, many) => fmt(n) + ' ' + (n === 1 ? one : many);
   // dentro do webview do VS Code: o botão "Abrir código" fala com a extensão
   const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : undefined;
   const state = { group: true, filters: { changed: false, routes: true, calls: true, references: true, imports: false, packages: true, tests: false, isolated: false } };
+  const local = {
+    get(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* armazenamento bloqueado: segue sem guardar */ } },
+  };
+
+  // ---- tema: o botão sol/lua escolhe; sem escolha, segue o VS Code (ou o sistema, fora dele)
+  const THEME_KEY = 'shieldepy-map-theme';
+  let manualTheme = SAVED.theme || (vscodeApi ? null : local.get(THEME_KEY));
+  function autoTheme() {
+    const b = document.body.classList;
+    if (b.contains('vscode-light') || b.contains('vscode-high-contrast-light')) return 'light';
+    if (b.contains('vscode-dark') || b.contains('vscode-high-contrast')) return 'dark';
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  const currentTheme = () => manualTheme || autoTheme();
+  function applyTheme() {
+    const theme = currentTheme();
+    if (document.documentElement.dataset.theme === theme && main) return;
+    document.documentElement.dataset.theme = theme;
+    const text = theme === 'dark' ? 'Mudar para o tema claro' : 'Mudar para o tema escuro';
+    $('theme').setAttribute('aria-label', text);
+    $('theme').title = text;
+    // a interface troca na hora; o grafo (que recalcula o estilo de cada elemento) logo depois
+    if (main) setTimeout(() => {
+      const st = makeStyle();
+      main.style(st);
+      if (cy && cy !== main) cy.style(st);
+    }, 0);
+  }
+  $('theme').onclick = () => {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    // voltar ao tema do VS Code é voltar a segui-lo
+    manualTheme = next === autoTheme() ? null : next;
+    if (vscodeApi) vscodeApi.postMessage({ type: 'theme', theme: manualTheme });
+    else local.set(THEME_KEY, manualTheme);
+    applyTheme();
+  };
+  new MutationObserver(() => { if (!manualTheme) applyTheme(); }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!manualTheme) applyTheme(); });
 
   // ---- topologia (opcional): rota → handlers e símbolo → operação de I/O
   const routeId = (r) => 'route:' + r.id;
@@ -303,22 +501,27 @@ const APP = String.raw`
     if ((n.kind === 'io-db' || n.kind === 'io-api') && failedTargets.has(n.op.target)) c.push('chaos-target');
     return c;
   }
+  const chaosShape = (st) => (st ? (st.status === 'failed' ? 'bad' : st.status === 'passed' ? 'ok' : 'off') : '');
 
-  // ---- painel de cobertura
+  // ---- cobertura: a porcentagem, a barra das três situações e o tamanho do mapa
   const s = SYSTEM.stats;
   const internal = s.callsResolved + s.callsHeuristic + s.callsUnresolved;
   const pct = internal === 0 ? 100 : (100 * s.callsResolved) / internal;
-  document.getElementById('hash').textContent = SYSTEM.contentHash.slice(0, 16);
-  document.getElementById('coverage').innerHTML =
-    '<h2>Cobertura das chamadas internas</h2>' +
-    '<div class="big">' + pct.toFixed(1) + '%</div><div class="meter"><div id="meterfill"></div></div>' +
-    '<dl><dt>provadas</dt><dd>' + s.callsResolved + '</dd><dt>heurística</dt><dd>' + s.callsHeuristic + '</dd>' +
-    '<dt>sem alvo</dt><dd>' + s.callsUnresolved + '</dd><dt>p/ pacotes</dt><dd>' + s.callsExternal + '</dd>' +
-    '<dt>imports quebrados</dt><dd>' + s.importsUnresolved + '</dd>' +
-    '<dt>arquivos</dt><dd>' + s.files + '</dd><dt>símbolos</dt><dd>' + s.symbols + '</dd><dt>pacotes</dt><dd>' + s.packages + '</dd>' +
-    '<dt>regras / colisões</dt><dd>' + s.rules + ' / ' + s.collisions + '</dd></dl>';
+  $('hash').textContent = SYSTEM.contentHash.slice(0, 16);
+  $('coverage').innerHTML =
+    '<div class="sec-head"><h2>Cobertura das chamadas internas</h2></div>' +
+    '<div class="cov"><span class="big">' + pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%</span><span class="cov-sub">das chamadas entre funções do projeto foram provadas</span></div>' +
+    '<div class="bar" id="covbar"><span class="seg ok"></span><span class="seg warn"></span><span class="seg bad"></span></div>' +
+    '<ul class="keys"><li><span class="shape ok"></span><b>' + fmt(s.callsResolved) + '</b> provadas</li><li><span class="shape warn"></span><b>' + fmt(s.callsHeuristic) + '</b> só pelo nome</li><li><span class="shape bad"></span><b>' + fmt(s.callsUnresolved) + '</b> sem alvo</li></ul>' +
+    '<div class="tiles three"><div class="tile"><b>' + fmt(s.files) + '</b><span>arquivos</span></div><div class="tile"><b>' + fmt(s.symbols) + '</b><span>símbolos</span></div><div class="tile"><b>' + fmt(s.packages) + '</b><span>pacotes</span></div></div>' +
+    '<dl class="facts"><dt>Chamadas para pacotes</dt><dd>' + fmt(s.callsExternal) + '</dd><dt>Imports quebrados</dt><dd>' + fmt(s.importsUnresolved) + '</dd>' +
+    '<dt>Regras</dt><dd>' + fmt(s.rules) + '</dd><dt>Colisões entre regras</dt><dd>' + fmt(s.collisions) + '</dd></dl>';
   // largura via CSSOM: atributo style="" em HTML é bloqueado pela CSP do webview
-  document.getElementById('meterfill').style.width = pct + '%';
+  [s.callsResolved, s.callsHeuristic, s.callsUnresolved].forEach((n, i) => {
+    const seg = $('covbar').children[i];
+    if (internal === 0 || n === 0) seg.hidden = true;
+    else seg.style.width = 'max(3px, ' + (100 * n) / internal + '%)';
+  });
 
   // ---- elementos
   function elements() {
@@ -343,7 +546,10 @@ const APP = String.raw`
         if (core.has(e.source)) keep.add(e.target);
         if (core.has(e.target)) keep.add(e.source);
       }
-      const kept = candidates.filter((n) => keep.has(n.id) || (n.kind === 'file' && candidates.some((m) => m.file === n.id && keep.has(m.id))));
+      // arquivo fica se algum símbolo dele ficou (um passe, em vez de procurar os filhos a cada arquivo)
+      const keptFiles = new Set();
+      for (const n of candidates) if (n.file && keep.has(n.id)) keptFiles.add(n.file);
+      const kept = candidates.filter((n) => keep.has(n.id) || (n.kind === 'file' && keptFiles.has(n.id)));
       candidates.length = 0;
       candidates.push(...kept);
       const still = new Set(kept.map((n) => n.id));
@@ -364,7 +570,7 @@ const APP = String.raw`
       const mark = st ? (st.status === 'failed' ? '✖ ' : st.status === 'passed' ? '✓ ' : '? ') : '';
       const data = { id: n.id, label: n.kind === 'file' ? n.id : mark + n.name, kind: n.kind, raw: n };
       if (state.group && n.file) data.parent = n.file;
-      out.push({ data, classes: ['k-' + n.kind].concat(overlayClasses(n)).join(' ') });
+      out.push({ group: 'nodes', data, classes: ['k-' + n.kind].concat(overlayClasses(n)).join(' ') });
     }
     const shown = new Set(out.map((e) => e.data.id));
     const edgeIds = new Set();
@@ -372,57 +578,160 @@ const APP = String.raw`
       const id = e.source + '|' + e.type + '|' + e.target;
       if (!shown.has(e.source) || !shown.has(e.target) || edgeIds.has(id)) continue;
       edgeIds.add(id);
-      out.push({ data: { id, source: e.source, target: e.target, type: e.type }, classes: 'e-' + e.type + (e.heuristic ? ' heuristic' : '') });
+      out.push({ group: 'edges', data: { id, source: e.source, target: e.target, type: e.type }, classes: 'e-' + e.type + (e.heuristic ? ' heuristic' : '') });
     }
     return out;
   }
 
-  const style = [
-    { selector: 'node', style: { label: 'data(label)', 'font-size': 10, 'min-zoomed-font-size': 7, color: css('--text'), 'text-valign': 'bottom', 'text-margin-y': 3, width: 14, height: 14, 'background-color': css('--fn'), 'text-max-width': 140, 'text-wrap': 'ellipsis' } },
-    { selector: '.k-method', style: { 'background-color': css('--method') } },
-    { selector: '.k-class', style: { 'background-color': css('--class'), shape: 'round-rectangle', width: 18, height: 14 } },
-    { selector: '.k-selector', style: { 'background-color': css('--muted'), width: 8, height: 8 } },
-    { selector: '.k-package', style: { 'background-color': css('--pkg'), shape: 'diamond', width: 22, height: 22, 'font-weight': 600 } },
-    { selector: ':parent', style: { 'background-color': css('--file'), 'background-opacity': 1, 'border-color': css('--file-border'), 'border-width': 1, shape: 'round-rectangle', 'text-valign': 'top', 'text-halign': 'center', 'font-size': 11, color: css('--muted'), padding: 10 } },
-    { selector: '.k-file:childless', style: { 'background-color': css('--file-border'), shape: 'round-rectangle', width: 16, height: 12 } },
-    { selector: 'edge', style: { width: 1.2, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'line-color': css('--calls'), 'target-arrow-color': css('--calls'), opacity: 0.75 } },
-    { selector: '.e-references', style: { 'line-style': 'dashed', 'line-color': css('--refs'), 'target-arrow-color': css('--refs') } },
-    { selector: '.e-imports', style: { 'line-color': css('--imports'), 'target-arrow-color': css('--imports'), opacity: 0.5 } },
-    { selector: '.heuristic', style: { 'line-style': 'dashed', 'line-color': css('--heur'), 'target-arrow-color': css('--heur') } },
-    { selector: '.k-route', style: { 'background-color': css('--route'), shape: 'tag', width: 26, height: 18, 'font-weight': 700, 'font-size': 11 } },
-    { selector: '.k-io-db', style: { 'background-color': css('--db'), shape: 'barrel', width: 20, height: 20, 'font-weight': 600 } },
-    { selector: '.k-io-api', style: { 'background-color': css('--api'), shape: 'hexagon', width: 22, height: 20, 'font-weight': 600 } },
-    { selector: '.e-route', style: { width: 2, 'line-color': css('--route'), 'target-arrow-color': css('--route') } },
-    { selector: '.e-io', style: { width: 2, 'line-color': css('--db'), 'target-arrow-color': css('--db') } },
-    { selector: '.chaos-failed', style: { 'border-width': 4, 'border-color': css('--bad'), 'background-color': css('--bad') } },
-    { selector: '.chaos-passed', style: { 'border-width': 3, 'border-color': css('--ok') } },
-    { selector: '.chaos-invalid', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--muted') } },
-    { selector: '.chaos-target', style: { 'border-width': 4, 'border-color': css('--bad') } },
-    { selector: '.diff-added', style: { 'border-width': 3, 'border-color': css('--ok') } },
-    { selector: '.diff-changed', style: { 'border-width': 3, 'border-color': css('--warn') } },
-    { selector: '.diff-renamed', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--accent') } },
-    { selector: ':parent.diff-top', style: { 'border-width': 2, 'border-color': css('--warn') } },
-    { selector: ':parent.diff-added', style: { 'border-width': 2, 'border-color': css('--ok') } },
-    { selector: '.diff-route', style: { 'border-width': 3, 'border-style': 'double', 'border-color': css('--warn') } },
-    { selector: '.faded', style: { opacity: 0.08 } },
-    { selector: '.hl', style: { opacity: 1, 'z-index': 10 } },
-    { selector: 'edge.hl', style: { width: 2.4 } },
-    { selector: 'node:selected', style: { 'border-width': 3, 'border-color': css('--hl') } },
-  ];
+  /** O estilo do grafo com as cores do tema atual (lidas uma vez dos tokens do CSS). */
+  function makeStyle() {
+    const cs = getComputedStyle(document.body);
+    const css = (name) => cs.getPropertyValue(name).trim();
+    return [
+      { selector: 'node', style: { label: 'data(label)', 'font-size': 10, 'min-zoomed-font-size': 7, color: css('--text'), 'text-valign': 'bottom', 'text-margin-y': 3, width: 14, height: 14, 'background-color': css('--fn'), 'text-max-width': 140, 'text-wrap': 'ellipsis' } },
+      { selector: '.k-method', style: { 'background-color': css('--method') } },
+      { selector: '.k-class', style: { 'background-color': css('--class'), shape: 'round-rectangle', width: 18, height: 14 } },
+      { selector: '.k-selector', style: { 'background-color': css('--muted'), width: 8, height: 8 } },
+      { selector: '.k-package', style: { 'background-color': css('--pkg'), shape: 'diamond', width: 22, height: 22, 'font-weight': 600 } },
+      { selector: ':parent', style: { 'background-color': css('--file'), 'background-opacity': 1, 'border-color': css('--file-border'), 'border-width': 1, shape: 'round-rectangle', 'text-valign': 'top', 'text-halign': 'center', 'font-size': 11, color: css('--muted'), padding: 10 } },
+      { selector: '.k-file:childless', style: { 'background-color': css('--file-border'), shape: 'round-rectangle', width: 16, height: 12 } },
+      { selector: 'edge', style: { width: 1.2, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'line-color': css('--calls'), 'target-arrow-color': css('--calls'), opacity: 0.75 } },
+      { selector: '.e-references', style: { 'line-style': 'dashed', 'line-color': css('--refs'), 'target-arrow-color': css('--refs') } },
+      { selector: '.e-imports', style: { 'line-color': css('--imports'), 'target-arrow-color': css('--imports'), opacity: 0.5 } },
+      { selector: '.heuristic', style: { 'line-style': 'dashed', 'line-color': css('--heur'), 'target-arrow-color': css('--heur') } },
+      { selector: '.k-route', style: { 'background-color': css('--route'), shape: 'tag', width: 26, height: 18, 'font-weight': 700, 'font-size': 11 } },
+      { selector: '.k-io-db', style: { 'background-color': css('--db'), shape: 'barrel', width: 20, height: 20, 'font-weight': 600 } },
+      { selector: '.k-io-api', style: { 'background-color': css('--api'), shape: 'hexagon', width: 22, height: 20, 'font-weight': 600 } },
+      { selector: '.e-route', style: { width: 2, 'line-color': css('--route'), 'target-arrow-color': css('--route') } },
+      { selector: '.e-io', style: { width: 2, 'line-color': css('--db'), 'target-arrow-color': css('--db') } },
+      { selector: '.chaos-failed', style: { 'border-width': 4, 'border-color': css('--g-bad'), 'background-color': css('--g-bad') } },
+      { selector: '.chaos-passed', style: { 'border-width': 3, 'border-color': css('--g-ok') } },
+      { selector: '.chaos-invalid', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--muted') } },
+      { selector: '.chaos-target', style: { 'border-width': 4, 'border-color': css('--g-bad') } },
+      { selector: '.diff-added', style: { 'border-width': 3, 'border-color': css('--g-ok') } },
+      { selector: '.diff-changed', style: { 'border-width': 3, 'border-color': css('--g-warn') } },
+      { selector: '.diff-renamed', style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': css('--accent') } },
+      { selector: ':parent.diff-top', style: { 'border-width': 2, 'border-color': css('--g-warn') } },
+      { selector: ':parent.diff-added', style: { 'border-width': 2, 'border-color': css('--g-ok') } },
+      { selector: '.diff-route', style: { 'border-width': 3, 'border-style': 'double', 'border-color': css('--g-warn') } },
+      { selector: '.faded', style: { opacity: 0.08 } },
+      { selector: '.hl', style: { opacity: 1, 'z-index': 10 } },
+      { selector: 'edge.hl', style: { width: 2.4 } },
+      { selector: 'node:selected', style: { 'border-width': 3, 'border-color': css('--hl') } },
+    ];
+  }
 
+  // ---- posições guardadas: o fcose roda uma vez por combinação de filtros; depois é só reaplicar
+  const LAYOUT_KEY = 'shieldepy-map-layout:' + $('label').textContent;
+  const MAX_LAYOUTS = 6;
+  const layouts = (SAVED.layout && typeof SAVED.layout === 'object' ? SAVED.layout : vscodeApi ? null : local.get(LAYOUT_KEY)) || {};
+  const signature = () => JSON.stringify([state.group, state.filters]);
+  function saveLayout(sig) {
+    const positions = {};
+    main.nodes().forEach((n) => {
+      if (n.isParent()) return;
+      const p = n.position();
+      positions[n.id()] = [Math.round(p.x), Math.round(p.y)];
+    });
+    delete layouts[sig];
+    layouts[sig] = positions;
+    const keys = Object.keys(layouts);
+    while (keys.length > MAX_LAYOUTS) delete layouts[keys.shift()];
+    if (vscodeApi) vscodeApi.postMessage({ type: 'layout', key: sig, positions });
+    else local.set(LAYOUT_KEY, layouts);
+  }
+  /**
+   * Posições para os elementos de agora a partir das guardadas. O código mudou pouco (até 10% de
+   * nós novos): os novos entram perto dos vizinhos e o resto não se mexe. Mudou muito: layout novo.
+   */
+  function reusePositions(els, saved) {
+    if (!saved) return null;
+    const parents = new Set();
+    for (const e of els) if (e.data.parent) parents.add(e.data.parent);
+    const pos = {};
+    const missing = [];
+    let leaves = 0;
+    for (const e of els) {
+      if (e.group !== 'nodes' || parents.has(e.data.id)) continue;
+      leaves++;
+      const p = saved[e.data.id];
+      if (p) pos[e.data.id] = { x: p[0], y: p[1] };
+      else missing.push(e.data);
+    }
+    if (leaves === 0 || missing.length > leaves * 0.1) return null;
+    if (missing.length) placeNear(missing, els, pos);
+    return { pos, changed: missing.length > 0 };
+  }
+  function placeNear(missing, els, pos) {
+    const near = new Map();
+    const link = (a, b) => { if (!near.has(a)) near.set(a, []); near.get(a).push(b); };
+    for (const e of els) if (e.group === 'edges') { link(e.data.source, e.data.target); link(e.data.target, e.data.source); }
+    for (const n of missing) if (n.parent) link(n.id, '@' + n.parent);
+    const byParent = new Map();
+    for (const e of els) if (e.data.parent && pos[e.data.id]) { const l = byParent.get(e.data.parent) || []; l.push(pos[e.data.id]); byParent.set(e.data.parent, l); }
+    let maxX = -Infinity, minY = Infinity;
+    for (const id in pos) { maxX = Math.max(maxX, pos[id].x); minY = Math.min(minY, pos[id].y); }
+    let pending = missing;
+    // dois passes: um nó novo ligado só a outro nó novo entra no segundo
+    for (let pass = 0; pass < 2 && pending.length; pass++) {
+      const left = [];
+      for (const n of pending) {
+        const pts = [];
+        for (const m of near.get(n.id) || []) {
+          if (m[0] === '@') pts.push(...(byParent.get(m.slice(1)) || []));
+          else if (pos[m]) pts.push(pos[m]);
+        }
+        if (!pts.length) { left.push(n); continue; }
+        let h = 0;
+        for (let i = 0; i < n.id.length; i++) h = (h * 31 + n.id.charCodeAt(i)) | 0;
+        const angle = ((h >>> 0) % 360) * Math.PI / 180;
+        pos[n.id] = { x: pts.reduce((a, p) => a + p.x, 0) / pts.length + 40 * Math.cos(angle), y: pts.reduce((a, p) => a + p.y, 0) / pts.length + 40 * Math.sin(angle) };
+      }
+      pending = left;
+    }
+    pending.forEach((n, i) => { pos[n.id] = { x: maxX + 120 + (i % 10) * 40, y: minY + Math.floor(i / 10) * 40 }; });
+  }
+
+  const FCOSE = { name: 'fcose', quality: 'default', randomize: true, animate: false, nodeDimensionsIncludeLabels: true, packComponents: true, padding: 30, idealEdgeLength: 70, nodeRepulsion: 6500, nestingFactor: 0.6 };
+  // Duas instâncias: o mapa (main) fica vivo enquanto um fluxo aberto (em cima dele) é mostrado,
+  // então "Voltar ao mapa" não refaz nada. cy é a que está na tela.
+  let main;
   let cy;
-  function mount(els, layout) {
-    if (cy) cy.destroy();
-    cy = cytoscape({ container: document.getElementById('cy'), elements: els, style, minZoom: 0.05 });
-    cy.layout(layout).run();
-    cy.on('tap', 'node', (ev) => select(ev.target));
-    cy.on('tap', (ev) => { if (ev.target === cy) { cy.elements().unselect(); clearHighlight(); } });
+  function create(container, els, layout) {
+    // Sem os elementos no construtor: com eles, o Cytoscape roda um layout padrão que o fcose
+    // joga fora logo depois.
+    // Mapa grande: ao arrastar ou dar zoom, o Cytoscape move uma imagem do grafo pronta em vez de
+    // redesenhar milhares de elementos a cada quadro; parado, o desenho é o mesmo.
+    const inst = cytoscape({ container, style: makeStyle(), minZoom: 0.05, textureOnViewport: els.length > 2000 });
+    inst.add(els);
+    inst.layout(layout).run();
+    inst.on('tap', 'node', (ev) => select(ev.target));
+    inst.on('tap', (ev) => { if (ev.target === inst) { inst.elements().unselect(); clearHighlight(); } });
+    return inst;
+  }
+  function closeFlow() {
+    if (cy && cy !== main) cy.destroy();
+    cy = main;
+    $('flow').hidden = true;
+    $('flowbar').hidden = true;
+    if (main) main.resize();
   }
   function build() {
-    document.getElementById('flowbar').hidden = true;
+    closeFlow();
+    if (main) main.destroy();
+    $('details').hidden = true;
     const els = elements();
-    const big = els.length > 6000;
-    mount(els, { name: 'fcose', quality: big ? 'draft' : 'default', randomize: true, animate: false, nodeDimensionsIncludeLabels: true, packComponents: true, padding: 30, idealEdgeLength: 70, nodeRepulsion: 6500, nestingFactor: 0.6 });
+    const sig = signature();
+    const reuse = reusePositions(els, layouts[sig]);
+    if (reuse) {
+      main = create($('cy'), els, { name: 'preset', positions: (n) => reuse.pos[n.id()], fit: true, padding: 30, animate: false });
+      cy = main;
+      if (reuse.changed) saveLayout(sig);
+    } else {
+      main = create($('cy'), els, Object.assign({}, FCOSE, { quality: els.length > 6000 ? 'draft' : 'default' }));
+      cy = main;
+      saveLayout(sig);
+    }
   }
 
   /**
@@ -430,30 +739,38 @@ const APP = String.raw`
    * Arquivo continua quando é ponta de aresta (o módulo de rotas é quem registra os handlers).
    */
   function showFlow(collection, root, title) {
-    const els = collection
-      .map((el) => {
-        const data = Object.assign({}, el.data());
-        delete data.parent;
-        return { group: el.isEdge() ? 'edges' : 'nodes', data, classes: el.classes().filter((c) => c !== 'faded' && c !== 'hl').join(' ') };
-      });
+    const els = collection.map((el) => {
+      const data = Object.assign({}, el.data());
+      delete data.parent;
+      return { group: el.isEdge() ? 'edges' : 'nodes', data, classes: el.classes().filter((c) => c !== 'faded' && c !== 'hl').join(' ') };
+    });
     const rootId = root.id();
-    mount(els, { name: 'breadthfirst', directed: true, roots: (n) => n.id() === rootId, spacingFactor: 1.15, animate: false, nodeDimensionsIncludeLabels: true, padding: 40 });
-    document.getElementById('flowtitle').textContent = title;
-    document.getElementById('flowbar').hidden = false;
+    if (cy && cy !== main) cy.destroy();
+    $('flowbar').hidden = false;
+    $('flow').hidden = false;
+    $('details').hidden = true;
+    cy = create($('flow'), els, { name: 'breadthfirst', directed: true, roots: (n) => n.id() === rootId, spacingFactor: 1.15, animate: false, nodeDimensionsIncludeLabels: true, padding: 40 });
+    $('flowtitle').textContent = title;
   }
-  document.getElementById('back').onclick = () => build();
+  $('back').onclick = () => { closeFlow(); $('details').hidden = true; };
 
   // ---- seleção e cadeias
   const FLOW_TYPES = new Set(['calls', 'references', 'route', 'io']);
   const flowEdges = (eles) => eles.filter((e) => e.isEdge() && FLOW_TYPES.has(e.data('type')));
   function highlight(collection) {
-    cy.elements().addClass('faded').removeClass('hl');
-    collection.removeClass('faded').addClass('hl');
-    collection.parents().removeClass('faded');
+    const inst = collection.cy();
+    // em lote: num mapa grande são milhares de elementos, e fora do lote cada um redesenha
+    inst.batch(() => {
+      inst.elements().addClass('faded').removeClass('hl');
+      collection.removeClass('faded').addClass('hl');
+      collection.parents().removeClass('faded');
+    });
+    inst.scratch('_hl', true);
   }
   function clearHighlight() {
-    cy.elements().removeClass('faded hl');
-    document.getElementById('details').hidden = true;
+    if (cy && cy.scratch('_hl')) cy.batch(() => cy.elements().removeClass('faded hl'));
+    if (cy) cy.scratch('_hl', false);
+    $('details').hidden = true;
   }
   function chain(node, dir) {
     let frontier = node.collection();
@@ -466,21 +783,22 @@ const APP = String.raw`
     }
     return all;
   }
+  const KIND = { function: 'Função', method: 'Método', class: 'Classe', selector: 'Seletor', file: 'Arquivo', package: 'Pacote', route: 'Rota', 'io-db': 'Operação de banco', 'io-api': 'Chamada de API externa' };
   function select(node) {
     const raw = node.data('raw');
-    cy.elements().unselect();
+    node.cy().elements().unselect();
     node.select();
     highlight(node.closedNeighborhood().union(node.descendants()));
-    const rows = [['tipo', raw.kind]];
+    const rows = [];
     if (raw.route) {
       const r = raw.route;
       rows.push(['registro', r.file + ':' + (r.line + 1)], ['handlers', r.handlers.map((h) => h.label).join(' → ')]);
-      rows.push(['operações', r.operations.map((o) => o.order + '. ' + o.kind + ' ' + o.target).join(' · ') || '—']);
+      rows.push(['operações', r.operations.map((o) => o.order + '. ' + o.kind + ' ' + o.target).join('; ') || '—']);
       rows.push(['tags', r.tags.map((t) => t.tag + (t.targets ? '(' + t.targets.join(',') + ')' : '')).join(', ') || '—']);
       rows.push(['confiança', r.confidence + (r.truncated ? ' (percurso truncado)' : '')]);
     }
     if (raw.op) {
-      rows.push(['via', raw.op.via + (raw.op.operation ? ' · ' + raw.op.operation : '')]);
+      rows.push(['via', raw.op.via + (raw.op.operation ? ', ' + raw.op.operation : '')]);
       if (raw.op.timeout) rows.push(['timeout', raw.op.timeout]);
       if (raw.op.lock) rows.push(['trava', 'FOR UPDATE']);
     }
@@ -493,187 +811,251 @@ const APP = String.raw`
     if (raw.returns && raw.returns.length) rows.push(['retorna', raw.returns.join('.')]);
     if (raw.extends) rows.push(['extends', raw.extends.join('.')]);
     if (raw.implements) rows.push(['implements', raw.implements.join(', ')]);
-    const outCalls = flowEdges(node.outgoers()).length;
-    const inCalls = flowEdges(node.incomers()).length;
-    rows.push(['sai / chega', outCalls + ' / ' + inCalls]);
-    const el = document.getElementById('details');
+    rows.push(['sai / chega', flowEdges(node.outgoers()).length + ' / ' + flowEdges(node.incomers()).length]);
+    const el = $('details');
     el.hidden = false;
-    el.innerHTML = '<h2>' + escape(raw.name) + '</h2><dl>' + rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + escape(String(v)) + '</dd>').join('') + '</dl>' +
-      '<div class="row"><button id="down">Cadeia abaixo</button><button id="up">Quem chega aqui</button><button id="clear">Limpar</button>' +
-      (vscodeApi && (raw.file || raw.kind === 'file' || raw.route) ? '<button id="open">Abrir código</button>' : '') + '</div>';
-    document.getElementById('down').onclick = () => showFlow(chain(node, 'down'), node, 'Cadeia a partir de ' + raw.name);
-    document.getElementById('up').onclick = () => showFlow(chain(node, 'up'), node, 'Quem chega em ' + raw.name);
-    document.getElementById('clear').onclick = () => { cy.elements().unselect(); clearHighlight(); };
-    const open = document.getElementById('open');
+    el.innerHTML = '<div class="card-head"><div><h2>' + escape(raw.name) + '</h2><span class="kind">' + escape(KIND[raw.kind] || raw.kind) + '</span></div><button class="icon-btn" id="clear" type="button" aria-label="Limpar a seleção" title="Limpar a seleção">×</button></div>' +
+      '<dl>' + rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + escape(String(v)) + '</dd>').join('') + '</dl>' +
+      '<div class="actions"><button class="btn" id="down" type="button">Cadeia abaixo</button><button class="btn" id="up" type="button">Quem chega aqui</button>' +
+      (vscodeApi && (raw.file || raw.kind === 'file' || raw.route) ? '<button class="btn primary" id="open" type="button">Abrir código</button>' : '') + '</div>';
+    $('down').onclick = () => showFlow(chain(node, 'down'), node, 'Cadeia a partir de ' + raw.name);
+    $('up').onclick = () => showFlow(chain(node, 'up'), node, 'Quem chega em ' + raw.name);
+    $('clear').onclick = () => { cy.elements().unselect(); clearHighlight(); };
+    const open = $('open');
     // rota abre onde ela é registrada
     if (open && raw.route) open.onclick = () => vscodeApi.postMessage({ type: 'open', file: raw.route.file, line: raw.route.line });
     else if (open) open.onclick = () => vscodeApi.postMessage({ type: 'open', file: raw.kind === 'file' ? raw.id : raw.file, line: raw.startLine || 0 });
+    el.scrollIntoView({ block: 'nearest' });
   }
   function escape(t) {
     return t.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
   }
   function focus(id) {
-    const node = cy.getElementById(id);
+    const node = main.getElementById(id);
     if (node.empty()) return false;
-    cy.animate({ center: { eles: node }, zoom: Math.max(cy.zoom(), 1.2) }, { duration: 250 });
+    closeFlow();
+    main.animate({ center: { eles: node }, zoom: Math.max(main.zoom(), 1.2) }, { duration: 250 });
     select(node);
     return true;
   }
 
-  // ---- busca, filtros, pontos fracos
-  document.getElementById('search').addEventListener('keydown', (ev) => {
+  // ---- busca e filtros
+  const hint = $('searchHint');
+  $('search').addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') { ev.target.value = ''; hint.hidden = true; clearHighlight(); return; }
     if (ev.key !== 'Enter') return;
     const q = ev.target.value.trim().toLowerCase();
+    hint.hidden = !q;
     if (!q) return clearHighlight();
-    const hit = cy.nodes().filter((n) => n.data('label').toLowerCase().includes(q) || n.id().toLowerCase().includes(q));
+    // busca no mapa inteiro (com um fluxo aberto, o foco volta ao mapa)
+    const hit = main.nodes().filter((n) => n.data('label').toLowerCase().includes(q) || n.id().toLowerCase().includes(q));
+    hint.textContent = hit.empty() ? 'Nada no mapa com esse nome.' : hit.length === 1 ? '1 resultado.' : plural(hit.length, 'resultado', 'resultados') + ', todos destacados.';
     if (hit.empty()) return;
     focus(hit[0].id());
     if (hit.length > 1) highlight(hit);
   });
+  $('search').addEventListener('input', (ev) => { if (!ev.target.value) { hint.hidden = true; clearHighlight(); } });
   for (const box of document.querySelectorAll('[data-filter]')) {
     box.addEventListener('change', () => { state.filters[box.dataset.filter] = box.checked; build(); });
   }
-  document.getElementById('group').addEventListener('change', (ev) => { state.group = ev.target.checked; build(); });
+  $('group').addEventListener('change', (ev) => { state.group = ev.target.checked; build(); });
 
-  const weak = document.getElementById('weak');
+  // ---- listas do painel: uma linha clicável (título, detalhe e o sinal de ir)
+  function row(title, sub, onclick, shape) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'row-btn';
+    b.innerHTML = (shape ? '<span class="shape ' + shape + '"></span>' : '') + '<span class="row-main"><span class="row-title"></span><span class="row-sub"></span></span><span class="chevron"></span>';
+    b.querySelector('.row-title').append(...(Array.isArray(title) ? title : [title]));
+    if (sub) b.querySelector('.row-sub').textContent = sub;
+    else b.querySelector('.row-sub').remove();
+    b.onclick = onclick;
+    return b;
+  }
+  function routeTitle(id) {
+    const space = id.indexOf(' ');
+    if (space < 0) return [id];
+    const m = document.createElement('span');
+    m.className = 'method';
+    m.textContent = id.slice(0, space);
+    return [m, id.slice(space + 1)];
+  }
+  function fold(title, count, body, open) {
+    const d = document.createElement('details');
+    d.className = 'fold';
+    d.open = !!open;
+    d.innerHTML = '<summary><span class="chevron"></span><span></span><span class="count"></span></summary>';
+    d.querySelector('summary span:nth-child(2)').textContent = title;
+    d.querySelector('.count').textContent = fmt(count);
+    d.appendChild(body);
+    return d;
+  }
+  function group(children) {
+    const g = document.createElement('div');
+    g.className = 'group';
+    g.append(...children);
+    return g;
+  }
+
+  const weak = $('weak');
   if (SYSTEM.weakSpots.length === 0) {
-    weak.innerHTML = '<h2>Pontos fracos</h2><p class="muted small">Nenhum: todas as chamadas internas foram provadas.</p>';
+    weak.innerHTML = '<div class="sec-head"><h2>Pontos fracos</h2></div><p class="note">Nenhum: todas as chamadas internas foram provadas.</p>';
   } else {
-    weak.innerHTML = '<h2>Pontos fracos (' + SYSTEM.weakSpots.length + ')</h2>';
-    for (const w of SYSTEM.weakSpots) {
-      const b = document.createElement('button');
-      b.className = 'weak-item';
-      b.textContent = w.file + ' — ' + w.callsUnresolved + ' sem alvo, ' + w.callsHeuristic + ' heurística(s)' + (w.importsUnresolved.length ? ', imports: ' + w.importsUnresolved.join(', ') : '');
-      b.onclick = () => {
+    const items = SYSTEM.weakSpots.map((w) => {
+      const slash = w.file.lastIndexOf('/');
+      const parts = [];
+      if (w.callsUnresolved) parts.push(plural(w.callsUnresolved, 'sem alvo', 'sem alvo'));
+      if (w.callsHeuristic) parts.push(plural(w.callsHeuristic, 'só pelo nome', 'só pelo nome'));
+      if (w.importsUnresolved.length) parts.push('imports: ' + w.importsUnresolved.join(', '));
+      const b = row(w.file.slice(slash + 1), (slash > 0 ? w.file.slice(0, slash) + '; ' : '') + parts.join(', '), () => {
         if (!focus(w.file)) {
-          state.group = true; document.getElementById('group').checked = true;
+          state.group = true; $('group').checked = true;
           if (isTest(w.file)) { state.filters.tests = true; document.querySelector('[data-filter=tests]').checked = true; }
           build(); focus(w.file);
         }
-      };
-      weak.appendChild(b);
-    }
+      }, w.callsUnresolved ? 'bad' : 'warn');
+      b.title = w.file;
+      return b;
+    });
+    weak.append(fold('Pontos fracos', SYSTEM.weakSpots.length, group(items), SYSTEM.weakSpots.length <= 5));
+    const note = document.createElement('p');
+    note.className = 'note';
+    note.textContent = 'Arquivos onde o mapa ainda adivinha uma chamada ou não acha o alvo.';
+    weak.append(note);
   }
 
   // ---- lista de rotas (com topologia): cada uma abre o fluxo rota → handlers → ... → I/O
   if (TOPOLOGY) {
-    const list = document.getElementById('routes');
+    const list = $('routes');
     list.hidden = false;
-    list.innerHTML = '<h2>Rotas (' + TOPOLOGY.routes.length + ')</h2>' + (TOPOLOGY.routes.length === 0 ? '<p class="muted small">Nenhuma rota Express encontrada.</p>' : '');
-    for (const r of TOPOLOGY.routes) {
-      const b = document.createElement('button');
-      b.className = 'route-item';
-      const st = routeChaos.get(r.id);
-      b.textContent = (st ? (st.status === 'failed' ? '✖ ' : st.status === 'passed' ? '✓ ' : '? ') : '') + r.id;
-      const tags = document.createElement('small');
-      tags.textContent = r.operations.length + ' operação(ões)' + (r.tags.length ? ' · ' + r.tags.map((t) => t.tag).join(', ') : '');
-      b.appendChild(tags);
-      b.onclick = () => {
-        if (!state.filters.routes) { state.filters.routes = true; document.querySelector('[data-filter=routes]').checked = true; build(); }
-        const node = cy.getElementById(routeId(r));
-        if (!node.empty()) showFlow(chain(node, 'down'), node, r.id);
-      };
-      list.appendChild(b);
+    if (TOPOLOGY.routes.length === 0) {
+      list.innerHTML = '<div class="sec-head"><h2>Rotas</h2><span class="count">0</span></div><p class="note">Nenhuma rota Express ou Fastify encontrada.</p>';
+    } else {
+      const items = TOPOLOGY.routes.map((r) => {
+        const ops = plural(r.operations.length, 'operação', 'operações');
+        return row(routeTitle(r.id), ops + (r.tags.length ? ', ' + r.tags.map((t) => t.tag).join(', ') : ''), () => {
+          if (!state.filters.routes) { state.filters.routes = true; document.querySelector('[data-filter=routes]').checked = true; build(); }
+          const node = main.getElementById(routeId(r));
+          if (!node.empty()) showFlow(chain(node, 'down'), node, r.id);
+        }, chaosShape(routeChaos.get(r.id)));
+      });
+      list.append(fold('Rotas', TOPOLOGY.routes.length, group(items), TOPOLOGY.routes.length <= 8));
     }
   }
 
   // ---- seção "Caos" (V2): o resultado do último shieldepy chaos sobre o mapa
   function openRoute(id, title) {
     if (!state.filters.routes) { state.filters.routes = true; const box = document.querySelector('[data-filter=routes]'); if (box) box.checked = true; build(); }
-    const node = cy.getElementById(routeId({ id }));
+    const node = main.getElementById(routeId({ id }));
     if (!node.empty()) showFlow(chain(node, 'down'), node, title || id);
   }
+  /** Agrupa por motivo: doze testes que não carregaram pelo mesmo erro viram um bloco só. */
+  function byReason(items, reasonOf, label) {
+    const groups = new Map();
+    for (const it of items) { const k = reasonOf(it) || 'sem motivo registrado'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
+    const stack = document.createElement('div');
+    stack.className = 'stack';
+    for (const [reason, list] of groups) {
+      const head = document.createElement('div');
+      head.className = 'reason';
+      head.innerHTML = '<b></b> ';
+      head.querySelector('b').textContent = plural(list.length, 'teste', 'testes') + ':';
+      head.append(reason);
+      stack.append(group([head].concat(list.map((it) => row(routeTitle(it.routeId), label(it), () => openRoute(it.routeId, it.routeId + ', ' + it.failure))))));
+    }
+    return stack;
+  }
   if (CHAOS) {
-    const sec = document.getElementById('chaos');
+    const sec = $('chaos');
     sec.hidden = false;
     const failed = CHAOS.outcomes.filter((o) => o.status === 'failed');
     const passed = CHAOS.outcomes.filter((o) => o.status === 'passed');
+    // não se aplica (0035): a falha não disparou, com o controle verde; não conta como inválido
     const notApplicable = CHAOS.outcomes.filter((o) => o.notApplicable);
     const invalid = CHAOS.outcomes.filter((o) => o.status === 'invalid' && !o.notApplicable);
-    let html = '<h2>Caos</h2>';
     const stale = typeof CHAOS.stale === 'boolean' ? CHAOS.stale : !!TOPOLOGY && CHAOS.topologyHash !== TOPOLOGY.contentHash;
-    html += '<p class="muted small">Projeto: ' + escape(CHAOS.project) + '</p>';
+    let html = '<div class="sec-head"><h2>Caos</h2><span class="sec-meta">' + escape(CHAOS.project) + '</span></div>';
     if (stale) html += '<div class="banner warn">Este resultado é de outra versão do mapa. Rode o <code>shieldepy chaos</code> de novo.</div>';
     if (CHAOS.runError) html += '<div class="banner warn">Os testes não rodaram (erro de ambiente): ' + escape(CHAOS.runError.split('\n')[0]) + '</div>';
     else if (!CHAOS.ran) html += '<div class="banner warn">Testes gerados, mas não executados (<code>--no-run</code>).</div>';
     else if (CHAOS.hits > 0) html += '<div class="banner bad"><b>Bloqueado:</b> ' + CHAOS.hits + ' achado(s)' + (CHAOS.failOn === 'Baixo' ? '' : ' com severidade ' + escape(CHAOS.failOn) + ' ou pior') + '.</div>';
     else if (CHAOS.scope && CHAOS.scope.tested.length === 0) html += '<div class="banner ok">Nenhuma rota sensível tocada pelo PR.</div>';
+    // nenhum teste valeu: não dá para dizer que o código aguentou
+    else if (!failed.length && !passed.length && invalid.length) html += '<div class="banner warn">Nenhum teste valeu: ' + (invalid.length === 1 ? 'o único foi inválido' : 'os ' + invalid.length + ' foram inválidos') + '. O motivo está logo abaixo.</div>';
     else html += '<div class="banner ok">O código aguentou ' + (failed.length ? 'o portão (' + failed.length + ' achado(s) abaixo dele)' : 'todas as falhas injetadas') + '.</div>';
-    html += '<p class="small"><span class="chip ' + (failed.length ? 'bad' : 'muted') + '">' + failed.length + ' achado(s)</span><span class="chip ' + (passed.length ? 'ok' : 'muted') + '">' + passed.length + ' aguentou</span><span class="chip muted">' + invalid.length + ' inválido(s)</span>' + (notApplicable.length ? '<span class="chip muted">' + notApplicable.length + ' não se aplica(m)</span>' : '') + '<span class="chip muted">' + CHAOS.untested.length + ' sem teste</span></p>';
-    if (CHAOS.scope) html += '<p class="muted small">Escopo: ' + (CHAOS.scope.all ? 'todas as rotas (' + escape(CHAOS.scope.all) + ')' : CHAOS.scope.tested.length + ' rota(s) tocada(s) desde ' + escape(CHAOS.scope.base)) + '</p>';
+    const tile = (n, one, many, tone) => '<div class="tile' + (n && tone ? ' ' + tone : '') + '"><b>' + fmt(n) + '</b><span>' + (n === 1 ? one : many) + '</span></div>';
+    html += '<div class="tiles four">' + tile(failed.length, 'achado', 'achados', 'bad') + tile(passed.length, 'aguentou', 'aguentaram', 'ok') + tile(invalid.length, 'inválido', 'inválidos') + tile(CHAOS.untested.length, 'sem teste', 'sem teste') + (notApplicable.length ? tile(notApplicable.length, 'não se aplica', 'não se aplicam') : '') + '</div>';
+    if (CHAOS.scope) html += '<p class="note">Escopo: ' + (CHAOS.scope.all ? 'todas as rotas (' + escape(CHAOS.scope.all) + ')' : CHAOS.scope.tested.length + ' rota(s) tocada(s) desde ' + escape(CHAOS.scope.base)) + '</p>';
     sec.innerHTML = html;
     for (const o of failed) {
-      const b = document.createElement('button');
-      b.className = 'finding' + (o.severity === 'Crítico' ? '' : ' alto');
-      b.innerHTML = '<span class="sev">' + escape(o.severity || '') + '</span> ' + escape(o.routeId) + '<small>' + escape(o.failure) + ' em ' + escape(o.target) + ' · ' + (o.durationMs / 1000).toFixed(1) + ' s</small><small>' + escape(o.message || '') + '</small><code>' + escape(o.testFile) + '</code>';
-      b.onclick = () => openRoute(o.routeId, o.routeId + ' · ' + o.failure + ' em ' + o.target);
-      sec.appendChild(b);
+      const card = document.createElement('div');
+      card.className = 'finding' + (o.severity === 'Crítico' ? '' : ' alto');
+      const b = row([], o.failure + ' em ' + o.target + ', ' + (o.durationMs / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' s' + (o.message ? '. ' + o.message : ''), () => openRoute(o.routeId, o.routeId + ', ' + o.failure + ' em ' + o.target));
+      const sev = document.createElement('span');
+      sev.className = 'sev';
+      sev.textContent = o.severity || '';
+      b.querySelector('.row-title').append(sev, ...routeTitle(o.routeId));
+      const code = document.createElement('code');
+      code.textContent = o.testFile.slice(o.testFile.lastIndexOf('/') + 1);
+      code.title = o.testFile;
+      b.querySelector('.row-main').append(code);
+      card.append(b);
       if (vscodeApi) {
+        const actions = document.createElement('div');
+        actions.className = 'actions';
         const t = document.createElement('button');
+        t.type = 'button';
+        t.className = 'btn';
         t.textContent = 'Abrir teste';
         t.onclick = () => vscodeApi.postMessage({ type: 'openTest', file: o.testFile });
-        sec.appendChild(t);
+        actions.append(t);
+        card.append(actions);
       }
+      sec.append(card);
     }
-    const list = (title, items) => {
-      if (items.length === 0) return;
-      const h = document.createElement('p');
-      h.className = 'muted small';
-      h.textContent = title;
-      const ul = document.createElement('ul');
-      ul.className = 'plain';
-      for (const text of items) { const li = document.createElement('li'); li.textContent = text; ul.appendChild(li); }
-      sec.appendChild(h);
-      sec.appendChild(ul);
-    };
-    list('Aguentou', passed.map((o) => '✓ ' + o.routeId + ' · ' + o.failure + ' em ' + o.target));
-    list('Inválidos (não contam no portão)', invalid.map((o) => '? ' + o.routeId + ' · ' + o.failure + ': ' + (o.message || '')));
-    list('Não se aplica (a falha não disparou; não contam no portão)', notApplicable.map((o) => '– ' + o.routeId + ' · ' + o.failure + ': ' + (o.message || '')));
-    list('Sem teste nesta execução', CHAOS.untested.map((u) => '○ ' + u.routeId + ' · ' + u.failure + ' em ' + u.target + ': ' + u.reason));
+    if (passed.length) sec.append(fold('Aguentaram', passed.length, group(passed.map((o) => row(routeTitle(o.routeId), o.failure + ' em ' + o.target, () => openRoute(o.routeId, o.routeId + ', ' + o.failure), 'ok'))), false));
+    if (invalid.length) sec.append(fold('Inválidos (não contam no portão)', invalid.length, byReason(invalid, (o) => o.message, (o) => o.failure + ' em ' + o.target), invalid.length <= 3 || (!failed.length && !passed.length)));
+    if (notApplicable.length) sec.append(fold('Não se aplica (a falha não disparou; não contam no portão)', notApplicable.length, byReason(notApplicable, (o) => o.message, (o) => o.failure + ' em ' + o.target), false));
+    if (CHAOS.untested.length) sec.append(fold('Sem teste nesta execução', CHAOS.untested.length, byReason(CHAOS.untested, (u) => u.reason, (u) => u.failure + ' em ' + u.target), false));
     const legend = document.createElement('p');
-    legend.className = 'muted small';
-    legend.innerHTML = '<span class="chip bad">rota</span> quebrou · <span class="chip ok">rota</span> aguentou · <span class="chip muted">tracejada</span> nenhum teste valeu · operação de I/O com borda vermelha = alvo de um achado';
-    sec.appendChild(legend);
+    legend.className = 'note';
+    legend.textContent = 'No mapa: rota vermelha quebrou, borda verde aguentou, borda tracejada: nenhum teste valeu; operação com borda vermelha é o alvo de um achado.';
+    sec.append(legend);
   }
 
   // ---- seção "Mudanças do PR" (V2)
   if (DIFF) {
     const d = DIFF.diff;
-    const sec = document.getElementById('diff');
+    const sec = $('diff');
     sec.hidden = false;
-    let html = '<h2>Mudanças do PR</h2><p class="muted small">desde ' + escape(DIFF.base) + ' (base ' + escape(DIFF.commit.slice(0, 10)) + ')</p>';
+    let html = '<div class="sec-head"><h2>Mudanças do PR</h2><span class="sec-meta">desde ' + escape(DIFF.base) + ' (' + escape(DIFF.commit.slice(0, 10)) + ')</span></div>';
     if (d.empty) html += '<div class="banner ok">Nenhuma mudança de estrutura: só comentário, espaço ou linhas deslocadas.</div>';
-    html += '<p class="small"><span class="chip ' + (d.symbols.added.length ? 'ok' : 'muted') + '">' + d.symbols.added.length + ' novo(s)</span><span class="chip ' + (d.symbols.changed.length ? 'warn' : 'muted') + '">' + d.symbols.changed.length + ' alterado(s)</span><span class="chip muted">' + d.symbols.renamed.length + ' renomeado(s)</span><span class="chip muted">' + d.symbols.removed.length + ' removido(s)</span></p>';
+    const tile = (n, one, many, tone) => '<div class="tile' + (n && tone ? ' ' + tone : '') + '"><b>' + fmt(n) + '</b><span>' + (n === 1 ? one : many) + '</span></div>';
+    html += '<div class="tiles four">' + tile(d.symbols.added.length, 'novo', 'novos', 'ok') + tile(d.symbols.changed.length, 'alterado', 'alterados') + tile(d.symbols.renamed.length, 'renomeado', 'renomeados') + tile(d.symbols.removed.length, 'removido', 'removidos') + '</div>';
     sec.innerHTML = html;
     const jump = (id) => {
       if (!focus(id)) { state.filters.changed = false; const box = document.querySelector('[data-filter=changed]'); if (box) box.checked = false; build(); focus(id); }
     };
-    const group = (title, items) => {
+    const block = (title, items, shape) => {
       if (items.length === 0) return;
-      const h = document.createElement('p');
-      h.className = 'muted small';
-      h.textContent = title + ' (' + items.length + ')';
-      sec.appendChild(h);
-      for (const it of items.slice(0, 30)) {
-        const b = document.createElement(it.id ? 'button' : 'div');
-        b.className = it.id ? 'weak-item' : 'small';
-        b.textContent = it.text;
-        if (it.id) b.onclick = () => (it.route ? openRoute(it.id, it.id + ' · tocada pelo PR') : jump(it.id));
-        sec.appendChild(b);
-      }
-      if (items.length > 30) { const more = document.createElement('p'); more.className = 'muted small'; more.textContent = '… e mais ' + (items.length - 30); sec.appendChild(more); }
+      const shown = items.slice(0, 30).map((it) => {
+        if (!it.id) { const p = document.createElement('div'); p.className = 'reason'; p.textContent = it.text; return p; }
+        return row(it.route ? routeTitle(it.id) : it.text, it.sub || '', () => (it.route ? openRoute(it.id, it.id + ', tocada pelo PR') : jump(it.id)), shape);
+      });
+      if (items.length > 30) { const more = document.createElement('div'); more.className = 'reason'; more.textContent = 'e mais ' + fmt(items.length - 30); shown.push(more); }
+      sec.append(fold(title, items.length, group(shown), items.length <= 8));
     };
-    if (routesInfo) group(routesInfo.all ? 'Rotas tocadas: todas (' + routesInfo.all + ')' : 'Rotas tocadas', routesInfo.all ? [] : routesInfo.affected.map((a) => ({ id: a.id, route: true, text: a.id + ' — ' + a.why.join('; ') })));
-    group('Corpo alterado', d.symbols.changed.map((id) => ({ id, text: id })));
-    group('Novos', d.symbols.added.map((id) => ({ id, text: id })));
-    group('Renomeados', d.symbols.renamed.map((r) => ({ id: r.to, text: r.from + ' → ' + r.to })));
-    group('Código de topo alterado', d.files.topChanged.map((id) => ({ id, text: id })));
-    group('Arquivos novos', d.files.added.map((id) => ({ id, text: id })));
-    group('Removidos (não estão mais no mapa)', d.symbols.removed.concat(d.files.removed).map((id) => ({ text: '− ' + id })));
+    if (routesInfo) block(routesInfo.all ? 'Rotas tocadas: todas (' + routesInfo.all + ')' : 'Rotas tocadas', routesInfo.all ? [] : routesInfo.affected.map((a) => ({ id: a.id, route: true, sub: a.why.join('; ') })));
+    block('Corpo alterado', d.symbols.changed.map((id) => ({ id, text: id })), 'warn');
+    block('Novos', d.symbols.added.map((id) => ({ id, text: id })), 'ok');
+    block('Renomeados', d.symbols.renamed.map((r) => ({ id: r.to, text: r.to, sub: 'era ' + r.from })));
+    block('Código de topo alterado', d.files.topChanged.map((id) => ({ id, text: id })), 'warn');
+    block('Arquivos novos', d.files.added.map((id) => ({ id, text: id })), 'ok');
+    block('Removidos (não estão mais no mapa)', d.symbols.removed.concat(d.files.removed).map((id) => ({ text: '− ' + id })));
     const legend = document.createElement('p');
-    legend.className = 'muted small';
-    legend.innerHTML = '<span class="chip ok">verde</span> novo · <span class="chip warn">âmbar</span> corpo alterado · <span class="chip muted">azul tracejado</span> renomeado · rota com borda dupla âmbar = tocada pelo PR';
-    sec.appendChild(legend);
+    legend.className = 'note';
+    legend.textContent = 'No mapa: borda verde é novo, âmbar é corpo alterado, azul tracejada é renomeado; rota com borda dupla âmbar foi tocada pelo PR.';
+    sec.append(legend);
   }
 
   // #mudancas abre direto no filtro "só o que o PR mudou" (link do artefato do CI). Em mapa grande
@@ -684,19 +1066,30 @@ const APP = String.raw`
     if (box) box.checked = true;
   }
 
-  build();
+  function start() {
+    applyTheme();
+    build();
+    $('loading').hidden = true;
 
-  // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota; #mudancas filtra o diff
-  const hash = decodeURIComponent(location.hash.slice(1));
-  const [mode, target] = [hash.slice(0, hash.indexOf('=')), hash.slice(hash.indexOf('=') + 1)];
-  if (mode === 'rota' && TOPOLOGY) {
-    const node = cy.getElementById('route:' + target);
-    if (!node.empty()) showFlow(chain(node, 'down'), node, target);
+    // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota; #mudancas filtra o diff
+    const hash = decodeURIComponent(location.hash.slice(1));
+    const [mode, target] = [hash.slice(0, hash.indexOf('=')), hash.slice(hash.indexOf('=') + 1)];
+    if (mode === 'rota' && TOPOLOGY) {
+      const node = main.getElementById('route:' + target);
+      if (!node.empty()) showFlow(chain(node, 'down'), node, target);
+    }
+    if (target && (mode === 'foco' || mode === 'fluxo')) {
+      const node = main.nodes().filter((n) => n.id() === target || n.id().startsWith(target + ':'))[0];
+      if (node && mode === 'foco') focus(node.id());
+      if (node && mode === 'fluxo') showFlow(chain(node, 'down'), node, 'Cadeia a partir de ' + node.data('raw').name);
+    }
   }
-  if (target && (mode === 'foco' || mode === 'fluxo')) {
-    const node = cy.nodes().filter((n) => n.id() === target || n.id().startsWith(target + ':'))[0];
-    if (node && mode === 'foco') focus(node.id());
-    if (node && mode === 'fluxo') showFlow(chain(node, 'down'), node, 'Cadeia a partir de ' + node.data('raw').name);
-  }
+  // o painel e o "Montando o mapa…" aparecem antes do layout (que trava a página enquanto roda);
+  // o setTimeout cobre o webview escondido, onde o requestAnimationFrame não dispara
+  applyTheme();
+  let started = false;
+  const kick = () => { if (!started) { started = true; start(); } };
+  requestAnimationFrame(() => setTimeout(kick, 0));
+  setTimeout(kick, 80);
 })();
 `;

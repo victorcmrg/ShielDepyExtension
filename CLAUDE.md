@@ -40,5 +40,6 @@
 - Banco da API: Postgres com Drizzle ([0015](docs/decisoes/0015-drizzle.md)). Sem `DATABASE_URL`, PGlite em `apps/api/data/pglite` (ou `SHIELDEPY_DATA_DIR/pglite`). `npm run db:migrate -w @shieldepy/api` aplica as migrations pendentes (a API também aplica ao subir); depois de mudar o `schema.ts`, `npm run db:generate -w @shieldepy/api` gera a próxima. Dados de demo: `npm run seed:demo -w @shieldepy/api`.
 - `npm run package:vscode`: gera o `.vsix`.
 - `scripts/demo/atalhos/`: os atalhos `.cmd` da demo. `npm run demo:real` prepara o realworld em `~/ShielDepy-real` (o atalho 1 chama isso e abre o VS Code: perguntar antes).
+- `npm run real:testar`: o teste no realworld pela CLI, sem VS Code: prepara o projeto (como o `demo:real`), roda o caos e grava `mapa.html` e `relatorio-caos.md` em `~/ShielDepy-real/realworld/.shieldepy/` (esperado: 4 achados e 1 aguentou, ~20 s). `--sem-caos` só monta o mapa; abre o navegador no fim, então o Claude roda com `--sem-abrir`.
 - `npm run estimate:chaos` (grátis) e `npm run measure:chaos -- --sim-gastar` (pago: só com autorização).
 - Windows: os caminhos têm acento e espaço (`Área de Trabalho`), use aspas. Os arquivos estão em CRLF; edições por script que procuram `\n` podem não casar (prefira o editor).
