@@ -213,7 +213,8 @@ img, svg { display: block; }
 
 @media (max-width: 900px) {
   .hero-inner { grid-template-columns: 1fr; text-align: left; }
-  .hero-mascot { order: -1; width: 200px; justify-self: start; }
+  /* no celular o mascote fica à direita, como no desktop; a bola verde sai pela borda e o .hero corta (overflow-x: clip) */
+  .hero-mascot { order: -1; width: 200px; justify-self: end; }
   .scroll-cue { display: none; }
 }
 
@@ -520,6 +521,11 @@ section { position: relative; }
   .bento { grid-template-columns: 1fr; }
   .bento-card.tall { grid-row: auto; }
   .bento-card.tall .bc-art { min-height: 360px; }
+}
+/* cartão estreito: o menu não "vaza" para a direita (no largo, 120% e só os cantos da esquerda redondos); fica inteiro e centralizado */
+@media (max-width: 600px) {
+  .bento-card.tall .bc-art { place-items: center; padding: 0 16px; }
+  .menu { width: 100%; border-radius: 22px; }
 }
 
 /* ---------------- segurança ---------------- */
