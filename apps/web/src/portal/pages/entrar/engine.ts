@@ -106,8 +106,6 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   // carregar a tempo ou não houver WebGL, as letras seguem no 3D em CSS
   let glMod: typeof import('./letters3d') | null = null;
   let gl: import('./letters3d').Letters3D | null = null;
-  let conf: import('./letters3d').Confetti3D | null = null;
-  let confT0 = 0;
   import('./letters3d')
     .then((m) => {
       glMod = m;
@@ -243,9 +241,9 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   let bodies: Body[] = [];
   const origin: Pt[] = [];
   const digitPlan = [
-    { start: S.T.FALL_4A, tip: -80, yaw: 22, kick: -90 },
-    { start: S.T.FALL_0, tip: 84, yaw: -8, kick: 40 },
-    { start: S.T.FALL_4B, tip: 78, yaw: -30, kick: 120 },
+    { start: S.T.FALL_4A, tip: -90, yaw: 6, kick: -90 },
+    { start: S.T.FALL_0, tip: 90, yaw: -2, kick: 40 },
+    { start: S.T.FALL_4B, tip: 90, yaw: -7, kick: 120 },
   ];
   function setupBodies() {
     bodies = glyphs.map((g, i) => {
@@ -264,8 +262,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         start: S.T.FALL_TEXT + rand() * 160,
         rest: 0.3 + rand() * 0.2,
         kick: (rand() - 0.5) * 2 * (150 + rand() * 450),
-        tipTarget: side * (68 + rand() * 20),
-        yawTarget: (rand() - 0.5) * 70,
+        tipTarget: side * 90,
+        yawTarget: (rand() - 0.5) * 16,
         vspin: (rand() - 0.5) * 300,
       });
     });
@@ -474,8 +472,6 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const btn = $('.ent-btn');
   const palEl = $('.ent-palette');
   const swatches = $$('.ent-palette .sw');
-  const prog = $('.ent-prog');
-  const progN = $('.ent-prog-n');
   const slots = $$('.ent-slot');
   const cpfState = { x: 0, y: 0, rot: 0, vy: 0, mode: 'idle' as 'idle' | 'held' | 'fly' | 'gone', gx: 0, gy: 0 };
   let carries: Carry[] = [];
@@ -812,7 +808,6 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       }
       if (once(`gone-${cur.id}`, t >= track.gone - 280)) {
         cur.svg.animate([{ scale: '1' }, { scale: '1.3', offset: 0.35 }, { scale: '0' }], { duration: 280, easing: 'ease-in', fill: 'forwards' });
-        burst({ x: p.x + 20, y: p.y + 20 }, 8, 1);
       }
       cur.vox += (-90 * cur.ox - 11 * cur.vox) * dt;
       cur.voy += (-90 * cur.oy - 11 * cur.voy) * dt;
@@ -853,7 +848,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         if (t - (lastBonk.get(key) ?? -1e9) > 500) {
           lastBonk.set(key, t);
           a.bonkUntil = b.bonkUntil = t + 340;
-          burst({ x: (ax + bx) / 2, y: (ay + by) / 2 }, 6, 1);
+          if (t < S.T.HIGH5 - 500) burst({ x: (ax + bx) / 2, y: (ay + by) / 2 }, 6, 1);
         }
       }
     }
@@ -934,10 +929,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       gl.dispose();
       gl = null;
     }
-    if (conf && !conf.frame(t - confT0)) {
-      conf.dispose();
-      conf = null;
-    }
+
 
     if (!popsMeasured && t >= S.T.POPUP - 150) measurePops();
     if (popsMeasured) {
@@ -1267,17 +1259,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     flag(btn, 'is-on', t >= S.T.BUTTON[1]);
     flag(btn, 'is-painted', t >= S.T.PAINT);
 
-    // os quatro se encontram em cima do cartão: faíscas
+    // os quatro se encontram em cima do cartão (sem partículas: só o aperto dos olhos)
     if (once('high5', t >= S.T.HIGH5)) {
-      if (glMod) {
-        try {
-          conf = glMod.createConfetti3D($('.ent-fx') as unknown as HTMLCanvasElement, vw, vh, project(mt.high5.x, mt.high5.y, 0), rand);
-          confT0 = t;
-        } catch {
-          conf = null;
-        }
-      }
-      burst(mt.high5, 14, 1.8);
       for (const cur of cursors) cur.bonkUntil = t + 420;
     }
 
@@ -1319,12 +1302,6 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     flag(mpaths.sub, 'is-on', sub.state === 'held' || sub.state === 'settle');
     flag(mpaths.back, 'is-on', backlink.state === 'held' || backlink.state === 'settle');
 
-    // progresso
-    const n = S.progressAt(t);
-    flag(prog, 'is-on', t >= S.T.BOX[0] && t < S.T.EXIT[1]);
-    flag(prog, 'is-full', n >= 100);
-    const txt = String(n);
-    if (progN.textContent !== txt) progN.textContent = txt;
   }
 
   let paused = false; // só o gancho de desenvolvimento pausa
@@ -1376,7 +1353,6 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   }
   return () => {
     gl?.dispose();
-    conf?.dispose();
     cancelAnimationFrame(raf);
     window.removeEventListener('resize', onResize);
     if (dev) delete w.__entrarSeek;

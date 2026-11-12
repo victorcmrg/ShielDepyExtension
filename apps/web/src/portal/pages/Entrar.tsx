@@ -132,7 +132,7 @@ function Scene() {
         </filter>
       </svg>
 
-      {/* o 404 em 3D de verdade (three.js) por baixo da câmera, e o confete do fim por cima de tudo */}
+      {/* o 404 em 3D de verdade (three.js), por baixo da câmera */}
       <canvas className="ent-gl" aria-hidden="true" />
       <div className="ent-cam">
         <div className="ent-letters">
@@ -349,10 +349,6 @@ function Scene() {
         ))}
       </div>
 
-      <canvas className="ent-fx" aria-hidden="true" />
-      <div className="ent-prog" aria-hidden="true">
-        reconstruindo a tela · <span className="ent-prog-n">0</span>%
-      </div>
       <p className="ent-sr" role="status">
         Página não encontrada. O ShielDepy está reconstruindo a tela de login; clique ou aperte uma tecla para pular.
       </p>

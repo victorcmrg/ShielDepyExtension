@@ -21,70 +21,70 @@ export const T = {
   SPLIT1: [9700, 10700] as const, // balão "ajustando rota", para a direita e para cima
   SPLIT2: [10900, 11900] as const, // balão "corrigindo tela de login", para a esquerda e para baixo
   PLAN: 12000, // mede a tela final e monta os trajetos
-  COLLAPSE: [14550, 15150] as const, // verificado, o cartão do meio se encolhe e some
+  COLLAPSE: [15050, 15650] as const, // verificado, o cartão do meio se encolhe e some
   CAM_BACK: [12100, 12900] as const,
   A_POP: 12300, // o primeiro cursor entra voando pela direita da tela (não brota)
   A_ENTER: [12300, 13300] as const,
-  LOOK: [13300, 14150] as const, // para, pisca rápido e olha em volta como gente (olhadas curtas, com pausas)
-  VERIFY: [14150, 14700] as const, // vai ao cartão "Erro detectado" e começa a verificação
-  VERIFY_CLICK: 14450,
-  SPAWNER: [15000, 16500] as const, // A abre o contador "cursores 01 +": cada clique no "+" cria um
-  SPAWN_B: 15400,
-  SPAWN_C: 15850,
-  SPAWN_D: 16300,
-  CURSORS_IN: [14750, 16300] as const,
-  SPAWNER2: [16600, 17850] as const, // A põe um segundo botão embaixo: "agentes do caos 00 +"
-  SPAWN_X: 16950, // X analisa as ligações do grafo
-  SPAWN_Y: 17400, // Y abre o DevTools e examina o 404 no console
-  DEV_PULL: [18050, 18850] as const, // Y puxa o DevTools pela borda direita
-  DEV_TAB: 19150, // clica em "Console"
-  DEV_INSPECT: [19350, 20250] as const, // examina os erros, pensando
-  DEV_FOUND: 19850, // marca o 404 como achado
-  DEV_CLOSE: [20350, 20850] as const, // empurra o DevTools de volta
-  GRAPH_OPEN: 18200, // X abre o mapa das ligações
-  GRAPH_TRACE: [18450, 20550] as const, // percorre nó por nó
-  GRAPH_FOUND: 19950, // a ligação /entrar → ∅ quebrada
+  LOOK: [13300, 14650] as const, // para, pisca rápido e olha em volta como gente (olhadas curtas, com pausas)
+  VERIFY: [14650, 15200] as const, // vai ao cartão "Erro detectado" e começa a verificação
+  VERIFY_CLICK: 14950,
+  SPAWNER: [15500, 17000] as const, // A abre o contador "cursores 01 +": cada clique no "+" cria um
+  SPAWN_B: 15900,
+  SPAWN_C: 16350,
+  SPAWN_D: 16800,
+  CURSORS_IN: [15250, 16800] as const,
+  SPAWNER2: [17100, 18350] as const, // A põe um segundo botão embaixo: "agentes do caos 00 +"
+  SPAWN_X: 17450, // X analisa as ligações do grafo
+  SPAWN_Y: 17900, // Y abre o DevTools e examina o 404 no console
+  DEV_PULL: [18550, 19350] as const, // Y puxa o DevTools pela borda direita
+  DEV_TAB: 19650, // clica em "Console"
+  DEV_INSPECT: [19850, 20750] as const, // examina os erros, pensando
+  DEV_FOUND: 20350, // marca o 404 como achado
+  DEV_CLOSE: [20850, 21350] as const, // empurra o DevTools de volta
+  GRAPH_OPEN: 18700, // X abre o mapa das ligações
+  GRAPH_TRACE: [18950, 21050] as const, // percorre nó por nó
+  GRAPH_FOUND: 20450, // a ligação /entrar → ∅ quebrada
 
-  ANCHOR: [17900, 19300] as const, // C segura o canto enquanto A puxa
-  BOX: [18050, 19250] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
-  SLOTS: [19150, 19750] as const, // as partes pontilhadas: onde cada peça vai ficar
-  GRAB_P1: [19150, 19550] as const, // B puxa os balões para fora
-  LOGO: [19350, 20350] as const, // D cria o logo grande e o encolhe puxando a alça do canto
-  PALETTE_OPEN: 19650, // C abre a paleta e pensa bastante antes de escolher
-  GRAB_P2: [19800, 20200] as const,
-  ORBIT_B: [20250, 21650] as const, // B dá a volta e passa gigante na frente da câmera
-  THINK_C1: [20600, 21250] as const,
-  BUMP: 20650, // A e D se esbarram no meio do caminho
-  SUB: [20800, 21450] as const, // A leva o subtítulo torto para o lugar
-  PALETTE_CLICK: 21450,
-  THINK_A: [21550, 22200] as const, // A olha o título errado antes de apagar
-  EMAIL: [21650, 22250] as const, // D e C desenham os campos ao mesmo tempo
-  PALETTE_CLOSE: 21800,
-  PASS: [21950, 22550] as const,
-  ERASE: [22250, 23150] as const, // A apaga o título errado...
-  TYPE1: [22450, 23550] as const, // ...e B digita logo atrás, com um erro no fim
-  CPF: [22750, 23200] as const, // C joga fora o campo que não devia estar ali
-  BUTTON: [22950, 23550] as const, // D desenha o botão
-  THINK_B: [23600, 24150] as const, // B percebe o erro
-  THINK_C2: [23650, 24250] as const, // C pensa na cor do botão
-  BACK: [23750, 24650] as const, // D traz o link de volta lá de cima
-  BACKSPACE: [24150, 24450] as const,
-  PAINT: 24350,
-  TYPE2: [24500, 24850] as const,
-  FOCUS_EMAIL: 24650, // C confere o foco de cada campo
-  FOCUS_PASS: 24900,
-  FONT_OPEN: 24950, // A abre as fontes, pensa e escolhe a do título
-  ORBIT_D: [24950, 26350] as const, // D dá a volta gigante
-  THINK_A2: [25000, 25650] as const,
-  FONT_PICK: 25750,
-  FONT_CLOSE: 26000,
-  GRAPH_FIXED: 24950, // depois da correção, a ligação fica verde
-  DEV_FINAL: [25150, 26250] as const, // Y reabre o DevTools: agora 200 e 0 erros
-  DEV_OK: 25600,
-  GRAPH_CLOSE: 26150,
-  HIGH5: 26950, // os quatro se encontram em cima do cartão
-  EXIT: [27150, 27850] as const,
-  END: 28050,
+  ANCHOR: [18400, 19800] as const, // C segura o canto enquanto A puxa
+  BOX: [18550, 19750] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
+  SLOTS: [19650, 20250] as const, // as partes pontilhadas: onde cada peça vai ficar
+  GRAB_P1: [19650, 20050] as const, // B puxa os balões para fora
+  LOGO: [19850, 20850] as const, // D cria o logo grande e o encolhe puxando a alça do canto
+  PALETTE_OPEN: 20150, // C abre a paleta e pensa bastante antes de escolher
+  GRAB_P2: [20300, 20700] as const,
+  ORBIT_B: [20750, 22150] as const, // B dá a volta e passa gigante na frente da câmera
+  THINK_C1: [21100, 21750] as const,
+  BUMP: 21150, // A e D se esbarram no meio do caminho
+  SUB: [21300, 21950] as const, // A leva o subtítulo torto para o lugar
+  PALETTE_CLICK: 21950,
+  THINK_A: [22050, 22700] as const, // A olha o título errado antes de apagar
+  EMAIL: [22150, 22750] as const, // D e C desenham os campos ao mesmo tempo
+  PALETTE_CLOSE: 22300,
+  PASS: [22450, 23050] as const,
+  ERASE: [22750, 23650] as const, // A apaga o título errado...
+  TYPE1: [22950, 24050] as const, // ...e B digita logo atrás, com um erro no fim
+  CPF: [23250, 23700] as const, // C joga fora o campo que não devia estar ali
+  BUTTON: [23450, 24050] as const, // D desenha o botão
+  THINK_B: [24100, 24650] as const, // B percebe o erro
+  THINK_C2: [24150, 24750] as const, // C pensa na cor do botão
+  BACK: [24250, 25150] as const, // D traz o link de volta lá de cima
+  BACKSPACE: [24650, 24950] as const,
+  PAINT: 24850,
+  TYPE2: [25000, 25350] as const,
+  FOCUS_EMAIL: 25150, // C confere o foco de cada campo
+  FOCUS_PASS: 25400,
+  FONT_OPEN: 25450, // A abre as fontes, pensa e escolhe a do título
+  ORBIT_D: [25450, 26850] as const, // D dá a volta gigante
+  THINK_A2: [25500, 26150] as const,
+  FONT_PICK: 26250,
+  FONT_CLOSE: 26500,
+  GRAPH_FIXED: 25450, // depois da correção, a ligação fica verde
+  DEV_FINAL: [25650, 26750] as const, // Y reabre o DevTools: agora 200 e 0 erros
+  DEV_OK: 26100,
+  GRAPH_CLOSE: 26650,
+  HIGH5: 27450, // os quatro se encontram em cima do cartão
+  EXIT: [27650, 28350] as const,
+  END: 28550,
   REVEAL: 400, // a tela de verdade entra por cima
 } as const;
 
@@ -572,14 +572,14 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
     gone: goneAt(3),
     taps: [],
     enter: true,
-    blinks: [T.LOOK[0] + 60, T.LOOK[0] + 230, T.LOOK[1] - 140],
+    blinks: [T.LOOK[0] + 60, T.LOOK[0] + 230, T.LOOK[1] - 160],
+    // olhadas rápidas, com paradas longas (~300 a 400 ms) antes de olhar para outro lugar
     looks: [
-      { t: T.LOOK[0] + 330, x: -5, y: -2 },
-      { t: T.LOOK[0] + 500, x: -2, y: 1 },
-      { t: T.LOOK[0] + 680, x: 4.5, y: -3 },
-      { t: T.LOOK[0] + 830, x: 1, y: 3 },
-      { t: T.LOOK[1] + 150, x: -4.5, y: 2.5 },
-      { t: T.LOOK[1] + 330, x: -4, y: 0 },
+      { t: T.LOOK[0] + 300, x: -5, y: -2 },
+      { t: T.LOOK[0] + 700, x: 4.5, y: -3 },
+      { t: T.LOOK[0] + 1050, x: -2, y: 2.5 },
+      { t: T.LOOK[1] + 60, x: 3.5, y: 1 },
+      { t: T.LOOK[1] + 380, x: -4, y: 0 },
     ],
   };
 

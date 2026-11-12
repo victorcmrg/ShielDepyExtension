@@ -1,7 +1,7 @@
 // O 404 em 3D de verdade com three.js (decisão 0040). Cada caractere é desenhado num canvas com a
 // mesma fonte do HTML, o contorno dos pixels vira uma forma (contour.ts) e a forma é extrudada: a
 // letra 3D nasce idêntica ao texto da página. Luz, sombra no chão e numa parede atrás. A física é a
-// mesma do resto (physics.ts): aqui só se desenha. Também o confete 3D do encontro do fim.
+// mesma do resto (physics.ts): aqui só se desenha.
 //
 // Este arquivo é carregado com import() pelo motor, só no /entrar: o three.js fica num pedaço à parte.
 import * as THREE from 'three';
@@ -109,21 +109,17 @@ export function createLetters3D(canvas: HTMLCanvasElement, glyphs: readonly Glyp
   wall.receiveShadow = true;
   scene.add(floor, wall);
 
-  const face = new THREE.MeshStandardMaterial({ color: 0x0b0b0b, roughness: 0.42, metalness: 0.05 });
-  const side = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.62, metalness: 0.0 });
+  // a face: preta e sem brilho, como o texto da página (MeshBasic não muda com a luz)
+  const face = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  // as laterais quase pretas: de frente não aparece borda cinza; deitada, a espessura se lê pela luz
+  const side = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.7, metalness: 0.0 });
   const groups: THREE.Group[] = [];
   const geoms: THREE.BufferGeometry[] = [];
   for (const g of glyphs) {
     const shapes = glyphShapes(g.ch, g.font, g.px);
     const depth = g.px * 0.13;
-    const geo = new THREE.ExtrudeGeometry(shapes, {
-      depth,
-      curveSegments: 1,
-      bevelEnabled: true,
-      bevelThickness: depth * 0.12,
-      bevelSize: Math.max(0.4, g.px * 0.008),
-      bevelSegments: 2,
-    });
+    // sem chanfro: o chanfro engordava a letra; assim a face tem o tamanho exato do texto da página
+    const geo = new THREE.ExtrudeGeometry(shapes, { depth, curveSegments: 1, bevelEnabled: false });
     geo.translate(0, 0, -depth); // a face fica no plano da tela e o corpo vai para trás, como no CSS
     geoms.push(geo);
     const mesh = new THREE.Mesh(geo, [face, side]);
@@ -165,64 +161,6 @@ export function createLetters3D(canvas: HTMLCanvasElement, glyphs: readonly Glyp
       wall.geometry.dispose();
       floorMat.dispose();
       wallMat.dispose();
-      renderer.dispose();
-    },
-  };
-}
-
-export interface Confetti3D {
-  /** t em ms desde o estouro; devolve false quando acabou */
-  frame(t: number): boolean;
-  dispose(): void;
-}
-
-/** O confete 3D do encontro: peças da marca que sobem, giram e caem, com luz, a partir de um ponto da tela. */
-export function createConfetti3D(canvas: HTMLCanvasElement, vw: number, vh: number, from: { x: number; y: number }, seed: () => number): Confetti3D {
-  const { renderer, camera } = makeRenderer(canvas, vw, vh, false);
-  const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x334433, 1.3));
-  const key = new THREE.DirectionalLight(0xffffff, 1.6);
-  key.position.set(-300, 600, 800);
-  scene.add(key);
-  const colors = [0x10ef7c, 0xa0f994, 0xffffff, 0xffd166, 0x0f1311];
-  const mats = colors.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide }));
-  const geos = [new THREE.BoxGeometry(14, 8, 2), new THREE.PlaneGeometry(10, 16), new THREE.TetrahedronGeometry(7), new THREE.TorusGeometry(6, 2.2, 6, 12)];
-  const pieces = Array.from({ length: 46 }, () => {
-    const m = new THREE.Mesh(geos[Math.floor(seed() * geos.length)]!, mats[Math.floor(seed() * mats.length)]!);
-    m.position.set(from.x, -from.y, 0);
-    scene.add(m);
-    const ang = seed() * Math.PI * 2;
-    const sp = 260 + seed() * 520;
-    return {
-      m,
-      v: new THREE.Vector3(Math.cos(ang) * sp, 380 + seed() * 640, (seed() - 0.5) * 700),
-      w: new THREE.Vector3((seed() - 0.5) * 14, (seed() - 0.5) * 14, (seed() - 0.5) * 14),
-    };
-  });
-  let last = 0;
-  return {
-    frame(t) {
-      const dt = Math.min(0.05, Math.max(0, (t - last) / 1000));
-      last = t;
-      for (const p of pieces) {
-        p.v.y -= 1500 * dt;
-        p.v.multiplyScalar(Math.exp(-0.9 * dt));
-        p.m.position.addScaledVector(p.v, dt);
-        p.m.rotation.x += p.w.x * dt;
-        p.m.rotation.y += p.w.y * dt;
-        p.m.rotation.z += p.w.z * dt;
-      }
-      const fade = Math.max(0, Math.min(1, (1900 - t) / 500));
-      mats.forEach((m) => {
-        m.transparent = fade < 1;
-        m.opacity = fade;
-      });
-      renderer.render(scene, camera);
-      return t < 1900;
-    },
-    dispose() {
-      geos.forEach((g) => g.dispose());
-      mats.forEach((m) => m.dispose());
       renderer.dispose();
     },
   };
