@@ -1,6 +1,6 @@
 # 0041 — Sons baixinhos na encenação do "Entrar", do Epidemic Sound, com Web Audio
 
-**Data:** 2026-11-12 (pedido do usuário: "use minha conta no Epidemic Sound para baixar SFX para essa animação; os sons devem ser baixos, só para complementar") · **Estado:** valendo (os arquivos de som ainda fora do git, ver abaixo)
+**Data:** 2026-11-12 (pedido do usuário: "use minha conta no Epidemic Sound para baixar SFX para essa animação; os sons devem ser baixos, só para complementar") · **Estado:** valendo
 
 **Contexto.** A encenação do `/entrar` ([0039](0039-entrar-encenado.md)) era muda. O usuário pediu efeitos leves: vento de câmera longo, grave e lento na entrada e na saída; balão batendo quando as letras e o 404 caem no chão; clique suave de interface; um "hum" agudo de mascote para os cursores; madeira leve arrastando, contínua, enquanto a caixa principal é arrastada; uma tecla para cada letra digitada.
 
@@ -11,5 +11,5 @@
 - **Autoplay:** se o navegador bloquear o áudio até um clique, aparece no canto o botão "ativar som", que não pula a animação. Sem Web Audio, ou se um arquivo não carregar, a cena segue muda, sem erro. O gancho de desenvolvimento `__entrarSeek` não toca nada.
 
 **Consequências.**
-- **Licença (pendente com o usuário):** a licença do Epidemic Sound é da conta do usuário. Os arquivos ficaram fora do commit até o usuário dizer se podem ir para o repositório (que pode ser público) e ser servidos no site. Sem eles, a encenação roda muda.
+- **Licença:** a licença do Epidemic Sound é da conta do usuário, que autorizou pôr os arquivos no repositório e servi-los no site (2026-11-13). Sem eles, a encenação roda muda.
 - Trocar um som é só trocar o arquivo com o mesmo nome em `public/sfx/`.
