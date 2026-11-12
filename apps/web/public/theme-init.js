@@ -11,6 +11,9 @@
   }
   if (theme !== 'light' && theme !== 'dark') theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   document.documentElement.dataset.theme = theme;
+  // /entrar abre com um 404 de mentira em fundo branco (decisão 0039): marca já aqui, antes do CSS do
+  // portal pintar o fundo do tema; a página tira a marca quando a reconstrução começa.
+  if (location.pathname === '/entrar') document.documentElement.dataset.boot = '404';
   try {
     localStorage.setItem(KEY, theme);
   } catch (e) {

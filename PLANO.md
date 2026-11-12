@@ -9,6 +9,10 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 3. Ler as decisões que a etapa cita, em [`docs/decisoes/`](docs/decisoes/README.md).
 4. Rodar `git log --oneline -15` para ver as últimas tarefas feitas.
 
+## Onde estamos (2026-11-11)
+
+- **Portal: o "Entrar" encenado ✅ (2026-11-11, a pedido do usuário; branch `feat/portal-404-login`, a partir da `origin/main`, sem push; [0039](docs/decisoes/0039-entrar-encenado.md)):** o "Entrar" da landing (menu e rodapé) abre `/entrar`: 1,5 s de um 404 sem estilo nenhum e, por cima, o ShielDepy reconstruindo a tela de login em 6,5 s, com barras de cinema e timecode, a "câmera" se afastando, o 404 com glitch e a câmera atravessando ele, a varredura, o terminal com o diagnóstico, os 8 blocos quebrados (desalinhados, sem cor, texto trocado, cortados) corrigidos um a um com a marca de erro virando "ok", e no fim as fontes, as cores, a sombra e um brilho no cartão. A tela final é mockada e, no botão, leva ao `/login`, que não mudou (extensão, OAuth e o redirecionamento do portal entram por ele). Clique ou tecla pula; com `prefers-reduced-motion`, vai direto para a tela pronta. **Conferido:** `npm run check` com 588 passando e 6 pulados (9 testes novos do roteiro); o build do site (a página é um pedaço separado: 9 KB de JS e 11,5 KB de CSS); no `web:dev`, pelo navegador do app, screenshot do 404, do meio da reconstrução e da tela final no tema escuro, e a tela final no claro e no celular (375 px, sem rolagem lateral); a tecla pula para o fim; o botão mostra o aviso da encenação; sem erro no console. **Não conferido:** quadros por segundo da animação (o painel do navegador ficou escondido no meio do teste, e aí o navegador pausa o `requestAnimationFrame`), o momento do 404 "travado na mira" em screenshot e o `prefers-reduced-motion` de verdade.
+
 ## Onde estamos (2026-11-06)
 
 - **A apresentação do TCC foi adiada para a semana que vem (2026-11-06, data a confirmar).** Vale no lugar do "sábado" das notas abaixo; o que estava preso até lá pode entrar, com o usuário.

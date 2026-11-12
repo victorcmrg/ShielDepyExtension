@@ -28,6 +28,8 @@
 
 html { color-scheme: light; }
 html[data-theme="dark"] { color-scheme: dark; }
+/* /entrar: o 404 encenado nasce em fundo branco, em qualquer tema (decisão 0039; a marca vem do theme-init.js) */
+html[data-boot="404"], html[data-boot="404"] body { background: #fff; color-scheme: light; }
 
 * { box-sizing: border-box; border-color: var(--border); }
 

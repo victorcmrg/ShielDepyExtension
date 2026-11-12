@@ -27,7 +27,7 @@ export function TopNav() {
         </div>
         <div className="nav-actions">
           <ThemeToggle className="icon-button" />
-          <a href="/login" className="link-quiet">
+          <a href="/entrar" className="link-quiet">
             Entrar
           </a>
           <BrandButton href="#planos" className="small">
@@ -70,7 +70,7 @@ export function Footer() {
           <a href="#deploy">Como funciona</a>
           <a href="#seguranca">Segurança</a>
           <a href="#planos">Planos</a>
-          <a href="/login">Entrar</a>
+          <a href="/entrar">Entrar</a>
         </nav>
         <p>
           © <span id="year" ref={yearRef} /> ShielDepy

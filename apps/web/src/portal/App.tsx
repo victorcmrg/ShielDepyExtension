@@ -5,6 +5,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Shell } from './layout/Shell';
 
 const Login = lazy(() => import('./pages/Login'));
+// o "Entrar" da landing: o 404 encenado e a tela de login reconstruída (mockada; decisão 0039)
+const Entrar = lazy(() => import('./pages/Entrar'));
 const DeviceConfirm = lazy(() => import('./pages/DeviceConfirm'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Project = lazy(() => import('./pages/Project'));
@@ -19,6 +21,7 @@ export function App() {
     <Suspense fallback={null}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/entrar" element={<Entrar />} />
         <Route path="/device-confirm" element={<DeviceConfirm />} />
         <Route
           path="/projects"
