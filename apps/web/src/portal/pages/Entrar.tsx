@@ -45,7 +45,11 @@ export default function Entrar() {
   // clique ou tecla: pula para o fim
   useEffect(() => {
     if (done) return;
-    const skip = () => setDone(true);
+    // o botão "ativar som" não pula a animação
+    const skip = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('.ent-sound')) return;
+      setDone(true);
+    };
     window.addEventListener('pointerdown', skip);
     window.addEventListener('keydown', skip);
     return () => {
@@ -359,6 +363,14 @@ function Scene() {
         ))}
       </div>
 
+      <button type="button" className="ent-sound" aria-label="Ativar o som">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 9v6h4l5 4V5L8 9H4z" />
+          <path d="M16 9.5a3.5 3.5 0 0 1 0 5" />
+          <path d="M18.5 7a7 7 0 0 1 0 10" />
+        </svg>
+        <span>ativar som</span>
+      </button>
       <p className="ent-sr" role="status">
         Página não encontrada. O ShielDepy está reconstruindo a tela de login; clique ou aperte uma tecla para pular.
       </p>
