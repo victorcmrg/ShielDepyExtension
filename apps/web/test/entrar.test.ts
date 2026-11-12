@@ -114,7 +114,9 @@ describe('roteiro do Entrar', () => {
     const order = [tracks.b, tracks.c, tracks.d];
     order.forEach((tr, i) => {
       expect(tr.born).toBe([T.SPAWN_B, T.SPAWN_C, T.SPAWN_D][i]);
-      expect(sample(tr.keys, tr.born)).toMatchObject({ x: sp.x, y: sp.y });
+      expect(sample(tr.keys, tr.born)).toMatchObject({ x: sp.plus.x, y: sp.plus.y });
+      // e o espaço entre um nascimento e outro dá para ver (pelo menos 400 ms)
+      if (i > 0) expect(tr.born - order[i - 1]!.born).toBeGreaterThanOrEqual(400);
       // A está clicando no "+" quando cada um nasce
       expect(tracks.a.press.some((iv) => within(iv, tr.born))).toBe(true);
     });
@@ -262,7 +264,8 @@ describe('roteiro do Entrar', () => {
   });
 
   it('a câmera inclina em 3D durante a obra e fica reta no fim', () => {
-    const cam = [...introCamera(1088, 690), ...rebuildCamera(L).slice(1)];
+    const rb = rebuildCamera(L);
+    const cam = [...introCamera(1088, 690).filter((k) => k.t < rb[0]!.t), ...rb];
     let tilt = 0;
     for (let t = T.BOX[0]; t < T.HIGH5; t += 50) {
       const c = sampleCam(cam, t);

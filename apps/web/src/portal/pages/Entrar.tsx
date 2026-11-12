@@ -187,7 +187,15 @@ function Scene() {
           <span key={k} className="ent-w ent-psh" data-for={k} aria-hidden="true" />
         ))}
         {/* o "+" que o primeiro cursor abre para criar os outros */}
-        <span className="ent-w ent-spawner" aria-hidden="true" />
+        <span className="ent-w ent-spawner" aria-hidden="true">
+          <span className="sp-ico" />
+          <span className="sp-label">cursores</span>
+          <b className="sp-n">01</b>
+          <span className="sp-plus" />
+        </span>
+        <svg className="ent-w ent-tether" width="1" height="1" aria-hidden="true">
+          <line />
+        </svg>
         {/* o blueprint de motion graphics: caixa com alças, âncora com os eixos e o arco de rotação */}
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="ent-w ent-gizmo" aria-hidden="true">

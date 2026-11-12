@@ -22,49 +22,49 @@ export const T = {
   SPLIT2: [10900, 11900] as const, // balão "corrigindo tela de login", para a esquerda e para baixo
   PLAN: 12000, // mede a tela final e monta os trajetos
   COLLAPSE: [12100, 12700] as const, // o balão do meio vira o ponto de partida da caixa
-  CAM_BACK: [12100, 13400] as const,
-  A_POP: 12750, // o primeiro cursor nasce do ponto verde, num estalo
-  SPAWNER: [12950, 13900] as const, // e abre um "+" ao lado dele: cada clique cria um cursor
-  SPAWN_B: 13150,
-  SPAWN_C: 13400,
-  SPAWN_D: 13650,
-  CURSORS_IN: [12750, 13650] as const,
-  ANCHOR: [13950, 15350] as const, // C segura o canto enquanto A puxa
-  BOX: [14100, 15300] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
-  SLOTS: [15200, 15800] as const, // as partes pontilhadas: onde cada peça vai ficar
-  GRAB_P1: [15200, 15600] as const, // B puxa os balões para fora
-  LOGO: [15400, 16400] as const, // D cria o logo grande e o encolhe puxando a alça do canto
-  PALETTE_OPEN: 15700, // C abre a paleta e pensa bastante antes de escolher
-  GRAB_P2: [15850, 16250] as const,
-  ORBIT_B: [16300, 17700] as const, // B dá a volta e passa gigante na frente da câmera
-  THINK_C1: [16650, 17300] as const,
-  BUMP: 16700, // A e D se esbarram no meio do caminho
-  SUB: [16850, 17500] as const, // A leva o subtítulo torto para o lugar
-  PALETTE_CLICK: 17500,
-  THINK_A: [17600, 18250] as const, // A olha o título errado antes de apagar
-  EMAIL: [17700, 18300] as const, // D e C desenham os campos ao mesmo tempo
-  PALETTE_CLOSE: 17850,
-  PASS: [18000, 18600] as const,
-  ERASE: [18300, 19200] as const, // A apaga o título errado...
-  TYPE1: [18500, 19600] as const, // ...e B digita logo atrás, com um erro no fim
-  CPF: [18800, 19250] as const, // C joga fora o campo que não devia estar ali
-  BUTTON: [19000, 19600] as const, // D desenha o botão
-  THINK_B: [19650, 20200] as const, // B percebe o erro
-  THINK_C2: [19700, 20300] as const, // C pensa na cor do botão
-  BACK: [19800, 20700] as const, // D traz o link de volta lá de cima
-  BACKSPACE: [20200, 20500] as const,
-  PAINT: 20400,
-  TYPE2: [20550, 20900] as const,
-  FOCUS_EMAIL: 20700, // C confere o foco de cada campo
-  FOCUS_PASS: 20950,
-  FONT_OPEN: 21000, // A abre as fontes, pensa e escolhe a do título
-  ORBIT_D: [21000, 22400] as const, // D dá a volta gigante
-  THINK_A2: [21050, 21700] as const,
-  FONT_PICK: 21800,
-  FONT_CLOSE: 22050,
-  HIGH5: 23000, // os quatro se encontram em cima do cartão
-  EXIT: [23200, 23900] as const,
-  END: 24100,
+  CAM_BACK: [12100, 12900] as const,
+  A_POP: 12900, // o ponto verde pulsa, cresce e vira o primeiro cursor
+  SPAWNER: [13150, 14650] as const, // A abre o contador "cursores 01 +": cada clique no "+" cria um
+  SPAWN_B: 13550,
+  SPAWN_C: 14000,
+  SPAWN_D: 14450,
+  CURSORS_IN: [12900, 14450] as const,
+  ANCHOR: [14850, 16250] as const, // C segura o canto enquanto A puxa
+  BOX: [15000, 16200] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
+  SLOTS: [16100, 16700] as const, // as partes pontilhadas: onde cada peça vai ficar
+  GRAB_P1: [16100, 16500] as const, // B puxa os balões para fora
+  LOGO: [16300, 17300] as const, // D cria o logo grande e o encolhe puxando a alça do canto
+  PALETTE_OPEN: 16600, // C abre a paleta e pensa bastante antes de escolher
+  GRAB_P2: [16750, 17150] as const,
+  ORBIT_B: [17200, 18600] as const, // B dá a volta e passa gigante na frente da câmera
+  THINK_C1: [17550, 18200] as const,
+  BUMP: 17600, // A e D se esbarram no meio do caminho
+  SUB: [17750, 18400] as const, // A leva o subtítulo torto para o lugar
+  PALETTE_CLICK: 18400,
+  THINK_A: [18500, 19150] as const, // A olha o título errado antes de apagar
+  EMAIL: [18600, 19200] as const, // D e C desenham os campos ao mesmo tempo
+  PALETTE_CLOSE: 18750,
+  PASS: [18900, 19500] as const,
+  ERASE: [19200, 20100] as const, // A apaga o título errado...
+  TYPE1: [19400, 20500] as const, // ...e B digita logo atrás, com um erro no fim
+  CPF: [19700, 20150] as const, // C joga fora o campo que não devia estar ali
+  BUTTON: [19900, 20500] as const, // D desenha o botão
+  THINK_B: [20550, 21100] as const, // B percebe o erro
+  THINK_C2: [20600, 21200] as const, // C pensa na cor do botão
+  BACK: [20700, 21600] as const, // D traz o link de volta lá de cima
+  BACKSPACE: [21100, 21400] as const,
+  PAINT: 21300,
+  TYPE2: [21450, 21800] as const,
+  FOCUS_EMAIL: 21600, // C confere o foco de cada campo
+  FOCUS_PASS: 21850,
+  FONT_OPEN: 21900, // A abre as fontes, pensa e escolhe a do título
+  ORBIT_D: [21900, 23300] as const, // D dá a volta gigante
+  THINK_A2: [21950, 22600] as const,
+  FONT_PICK: 22700,
+  FONT_CLOSE: 22950,
+  HIGH5: 23900, // os quatro se encontram em cima do cartão
+  EXIT: [24100, 24800] as const,
+  END: 25000,
   REVEAL: 400, // a tela de verdade entra por cima
 } as const;
 
@@ -280,9 +280,21 @@ export function orbit(o: { t0: number; t1: number; x: number; y: number; rx: num
   return keys;
 }
 
-/** Onde fica o "+" que o primeiro cursor abre para criar os outros. */
+/** O contador "cursores 01 +" que o primeiro cursor abre para criar os outros: o centro da pílula e o "+". */
+export const SPAWNER_W = 150;
 export function spawner(L: Layout) {
-  return { x: Math.min(L.card.r + 64, L.vw / 2 - 50), y: cy(L.card) - 60 };
+  const x = Math.min(L.card.r + 64, L.vw / 2 - SPAWNER_W / 2 - 10);
+  const y = cy(L.card) - 60;
+  return { x, y, plus: { x: x + SPAWNER_W / 2 - 22, y } };
+}
+/** Para onde cada cursor novo vai logo que sai do "+" (um leque acima da pílula). */
+export function spawnFan(L: Layout, i: 0 | 1 | 2) {
+  const sp = spawner(L);
+  return [
+    { x: sp.x - 50, y: sp.y - 78 },
+    { x: sp.x + 4, y: sp.y - 96 },
+    { x: sp.x + 58, y: sp.y - 78 },
+  ][i]!;
 }
 
 /** Os esbarrões só valem nos encontros combinados (fora deles, um cursor não empurra o outro). */
@@ -423,8 +435,9 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   const a: Track = {
     keys: [
       k(T.A_POP, card.r, card.t, 0, true),
-      k(T.SPAWNER[0], sp.x - 30, sp.y + 22, 0.05, true),
-      ...spawnTaps.map((st) => k(st, sp.x - 4, sp.y + 4, 0, true)),
+      k(T.A_POP + 250, card.r + 10, card.t + 10, 0.05, true),
+      k(T.SPAWNER[0], sp.x - 20, sp.y + 24, 0.05, true),
+      ...spawnTaps.flatMap((st) => [k(st - 160, sp.plus.x + 2, sp.plus.y + 2, 0, true), k(st + 160, sp.plus.x + 8, sp.plus.y + 14, 0.02, true)]),
       k(T.SPAWNER[1], sp.x - 40, sp.y + 30, 0),
       k(T.BOX[0] - 150, card.r + 30, card.t + 40, -0.1),
       k(T.BOX[0], card.r, card.t, 0, true),
@@ -452,8 +465,8 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.HIGH5, meet.high5.x - 16, meet.high5.y + 4, 0.1),
       k(goneAt(3), meet.high5.x - 34, meet.high5.y - 6, 0.15, true),
     ],
-    press: [T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90], ...spawnTaps.map((st): Interval => [st - 40, st + 70])],
-    clicks: [T.FONT_OPEN, T.FONT_PICK, ...spawnTaps],
+    press: [T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90], ...spawnTaps.map((st): Interval => [st - 40, st + 70]), [T.SPAWNER[0] - 90, T.SPAWNER[0] + 10]],
+    clicks: [T.FONT_OPEN, T.FONT_PICK, ...spawnTaps, T.SPAWNER[0] - 60],
     think: [T.THINK_A, T.THINK_A2],
     born: T.A_POP,
     gone: goneAt(3),
@@ -465,9 +478,9 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   const typeKeys: Key[] = [0.25, 0.5, 0.75].map((p) => k(lerp(T.TYPE1[0], T.TYPE1[1], p), caretX(TITLE.length * p) - 18, below + (p === 0.5 ? 2 : 0), 0.05));
   const b: Track = {
     keys: [
-      k(T.SPAWN_B, sp.x, sp.y, 0, true),
-      k(T.SPAWN_B + 300, sp.x + 46, sp.y - 54, 0.25),
-      k(T.SPAWN_B + 900, spots.p1.x + 90, spots.p1.y - 80, 0.4),
+      k(T.SPAWN_B, sp.plus.x, sp.plus.y, 0, true),
+      k(T.SPAWN_B + 380, spawnFan(L, 0).x, spawnFan(L, 0).y, 0.15, true),
+      k(T.SPAWN_B + 1300, spots.p1.x + 90, spots.p1.y - 80, 0.4),
       k(T.GRAB_P1[0] - 350, spots.p1.x - 70, spots.p1.y - 60, 0.9),
       { ...k(T.GRAB_P1[0], spots.p1.x, spots.p1.y, 1.1, true), tag: 'p1' },
       k(T.GRAB_P1[1], W - 40, -H + 30, 1.1),
@@ -498,8 +511,8 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   // pensa na cor do botão e o pinta, confere o foco dos campos
   const c: Track = {
     keys: [
-      k(T.SPAWN_C, sp.x, sp.y, 0, true),
-      k(T.SPAWN_C + 280, sp.x + 40, sp.y + 34, 0.2),
+      k(T.SPAWN_C, sp.plus.x, sp.plus.y, 0, true),
+      k(T.SPAWN_C + 380, spawnFan(L, 1).x, spawnFan(L, 1).y, 0.15, true),
       k(T.ANCHOR[0], card.r + 14, card.t - 14, 0, true),
       k(T.ANCHOR[1], card.r + 14, card.t - 14, 0, true),
       k(T.PALETTE_OPEN - 50, pal.x - 26, pal.y + 12, 0.1, true),
@@ -544,8 +557,8 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   const big = logoHandle(L);
   const d: Track = {
     keys: [
-      k(T.SPAWN_D, sp.x, sp.y, 0, true),
-      k(T.SPAWN_D + 300, sp.x - 50, sp.y + 40, 0.2),
+      k(T.SPAWN_D, sp.plus.x, sp.plus.y, 0, true),
+      k(T.SPAWN_D + 380, spawnFan(L, 2).x, spawnFan(L, 2).y, 0.15, true),
       k(T.LOGO[0] - 400, cx(logo) - 60, cy(logo) + 50, 0.1),
       k(T.LOGO[0], cx(logo), cy(logo), 0.1, true),
       k(T.LOGO[0] + 350, big.x, big.y, 0.15, true),
@@ -583,7 +596,12 @@ export function rebuildCamera(L: Layout): CamKey[] {
   const pal = palette(L);
   const fonts = fontPicker(L);
   const near = L.vw < 600 ? 1.1 : 1.22;
+  const sp = spawner(L);
+  const birth = L.vw < 600 ? 1.15 : 1.35;
   return [
+    { t: T.CAM_BACK[1], s: 1.2, fx: card.r * 0.8, fy: card.t * 0.8, rx: 0, ry: 0 },
+    { t: T.SPAWNER[0], s: birth, fx: sp.x * 0.85, fy: (sp.y - 30) * 0.85, rx: -3, ry: 4 },
+    { t: T.SPAWN_D + 400, s: birth, fx: sp.x * 0.85, fy: (sp.y - 40) * 0.85, rx: -3, ry: -3 },
     { t: T.BOX[0], s: 1, fx: 0, fy: 0, hold: true },
     { t: T.BOX[1], s: 0.95, fx: 0, fy: 0, rx: 7, ry: -9 },
     { t: T.GRAB_P2[1], s: 0.9, fx: 0, fy: 0, rx: 4, ry: 11 },

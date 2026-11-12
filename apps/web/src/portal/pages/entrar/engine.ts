@@ -69,6 +69,7 @@ interface Cursor {
   sh: HTMLElement;
   eyes: SVGGElement;
   svg: SVGSVGElement;
+  eyesIn: SVGGElement;
   prev: Pt | null;
   v: Pt;
   tip: Pt;
@@ -282,6 +283,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     sh: $(`.ent-cur-sh[data-id="${id}"]`),
     eyes: root.querySelector<SVGGElement>(`.ent-cur[data-id="${id}"] .eyes`)!,
     svg: root.querySelector<SVGSVGElement>(`.ent-cur[data-id="${id}"] .ent-cur-svg`)!,
+    eyesIn: root.querySelector<SVGGElement>(`.ent-cur[data-id="${id}"] .eyes-in`)!,
     prev: null,
     v: { x: 0, y: 0 },
     tip: { x: 0, y: 0 },
@@ -342,6 +344,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const box = $('.ent-box');
   let logoScale = 1;
   const spawnEl = $('.ent-spawner');
+  const spawnN = $('.ent-spawner .sp-n');
+  const spawnPlus = $('.ent-spawner .sp-plus');
+  const tether = root.querySelector<SVGLineElement>('.ent-tether line')!;
+  const tetherSvg = root.querySelector<SVGSVGElement>('.ent-tether')!;
+  let plusPt: Pt = { x: 0, y: 0 };
   const gizmos = $$('.ent-gizmo');
   const mpaths = { sub: root.querySelector<SVGPathElement>('.ent-mpath .mp-sub')!, back: root.querySelector<SVGPathElement>('.ent-mpath .mp-back')! };
   const mpathSvg = root.querySelector<SVGSVGElement>('.ent-mpath')!;
@@ -414,7 +421,9 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     };
     L = lay;
     tracks = S.cursorTracks(lay);
-    camKeys = [...S.introCamera(vw, vh), ...S.rebuildCamera(lay).slice(1)];
+    // a câmera da introdução vale até onde a da reconstrução começa (ela já vai até o ponto verde)
+    const rb = S.rebuildCamera(lay);
+    camKeys = [...S.introCamera(vw, vh).filter((k) => k.t < rb[0]!.t), ...rb];
     pal = S.palette(lay);
     meet = S.meetingPoints(lay);
     const mis = S.misplaced(lay);
@@ -478,7 +487,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       return { el, cur, iv, w, h, x: home.x, y: home.y, rot: home.rot, sc: 1, z: 0, sh, target: { ...target, rot: 0 }, state: 'idle', gx: 0, gy: 0, gz: 0, from: { x: 0, y: 0, rot: 0, sc: 0, t: 0 } };
     };
     const spw = S.spawner(lay);
-    put(spawnEl, 'transform', at(spw.x - 22, spw.y - 22, '', Z.palette));
+    put(spawnEl, 'transform', at(spw.x - S.SPAWNER_W / 2, spw.y - 22, '', Z.palette));
+    plusPt = spw.plus;
     // o caminho que cada peça carregada vai fazer (pontilhado, com os nós), como num programa de animação
     const curve = (a: Pt, b: Pt, bend: number) => {
       const mx = (a.x + b.x) / 2 + bend;
@@ -637,8 +647,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       cur.tapping = track.taps.some((tt) => t >= tt && t < tt + 70);
       // nasce num estalo (cresce passando do ponto) e some num estalo
       if (once(`born-${cur.id}`, cur.on)) {
-        cur.svg.animate([{ scale: '0' }, { scale: '1.3', offset: 0.6 }, { scale: '1' }], { duration: 460, easing: 'cubic-bezier(.2,.9,.2,1)' });
-        burst({ x: p.x + 20, y: p.y + 20 }, 6, 0.8);
+        // nasce pequeno, cresce passando do ponto e abre os olhos (estava "dormindo" dentro do botão)
+        cur.svg.animate([{ scale: '0' }, { scale: '1.3', offset: 0.6 }, { scale: '1' }], { duration: 520, easing: 'cubic-bezier(.2,.9,.2,1)' });
+        cur.eyesIn.animate([{ scale: '1 0.08' }, { scale: '1 0.08', offset: 0.45 }, { scale: '1 1.15', offset: 0.75 }, { scale: '1 1' }], { duration: 640, easing: 'ease-out' });
+        burst({ x: p.x + 20, y: p.y + 20 }, 8, 0.9);
+        ripple({ x: p.x + 20, y: p.y + 20 });
       }
       if (once(`gone-${cur.id}`, t >= track.gone - 280)) {
         cur.svg.animate([{ scale: '1' }, { scale: '1.3', offset: 0.35 }, { scale: '0' }], { duration: 280, easing: 'ease-in', fill: 'forwards' });
@@ -824,9 +837,34 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     }
 
     // o "+" que A abre: cada clique dele cria um cursor, que sai de trás do botão
+    // o ponto verde carrega (pulsa) e, num estalo, vira o primeiro cursor
+    flag(seed, 'is-charging', t >= S.T.COLLAPSE[1] - 80 && t < S.T.A_POP);
+    if (once('seed-pop', t >= S.T.A_POP)) {
+      seed.animate([{ scale: '1', opacity: 1 }, { scale: '2.6', opacity: 0.85, offset: 0.4 }, { scale: '1', opacity: 1 }], { duration: 520, easing: 'cubic-bezier(.2,.9,.2,1)' });
+      burst({ x: card.r, y: card.t }, 12, 1.3);
+    }
+    // o contador "cursores 01 +": cada clique de A no "+" sobe o número e um cursor sai do botão
     flag(spawnEl, 'is-on', S.within(S.T.SPAWNER, t));
-    for (const st of [S.T.SPAWN_B, S.T.SPAWN_C, S.T.SPAWN_D]) {
-      if (once(`spawn-${st}`, t >= st)) spawnEl.animate([{ scale: '1' }, { scale: '0.8', offset: 0.3 }, { scale: '1.1', offset: 0.7 }, { scale: '1' }], { duration: 340, easing: 'ease-out' });
+    const spawns = [S.T.SPAWN_B, S.T.SPAWN_C, S.T.SPAWN_D];
+    const count = `0${1 + spawns.filter((st) => t >= st).length}`;
+    if (spawnN.textContent !== count) {
+      spawnN.textContent = count;
+      spawnN.animate([{ translate: '0 8px', opacity: 0 }, { translate: '0 0', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.2,.9,.2,1.3)' });
+    }
+    for (const st of spawns) {
+      if (once(`spawn-${st}`, t >= st)) {
+        spawnPlus.animate([{ scale: '1' }, { scale: '0.72', offset: 0.3 }, { scale: '1.18', offset: 0.7 }, { scale: '1' }], { duration: 340, easing: 'ease-out' });
+        spawnEl.animate([{ scale: '1' }, { scale: '1.04 0.94', offset: 0.35 }, { scale: '1' }], { duration: 300, easing: 'ease-out' });
+      }
+    }
+    // o fio pontilhado do "+" até o cursor que acabou de nascer (até ele chegar ao seu lugar no leque)
+    const newborn = ([B, C, D] as const).find((c, i) => t >= spawns[i]! && t < spawns[i]! + 520);
+    flag(tetherSvg, 'is-on', !!newborn);
+    if (newborn) {
+      tether.setAttribute('x1', plusPt.x.toFixed(1));
+      tether.setAttribute('y1', plusPt.y.toFixed(1));
+      tether.setAttribute('x2', (newborn.tip.x + 14).toFixed(1));
+      tether.setAttribute('y2', (newborn.tip.y + 14).toFixed(1));
     }
 
     // a caixa: C segura o canto de cima à direita, A puxa o de baixo à esquerda
