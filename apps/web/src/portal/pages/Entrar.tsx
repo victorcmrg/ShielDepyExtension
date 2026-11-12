@@ -1,34 +1,21 @@
-// O "Entrar" da landing (decisão 0039): um 404 de mentira por 1,5 s e o ShielDepy reconstruindo a
-// tela de login por cima, bloco por bloco, até ela ficar pronta. A tela final é mockada: não
-// autentica nada e aponta para o login de verdade (/login), que segue intacto para a extensão e o
-// OAuth. O roteiro (tempos, mensagens, ordem) fica em entrar/timeline.ts; aqui só se desenha.
+// O "Entrar" da landing (decisão 0039, segunda versão, com o roteiro ditado pelo usuário): um 404
+// grande no meio da tela por 3 s; a gravidade derruba o texto e os números, que tombam em 3D no
+// chão; a câmera aproxima, o ShielDepy detecta o erro num balão verde que se divide como líquido, e
+// quatro cursores reconstroem a tela de login (desenham a caixa, empurram e jogam fora os balões,
+// escolhem a cor numa paleta, arrumam o logo, apagam o título errado, desenham os campos, pintam o
+// botão) até 100%. A tela final é mockada e aponta para o /login de verdade, que não mudou.
 //
-// Leve de propósito: um requestAnimationFrame que só troca o passo quando o roteiro anda (e escreve
-// o título decodificado direto no DOM); o resto é CSS com transform e opacity. Clique ou tecla pula
-// para o fim; com prefers-reduced-motion, o 404 vai direto para a tela pronta.
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+// Esta página só monta a cena; quem anima é entrar/engine.ts, num requestAnimationFrame que escreve
+// transform e opacity direto no DOM. Clique ou tecla pula para o fim; com prefers-reduced-motion, o
+// 404 vai direto para a tela pronta.
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import '../../styles/entrar.css';
-import {
-  BLOCKS,
-  DECODE_MS,
-  EVENTS,
-  NOT_FOUND_MS,
-  REBUILD_MS,
-  TITLE_BROKEN,
-  TITLE_FIXED,
-  decodeFrame,
-  fixTime,
-  snapshot,
-  stageTime,
-  stepAt,
-  timecode,
-  type BlockId,
-  type LogLine,
-} from './entrar/timeline';
+import { runEntrar } from './entrar/engine';
+import { TITLE, TITLE_WRONG } from './entrar/script';
 
-type Phase = 'nf' | 'rebuild' | 'done';
-
-const HUD_LINES = 7;
+const MSG = 'Página não encontrada';
+const DIGIT_LAYERS = 26;
+const LETTER_LAYERS = 8;
 
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -36,250 +23,282 @@ function prefersReducedMotion(): boolean {
 
 export default function Entrar() {
   const [reduced] = useState(prefersReducedMotion);
-  const [phase, setPhase] = useState<Phase>('nf');
-  const [step, setStep] = useState(0);
-  const [note, setNote] = useState(false);
-  // a reconstrução chegou a passar na tela (para o terminal sair com calma no fim, e não do nada)
-  const [rebuilt, setRebuilt] = useState(false);
-  const titleRef = useRef<HTMLSpanElement>(null);
-  const cameraRef = useRef<HTMLDivElement>(null);
-  const clockRef = useRef<HTMLSpanElement>(null);
+  const [done, setDone] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    document.title = phase === 'nf' ? '404' : 'Entrar — ShielDepy';
-    // o theme-init.js marca o <html> em /entrar para o fundo nascer branco; daqui em diante a página cobre a tela
-    if (phase !== 'nf') delete document.documentElement.dataset.boot;
-  }, [phase]);
+    document.title = done ? 'Entrar — ShielDepy' : '404';
+    if (done) delete document.documentElement.dataset.boot;
+  }, [done]);
   useEffect(() => () => void delete document.documentElement.dataset.boot, []);
 
-  // 1,5 s de 404 puro; depois, a reconstrução (ou direto a tela pronta, sem movimento)
+  // a encenação (ou, sem movimento, só o 404 parado e depois a tela pronta)
   useEffect(() => {
-    if (phase !== 'nf') return;
-    const t = window.setTimeout(() => setPhase(reduced ? 'done' : 'rebuild'), NOT_FOUND_MS);
-    return () => window.clearTimeout(t);
-  }, [phase, reduced]);
-
-  // o relógio da reconstrução
-  useEffect(() => {
-    if (phase !== 'rebuild') return;
-    setRebuilt(true);
-    const start = performance.now();
-    const titleAt = fixTime('title');
-    let raf = 0;
-    let last = -1;
-    const frame = (now: number) => {
-      const elapsed = now - start;
-      const n = stepAt(elapsed);
-      if (n !== last) {
-        last = n;
-        setStep(n);
-      }
-      const span = titleRef.current;
-      if (span) {
-        const p = (elapsed - titleAt) / DECODE_MS;
-        const text = p <= 0 ? TITLE_BROKEN : decodeFrame(TITLE_BROKEN, TITLE_FIXED, p, Math.floor(elapsed / 50));
-        if (span.textContent !== text) span.textContent = text;
-      }
-      const clock = clockRef.current;
-      if (clock) clock.textContent = timecode(NOT_FOUND_MS + elapsed);
-      if (elapsed >= REBUILD_MS) {
-        setPhase('done');
-        return;
-      }
-      raf = requestAnimationFrame(frame);
-    };
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, [phase]);
+    if (done) return;
+    if (reduced) {
+      const id = window.setTimeout(() => setDone(true), 3000);
+      return () => window.clearTimeout(id);
+    }
+    return runEntrar(rootRef.current!, () => setDone(true));
+  }, [done, reduced]);
 
   // clique ou tecla: pula para o fim
   useEffect(() => {
-    if (phase === 'done') return;
-    const skip = () => setPhase('done');
+    if (done) return;
+    const skip = () => setDone(true);
     window.addEventListener('pointerdown', skip);
     window.addEventListener('keydown', skip);
     return () => {
       window.removeEventListener('pointerdown', skip);
       window.removeEventListener('keydown', skip);
     };
-  }, [phase]);
-
-  // a "câmera": começa de perto e torta e se afasta até a tela ficar reta (Web Animations, só transform).
-  // Pular acelera o que falta em vez de cortar seco.
-  const hasSkeleton = phase === 'rebuild' && snapshot(step).stages.has('skeleton');
-  useEffect(() => {
-    const el = cameraRef.current;
-    if (!hasSkeleton || !el || typeof el.animate !== 'function') return;
-    const anim = el.animate(
-      [
-        { transform: 'translateY(5%) scale(1.24) rotate(-1.4deg)' },
-        { transform: 'translateY(1.5%) scale(1.07) rotate(-0.4deg)', offset: 0.55 },
-        { transform: 'none' },
-      ],
-      { duration: REBUILD_MS - stageTime('skeleton') - 500, easing: 'cubic-bezier(.3,.55,.15,1)', fill: 'backwards' }
-    );
-    return () => anim.updatePlaybackRate(12);
-  }, [hasSkeleton]);
-
-  useLayoutEffect(() => {
-    if (phase === 'done' && titleRef.current) titleRef.current.textContent = TITLE_FIXED;
-  }, [phase]);
-
-  if (phase === 'nf') return <div className="nf-raw">404</div>;
-
-  const done = phase === 'done';
-  const snap = snapshot(done ? EVENTS.length : step);
-  const isOk = (b: BlockId) => snap.fixed.has(b);
-  const ok = (b: BlockId) => (isOk(b) ? '1' : '0');
-  const rootClass = ['rb', done ? 'is-done' : '', ...[...snap.stages].map((s) => 'st-' + s)].filter(Boolean).join(' ');
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    setNote(true);
-  }
+  }, [done]);
 
   return (
-    <div className={rootClass} aria-busy={!done}>
-      <div className="rb-bg" aria-hidden="true" />
-      <div className="rb-grid" aria-hidden="true" />
-      <div className="rb-glow" aria-hidden="true" />
-
-      {!done && (
-        <>
-          <div className="rb-scan" aria-hidden="true" />
-          <div className="rb-flash" aria-hidden="true" />
-          <div className="rb-nf" aria-hidden="true">
-            404
-            <span className="rb-nf-frame" />
-            <span className="rb-nf-tag">erro 404</span>
-          </div>
-          <p className="rb-sr" role="status">
-            Reconstruindo a tela de login. Clique ou aperte uma tecla para pular.
-          </p>
-        </>
-      )}
-
-      {snap.stages.has('skeleton') && (
-        <div className="rb-camera" ref={cameraRef}>
-        <div className="auth-page rb-page">
-          <div className="auth-page-inner">
-            <Block id="logo" ok={ok('logo')}>
-              <div className="auth-logo">
-                <img src="/logo-mark.svg" alt="" />
-                <span className="rb-logo-alt">[img: logo-mark.svg]</span>
-                <span>ShielDepy</span>
-              </div>
-            </Block>
-
-            <div className="auth-card rb-block" data-block="card" data-ok={ok('card')}>
-              <Tag ok={isOk('card')} />
-              <span className="rb-sheen-wrap" aria-hidden="true">
-                <span className="rb-sheen" />
-              </span>
-              <Block id="title" ok={ok('title')}>
-                <h1 aria-label={TITLE_FIXED}>
-                  <span ref={titleRef} aria-hidden="true" />
-                </h1>
-              </Block>
-              <Block id="subtitle" ok={ok('subtitle')}>
-                <p className="muted">Conecte sua conta à extensão ShielDepy.</p>
-              </Block>
-
-              <form onSubmit={submit} noValidate>
-                <Block id="email" ok={ok('email')}>
-                  <div className="field">
-                    <label htmlFor="rb-email">{isOk('email') ? 'E-mail' : 'E_MAIL'}</label>
-                    <input type="email" id="rb-email" placeholder="voce@empresa.com" autoComplete="off" />
-                  </div>
-                </Block>
-                <Block id="password" ok={ok('password')}>
-                  <div className="field">
-                    <label htmlFor="rb-password">{isOk('password') ? 'Senha' : 'Snha'}</label>
-                    <input
-                      type={isOk('password') ? 'password' : 'text'}
-                      id="rb-password"
-                      placeholder={isOk('password') ? '••••••••' : 'senha à mostra'}
-                      autoComplete="off"
-                    />
-                  </div>
-                </Block>
-                <Block id="button" ok={ok('button')}>
-                  <button type="submit" className="primary">
-                    {isOk('button') ? 'Entrar' : 'Entar'}
-                  </button>
-                </Block>
-              </form>
-
-              {note && (
-                <p className="rb-note" role="status">
-                  Esta tela é uma encenação: nada foi enviado. Para entrar de verdade, use o <a href="/login">login do portal</a>.
-                </p>
-              )}
-            </div>
-
-            <Block id="back" ok={ok('back')}>
-              <a className="back-link" href="/">
-                {isOk('back') ? '← Voltar para o início' : '<- Voltar para o inicio'}
-              </a>
-            </Block>
-          </div>
-        </div>
-        </div>
-      )}
-
-      <div className="rb-vignette" aria-hidden="true" />
-      <div className="rb-bars" aria-hidden="true">
-        <div className="rb-bar rb-bar-top">
-          <span>shieldepy · incidente 404 · /entrar</span>
-        </div>
-        <div className="rb-bar rb-bar-bottom">
-          <span>clique ou aperte uma tecla para pular</span>
-          <span>
-            <i className="rb-rec" /> rec <span ref={clockRef}>{timecode(NOT_FOUND_MS)}</span>
-          </span>
-        </div>
-      </div>
-
-      {(!done || rebuilt) && <Hud logs={snap.logs} fixed={snap.fixed.size} leaving={done} />}
+    <div className={'ent' + (done ? ' is-done' : '')} ref={rootRef}>
+      <div className="ent-bg2" aria-hidden="true" />
+      {!done && <Scene />}
+      <FinalLogin ghost={!done} />
     </div>
   );
 }
 
-function Block({ id, ok, children }: { id: BlockId; ok: '0' | '1'; children: ReactNode }) {
+function Glyph({ ch, kind }: { ch: string; kind: 'digit' | 'letter' }) {
+  const n = kind === 'digit' ? DIGIT_LAYERS : LETTER_LAYERS;
   return (
-    <div className="rb-block" data-block={id} data-ok={ok}>
-      <Tag ok={ok === '1'} />
-      {children}
-    </div>
-  );
-}
-
-function Tag({ ok }: { ok: boolean }) {
-  return (
-    <span className="rb-tag" aria-hidden="true">
-      {ok ? '✓ ok' : '✗ erro'}
+    <span className="ent-g" data-kind={kind} aria-hidden="true">
+      {Array.from({ length: n }, (_, i) => (
+        <i key={i} style={{ '--n': n - i } as CSSProperties}>
+          {ch}
+        </i>
+      ))}
+      <b>{ch}</b>
     </span>
   );
 }
 
-function Hud({ logs, fixed, leaving }: { logs: readonly LogLine[]; fixed: number; leaving: boolean }) {
-  const first = Math.max(0, logs.length - HUD_LINES);
+function Cursor({ id }: { id: string }) {
   return (
-    <div className={'rb-hud' + (leaving ? ' is-leaving' : '')} aria-hidden="true">
-      <div className="rb-hud-head">
-        <span className="rb-hud-dot" />
-        <span>shieldepy · reparo ao vivo</span>
-        <span className="rb-hud-count">
-          {fixed}/{BLOCKS.length} blocos
-        </span>
+    <>
+      <div className="ent-w ent-cur-sh" data-id={id} aria-hidden="true" />
+      <div className="ent-w ent-cur" data-id={id} aria-hidden="true">
+        <svg viewBox="0 0 100 100" className="ent-cur-svg">
+          {/* a ponta (o "bico" do cursor) atrás do corpo redondo, separada por uma linha branca */}
+          <path className="ent-cur-tip" d="M4 4 L66 17 A41 41 0 1 1 17 66 Z" />
+          <circle cx="57" cy="57" r="37" className="ent-cur-body" />
+          <g className="eyes">
+            <g className="eyes-in">
+              <rect x="38.5" y="37" width="13.5" height="36" rx="6.75" />
+              <rect x="62" y="37" width="13.5" height="36" rx="6.75" />
+            </g>
+          </g>
+        </svg>
       </div>
-      <ol>
-        {logs.slice(first).map((l, i) => (
-          <li key={first + i} className={'tone-' + l.tone}>
-            {l.text}
-          </li>
+    </>
+  );
+}
+
+function Ball() {
+  return (
+    <span className="ent-chip" aria-hidden="true">
+      <span className="ent-ball" />
+      <svg className="ent-ring" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="17" />
+      </svg>
+      <span className="ent-check">✓</span>
+    </span>
+  );
+}
+
+function Scene() {
+  const glyphCount = 3 + MSG.replace(/ /g, '').length;
+  return (
+    <div className="ent-scene">
+      {/* o filtro do "líquido": borra e corta de novo, e dois blocos perto viram um só */}
+      <svg width="0" height="0" className="ent-defs" aria-hidden="true">
+        <filter id="ent-goo">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="b" />
+          <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -10" />
+        </filter>
+      </svg>
+
+      <div className="ent-cam">
+        <div className="ent-letters">
+          <div className="ent-shadows" aria-hidden="true">
+            {Array.from({ length: glyphCount }, (_, i) => (
+              <span key={i} className="ent-sh" />
+            ))}
+          </div>
+          <h1 className="ent-404" aria-label="404">
+            {['4', '0', '4'].map((d, i) => (
+              <Glyph key={i} ch={d} kind="digit" />
+            ))}
+          </h1>
+          <p className="ent-msg" aria-label={MSG}>
+            {MSG.split('').map((ch, i) => (ch === ' ' ? <span key={i} className="ent-space" /> : <Glyph key={i} ch={ch} kind="letter" />))}
+          </p>
+        </div>
+
+        <div className="ent-goo" aria-hidden="true">
+          <span className="ent-w goo g0" />
+          <span className="ent-w goo g1" />
+          <span className="ent-w goo g2" />
+        </div>
+        <div className="ent-w ent-pop p0">
+          <div className="ent-pop-body">
+            <Ball />
+            <strong>Erro detectado</strong>
+            <span className="ent-pop-sub">corrigindo…</span>
+          </div>
+        </div>
+        <div className="ent-w ent-pop p1">
+          <div className="ent-pop-body">
+            <Ball />
+            <strong>Ajustando rota</strong>
+            <span className="ent-pop-sub">/entrar → /login</span>
+          </div>
+        </div>
+        <div className="ent-w ent-pop p2">
+          <div className="ent-pop-body">
+            <Ball />
+            <strong>Corrigindo tela de login</strong>
+            <span className="ent-pop-sub">8 blocos fora do lugar</span>
+          </div>
+        </div>
+
+        <div className="ent-w ent-box" aria-hidden="true">
+          <span className="ent-box-fill" />
+        </div>
+        <span className="ent-w ent-seed" aria-hidden="true" />
+
+        <div className="ent-w ent-ph" aria-hidden="true">
+          [img: logo-mark.svg]
+        </div>
+        <div className="ent-w ent-logo" aria-hidden="true">
+          <img src="/logo-mark.svg" alt="" />
+          <span>ShielDepy</span>
+        </div>
+        <div className="ent-w ent-wtitle" aria-hidden="true">
+          {TITLE_WRONG.split('').map((ch, i) => (
+            <span key={i} className="wl">
+              {ch === ' ' ? ' ' : ch}
+            </span>
+          ))}
+        </div>
+        <div className="ent-w ent-title" aria-hidden="true">
+          {TITLE.split('').map((ch, i) => (
+            <span key={i} className="tl">
+              {ch === ' ' ? ' ' : ch}
+            </span>
+          ))}
+        </div>
+        <div className="ent-w ent-sub" aria-hidden="true">
+          Conecte sua conta à extensão ShielDepy.
+        </div>
+        <div className="ent-w ent-label le" aria-hidden="true">
+          E-mail
+        </div>
+        <div className="ent-w ent-field fe" aria-hidden="true">
+          voce@empresa.com
+        </div>
+        <div className="ent-w ent-label lp" aria-hidden="true">
+          Senha
+        </div>
+        <div className="ent-w ent-field fp" aria-hidden="true">
+          ••••••••
+        </div>
+        <div className="ent-w ent-cpf" aria-hidden="true">
+          CPF ___.___.___-__
+        </div>
+        <div className="ent-w ent-btn" aria-hidden="true">
+          <span className="ent-btn-paint" />
+          <span className="ent-btn-label">Entrar</span>
+        </div>
+        <div className="ent-w ent-backlink" aria-hidden="true">
+          ← Voltar para o início
+        </div>
+        <span className="ent-w ent-draw de" aria-hidden="true" />
+        <span className="ent-w ent-draw dp" aria-hidden="true" />
+        <span className="ent-w ent-draw db" aria-hidden="true" />
+
+        <div className="ent-w ent-palette" aria-hidden="true">
+          <span className="sw" />
+          <span className="sw" />
+          <span className="sw" />
+          <span className="sw" />
+          <span className="sw" />
+        </div>
+
+        {['a', 'b', 'c', 'd'].map((id) => (
+          <Cursor key={id} id={id} />
         ))}
-      </ol>
+        {[0, 1, 2, 3].map((i) => (
+          <span key={i} className="ent-w ent-rip" aria-hidden="true" />
+        ))}
+      </div>
+
+      <div className="ent-prog" aria-hidden="true">
+        reconstruindo a tela · <span className="ent-prog-n">0</span>%
+      </div>
+      <div className="ent-hint" aria-hidden="true">
+        clique ou aperte uma tecla para pular
+      </div>
+      <p className="ent-sr" role="status">
+        Página não encontrada. O ShielDepy está reconstruindo a tela de login; clique ou aperte uma tecla para pular.
+      </p>
+    </div>
+  );
+}
+
+function FinalLogin({ ghost }: { ghost: boolean }) {
+  const [note, setNote] = useState(false);
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    setNote(true);
+  }
+  return (
+    <div className={'ent-final' + (ghost ? ' is-ghost' : '')} aria-hidden={ghost}>
+      <div className="auth-page">
+        <div className="auth-page-inner">
+          <div className="auth-logo" data-m="logo">
+            <img src="/logo-mark.svg" alt="" />
+            <span>ShielDepy</span>
+          </div>
+          <div className="auth-card" data-m="card">
+            <h1>
+              <span data-m="title">{TITLE}</span>
+            </h1>
+            <p className="muted" data-m="subtitle">
+              Conecte sua conta à extensão ShielDepy.
+            </p>
+            <form onSubmit={submit} noValidate>
+              <div className="field">
+                <label htmlFor="ent-email" data-m="emailLabel">
+                  E-mail
+                </label>
+                <input type="email" id="ent-email" placeholder="voce@empresa.com" autoComplete="off" data-m="email" tabIndex={ghost ? -1 : 0} />
+              </div>
+              <div className="field">
+                <label htmlFor="ent-password" data-m="passLabel">
+                  Senha
+                </label>
+                <input type="password" id="ent-password" placeholder="••••••••" autoComplete="off" data-m="pass" tabIndex={ghost ? -1 : 0} />
+              </div>
+              <button type="submit" className="primary" data-m="button" tabIndex={ghost ? -1 : 0}>
+                Entrar
+              </button>
+            </form>
+            {note && (
+              <p className="ent-note" role="status">
+                Esta tela é uma encenação: nada foi enviado. Para entrar de verdade, use o <a href="/login">login do portal</a>.
+              </p>
+            )}
+          </div>
+          <a className="back-link" href="/" data-m="back" tabIndex={ghost ? -1 : 0}>
+            ← Voltar para o início
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
