@@ -13,7 +13,7 @@
 // continuar onde o roteiro manda na tela, a posição é dividida pelo aumento da perspectiva.
 import { kickAround, makeBody, rng, stepBody, type Body } from './physics';
 import * as S from './script';
-import { createSfx, type SfxName, type PlayOpts } from './sfx';
+import { createSfx, step, THUDS, tone, type SfxName, type PlayOpts } from './sfx';
 
 type Pt = { x: number; y: number };
 
@@ -112,20 +112,21 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const rand = rng(404);
-  // os sons (baixinhos): se o navegador bloquear até um clique, aparece o botão "ativar som", que não
-  // pula a animação (decisão 0041)
+  // os sons (baixinhos), ligados por padrão (decisão 0041). Vindo do "Entrar" da landing, o clique
+  // já liberou o áudio; se o navegador ainda bloquear, o primeiro toque na página libera
   const sfx = createSfx();
   let quiet = false; // o gancho de desenvolvimento avança a cena sem tocar nada
   const snd = (name: SfxName, o?: PlayOpts) => {
     if (!quiet) sfx.play(name, o);
   };
   const wood = sfx.loop('wood-drag');
-  const soundBtn = root.querySelector<HTMLButtonElement>('.ent-sound');
-  const onSound = () => {
-    void sfx.unlock().then((ok) => root.classList.toggle('is-mute', !ok));
+  const onGesture = () => {
+    if (sfx.blocked) void sfx.unlock();
   };
-  soundBtn?.addEventListener('click', onSound);
-  const muteCheck = window.setTimeout(() => root.classList.toggle('is-mute', sfx.blocked), 600);
+  window.addEventListener('pointerdown', onGesture, true);
+  window.addEventListener('keydown', onGesture, true);
+  let lastHum = -1e9;
+  let popN = 0; // cada bot criado faz o "pop" um passo acima do anterior
   // o 404 em 3D de verdade e o confete do fim usam three.js, num pedaço à parte (decisão 0040); se não
   // carregar a tempo ou não houver WebGL, as letras seguem no 3D em CSS
   let glMod: typeof import('./letters3d') | null = null;
@@ -263,7 +264,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const shadows = $$('.ent-sh');
   const floor = vh / 2 - 14;
   let bodies: Body[] = [];
-  const landedSeen: boolean[] = [];
+  const lastHit: number[] = [];
   let lastThud = -1e9;
   const origin: Pt[] = [];
   const digitPlan = [
@@ -317,14 +318,17 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         if (stepBody(b, h, t, floor, -vw / 2 + 8, vw / 2 - 8) === 'impact' && b.w > 60) kickAround(b, bodies, rand);
       }
     }
-    // o primeiro toque de cada peça no chão: um balão batendo (mais grave e mais alto nos números)
+    // cada toque no chão é um balão batendo: no primeiro e nos quiques e no tombo ao deitar, cada vez
+    // uma das batidas num tom da escala, mais baixo quanto mais fraco o toque (os números mais graves)
     bodies.forEach((b, i) => {
-      if (!b.landed || landedSeen[i]) return;
-      landedSeen[i] = true;
-      if (t - lastThud < 45) return;
-      lastThud = t;
+      const hit = b.hit;
+      b.hit = 0;
+      if (hit < 170 || t - (lastHit[i] ?? -1e9) < 90 || t - lastThud < 48) return;
+      lastHit[i] = lastThud = t;
       const big = b.w > 60;
-      snd(big ? 'thud-big' : i % 2 ? 'thud-1' : 'thud-2', { gain: big ? 0.6 : 0.14 + rand() * 0.07, rate: big ? 0.88 + rand() * 0.08 : 1.05 + rand() * 0.3 });
+      const force = Math.min(1, (hit - 120) / 1700);
+      const name = big && force > 0.6 ? 'thud-big' : THUDS[Math.floor(rand() * THUDS.length)]!;
+      snd(name, { gain: (big ? 0.55 : 0.2) * (0.25 + 0.75 * force), rate: big ? tone(rand, 0.84, 2) : tone(rand, 1.02, 3) });
     });
     if (gl) {
       // a sombra do 404 entra devagar (~2,5 s), a partir de quando o 3D assumiu
@@ -414,7 +418,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const ripples = $$('.ent-rip');
   let rippleNext = 0;
   function ripple(p: Pt) {
-    snd('click', { gain: 0.3, rate: 0.95 + rand() * 0.12 });
+    snd('click', { gain: 0.3, rate: tone(rand, 0.95, 3) });
     const r = ripples[rippleNext++ % ripples.length]!;
     r.animate(
       [
@@ -428,7 +432,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   let trailNext = 0;
   /** O rastro do teletransporte: um traço vermelho que corre e some. */
   function trail(a: Pt, b: Pt) {
-    snd('click', { gain: 0.14, rate: 1.9 });
+    snd('click', { gain: 0.12, rate: tone(rand, 1.8, 2) });
     const ln = trails[trailNext++ % trails.length]!;
     ln.setAttribute('x1', (a.x + 12).toFixed(1));
     ln.setAttribute('y1', (a.y + 12).toFixed(1));
@@ -858,7 +862,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         p.y = w0.y;
       }
       for (const bt of track.blinks ?? []) {
-        if (once(`blink-${cur.id}-${bt}`, t >= bt)) cur.eyesIn.animate([{ scale: '1 1' }, { scale: '1 0.06', offset: 0.45 }, { scale: '1 1' }], { duration: 150, easing: 'ease-in-out' });
+        if (once(`blink-${cur.id}-${bt}`, t >= bt)) {
+          cur.eyesIn.animate([{ scale: '1 1' }, { scale: '1 0.06', offset: 0.45 }, { scale: '1 1' }], { duration: 150, easing: 'ease-in-out' });
+          snd('blink', { gain: 0.2, rate: tone(rand, 1.1, 3) });
+        }
       }
       cur.on = t >= track.born && t < track.gone;
       cur.thinking = cur.on && track.think.some((iv) => S.within(iv, t));
@@ -867,9 +874,9 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       cur.pressed = track.press.some((iv) => S.within(iv, t));
       cur.tapping = track.taps.some((tt) => t >= tt && t < tt + 70);
       // nasce num estalo (cresce passando do ponto) e some num estalo
-      if (once(`hum-${cur.id}`, cur.on)) snd(cur.phase % 2 > 1 ? 'hum-2' : 'hum-1', { gain: 0.22, rate: 1.12 + rand() * 0.22 });
-      for (const tt of track.taps) if (once(`tap-${cur.id}-${tt}`, t >= tt)) snd('key', { gain: 0.32, rate: 0.9 + rand() * 0.25 });
+      for (const tt of track.taps) if (once(`tap-${cur.id}-${tt}`, t >= tt)) snd('key', { gain: 0.3, rate: tone(rand, 0.9, 4) });
       if (once(`born-${cur.id}`, cur.on) && !track.enter) {
+        snd('pop', { gain: 0.32, rate: step(popN++, chaos ? 0.84 : 1) });
         // nasce pequeno, cresce passando do ponto e abre os olhos (estava "dormindo" dentro do botão)
         cur.svg.animate([{ scale: '0' }, { scale: '1.3', offset: 0.6 }, { scale: '1' }], { duration: 520, easing: 'cubic-bezier(.2,.9,.2,1)' });
         cur.eyesIn.animate([{ scale: '1 0.08' }, { scale: '1 0.08', offset: 0.45 }, { scale: '1 1.15', offset: 0.75 }, { scale: '1 1' }], { duration: 640, easing: 'ease-out' });
@@ -878,7 +885,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       }
       if (once(`gone-${cur.id}`, t >= track.gone - 280)) {
         cur.svg.animate([{ scale: '1' }, { scale: '1.3', offset: 0.35 }, { scale: '0' }], { duration: 280, easing: 'ease-in', fill: 'forwards' });
-        snd('hum-2', { gain: 0.12, rate: 1.6 });
+        snd('hum-2', { gain: 0.07, rate: tone(rand, 1.5, 3) });
       }
       cur.vox += (-90 * cur.ox - 11 * cur.vox) * dt;
       cur.voy += (-90 * cur.oy - 11 * cur.voy) * dt;
@@ -919,7 +926,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         if (t - (lastBonk.get(key) ?? -1e9) > 500) {
           lastBonk.set(key, t);
           a.bonkUntil = b.bonkUntil = t + 340;
-          snd('hum-2', { gain: 0.15, rate: 1.4 + rand() * 0.2 });
+          // o "hum" dos esbarrões: curto e raro (no máximo um a cada 0,4 s), para não se destacar
+          if (t - lastHum > 400) {
+            lastHum = t;
+            snd(rand() < 0.5 ? 'hum-1' : 'hum-2', { gain: 0.08, rate: tone(rand, 1.4, 4) });
+          }
           if (t < S.T.HIGH5 - 500) burst({ x: (ax + bx) / 2, y: (ay + by) / 2 }, 6, 1);
         }
       }
@@ -998,11 +1009,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
 
     flag(root, 'is-falling', t >= S.T.FALL_TEXT);
     if (once('s-zoom', t >= S.T.ZOOM[0])) snd('whoosh-in', { gain: 0.6 });
-    if (once('s-pop', t >= S.T.POPUP)) snd('click', { gain: 0.45, rate: 0.9 });
+    if (once('s-pop', t >= S.T.POPUP)) snd('pop', { gain: 0.3, rate: 0.75 });
     if (once('s-loaded', t >= S.T.LOADED)) snd('click', { gain: 0.35, rate: 1.25 });
     if (once('s-back', t >= S.T.CAM_BACK[0])) snd('whoosh-out', { gain: 0.42 });
     if (once('s-enter', t >= S.T.A_ENTER[0])) snd('whoosh-in', { gain: 0.3, rate: 1.15, dur: 2.4, offset: 0.6 });
-    if (once('s-high5', t >= S.T.HIGH5)) snd('hum-1', { gain: 0.24, rate: 1.3 });
+    if (once('s-high5', t >= S.T.HIGH5)) snd('hum-1', { gain: 0.1, rate: 1.5 });
     if (once('s-end', t >= S.T.END)) snd('whoosh-out', { gain: 0.24, rate: 1.2, dur: 2.6 });
     // o 404 em 3D assume cedo (assim que o three.js chegou) para a sombra ter tempo de entrar em fade
     if (!measuredGlyphs && (t >= S.T.NOT_FOUND - 1000 || (glMod && t >= S.T.NOT_FOUND - 2700))) {
@@ -1048,7 +1059,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         p.vx = 0;
         p.vy = 0;
         if (once(`snap-${iv[0]}`, u >= S.SPLIT_SNAP)) {
-          snd('thud-2', { gain: 0.2, rate: 1.55 });
+          snd('thud-2', { gain: 0.18, rate: tone(rand, 1.5, 2) });
           p.vjig -= 5;
           p0.vjig += 3;
         }
@@ -1521,8 +1532,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     };
   }
   return () => {
-    window.clearTimeout(muteCheck);
-    soundBtn?.removeEventListener('click', onSound);
+    window.removeEventListener('pointerdown', onGesture, true);
+    window.removeEventListener('keydown', onGesture, true);
     wood.stop();
     sfx.close();
     gl?.dispose();

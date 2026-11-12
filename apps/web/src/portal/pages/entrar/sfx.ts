@@ -3,8 +3,38 @@
 // carregado uma vez (fetch + decodeAudioData) e tocado com ganho e velocidade próprios; os contínuos
 // (a madeira arrastando) são laços que sobem e descem de volume com o movimento.
 
-export type SfxName = 'whoosh-in' | 'whoosh-out' | 'thud-1' | 'thud-2' | 'thud-big' | 'click' | 'hum-1' | 'hum-2' | 'wood-drag' | 'key';
-const NAMES: readonly SfxName[] = ['whoosh-in', 'whoosh-out', 'thud-1', 'thud-2', 'thud-big', 'click', 'hum-1', 'hum-2', 'wood-drag', 'key'];
+/** as batidas de balão (variações de verdade; o tom também varia a cada uma) */
+export const THUDS = ['thud-1', 'thud-2', 'thud-3', 'thud-4', 'thud-5', 'thud-6', 'thud-7'] as const;
+export type SfxName =
+  | 'whoosh-in'
+  | 'whoosh-out'
+  | (typeof THUDS)[number]
+  | 'thud-big'
+  | 'click'
+  | 'hum-1'
+  | 'hum-2'
+  | 'wood-drag'
+  | 'key'
+  | 'blink'
+  | 'pop';
+const NAMES: readonly SfxName[] = ['whoosh-in', 'whoosh-out', ...THUDS, 'thud-big', 'click', 'hum-1', 'hum-2', 'wood-drag', 'key', 'blink', 'pop'];
+
+/** Os passos da escala pentatônica (em semitons): variando só o tom, o som continua o mesmo e
+ * nunca desafina com o anterior. */
+const PENTA = [0, 2, 4, 7, 9, 12] as const;
+
+/** A velocidade de tocar (que muda o tom) para `base` subida de um passo aleatório da escala. */
+export function tone(rand: () => number, base = 1, steps = 4): number {
+  const i = Math.min(steps, PENTA.length - 1);
+  const st = PENTA[Math.floor(rand() * (i + 1))]!;
+  return base * 2 ** (st / 12);
+}
+
+/** O passo `n` da escala (para sons que sobem em sequência, como os bots sendo criados). */
+export function step(n: number, base = 1): number {
+  const oct = Math.floor(n / 5);
+  return base * 2 ** ((PENTA[n % 5]! + 12 * oct) / 12);
+}
 
 /** O volume de tudo: baixo de propósito (os sons só complementam). */
 export const MASTER = 0.32;

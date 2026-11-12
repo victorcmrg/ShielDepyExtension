@@ -403,6 +403,18 @@ describe('física das peças', () => {
     expect(b.asleep).toBe(true);
   });
 
+  it('cada toque no chão fica registrado (o som de cada quique), cada vez mais fraco', () => {
+    const b = makeBody(0, -400, 40, 50, { start: 0, rest: 0.35, kick: 0, tipTarget: 80, yawTarget: 0, vspin: 0 });
+    const hits: number[] = [];
+    for (let t = 0; t < 3000; t += 10) {
+      stepBody(b, 0.01, t, floor, -500, 500);
+      if (b.hit > 0) hits.push(b.hit);
+      b.hit = 0;
+    }
+    expect(hits.length).toBeGreaterThanOrEqual(3);
+    expect(hits[1]!).toBeLessThan(hits[0]!);
+  });
+
   it('não atravessa as paredes', () => {
     const b = makeBody(450, 0, 40, 50, { start: 0, rest: 0.3, kick: 4000, tipTarget: -70, yawTarget: 0, vspin: 0 });
     run(b, 3000);

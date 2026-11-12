@@ -32,6 +32,9 @@ export interface Body {
   landed: boolean;
   tipped: boolean;
   asleep: boolean;
+  /** a força do toque no chão mais forte desde a última leitura (px/s): quiques e o tombo ao deitar.
+   * Quem lê (o som) zera. */
+  hit: number;
 }
 
 export function makeBody(
@@ -62,6 +65,7 @@ export function makeBody(
     landed: false,
     tipped: false,
     asleep: false,
+    hit: 0,
   };
 }
 
@@ -98,6 +102,7 @@ export function stepBody(b: Body, dt: number, now: number, floor: number, wallL:
     b.y = floor;
     const speed = b.vy;
     if (speed > 140) {
+      b.hit = Math.max(b.hit, speed);
       b.vy = -speed * b.rest;
       if (!b.landed) {
         b.landed = true;
@@ -129,6 +134,8 @@ export function stepBody(b: Body, dt: number, now: number, floor: number, wallL:
     b.tip += b.vtip * dt;
     if ((dir > 0 && b.tip >= b.tipTarget) || (dir < 0 && b.tip <= b.tipTarget)) {
       b.tip = b.tipTarget;
+      // a ponta de cima bate no chão com a velocidade do giro vezes a altura
+      b.hit = Math.max(b.hit, ((Math.abs(b.vtip) * Math.PI) / 180) * b.h * 0.6);
       b.vtip = -b.vtip * 0.28;
       if (Math.abs(b.vtip) < 25) b.vtip = 0;
     }
