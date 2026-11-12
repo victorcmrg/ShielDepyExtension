@@ -81,7 +81,7 @@ function Cursor({ id }: { id: string }) {
   return (
     <>
       <div className="ent-w ent-cur-sh" data-id={id} aria-hidden="true" />
-      <div className="ent-w ent-cur" data-id={id} aria-hidden="true">
+      <div className="ent-w ent-cur" data-id={id} data-chaos={id === 'x' || id === 'y' ? '' : undefined} aria-hidden="true">
         <svg viewBox="0 0 100 100" className="ent-cur-svg">
           {/* a ponta (o "bico" do cursor) atrás do corpo redondo, separada por uma linha branca */}
           <path className="ent-cur-tip" d="M4 4 L66 17 A41 41 0 1 1 17 66 Z" />
@@ -187,12 +187,60 @@ function Scene() {
           <span key={k} className="ent-w ent-psh" data-for={k} aria-hidden="true" />
         ))}
         {/* o "+" que o primeiro cursor abre para criar os outros */}
-        <span className="ent-w ent-spawner" aria-hidden="true">
+        <span className="ent-w ent-spawner normal" aria-hidden="true">
           <span className="sp-ico" />
           <span className="sp-label">cursores</span>
           <b className="sp-n">01</b>
           <span className="sp-plus" />
         </span>
+        <span className="ent-w ent-spawner chaos" aria-hidden="true">
+          <span className="sp-ico" />
+          <span className="sp-label">agentes do caos</span>
+          <b className="sp-n">00</b>
+          <span className="sp-plus" />
+        </span>
+        {/* o mapa das ligações que o agente X analisa */}
+        <div className="ent-w ent-graph" aria-hidden="true">
+          <span className="g-title">grafo · rotas</span>
+          <svg>
+            <line className="ge" />
+            <line className="ge is-broken" />
+            <line className="ge" />
+            <line className="ge" />
+          </svg>
+          {['/', '/entrar', '<Login/>', '/login', '/api/auth'].map((label) => (
+            <span key={label} className="gn">
+              {label}
+            </span>
+          ))}
+          <span className="g-pin">achado #1 · /entrar → ∅</span>
+        </div>
+        {/* o DevTools que o agente Y puxa da borda (recriado, genérico) */}
+        <div className="ent-w ent-dev" aria-hidden="true">
+          <div className="dv-head">
+            <span className="dv-tab">Elementos</span>
+            <span className="dv-tab dv-console">Console</span>
+            <span className="dv-tab">Fontes</span>
+            <span className="dv-tab">Rede</span>
+            <span className="dv-tab">Desempenho</span>
+            <span className="dv-count" />
+          </div>
+          <div className="dv-bar">
+            <span>top ▾</span>
+            <span className="dv-filter">Filtrar</span>
+          </div>
+          <div className="dv-lines">
+            <div className="dl err">
+              GET http://localhost/entrar <b>404 (Not Found)</b>
+            </div>
+            <div className="dl err">Failed to load resource: the server responded with a status of 404</div>
+            <div className="dl warn">[router] nenhuma rota casa com /entrar</div>
+            <div className="dl err">Uncaught Error: &lt;Login/&gt; não foi montado</div>
+            <div className="dl ok">✓ /entrar → &lt;Login/&gt; · 200</div>
+            <div className="dl ok">✓ 0 erros · tela de login montada</div>
+          </div>
+          <span className="dv-pin">achado #2 · 404</span>
+        </div>
         <svg className="ent-w ent-tether" width="1" height="1" aria-hidden="true">
           <line />
         </svg>
@@ -280,7 +328,7 @@ function Scene() {
           <span className="sw" />
         </div>
 
-        {['a', 'b', 'c', 'd'].map((id) => (
+        {['a', 'b', 'c', 'd', 'x', 'y'].map((id) => (
           <Cursor key={id} id={id} />
         ))}
         {[0, 1, 2, 3].map((i) => (
@@ -293,9 +341,6 @@ function Scene() {
 
       <div className="ent-prog" aria-hidden="true">
         reconstruindo a tela · <span className="ent-prog-n">0</span>%
-      </div>
-      <div className="ent-hint" aria-hidden="true">
-        clique ou aperte uma tecla para pular
       </div>
       <p className="ent-sr" role="status">
         Página não encontrada. O ShielDepy está reconstruindo a tela de login; clique ou aperte uma tecla para pular.

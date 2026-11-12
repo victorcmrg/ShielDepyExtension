@@ -27,6 +27,10 @@ import {
   orbit,
   typingTaps,
   BUMP_WINDOWS,
+  CHAOS,
+  spawner2,
+  graphPanel,
+  devtools,
   type Layout,
   type Rect,
 } from '../src/portal/pages/entrar/script';
@@ -120,12 +124,13 @@ describe('roteiro do Entrar', () => {
       // A está clicando no "+" quando cada um nasce
       expect(tracks.a.press.some((iv) => within(iv, tr.born))).toBe(true);
     });
-    for (const tr of Object.values(tracks)) {
+    for (const [id, tr] of Object.entries(tracks)) {
       for (let t = tr.born; t < tr.gone; t += 40) {
         const p = sample(tr.keys, t);
         expect(Math.abs(p.x)).toBeLessThan(L.vw / 2 + 60);
       }
-      expect(tr.gone).toBeGreaterThan(T.HIGH5);
+      // os agentes do caos saem depois de conferir; os outros ficam para o encontro do fim
+      if (!CHAOS.includes(id as 'x')) expect(tr.gone).toBeGreaterThan(T.HIGH5);
       expect(tr.gone).toBeLessThanOrEqual(T.END);
     }
   });
@@ -233,7 +238,7 @@ describe('roteiro do Entrar', () => {
     const d = sample(tracks.d.keys, T.BUMP);
     expect(a).toMatchObject({ x: m.bump.x, y: m.bump.y });
     expect(d).toMatchObject({ x: m.bump.x, y: m.bump.y });
-    for (const tr of Object.values(tracks)) {
+    for (const tr of [tracks.a, tracks.b, tracks.c, tracks.d]) {
       const p = sample(tr.keys, T.HIGH5);
       expect(Math.hypot(p.x - m.high5.x, p.y - m.high5.y)).toBeLessThan(40);
     }
@@ -280,6 +285,47 @@ describe('roteiro do Entrar', () => {
       const px = depthPx(z);
       expect(1100 / (1100 - px)).toBeCloseTo(depthScale(z), 6);
     }
+  });
+
+  it('A põe o segundo botão embaixo e cria os dois agentes do caos', () => {
+    const tracks = cursorTracks(L);
+    const sp2 = spawner2(L);
+    expect(T.SPAWNER2[0]).toBeGreaterThan(T.SPAWN_D);
+    for (const [tr, at] of [
+      [tracks.x, T.SPAWN_X],
+      [tracks.y, T.SPAWN_Y],
+    ] as const) {
+      expect(tr.born).toBe(at);
+      expect(sample(tr.keys, at)).toMatchObject(sp2.plus);
+      expect(tracks.a.press.some((iv) => within(iv, at))).toBe(true);
+    }
+    expect(T.SPAWN_Y - T.SPAWN_X).toBeGreaterThanOrEqual(400);
+    expect(T.SPAWNER2[1]).toBeLessThan(T.BOX[0]);
+  });
+
+  it('X percorre o grafo e para na ligação quebrada /entrar → <Login/>', () => {
+    const { x } = cursorTracks(L);
+    const g = graphPanel(L);
+    const broken = g.edges.find((e) => e.broken)!;
+    expect(g.nodes[broken.from]!.label).toBe('/entrar');
+    expect(g.nodes[broken.to]!.label).toBe('<Login/>');
+    const mid = { x: (g.nodes[1]!.x + g.nodes[2]!.x) / 2, y: (g.nodes[1]!.y + g.nodes[2]!.y) / 2 };
+    const p = sample(x.keys, T.GRAPH_FOUND + 300);
+    expect(Math.hypot(p.x - mid.x, p.y - mid.y)).toBeLessThan(2);
+    expect(x.think.some((iv) => within(iv, T.GRAPH_FOUND - 100))).toBe(true);
+    expect(T.GRAPH_FIXED).toBeGreaterThan(T.TYPE2[1]); // fica verde depois da correção
+  });
+
+  it('Y puxa o DevTools da borda, vai à aba Console, marca o 404 e confere o 200 no fim', () => {
+    const { y } = cursorTracks(L);
+    const dv = devtools(L);
+    expect(sample(y.keys, T.DEV_PULL[0]).x).toBeCloseTo(dv.closed - 5);
+    expect(sample(y.keys, T.DEV_PULL[1]).x).toBeCloseTo(dv.open + 5);
+    expect(y.press.some((iv) => within(iv, (T.DEV_PULL[0] + T.DEV_PULL[1]) / 2))).toBe(true);
+    expect(sample(y.keys, T.DEV_TAB)).toMatchObject({ x: dv.open + dv.tab.dx, y: dv.tab.y });
+    expect(sample(y.keys, T.DEV_FOUND).y).toBeCloseTo(dv.line(0));
+    expect(sample(y.keys, T.DEV_OK).y).toBeCloseTo(dv.line(4));
+    expect(T.DEV_FINAL[0]).toBeGreaterThan(T.GRAPH_FIXED);
   });
 
   it('o progresso vai de 0 a 100 sem voltar', () => {

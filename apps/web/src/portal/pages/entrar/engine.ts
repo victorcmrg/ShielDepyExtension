@@ -277,7 +277,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   let tracks: Record<S.CursorId, S.Track> | null = null;
   let pal: ReturnType<typeof S.palette> | null = null;
   let meet: ReturnType<typeof S.meetingPoints> | null = null;
-  const cursors: Cursor[] = (['a', 'b', 'c', 'd'] as const).map((id, i) => ({
+  const cursors: Cursor[] = (['a', 'b', 'c', 'd', 'x', 'y'] as const).map((id, i) => ({
     id,
     el: $(`.ent-cur[data-id="${id}"]`),
     sh: $(`.ent-cur-sh[data-id="${id}"]`),
@@ -302,7 +302,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     thinking: false,
     tapping: false,
   }));
-  const [A, B, C, D] = cursors as [Cursor, Cursor, Cursor, Cursor];
+  const [A, B, C, D, X, Y] = cursors as [Cursor, Cursor, Cursor, Cursor, Cursor, Cursor];
   const lastBonk = new Map<string, number>();
 
   const ripples = $$('.ent-rip');
@@ -343,9 +343,22 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
 
   const box = $('.ent-box');
   let logoScale = 1;
-  const spawnEl = $('.ent-spawner');
-  const spawnN = $('.ent-spawner .sp-n');
-  const spawnPlus = $('.ent-spawner .sp-plus');
+  const spawnEl = $('.ent-spawner.normal');
+  const spawnN = $('.ent-spawner.normal .sp-n');
+  const spawnPlus = $('.ent-spawner.normal .sp-plus');
+  const spawn2El = $('.ent-spawner.chaos');
+  const spawn2N = $('.ent-spawner.chaos .sp-n');
+  const spawn2Plus = $('.ent-spawner.chaos .sp-plus');
+  let plus2Pt: Pt = { x: 0, y: 0 };
+  // o mapa das ligações (X) e o DevTools (Y)
+  const graphEl = $('.ent-graph');
+  const graphNodes = $$('.ent-graph .gn');
+  const graphBroken = $('.ent-graph .ge.is-broken');
+  const devEl = $('.ent-dev');
+  const devLines = $$('.ent-dev .dl');
+  const devCount = $('.ent-dev .dv-count');
+  let gp: ReturnType<typeof S.graphPanel> | null = null;
+  let dv: ReturnType<typeof S.devtools> | null = null;
   const tether = root.querySelector<SVGLineElement>('.ent-tether line')!;
   const tetherSvg = root.querySelector<SVGSVGElement>('.ent-tether')!;
   let plusPt: Pt = { x: 0, y: 0 };
@@ -489,6 +502,39 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     const spw = S.spawner(lay);
     put(spawnEl, 'transform', at(spw.x - S.SPAWNER_W / 2, spw.y - 22, '', Z.palette));
     plusPt = spw.plus;
+    const sp2 = S.spawner2(lay);
+    put(spawn2El, 'transform', at(sp2.x - S.SPAWNER_W / 2, sp2.y - 22, '', Z.palette));
+    plus2Pt = sp2.plus;
+    // o mapa das ligações: a caixa e os nós no lugar que o roteiro usa (X passa por eles)
+    gp = S.graphPanel(lay);
+    graphEl.style.width = `${gp.w}px`;
+    graphEl.style.height = `${gp.h}px`;
+    put(graphEl, 'transform', at(gp.x, gp.y, '', Z.palette));
+    const svg = graphEl.querySelector('svg')!;
+    svg.setAttribute('viewBox', `0 0 ${gp.w} ${gp.h}`);
+    const lines = Array.from(graphEl.querySelectorAll<SVGLineElement>('.ge'));
+    gp.edges.forEach((e, i) => {
+      const a = gp!.nodes[e.from]!;
+      const b = gp!.nodes[e.to]!;
+      const ln = lines[i]!;
+      ln.setAttribute('x1', (a.x - gp!.x).toFixed(1));
+      ln.setAttribute('y1', (a.y - gp!.y).toFixed(1));
+      ln.setAttribute('x2', (b.x - gp!.x).toFixed(1));
+      ln.setAttribute('y2', (b.y - gp!.y).toFixed(1));
+    });
+    gp.nodes.forEach((nd, i) => {
+      const el = graphNodes[i]!;
+      el.style.left = `${(nd.x - gp!.x).toFixed(1)}px`;
+      el.style.top = `${(nd.y - gp!.y).toFixed(1)}px`;
+    });
+    const brokenEdge = gp.edges.find((e) => e.broken)!;
+    const pin = graphEl.querySelector<HTMLElement>('.g-pin')!;
+    pin.style.left = `${((gp.nodes[brokenEdge.from]!.x + gp.nodes[brokenEdge.to]!.x) / 2 - gp.x).toFixed(1)}px`;
+    pin.style.top = `${((gp.nodes[brokenEdge.from]!.y + gp.nodes[brokenEdge.to]!.y) / 2 - gp.y).toFixed(1)}px`;
+    // o DevTools: largura e altura da tela, escondido além da borda direita
+    dv = S.devtools(lay);
+    devEl.style.width = `${dv.w}px`;
+    devEl.style.height = `${dv.h}px`;
     // o caminho que cada peça carregada vai fazer (pontilhado, com os nós), como num programa de animação
     const curve = (a: Pt, b: Pt, bend: number) => {
       const mx = (a.x + b.x) / 2 + bend;
@@ -716,7 +762,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       // fora do plano de verdade: a perspectiva da cena aumenta (perto) ou diminui (fundo) o cursor.
       // O desenho tem 5x o tamanho e entra reduzido (0,2), para continuar nítido quando chega perto.
       const z = cur.z;
-      const zPx = S.depthPx(z) + (cur.pressed ? 0 : 6);
+      // sempre um pouco acima dos painéis (paleta, DevTools, grafo), que ficam a poucos px do plano
+      const zPx = S.depthPx(z) + (cur.pressed ? 9 : 14);
       const w3 = lifted(x, y, zPx);
       put(cur.el, 'transform', at(w3.x, w3.y, `${lensOf(x, y, zPx)} rotate(${cur.tilt.toFixed(2)}deg)${stretch(cur.v.x, cur.v.y, 0.12)} scale(0.2)`, zPx));
       put(cur.el, 'opacity', Math.max(0.5, z < 0 ? 1 + z * 0.3 : 1).toFixed(3));
@@ -857,12 +904,66 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         spawnEl.animate([{ scale: '1' }, { scale: '1.04 0.94', offset: 0.35 }, { scale: '1' }], { duration: 300, easing: 'ease-out' });
       }
     }
+    // o segundo botão, embaixo: "agentes do caos 00 +" (eles acham os problemas; os outros consertam)
+    flag(spawn2El, 'is-on', S.within(S.T.SPAWNER2, t));
+    const chaosSpawns = [S.T.SPAWN_X, S.T.SPAWN_Y];
+    const count2 = `0${chaosSpawns.filter((st) => t >= st).length}`;
+    if (spawn2N.textContent !== count2) {
+      spawn2N.textContent = count2;
+      spawn2N.animate([{ translate: '0 8px', opacity: 0 }, { translate: '0 0', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.2,.9,.2,1.3)' });
+    }
+    for (const st of chaosSpawns) {
+      if (once(`spawn2-${st}`, t >= st)) {
+        spawn2Plus.animate([{ scale: '1' }, { scale: '0.72', offset: 0.3 }, { scale: '1.18', offset: 0.7 }, { scale: '1' }], { duration: 340, easing: 'ease-out' });
+        spawn2El.animate([{ scale: '1' }, { scale: '1.04 0.94', offset: 0.35 }, { scale: '1' }], { duration: 300, easing: 'ease-out' });
+      }
+    }
+
+    // X: o mapa das ligações; os nós acendem quando ele passa; a ligação quebrada vira achado e depois fica verde
+    if (gp) {
+      flag(graphEl, 'is-on', t >= S.T.GRAPH_OPEN && t < S.T.GRAPH_CLOSE + 250);
+      gp.nodes.forEach((nd, i) => {
+        const el = graphNodes[i]!;
+        if (!el.classList.contains('is-seen') && t >= S.T.GRAPH_TRACE[0] - 50 && Math.hypot(X.tip.x - nd.x, X.tip.y - nd.y) < 20) el.classList.add('is-seen');
+      });
+      flag(graphBroken, 'is-found', t >= S.T.GRAPH_FOUND);
+      flag(graphEl, 'is-found', t >= S.T.GRAPH_FOUND && t < S.T.GRAPH_FIXED);
+      flag(graphEl, 'is-fixed', t >= S.T.GRAPH_FIXED);
+    }
+
+    // Y: o DevTools sai da borda direita na mão dele (a borda acompanha o cursor), na aba Console
+    if (dv) {
+      const follow = () => Math.max(0, Math.min(1, (dv!.closed - Y.tip.x) / dv!.w));
+      let o = 0;
+      const F = S.T.DEV_FINAL;
+      if (S.within(S.T.DEV_PULL, t) || S.within(S.T.DEV_CLOSE, t)) o = follow();
+      else if (t >= S.T.DEV_PULL[1] && t < S.T.DEV_CLOSE[0]) o = 1;
+      else if (t >= F[0] && t < F[0] + 400) o = follow();
+      else if (t >= F[0] + 400 && t < F[1] - 400) o = 1;
+      else if (t >= F[1] - 400 && t < F[1]) o = follow();
+      flag(devEl, 'is-on', t >= S.T.SPAWN_Y && t < F[1] + 300);
+      put(devEl, 'transform', at(dv.closed - 7 - dv.w * o, dv.top, '', Z.palette + 1));
+      flag(devEl, 'is-console', t >= S.T.DEV_TAB);
+      devLines.forEach((el, i) => {
+        const ok = el.classList.contains('ok');
+        flag(el, 'is-on', ok ? t >= S.T.DEV_OK + (i - 4) * 120 : t >= S.T.DEV_TAB + 120 + i * 140);
+      });
+      flag(devLines[0]!, 'is-found', t >= S.T.DEV_FOUND && t < S.T.DEV_OK);
+      flag(devEl, 'is-ok', t >= S.T.DEV_OK);
+      const errs = t >= S.T.DEV_OK ? '0' : t >= S.T.DEV_TAB ? '3' : '';
+      if (devCount.textContent !== errs) devCount.textContent = errs;
+    }
+
     // o fio pontilhado do "+" até o cursor que acabou de nascer (até ele chegar ao seu lugar no leque)
-    const newborn = ([B, C, D] as const).find((c, i) => t >= spawns[i]! && t < spawns[i]! + 520);
+    const births = [...spawns, ...chaosSpawns];
+    const bi = ([B, C, D, X, Y] as const).findIndex((_, i) => t >= births[i]! && t < births[i]! + 520);
+    const newborn = bi >= 0 ? [B, C, D, X, Y][bi] : undefined;
     flag(tetherSvg, 'is-on', !!newborn);
+    flag(tetherSvg, 'is-chaos', bi >= 3);
     if (newborn) {
-      tether.setAttribute('x1', plusPt.x.toFixed(1));
-      tether.setAttribute('y1', plusPt.y.toFixed(1));
+      const from = bi >= 3 ? plus2Pt : plusPt;
+      tether.setAttribute('x1', from.x.toFixed(1));
+      tether.setAttribute('y1', from.y.toFixed(1));
       tether.setAttribute('x2', (newborn.tip.x + 14).toFixed(1));
       tether.setAttribute('y2', (newborn.tip.y + 14).toFixed(1));
     }

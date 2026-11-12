@@ -29,42 +29,58 @@ export const T = {
   SPAWN_C: 14000,
   SPAWN_D: 14450,
   CURSORS_IN: [12900, 14450] as const,
-  ANCHOR: [14850, 16250] as const, // C segura o canto enquanto A puxa
-  BOX: [15000, 16200] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
-  SLOTS: [16100, 16700] as const, // as partes pontilhadas: onde cada peça vai ficar
-  GRAB_P1: [16100, 16500] as const, // B puxa os balões para fora
-  LOGO: [16300, 17300] as const, // D cria o logo grande e o encolhe puxando a alça do canto
-  PALETTE_OPEN: 16600, // C abre a paleta e pensa bastante antes de escolher
-  GRAB_P2: [16750, 17150] as const,
-  ORBIT_B: [17200, 18600] as const, // B dá a volta e passa gigante na frente da câmera
-  THINK_C1: [17550, 18200] as const,
-  BUMP: 17600, // A e D se esbarram no meio do caminho
-  SUB: [17750, 18400] as const, // A leva o subtítulo torto para o lugar
-  PALETTE_CLICK: 18400,
-  THINK_A: [18500, 19150] as const, // A olha o título errado antes de apagar
-  EMAIL: [18600, 19200] as const, // D e C desenham os campos ao mesmo tempo
-  PALETTE_CLOSE: 18750,
-  PASS: [18900, 19500] as const,
-  ERASE: [19200, 20100] as const, // A apaga o título errado...
-  TYPE1: [19400, 20500] as const, // ...e B digita logo atrás, com um erro no fim
-  CPF: [19700, 20150] as const, // C joga fora o campo que não devia estar ali
-  BUTTON: [19900, 20500] as const, // D desenha o botão
-  THINK_B: [20550, 21100] as const, // B percebe o erro
-  THINK_C2: [20600, 21200] as const, // C pensa na cor do botão
-  BACK: [20700, 21600] as const, // D traz o link de volta lá de cima
-  BACKSPACE: [21100, 21400] as const,
-  PAINT: 21300,
-  TYPE2: [21450, 21800] as const,
-  FOCUS_EMAIL: 21600, // C confere o foco de cada campo
-  FOCUS_PASS: 21850,
-  FONT_OPEN: 21900, // A abre as fontes, pensa e escolhe a do título
-  ORBIT_D: [21900, 23300] as const, // D dá a volta gigante
-  THINK_A2: [21950, 22600] as const,
-  FONT_PICK: 22700,
-  FONT_CLOSE: 22950,
-  HIGH5: 23900, // os quatro se encontram em cima do cartão
-  EXIT: [24100, 24800] as const,
-  END: 25000,
+  SPAWNER2: [14750, 16000] as const, // A põe um segundo botão embaixo: "agentes do caos 00 +"
+  SPAWN_X: 15100, // X analisa as ligações do grafo
+  SPAWN_Y: 15550, // Y abre o DevTools e examina o 404 no console
+  DEV_PULL: [16200, 17000] as const, // Y puxa o DevTools pela borda direita
+  DEV_TAB: 17300, // clica em "Console"
+  DEV_INSPECT: [17500, 18400] as const, // examina os erros, pensando
+  DEV_FOUND: 18000, // marca o 404 como achado
+  DEV_CLOSE: [18500, 19000] as const, // empurra o DevTools de volta
+  GRAPH_OPEN: 16350, // X abre o mapa das ligações
+  GRAPH_TRACE: [16600, 18700] as const, // percorre nó por nó
+  GRAPH_FOUND: 18100, // a ligação /entrar → ∅ quebrada
+
+  ANCHOR: [16050, 17450] as const, // C segura o canto enquanto A puxa
+  BOX: [16200, 17400] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
+  SLOTS: [17300, 17900] as const, // as partes pontilhadas: onde cada peça vai ficar
+  GRAB_P1: [17300, 17700] as const, // B puxa os balões para fora
+  LOGO: [17500, 18500] as const, // D cria o logo grande e o encolhe puxando a alça do canto
+  PALETTE_OPEN: 17800, // C abre a paleta e pensa bastante antes de escolher
+  GRAB_P2: [17950, 18350] as const,
+  ORBIT_B: [18400, 19800] as const, // B dá a volta e passa gigante na frente da câmera
+  THINK_C1: [18750, 19400] as const,
+  BUMP: 18800, // A e D se esbarram no meio do caminho
+  SUB: [18950, 19600] as const, // A leva o subtítulo torto para o lugar
+  PALETTE_CLICK: 19600,
+  THINK_A: [19700, 20350] as const, // A olha o título errado antes de apagar
+  EMAIL: [19800, 20400] as const, // D e C desenham os campos ao mesmo tempo
+  PALETTE_CLOSE: 19950,
+  PASS: [20100, 20700] as const,
+  ERASE: [20400, 21300] as const, // A apaga o título errado...
+  TYPE1: [20600, 21700] as const, // ...e B digita logo atrás, com um erro no fim
+  CPF: [20900, 21350] as const, // C joga fora o campo que não devia estar ali
+  BUTTON: [21100, 21700] as const, // D desenha o botão
+  THINK_B: [21750, 22300] as const, // B percebe o erro
+  THINK_C2: [21800, 22400] as const, // C pensa na cor do botão
+  BACK: [21900, 22800] as const, // D traz o link de volta lá de cima
+  BACKSPACE: [22300, 22600] as const,
+  PAINT: 22500,
+  TYPE2: [22650, 23000] as const,
+  FOCUS_EMAIL: 22800, // C confere o foco de cada campo
+  FOCUS_PASS: 23050,
+  FONT_OPEN: 23100, // A abre as fontes, pensa e escolhe a do título
+  ORBIT_D: [23100, 24500] as const, // D dá a volta gigante
+  THINK_A2: [23150, 23800] as const,
+  FONT_PICK: 23900,
+  FONT_CLOSE: 24150,
+  GRAPH_FIXED: 23100, // depois da correção, a ligação fica verde
+  DEV_FINAL: [23300, 24400] as const, // Y reabre o DevTools: agora 200 e 0 erros
+  DEV_OK: 23750,
+  GRAPH_CLOSE: 24300,
+  HIGH5: 25100, // os quatro se encontram em cima do cartão
+  EXIT: [25300, 26000] as const,
+  END: 26200,
   REVEAL: 400, // a tela de verdade entra por cima
 } as const;
 
@@ -319,7 +335,57 @@ export function lens(sx: number, sy: number, vw: number, vh: number): { dx: numb
   return { dx: (nx / r) * f2 * 34, dy: (ny / r) * f2 * 34, k: 1 + f2 * 0.28 };
 }
 
-export type CursorId = 'a' | 'b' | 'c' | 'd';
+export type CursorId = 'a' | 'b' | 'c' | 'd' | 'x' | 'y';
+/** Os agentes do caos (vermelhos): acham os problemas; os outros consertam. */
+export const CHAOS: readonly CursorId[] = ['x', 'y'];
+
+/** O segundo contador, logo abaixo do primeiro: "agentes do caos 00 +". */
+export function spawner2(L: Layout) {
+  const sp = spawner(L);
+  return { x: sp.x, y: sp.y + 52, plus: { x: sp.plus.x, y: sp.y + 52 } };
+}
+
+/** O mapa das ligações que X abre: as rotas e o componente, com a ligação quebrada /entrar → <Login/>. */
+export function graphPanel(L: Layout) {
+  const w = Math.min(280, L.vw * 0.62);
+  const h = 168;
+  const x = -L.vw / 2 + 18;
+  const y = -L.vh / 2 + 70;
+  const at = (fx: number, fy: number) => ({ x: x + w * fx, y: y + h * fy });
+  const nodes = [
+    { id: 'root', label: '/', ...at(0.15, 0.36) },
+    { id: 'entrar', label: '/entrar', ...at(0.5, 0.36) },
+    { id: 'login-c', label: '<Login/>', ...at(0.85, 0.36) },
+    { id: 'login', label: '/login', ...at(0.5, 0.78) },
+    { id: 'auth', label: '/api/auth', ...at(0.85, 0.78) },
+  ];
+  const edges = [
+    { from: 0, to: 1, broken: false },
+    { from: 1, to: 2, broken: true },
+    { from: 3, to: 2, broken: false },
+    { from: 2, to: 4, broken: false },
+  ];
+  return { x, y, w, h, nodes, edges };
+}
+
+/** O DevTools que Y puxa da borda direita: largura, onde fica fechado e aberto, a aba Console e as linhas. */
+export const DEV_LINE_H = 24;
+export function devtools(L: Layout) {
+  const w = Math.min(340, L.vw * 0.36);
+  const closed = L.vw / 2;
+  const top = -L.vh / 2;
+  const open = closed - w;
+  return {
+    w,
+    closed,
+    open,
+    top,
+    h: L.vh,
+    handleY: -L.vh * 0.08,
+    tab: { dx: 104, y: top + 17 },
+    line: (i: number) => top + 70 + i * DEV_LINE_H + DEV_LINE_H / 2,
+  };
+}
 export interface Track {
   keys: Key[];
   /** intervalos com o botão apertado (arrastando ou segurando) */
@@ -432,13 +498,18 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   }
   const f = fonts.opts;
   const spawnTaps = [T.SPAWN_B, T.SPAWN_C, T.SPAWN_D];
+  const sp2 = spawner2(L);
+  const chaosTaps = [T.SPAWN_X, T.SPAWN_Y];
   const a: Track = {
     keys: [
       k(T.A_POP, card.r, card.t, 0, true),
       k(T.A_POP + 250, card.r + 10, card.t + 10, 0.05, true),
       k(T.SPAWNER[0], sp.x - 20, sp.y + 24, 0.05, true),
       ...spawnTaps.flatMap((st) => [k(st - 160, sp.plus.x + 2, sp.plus.y + 2, 0, true), k(st + 160, sp.plus.x + 8, sp.plus.y + 14, 0.02, true)]),
-      k(T.SPAWNER[1], sp.x - 40, sp.y + 30, 0),
+      k(T.SPAWNER2[0] - 120, sp.x - 30, sp2.y + 10, 0.05),
+      k(T.SPAWNER2[0], sp.x - 20, sp2.y + 6, 0, true),
+      ...chaosTaps.flatMap((st) => [k(st - 160, sp2.plus.x + 2, sp2.plus.y + 2, 0, true), k(st + 160, sp2.plus.x + 8, sp2.plus.y + 14, 0.02, true)]),
+      k(T.SPAWNER2[1], sp.x - 40, sp2.y + 40, 0),
       k(T.BOX[0] - 150, card.r + 30, card.t + 40, -0.1),
       k(T.BOX[0], card.r, card.t, 0, true),
       k(lerp(T.BOX[0], T.BOX[1], 0.55), lerp(card.r, card.l, 0.62), lerp(card.t, card.b, 0.5), 0.15),
@@ -465,8 +536,8 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.HIGH5, meet.high5.x - 16, meet.high5.y + 4, 0.1),
       k(goneAt(3), meet.high5.x - 34, meet.high5.y - 6, 0.15, true),
     ],
-    press: [T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90], ...spawnTaps.map((st): Interval => [st - 40, st + 70]), [T.SPAWNER[0] - 90, T.SPAWNER[0] + 10]],
-    clicks: [T.FONT_OPEN, T.FONT_PICK, ...spawnTaps, T.SPAWNER[0] - 60],
+    press: [T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90], ...[...spawnTaps, ...chaosTaps].map((st): Interval => [st - 40, st + 70]), [T.SPAWNER[0] - 90, T.SPAWNER[0] + 10], [T.SPAWNER2[0] - 90, T.SPAWNER2[0] + 10]],
+    clicks: [T.FONT_OPEN, T.FONT_PICK, ...spawnTaps, ...chaosTaps, T.SPAWNER[0] - 60, T.SPAWNER2[0] - 60],
     think: [T.THINK_A, T.THINK_A2],
     born: T.A_POP,
     gone: goneAt(3),
@@ -587,7 +658,68 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
     taps: [],
   };
 
-  return { a, b, c, d };
+  // X: abre o mapa das ligações, percorre os nós, para na ligação quebrada, depois confere a correção
+  const g = graphPanel(L);
+  const n = g.nodes;
+  const mid = { x: (n[1]!.x + n[2]!.x) / 2, y: (n[1]!.y + n[2]!.y) / 2 };
+  const x: Track = {
+    keys: [
+      k(T.SPAWN_X, sp2.plus.x, sp2.plus.y, 0, true),
+      k(T.SPAWN_X + 380, sp2.x - 40, sp2.y + 70, 0.15, true),
+      k(T.GRAPH_OPEN - 300, g.x + g.w + 20, g.y + 30, 0.1),
+      k(T.GRAPH_OPEN, g.x + g.w - 16, g.y + 12, 0.05, true),
+      k(T.GRAPH_TRACE[0], n[0]!.x, n[0]!.y, 0.05, true),
+      k(lerp(T.GRAPH_TRACE[0], T.GRAPH_FOUND, 0.45), n[1]!.x, n[1]!.y, 0.05, true),
+      ...ponder(T.GRAPH_FOUND - 450, T.GRAPH_FOUND, mid.x, mid.y + 4, 0.1, 8),
+      k(T.GRAPH_FOUND + 300, mid.x, mid.y, 0.05, true),
+      k(lerp(T.GRAPH_FOUND, T.GRAPH_TRACE[1], 0.5), n[3]!.x, n[3]!.y, 0.05, true),
+      k(T.GRAPH_TRACE[1], n[4]!.x, n[4]!.y, 0.05, true),
+      ...ponder(T.GRAPH_TRACE[1] + 400, T.GRAPH_FIXED - 400, g.x + g.w * 0.3, g.y + g.h + 40, 0, 16),
+      k(T.GRAPH_FIXED, mid.x, mid.y, 0.05, true),
+      k(T.GRAPH_CLOSE, g.x + g.w - 16, g.y + 12, 0.05, true),
+      k(T.GRAPH_CLOSE + 400, g.x + g.w * 0.5, g.y + g.h * 0.5, 0.1, true),
+    ],
+    press: [[T.GRAPH_OPEN - 30, T.GRAPH_OPEN + 80], [T.GRAPH_FOUND + 270, T.GRAPH_FOUND + 380], [T.GRAPH_FIXED - 30, T.GRAPH_FIXED + 80], [T.GRAPH_CLOSE - 30, T.GRAPH_CLOSE + 80]],
+    clicks: [T.GRAPH_OPEN, T.GRAPH_FOUND + 300, T.GRAPH_FIXED, T.GRAPH_CLOSE],
+    think: [[T.GRAPH_FOUND - 450, T.GRAPH_FOUND]],
+    born: T.SPAWN_X,
+    gone: T.GRAPH_CLOSE + 650,
+    taps: [],
+  };
+
+  // Y: puxa o DevTools pela borda, clica em Console, examina os erros e marca o 404; no fim confere o 200
+  const dv = devtools(L);
+  const y: Track = {
+    keys: [
+      k(T.SPAWN_Y, sp2.plus.x, sp2.plus.y, 0, true),
+      k(T.SPAWN_Y + 380, sp2.x + 50, sp2.y + 70, 0.15, true),
+      k(T.DEV_PULL[0] - 200, dv.closed - 30, dv.handleY + 20, 0.05),
+      k(T.DEV_PULL[0], dv.closed - 5, dv.handleY, 0, true),
+      k(T.DEV_PULL[1], dv.open + 5, dv.handleY, 0, true),
+      k(T.DEV_TAB, dv.open + dv.tab.dx, dv.tab.y, 0.05, true),
+      k(T.DEV_INSPECT[0], dv.open + dv.w * 0.55, dv.line(0), 0.05, true),
+      ...ponder(T.DEV_INSPECT[0] + 50, T.DEV_FOUND - 30, dv.open + dv.w * 0.6, dv.line(1), 0.08, 8),
+      k(T.DEV_FOUND, dv.open + dv.w * 0.5, dv.line(0), 0.05, true),
+      k(T.DEV_INSPECT[1], dv.open + dv.w * 0.45, dv.line(2), 0.05, true),
+      k(T.DEV_CLOSE[0], dv.open + 5, dv.handleY, 0, true),
+      k(T.DEV_CLOSE[1], dv.closed - 5, dv.handleY, 0, true),
+      ...ponder(T.DEV_CLOSE[1] + 400, T.DEV_FINAL[0] - 300, dv.closed - 90, dv.handleY + 120, -0.2, 18),
+      k(T.DEV_FINAL[0], dv.closed - 5, dv.handleY, 0, true),
+      k(T.DEV_FINAL[0] + 400, dv.open + 5, dv.handleY, 0, true),
+      k(T.DEV_OK, dv.open + dv.w * 0.5, dv.line(4), 0.05, true),
+      k(T.DEV_FINAL[1] - 400, dv.open + 5, dv.handleY, 0, true),
+      k(T.DEV_FINAL[1], dv.closed - 5, dv.handleY, 0, true),
+      k(T.DEV_FINAL[1] + 300, dv.closed - 60, dv.handleY + 40, 0.1, true),
+    ],
+    press: [T.DEV_PULL, [T.DEV_TAB - 30, T.DEV_TAB + 80], [T.DEV_FOUND - 30, T.DEV_FOUND + 80], T.DEV_CLOSE, [T.DEV_FINAL[0], T.DEV_FINAL[0] + 400], [T.DEV_FINAL[1] - 400, T.DEV_FINAL[1]]],
+    clicks: [T.DEV_TAB, T.DEV_FOUND],
+    think: [[T.DEV_INSPECT[0] + 50, T.DEV_FOUND - 30]],
+    born: T.SPAWN_Y,
+    gone: T.DEV_FINAL[1] + 600,
+    taps: [],
+  };
+
+  return { a, b, c, d, x, y };
 }
 
 /** A câmera durante a reconstrução: abre e inclina em 3D quando há muito acontecendo, aproxima nos consertos. */
@@ -602,6 +734,7 @@ export function rebuildCamera(L: Layout): CamKey[] {
     { t: T.CAM_BACK[1], s: 1.2, fx: card.r * 0.8, fy: card.t * 0.8, rx: 0, ry: 0 },
     { t: T.SPAWNER[0], s: birth, fx: sp.x * 0.85, fy: (sp.y - 30) * 0.85, rx: -3, ry: 4 },
     { t: T.SPAWN_D + 400, s: birth, fx: sp.x * 0.85, fy: (sp.y - 40) * 0.85, rx: -3, ry: -3 },
+    { t: T.SPAWN_Y + 350, s: birth, fx: sp.x * 0.85, fy: (sp.y + 10) * 0.85, rx: 2, ry: -3 },
     { t: T.BOX[0], s: 1, fx: 0, fy: 0, hold: true },
     { t: T.BOX[1], s: 0.95, fx: 0, fy: 0, rx: 7, ry: -9 },
     { t: T.GRAB_P2[1], s: 0.9, fx: 0, fy: 0, rx: 4, ry: 11 },
