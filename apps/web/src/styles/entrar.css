@@ -596,3 +596,55 @@
 .dv-pin { position: absolute; right: 12px; top: 76px; padding: 3px 7px; border-radius: 6px; background: #e5484d; color: #fff; font: 600 9px/1.2 var(--font-mono); opacity: 0; scale: 0.6; transition: opacity 0.2s ease, scale 0.35s cubic-bezier(0.2, 0.9, 0.2, 1.4); }
 .dl.is-found ~ .dv-pin, .ent-dev:has(.dl.is-found) .dv-pin { opacity: 1; scale: 1; }
 .ent-dev.is-ok .dv-pin { opacity: 0; }
+
+/* ---------------- sétima rodada: three.js, sombra na parede, cursor nítido de perto ---------------- */
+/* o 404 em three.js: o canvas cobre a tela por baixo da câmera; quando ele assume, o HTML sai */
+.ent-gl, .ent-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.ent-gl { opacity: 0; }
+.ent.is-gl .ent-gl { opacity: 1; }
+.ent.is-gl .ent-letters { visibility: hidden; }
+.ent.letters-gone .ent-gl { opacity: 0; transition: opacity 0.4s ease; }
+.ent-fx { z-index: 75; }
+/* a sombra na parede branca atrás de cada cartão: o mesmo formato (os cantos de cada um) */
+.ent-psh { background: rgba(10, 16, 12, 0.6); filter: blur(12px); transform-origin: 50% 50%; }
+.ent-psh[data-for="p0"], .ent-psh[data-for="p1"], .ent-psh[data-for="p2"] { border-radius: 22px; }
+.ent-psh[data-for="box"] { border-radius: 24px; }
+.ent-psh[data-for="pal"], .ent-psh[data-for="graph"] { border-radius: 16px; }
+.ent-psh[data-for="spn"], .ent-psh[data-for="spc"], .ent-psh[data-for="fonts"] { border-radius: 14px; }
+.ent-psh[data-for="sub"], .ent-psh[data-for="back"] { border-radius: 8px; }
+/* o líquido sai devagar por baixo do cartão nítido (sem sumir de uma vez) */
+.ent-goo { transition: opacity 0.35s ease; }
+/* o cartão do meio: "verificando…" depois que A clica nele */
+.sub-b { display: none; }
+.ent-pop.p0.is-verifying .sub-a { display: none; }
+.ent-pop.p0.is-verifying .sub-b { display: inline; color: var(--brand-from); }
+/* o grafo: o selo verde de resolvido */
+.g-ok {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(16, 239, 124, 0.14);
+  color: var(--brand-from);
+  font: 600 9.5px/1.2 var(--font-mono);
+  opacity: 0;
+  translate: 0 6px;
+  transition: opacity 0.25s ease, translate 0.35s cubic-bezier(0.2, 0.9, 0.2, 1.3);
+}
+.ent-graph.is-fixed .g-ok { opacity: 1; translate: 0 0; }
+.ent-graph.is-fixed .g-pin { opacity: 0; }
+.ent-graph { box-shadow: 0 20px 40px -18px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+.gn { font-size: 11px; padding: 5px 9px; }
+/* o cursor: desenho com 6x o tamanho (276 px), reduzido; de perto ele cresce até o tamanho do desenho */
+.ent-cur { width: 276px; height: 276px; margin: -11px 0 0 -11px; transform-origin: 11px 11px; }
+.ent-cur-svg { transform-origin: 11px 11px; }
+.ent-think { left: 210px; top: -84px; gap: 17px; padding: 26px 31px; border-radius: 72px; box-shadow: 0 17px 36px -14px rgba(0, 0, 0, 0.45), 0 0 0 6px #111; }
+.ent-think::after { left: -12px; bottom: -17px; width: 31px; height: 31px; box-shadow: 0 0 0 6px #111; }
+.ent-think i { width: 24px; height: 24px; }
+/* olhadas rápidas e curtas */
+.eyes { transition: transform 0.07s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* a sombra do cursor é a silhueta dele, borrada, na parede */
+.ent-cur-sh { width: 46px; height: 46px; margin: -2px 0 0 -2px; border-radius: 0; background: none; transform-origin: 2px 2px; filter: blur(3px); }
+.ent-cur-sh svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ent-cur-sh path { fill: rgba(10, 14, 12, 0.7); }

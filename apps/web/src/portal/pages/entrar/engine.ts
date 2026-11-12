@@ -88,6 +88,8 @@ interface Cursor {
   phase: number;
   thinking: boolean;
   tapping: boolean;
+  scr: Pt;
+  looks?: { t: number; x: number; y: number }[];
 }
 
 export function runEntrar(root: HTMLElement, done: () => void): () => void {
@@ -100,6 +102,17 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const rand = rng(404);
+  // o 404 em 3D de verdade e o confete do fim usam three.js, num pedaço à parte (decisão 0040); se não
+  // carregar a tempo ou não houver WebGL, as letras seguem no 3D em CSS
+  let glMod: typeof import('./letters3d') | null = null;
+  let gl: import('./letters3d').Letters3D | null = null;
+  let conf: import('./letters3d').Confetti3D | null = null;
+  let confT0 = 0;
+  import('./letters3d')
+    .then((m) => {
+      glMod = m;
+    })
+    .catch(() => {});
 
   // escreve só quando muda (estilo é caro mesmo quando o valor é o mesmo)
   const last = new WeakMap<HTMLElement, Record<string, string>>();
@@ -123,6 +136,20 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   let sinY = 0;
   /** Onde um ponto do mundo (relativo ao centro, z acima do plano) cai na tela: a mesma conta do navegador
    *  para "rotateX rotateY scale translate" na câmera e a perspectiva da cena. */
+  const projectWith = (c: { s: number; fx: number; fy: number; rx: number; ry: number }, X: number, Y: number, Zw: number): Pt => {
+    const cx = Math.cos((c.rx * Math.PI) / 180);
+    const sx = Math.sin((c.rx * Math.PI) / 180);
+    const cy = Math.cos((c.ry * Math.PI) / 180);
+    const sy = Math.sin((c.ry * Math.PI) / 180);
+    const x0 = (X - c.fx) * c.s;
+    const y0 = (Y - c.fy) * c.s;
+    const x1 = x0 * cy + Zw * sy;
+    const z1 = -x0 * sy + Zw * cy;
+    const y2 = y0 * cx - z1 * sx;
+    const z2 = y0 * sx + z1 * cx;
+    const k = S.PERSPECTIVE / (S.PERSPECTIVE - z2);
+    return { x: x1 * k, y: y2 * k };
+  };
   const project = (X: number, Y: number, Zw: number): Pt => {
     const x0 = (X - cam3.fx) * cam3.s;
     const y0 = (Y - cam3.fy) * cam3.s;
@@ -135,6 +162,30 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     const k = S.PERSPECTIVE / (S.PERSPECTIVE - z2);
     return { x: x1 * k, y: y2 * k };
   };
+  /** O ponto do plano que aparece na tela em (sx, sy) com a câmera de agora. */
+  const unproject = (sx: number, sy: number): Pt => {
+    let X = sx / cam3.s + cam3.fx;
+    let Y = sy / cam3.s + cam3.fy;
+    for (let i = 0; i < 4; i++) {
+      const p = project(X, Y, 0);
+      const ex = p.x - sx;
+      const ey = p.y - sy;
+      if (Math.abs(ex) + Math.abs(ey) < 0.05) break;
+      const px = project(X + 1, Y, 0);
+      const py = project(X, Y + 1, 0);
+      const a11 = px.x - p.x;
+      const a21 = px.y - p.y;
+      const a12 = py.x - p.x;
+      const a22 = py.y - p.y;
+      const det = a11 * a22 - a12 * a21 || 1;
+      X -= (ex * a22 - ey * a12) / det;
+      Y -= (ey * a11 - ex * a21) / det;
+    }
+    return { x: X, y: Y };
+  };
+  /** O contrário da câmera: o que vier depois disto fica preso na tela (o DevTools), mas ainda no 3D. */
+  const uncam = () =>
+    `translate3d(${cam3.fx.toFixed(2)}px, ${cam3.fy.toFixed(2)}px, 0) scale(${(1 / cam3.s).toFixed(5)}) rotateY(${(-cam3.ry).toFixed(3)}deg) rotateX(${(-cam3.rx).toFixed(3)}deg)`;
   /** Onde pôr no mundo algo que está zPx acima do plano para ele aparecer, na tela, em cima do ponto
    *  (x, y) do plano (Gauss-Newton em 2 variáveis: converge em 2 ou 3 passos). */
   const lifted = (x: number, y: number, zPx: number): Pt => {
@@ -218,6 +269,19 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         vspin: (rand() - 0.5) * 300,
       });
     });
+    if (glMod) {
+      try {
+        const list = glyphs.map((g, i) => {
+          const cs = getComputedStyle(g);
+          const px = parseFloat(cs.fontSize);
+          return { ch: g.dataset.ch ?? g.textContent!.slice(-1), font: `${cs.fontWeight} ${px}px ${cs.fontFamily}`, px, rect: rel(g), pivot: origin[i]! };
+        });
+        gl = glMod.createLetters3D($('.ent-gl') as unknown as HTMLCanvasElement, list, vw, vh, floor);
+        root.classList.add('is-gl');
+      } catch {
+        gl = null;
+      }
+    }
   }
   function stepBodies(t: number, dt: number) {
     const n = Math.max(1, Math.ceil(dt / 0.012));
@@ -226,6 +290,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       for (const b of bodies) {
         if (stepBody(b, h, t, floor, -vw / 2 + 8, vw / 2 - 8) === 'impact' && b.w > 60) kickAround(b, bodies, rand);
       }
+    }
+    if (gl) {
+      gl.frame(bodies, cam3, S.seg(t, S.T.FALL_TEXT, S.T.FALL_TEXT + 600, S.ease.out));
+      return;
     }
     bodies.forEach((b, i) => {
       const o = origin[i]!;
@@ -243,10 +311,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   // ---------------- os balões ----------------
   const spots = S.balloonSpots(vw, vh);
   const mkPop = (sel: string, p: Pt, sh: string): Pop => ({ el: $(sel), w: 0, h: 0, x: p.x, y: p.y, rot: 0, vx: 0, vy: 0, vr: 0, mode: 'idle', gx: 0, gy: 0, phase: rand() * 6, z: 0, sh: $(sh), lx: p.x, ly: p.y, svx: 0, svy: 0, jig: 0, vjig: 0 });
-  const p0 = mkPop('.ent-pop.p0', spots.p0, '.ent-psh[data-for="p1"]');
+  const p0 = mkPop('.ent-pop.p0', spots.p0, '.ent-psh[data-for="p0"]');
   const p1 = mkPop('.ent-pop.p1', spots.p1, '.ent-psh[data-for="p1"]');
   const p2 = mkPop('.ent-pop.p2', spots.p2, '.ent-psh[data-for="p2"]');
-  p2.rot = -4;
+
   const goo = $('.ent-goo');
   const g0 = $('.goo.g0');
   const g1 = $('.goo.g1');
@@ -301,6 +369,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     phase: i * 1.7,
     thinking: false,
     tapping: false,
+    scr: { x: 0, y: 0 },
   }));
   const [A, B, C, D, X, Y] = cursors as [Cursor, Cursor, Cursor, Cursor, Cursor, Cursor];
   const lastBonk = new Map<string, number>();
@@ -352,6 +421,12 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   let plus2Pt: Pt = { x: 0, y: 0 };
   // o mapa das ligações (X) e o DevTools (Y)
   const graphEl = $('.ent-graph');
+  const graphShadow = $('.ent-psh[data-for="graph"]');
+  const boxShadow = $('.ent-psh[data-for="box"]');
+  const palShadow = $('.ent-psh[data-for="pal"]');
+  const spnShadow = $('.ent-psh[data-for="spn"]');
+  const spcShadow = $('.ent-psh[data-for="spc"]');
+  const fontShadow = $('.ent-psh[data-for="fonts"]');
   const graphNodes = $$('.ent-graph .gn');
   const graphBroken = $('.ent-graph .ge.is-broken');
   const devEl = $('.ent-dev');
@@ -434,6 +509,18 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     };
     L = lay;
     tracks = S.cursorTracks(lay);
+    // as chaves de Y que são do mundo (o nascimento) viram da tela com a câmera daquele instante
+    {
+      const rb0 = S.rebuildCamera(lay);
+      const ck = [...S.introCamera(vw, vh).filter((k) => k.t < rb0[0]!.t), ...rb0];
+      for (const key of tracks.y.keys) {
+        if (key.screen) continue;
+        const sp = projectWith(S.sampleCam(ck, key.t), key.x, key.y, 0);
+        key.x = sp.x;
+        key.y = sp.y;
+        key.screen = true;
+      }
+    }
     // a câmera da introdução vale até onde a da reconstrução começa (ela já vai até o ponto verde)
     const rb = S.rebuildCamera(lay);
     camKeys = [...S.introCamera(vw, vh).filter((k) => k.t < rb[0]!.t), ...rb];
@@ -625,6 +712,20 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     p.vjig += Math.min(1.2, Math.abs(dx) + Math.abs(dy)) * 0.35;
   }
 
+  /** A sombra na parede branca atrás: o mesmo formato da peça (tamanho, cantos e giro), deslocada para baixo
+   *  e para a direita, maior e mais suave quanto mais longe da parede a peça está. */
+  function wallShadow(el: HTMLElement, x: number, y: number, w: number, h: number, rot: number, height: number, show: boolean, fade = 1) {
+    if (!show) {
+      put(el, 'opacity', '0');
+      return;
+    }
+    put(el, 'width', `${w.toFixed(1)}px`);
+    put(el, 'height', `${h.toFixed(1)}px`);
+    const sc = 1 + height / 900;
+    put(el, 'transform', at(x - w / 2 + height * 0.22, y - h / 2 + height * 0.32, ` rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(3)})`, Z.popShadow));
+    put(el, 'opacity', (fade * 0.3 * Math.max(0.3, 1 - height / 1600)).toFixed(3));
+  }
+
   /** A sombra de algo que está zPx acima do plano: cai para baixo e para a direita, maior e mais fraca quanto mais alto. */
   function planeShadow(el: HTMLElement, x: number, y: number, w: number, h: number, zPx: number) {
     if (zPx < 4) {
@@ -675,7 +776,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         at(w.x - p.w / 2, w.y - p.h / 2, `${lensOf(p.x, p.y, p.z)}${stretch(p.svx, p.svy, 0.22)} rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg) scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop + p.z)
       );
     }
-    planeShadow(p.sh, p.x, p.y, p.w, p.h, p.mode === 'gone' ? 0 : p.z);
+    wallShadow(p.sh, p.x, p.y + bob, p.w, p.h, p.rot, 34 + p.z, p.mode !== 'gone' && p.el.classList.contains('is-in'));
   }
 
   // ---------------- os cursores ----------------
@@ -685,6 +786,16 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     for (const cur of cursors) {
       const track = tr[cur.id];
       const p = S.sample(track.keys, t);
+      // as chaves da tela (o DevTools preso no canto) viram um ponto do plano com a câmera de agora
+      cur.scr = { x: p.x, y: p.y };
+      if (track.keys[0]?.screen) {
+        const w0 = unproject(p.x, p.y);
+        p.x = w0.x;
+        p.y = w0.y;
+      }
+      for (const bt of track.blinks ?? []) {
+        if (once(`blink-${cur.id}-${bt}`, t >= bt)) cur.eyesIn.animate([{ scale: '1 1' }, { scale: '1 0.06', offset: 0.45 }, { scale: '1 1' }], { duration: 150, easing: 'ease-in-out' });
+      }
       cur.on = t >= track.born && t < track.gone;
       cur.thinking = cur.on && track.think.some((iv) => S.within(iv, t));
       cur.z = p.z;
@@ -692,7 +803,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       cur.pressed = track.press.some((iv) => S.within(iv, t));
       cur.tapping = track.taps.some((tt) => t >= tt && t < tt + 70);
       // nasce num estalo (cresce passando do ponto) e some num estalo
-      if (once(`born-${cur.id}`, cur.on)) {
+      if (once(`born-${cur.id}`, cur.on) && !track.enter) {
         // nasce pequeno, cresce passando do ponto e abre os olhos (estava "dormindo" dentro do botão)
         cur.svg.animate([{ scale: '0' }, { scale: '1.3', offset: 0.6 }, { scale: '1' }], { duration: 520, easing: 'cubic-bezier(.2,.9,.2,1)' });
         cur.eyesIn.animate([{ scale: '1 0.08' }, { scale: '1 0.08', offset: 0.45 }, { scale: '1 1.15', offset: 0.75 }, { scale: '1 1' }], { duration: 640, easing: 'ease-out' });
@@ -765,14 +876,19 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       // sempre um pouco acima dos painéis (paleta, DevTools, grafo), que ficam a poucos px do plano
       const zPx = S.depthPx(z) + (cur.pressed ? 9 : 14);
       const w3 = lifted(x, y, zPx);
-      put(cur.el, 'transform', at(w3.x, w3.y, `${lensOf(x, y, zPx)} rotate(${cur.tilt.toFixed(2)}deg)${stretch(cur.v.x, cur.v.y, 0.12)} scale(0.2)`, zPx));
+      put(cur.el, 'transform', at(w3.x, w3.y, `${lensOf(x, y, zPx)} rotate(${cur.tilt.toFixed(2)}deg)${stretch(cur.v.x, cur.v.y, 0.12)} scale(0.16667)`, zPx));
       put(cur.el, 'opacity', Math.max(0.5, z < 0 ? 1 + z * 0.3 : 1).toFixed(3));
       flag(cur.el, 'is-press', cur.pressed || cur.tapping);
       flag(cur.el, 'is-bonk', t < cur.bonkUntil);
       flag(cur.el, 'is-thinking', cur.thinking);
       if (cur.pressed && !cur.pressedBefore && cur.on) ripple(cur.tip);
       cur.pressedBefore = cur.pressed;
-      if (cur.thinking) {
+      const looks = tr[cur.id].looks;
+      const lk = looks ? looks.filter((l) => l.t <= t).pop() : undefined;
+      if (lk && looks && t < looks[looks.length - 1]!.t + 450) {
+        // olhando em volta como gente: os olhos pulam rápido para um lugar, param, pulam para outro
+        cur.eyes.style.transform = `translate(${lk.x.toFixed(2)}px, ${lk.y.toFixed(2)}px)`;
+      } else if (cur.thinking) {
         // pensando: os olhos procuram em volta, devagar
         cur.eyes.style.transform = `translate(${(Math.sin(t / 260 + cur.phase) * 4.5).toFixed(2)}px, ${(-2.5 + Math.cos(t / 410) * 1.5).toFixed(2)}px)`;
       } else {
@@ -781,11 +897,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         cur.eyes.style.transform = `translate(${((cur.v.x / sp) * look).toFixed(2)}px, ${((cur.v.y / sp) * look).toFixed(2)}px)`;
       }
       // sombra no plano: mais alto o cursor, mais longe, maior e mais fraca
-      const bodyX = x + 24 * cur.sc;
-      const bodyY = y + 24 * cur.sc;
+      // a sombra tem o formato do cursor (a silhueta) e cai na parede atrás, mais longe quanto mais alto
       const up = Math.max(0, zPx);
-      const shScale = 1 + up / 450;
-      put(cur.sh, 'transform', at(bodyX - 23 + up * 0.12, bodyY - 23 + up * 0.16, ` scale(${shScale.toFixed(3)})`, Z.curShadow));
+      const shScale = 1 + up / 700;
+      put(cur.sh, 'transform', at(x + 4 + up * 0.14, y + 6 + up * 0.2, ` rotate(${cur.tilt.toFixed(2)}deg) scale(${shScale.toFixed(3)})`, Z.curShadow));
       put(cur.sh, 'opacity', (cur.on && z > -0.15 ? 0.34 * Math.max(0.3, 1 - up / 1500) : 0).toFixed(3));
     });
   }
@@ -815,6 +930,14 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     }
     if (measuredGlyphs && t < S.T.LETTERS_GONE + 300) stepBodies(t, dt);
     flag(root, 'letters-gone', t >= S.T.LETTERS_GONE);
+    if (gl && t >= S.T.LETTERS_GONE + 450) {
+      gl.dispose();
+      gl = null;
+    }
+    if (conf && !conf.frame(t - confT0)) {
+      conf.dispose();
+      conf = null;
+    }
 
     if (!popsMeasured && t >= S.T.POPUP - 150) measurePops();
     if (popsMeasured) {
@@ -822,9 +945,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       flag(p0.el, 'is-loaded', t >= S.T.LOADED);
       const s1 = S.seg(t, S.T.SPLIT1[0], S.T.SPLIT1[1], S.ease.inOut);
       const s2 = S.seg(t, S.T.SPLIT2[0], S.T.SPLIT2[1], S.ease.inOut);
-      flag(p1.el, 'is-in', t >= S.T.SPLIT1[0] + (S.T.SPLIT1[1] - S.T.SPLIT1[0]) * 0.8);
-      flag(p2.el, 'is-in', t >= S.T.SPLIT2[0] + (S.T.SPLIT2[1] - S.T.SPLIT2[0]) * 0.8);
-      const gooOn = (t > S.T.SPLIT1[0] - 50 && t < S.T.SPLIT1[1] + 120) || (t > S.T.SPLIT2[0] - 50 && t < S.T.SPLIT2[1] + 120);
+      // o cartão nítido entra enquanto o líquido ainda está lá, e o líquido sai devagar por baixo dele
+      flag(p1.el, 'is-in', t >= S.T.SPLIT1[0] + (S.T.SPLIT1[1] - S.T.SPLIT1[0]) * 0.65);
+      flag(p2.el, 'is-in', t >= S.T.SPLIT2[0] + (S.T.SPLIT2[1] - S.T.SPLIT2[0]) * 0.65);
+      flag(p0.el, 'is-verifying', t >= S.T.VERIFY_CLICK);
+      const gooOn = (t > S.T.SPLIT1[0] - 50 && t < S.T.SPLIT1[1] - 40) || (t > S.T.SPLIT2[0] - 50 && t < S.T.SPLIT2[1] - 40);
       flag(goo, 'is-on', gooOn);
       if (gooOn) {
         put(g0, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2));
@@ -838,15 +963,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         blob(g1, spots.p1, p1, s1);
         blob(g2, spots.p2, p2, s2);
       }
-      // o balão do meio vira o ponto de partida da caixa
-      if (t < S.T.COLLAPSE[0] || !L) {
-        put(p0.el, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, '', Z.pop));
-      } else {
-        const k = S.seg(t, S.T.COLLAPSE[0], S.T.COLLAPSE[1], S.ease.in);
-        const x = S.lerp(spots.p0.x, L.card.r, k);
-        const y = S.lerp(spots.p0.y, L.card.t, k);
-        put(p0.el, 'transform', at(x - p0.w / 2, y - p0.h / 2, ` scale(${S.lerp(1, 0.06, k).toFixed(3)})`, Z.pop));
-      }
+      // verificado, o cartão do meio encolhe um pouco e some no lugar (sem virar bola)
+      const k0 = S.seg(t, S.T.COLLAPSE[0], S.T.COLLAPSE[1], S.ease.inOut);
+      put(p0.el, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, ` scale(${S.lerp(1, 0.86, k0).toFixed(3)})`, Z.pop));
+      put(p0.el, 'opacity', (1 - k0).toFixed(3));
+      wallShadow(p0.sh, p0.x, p0.y, p0.w, p0.h, 0, 34, t >= S.T.POPUP + 200 && t < S.T.COLLAPSE[1], 1 - k0);
     }
 
     if (!planned && t >= S.T.PLAN) {
@@ -885,11 +1006,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
 
     // o "+" que A abre: cada clique dele cria um cursor, que sai de trás do botão
     // o ponto verde carrega (pulsa) e, num estalo, vira o primeiro cursor
-    flag(seed, 'is-charging', t >= S.T.COLLAPSE[1] - 80 && t < S.T.A_POP);
-    if (once('seed-pop', t >= S.T.A_POP)) {
-      seed.animate([{ scale: '1', opacity: 1 }, { scale: '2.6', opacity: 0.85, offset: 0.4 }, { scale: '1', opacity: 1 }], { duration: 520, easing: 'cubic-bezier(.2,.9,.2,1)' });
-      burst({ x: card.r, y: card.t }, 12, 1.3);
-    }
+
     // o contador "cursores 01 +": cada clique de A no "+" sobe o número e um cursor sai do botão
     flag(spawnEl, 'is-on', S.within(S.T.SPAWNER, t));
     const spawns = [S.T.SPAWN_B, S.T.SPAWN_C, S.T.SPAWN_D];
@@ -929,11 +1046,17 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       flag(graphBroken, 'is-found', t >= S.T.GRAPH_FOUND);
       flag(graphEl, 'is-found', t >= S.T.GRAPH_FOUND && t < S.T.GRAPH_FIXED);
       flag(graphEl, 'is-fixed', t >= S.T.GRAPH_FIXED);
+      if (once('graph-fixed', t >= S.T.GRAPH_FIXED)) {
+        graphEl.animate([{ scale: '1' }, { scale: '1.05', offset: 0.35 }, { scale: '1' }], { duration: 420, easing: 'ease-out' });
+        const e = gp.edges.find((ed) => ed.broken)!;
+        burst({ x: (gp.nodes[e.from]!.x + gp.nodes[e.to]!.x) / 2, y: (gp.nodes[e.from]!.y + gp.nodes[e.to]!.y) / 2 }, 10, 1);
+      }
+      wallShadow(graphShadow, gp.x + gp.w / 2, gp.y + gp.h / 2, gp.w, gp.h, 0, 30, graphEl.classList.contains('is-on'));
     }
 
     // Y: o DevTools sai da borda direita na mão dele (a borda acompanha o cursor), na aba Console
     if (dv) {
-      const follow = () => Math.max(0, Math.min(1, (dv!.closed - Y.tip.x) / dv!.w));
+      const follow = () => Math.max(0, Math.min(1, (dv!.closed - Y.scr.x) / dv!.w));
       let o = 0;
       const F = S.T.DEV_FINAL;
       if (S.within(S.T.DEV_PULL, t) || S.within(S.T.DEV_CLOSE, t)) o = follow();
@@ -942,7 +1065,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       else if (t >= F[0] + 400 && t < F[1] - 400) o = 1;
       else if (t >= F[1] - 400 && t < F[1]) o = follow();
       flag(devEl, 'is-on', t >= S.T.SPAWN_Y && t < F[1] + 300);
-      put(devEl, 'transform', at(dv.closed - 7 - dv.w * o, dv.top, '', Z.palette + 1));
+      // preso no canto da tela: o contrário da câmera e depois a posição na tela
+      put(devEl, 'transform', `${uncam()} ${at(dv.closed - 7 - dv.w * o, dv.top, '', Z.palette + 1)}`);
       flag(devEl, 'is-console', t >= S.T.DEV_TAB);
       devLines.forEach((el, i) => {
         const ok = el.classList.contains('ok');
@@ -981,7 +1105,17 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       put(box, 'height', `${Math.max(2, bx.b - bx.t).toFixed(1)}px`);
     }
     flag(box, 'is-filled', t >= S.T.PALETTE_CLICK);
-    flag(seed, 'is-on', t >= S.T.COLLAPSE[1] - 80 && t < S.T.BOX[1] + 100);
+    wallShadow(boxShadow, (bx.l + bx.r) / 2, (bx.t + bx.b) / 2, bx.r - bx.l, bx.b - bx.t, 0, 22, t >= S.T.PALETTE_CLICK, S.seg(t, S.T.PALETTE_CLICK, S.T.PALETTE_CLICK + 500));
+    {
+      const spw = S.spawner(lay);
+      const sp2w = S.spawner2(lay);
+      wallShadow(spnShadow, spw.x, spw.y, S.SPAWNER_W, 44, 0, 24, S.within(S.T.SPAWNER, t));
+      wallShadow(spcShadow, sp2w.x, sp2w.y, S.SPAWNER_W, 44, 0, 24, S.within(S.T.SPAWNER2, t));
+      wallShadow(palShadow, pl.x + S.PALETTE_W / 2, pl.y + 24, S.PALETTE_W, 48, 0, 30, t >= S.T.PALETTE_OPEN && t < S.T.PALETTE_CLOSE);
+      const fpw = S.fontPicker(lay);
+      wallShadow(fontShadow, fpw.x + S.FONT_W / 2, fpw.y + 28, S.FONT_W, 56, 0, 30, t >= S.T.FONT_OPEN && t < S.T.FONT_CLOSE);
+    }
+    flag(seed, 'is-on', false);
     const sp = t >= S.T.BOX[0] && t < S.T.BOX[1] ? A.tip : t >= S.T.BOX[1] ? { x: card.l, y: card.b } : { x: card.r, y: card.t };
     put(seed, 'transform', at(sp.x - 9, sp.y - 9, '', Z.seed));
     const inBox = (x: number, y: number) => t >= S.T.BOX[0] && x >= bx.l && x <= bx.r && y >= bx.t && y <= bx.b;
@@ -1135,6 +1269,14 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
 
     // os quatro se encontram em cima do cartão: faíscas
     if (once('high5', t >= S.T.HIGH5)) {
+      if (glMod) {
+        try {
+          conf = glMod.createConfetti3D($('.ent-fx') as unknown as HTMLCanvasElement, vw, vh, project(mt.high5.x, mt.high5.y, 0), rand);
+          confT0 = t;
+        } catch {
+          conf = null;
+        }
+      }
       burst(mt.high5, 14, 1.8);
       for (const cur of cursors) cur.bonkUntil = t + 420;
     }
@@ -1233,6 +1375,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     };
   }
   return () => {
+    gl?.dispose();
+    conf?.dispose();
     cancelAnimationFrame(raf);
     window.removeEventListener('resize', onResize);
     if (dev) delete w.__entrarSeek;

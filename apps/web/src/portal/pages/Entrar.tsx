@@ -66,7 +66,7 @@ export default function Entrar() {
 function Glyph({ ch, kind }: { ch: string; kind: 'digit' | 'letter' }) {
   const n = kind === 'digit' ? DIGIT_LAYERS : LETTER_LAYERS;
   return (
-    <span className="ent-g" data-kind={kind} aria-hidden="true">
+    <span className="ent-g" data-kind={kind} data-ch={ch} aria-hidden="true">
       {Array.from({ length: n }, (_, i) => (
         <i key={i} style={{ '--n': n - i } as CSSProperties}>
           {ch}
@@ -80,7 +80,11 @@ function Glyph({ ch, kind }: { ch: string; kind: 'digit' | 'letter' }) {
 function Cursor({ id }: { id: string }) {
   return (
     <>
-      <div className="ent-w ent-cur-sh" data-id={id} aria-hidden="true" />
+      <div className="ent-w ent-cur-sh" data-id={id} aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <path d="M4 4 L66 17 A41 41 0 1 1 17 66 Z" />
+        </svg>
+      </div>
       <div className="ent-w ent-cur" data-id={id} data-chaos={id === 'x' || id === 'y' ? '' : undefined} aria-hidden="true">
         <svg viewBox="0 0 100 100" className="ent-cur-svg">
           {/* a ponta (o "bico" do cursor) atrás do corpo redondo, separada por uma linha branca */}
@@ -128,6 +132,8 @@ function Scene() {
         </filter>
       </svg>
 
+      {/* o 404 em 3D de verdade (three.js) por baixo da câmera, e o confete do fim por cima de tudo */}
+      <canvas className="ent-gl" aria-hidden="true" />
       <div className="ent-cam">
         <div className="ent-letters">
           <div className="ent-shadows" aria-hidden="true">
@@ -155,7 +161,10 @@ function Scene() {
             <span className="ent-pop-tag">GET /entrar · 404</span>
             <Ball />
             <strong>Erro detectado</strong>
-            <span className="ent-pop-sub">corrigindo…</span>
+            <span className="ent-pop-sub">
+              <span className="sub-a">corrigindo…</span>
+              <span className="sub-b">verificando…</span>
+            </span>
           </div>
         </div>
         <div className="ent-w ent-pop p1">
@@ -183,7 +192,7 @@ function Scene() {
         </div>
         <span className="ent-w ent-seed" aria-hidden="true" />
 
-        {['p1', 'p2', 'sub', 'back'].map((k) => (
+        {['p0', 'p1', 'p2', 'sub', 'back', 'box', 'pal', 'graph', 'spn', 'spc', 'fonts'].map((k) => (
           <span key={k} className="ent-w ent-psh" data-for={k} aria-hidden="true" />
         ))}
         {/* o "+" que o primeiro cursor abre para criar os outros */}
@@ -214,6 +223,7 @@ function Scene() {
             </span>
           ))}
           <span className="g-pin">achado #1 · /entrar → ∅</span>
+          <span className="g-ok">✓ resolvido · /entrar → &lt;Login/&gt;</span>
         </div>
         {/* o DevTools que o agente Y puxa da borda (recriado, genérico) */}
         <div className="ent-w ent-dev" aria-hidden="true">
@@ -339,6 +349,7 @@ function Scene() {
         ))}
       </div>
 
+      <canvas className="ent-fx" aria-hidden="true" />
       <div className="ent-prog" aria-hidden="true">
         reconstruindo a tela · <span className="ent-prog-n">0</span>%
       </div>

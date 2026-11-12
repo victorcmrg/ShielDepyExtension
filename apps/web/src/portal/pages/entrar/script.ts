@@ -21,66 +21,70 @@ export const T = {
   SPLIT1: [9700, 10700] as const, // balão "ajustando rota", para a direita e para cima
   SPLIT2: [10900, 11900] as const, // balão "corrigindo tela de login", para a esquerda e para baixo
   PLAN: 12000, // mede a tela final e monta os trajetos
-  COLLAPSE: [12100, 12700] as const, // o balão do meio vira o ponto de partida da caixa
+  COLLAPSE: [14550, 15150] as const, // verificado, o cartão do meio se encolhe e some
   CAM_BACK: [12100, 12900] as const,
-  A_POP: 12900, // o ponto verde pulsa, cresce e vira o primeiro cursor
-  SPAWNER: [13150, 14650] as const, // A abre o contador "cursores 01 +": cada clique no "+" cria um
-  SPAWN_B: 13550,
-  SPAWN_C: 14000,
-  SPAWN_D: 14450,
-  CURSORS_IN: [12900, 14450] as const,
-  SPAWNER2: [14750, 16000] as const, // A põe um segundo botão embaixo: "agentes do caos 00 +"
-  SPAWN_X: 15100, // X analisa as ligações do grafo
-  SPAWN_Y: 15550, // Y abre o DevTools e examina o 404 no console
-  DEV_PULL: [16200, 17000] as const, // Y puxa o DevTools pela borda direita
-  DEV_TAB: 17300, // clica em "Console"
-  DEV_INSPECT: [17500, 18400] as const, // examina os erros, pensando
-  DEV_FOUND: 18000, // marca o 404 como achado
-  DEV_CLOSE: [18500, 19000] as const, // empurra o DevTools de volta
-  GRAPH_OPEN: 16350, // X abre o mapa das ligações
-  GRAPH_TRACE: [16600, 18700] as const, // percorre nó por nó
-  GRAPH_FOUND: 18100, // a ligação /entrar → ∅ quebrada
+  A_POP: 12300, // o primeiro cursor entra voando pela direita da tela (não brota)
+  A_ENTER: [12300, 13300] as const,
+  LOOK: [13300, 14150] as const, // para, pisca rápido e olha em volta como gente (olhadas curtas, com pausas)
+  VERIFY: [14150, 14700] as const, // vai ao cartão "Erro detectado" e começa a verificação
+  VERIFY_CLICK: 14450,
+  SPAWNER: [15000, 16500] as const, // A abre o contador "cursores 01 +": cada clique no "+" cria um
+  SPAWN_B: 15400,
+  SPAWN_C: 15850,
+  SPAWN_D: 16300,
+  CURSORS_IN: [14750, 16300] as const,
+  SPAWNER2: [16600, 17850] as const, // A põe um segundo botão embaixo: "agentes do caos 00 +"
+  SPAWN_X: 16950, // X analisa as ligações do grafo
+  SPAWN_Y: 17400, // Y abre o DevTools e examina o 404 no console
+  DEV_PULL: [18050, 18850] as const, // Y puxa o DevTools pela borda direita
+  DEV_TAB: 19150, // clica em "Console"
+  DEV_INSPECT: [19350, 20250] as const, // examina os erros, pensando
+  DEV_FOUND: 19850, // marca o 404 como achado
+  DEV_CLOSE: [20350, 20850] as const, // empurra o DevTools de volta
+  GRAPH_OPEN: 18200, // X abre o mapa das ligações
+  GRAPH_TRACE: [18450, 20550] as const, // percorre nó por nó
+  GRAPH_FOUND: 19950, // a ligação /entrar → ∅ quebrada
 
-  ANCHOR: [16050, 17450] as const, // C segura o canto enquanto A puxa
-  BOX: [16200, 17400] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
-  SLOTS: [17300, 17900] as const, // as partes pontilhadas: onde cada peça vai ficar
-  GRAB_P1: [17300, 17700] as const, // B puxa os balões para fora
-  LOGO: [17500, 18500] as const, // D cria o logo grande e o encolhe puxando a alça do canto
-  PALETTE_OPEN: 17800, // C abre a paleta e pensa bastante antes de escolher
-  GRAB_P2: [17950, 18350] as const,
-  ORBIT_B: [18400, 19800] as const, // B dá a volta e passa gigante na frente da câmera
-  THINK_C1: [18750, 19400] as const,
-  BUMP: 18800, // A e D se esbarram no meio do caminho
-  SUB: [18950, 19600] as const, // A leva o subtítulo torto para o lugar
-  PALETTE_CLICK: 19600,
-  THINK_A: [19700, 20350] as const, // A olha o título errado antes de apagar
-  EMAIL: [19800, 20400] as const, // D e C desenham os campos ao mesmo tempo
-  PALETTE_CLOSE: 19950,
-  PASS: [20100, 20700] as const,
-  ERASE: [20400, 21300] as const, // A apaga o título errado...
-  TYPE1: [20600, 21700] as const, // ...e B digita logo atrás, com um erro no fim
-  CPF: [20900, 21350] as const, // C joga fora o campo que não devia estar ali
-  BUTTON: [21100, 21700] as const, // D desenha o botão
-  THINK_B: [21750, 22300] as const, // B percebe o erro
-  THINK_C2: [21800, 22400] as const, // C pensa na cor do botão
-  BACK: [21900, 22800] as const, // D traz o link de volta lá de cima
-  BACKSPACE: [22300, 22600] as const,
-  PAINT: 22500,
-  TYPE2: [22650, 23000] as const,
-  FOCUS_EMAIL: 22800, // C confere o foco de cada campo
-  FOCUS_PASS: 23050,
-  FONT_OPEN: 23100, // A abre as fontes, pensa e escolhe a do título
-  ORBIT_D: [23100, 24500] as const, // D dá a volta gigante
-  THINK_A2: [23150, 23800] as const,
-  FONT_PICK: 23900,
-  FONT_CLOSE: 24150,
-  GRAPH_FIXED: 23100, // depois da correção, a ligação fica verde
-  DEV_FINAL: [23300, 24400] as const, // Y reabre o DevTools: agora 200 e 0 erros
-  DEV_OK: 23750,
-  GRAPH_CLOSE: 24300,
-  HIGH5: 25100, // os quatro se encontram em cima do cartão
-  EXIT: [25300, 26000] as const,
-  END: 26200,
+  ANCHOR: [17900, 19300] as const, // C segura o canto enquanto A puxa
+  BOX: [18050, 19250] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
+  SLOTS: [19150, 19750] as const, // as partes pontilhadas: onde cada peça vai ficar
+  GRAB_P1: [19150, 19550] as const, // B puxa os balões para fora
+  LOGO: [19350, 20350] as const, // D cria o logo grande e o encolhe puxando a alça do canto
+  PALETTE_OPEN: 19650, // C abre a paleta e pensa bastante antes de escolher
+  GRAB_P2: [19800, 20200] as const,
+  ORBIT_B: [20250, 21650] as const, // B dá a volta e passa gigante na frente da câmera
+  THINK_C1: [20600, 21250] as const,
+  BUMP: 20650, // A e D se esbarram no meio do caminho
+  SUB: [20800, 21450] as const, // A leva o subtítulo torto para o lugar
+  PALETTE_CLICK: 21450,
+  THINK_A: [21550, 22200] as const, // A olha o título errado antes de apagar
+  EMAIL: [21650, 22250] as const, // D e C desenham os campos ao mesmo tempo
+  PALETTE_CLOSE: 21800,
+  PASS: [21950, 22550] as const,
+  ERASE: [22250, 23150] as const, // A apaga o título errado...
+  TYPE1: [22450, 23550] as const, // ...e B digita logo atrás, com um erro no fim
+  CPF: [22750, 23200] as const, // C joga fora o campo que não devia estar ali
+  BUTTON: [22950, 23550] as const, // D desenha o botão
+  THINK_B: [23600, 24150] as const, // B percebe o erro
+  THINK_C2: [23650, 24250] as const, // C pensa na cor do botão
+  BACK: [23750, 24650] as const, // D traz o link de volta lá de cima
+  BACKSPACE: [24150, 24450] as const,
+  PAINT: 24350,
+  TYPE2: [24500, 24850] as const,
+  FOCUS_EMAIL: 24650, // C confere o foco de cada campo
+  FOCUS_PASS: 24900,
+  FONT_OPEN: 24950, // A abre as fontes, pensa e escolhe a do título
+  ORBIT_D: [24950, 26350] as const, // D dá a volta gigante
+  THINK_A2: [25000, 25650] as const,
+  FONT_PICK: 25750,
+  FONT_CLOSE: 26000,
+  GRAPH_FIXED: 24950, // depois da correção, a ligação fica verde
+  DEV_FINAL: [25150, 26250] as const, // Y reabre o DevTools: agora 200 e 0 erros
+  DEV_OK: 25600,
+  GRAPH_CLOSE: 26150,
+  HIGH5: 26950, // os quatro se encontram em cima do cartão
+  EXIT: [27150, 27850] as const,
+  END: 28050,
   REVEAL: 400, // a tela de verdade entra por cima
 } as const;
 
@@ -121,6 +125,8 @@ export interface Key {
   hold?: boolean;
   /** o motor troca a posição pela do balão no instante do agarrão (o balão pode ter sido empurrado) */
   tag?: 'p1' | 'p2';
+  /** x e y são da tela (relativos ao centro), não do mundo: o motor converte com a câmera do instante */
+  screen?: boolean;
 }
 
 type Num3 = readonly number[];
@@ -275,7 +281,7 @@ export function meetingPoints(L: Layout) {
 }
 
 /** Uma volta em elipse: perto da câmera embaixo (z alto, gigante), longe em cima (z baixo, pequeno). */
-export function orbit(o: { t0: number; t1: number; x: number; y: number; rx: number; ry: number; zMid: number; zAmp: number; from: number; dir: 1 | -1 }): Key[] {
+export function orbit(o: { t0: number; t1: number; x: number; y: number; rx: number; ry: number; zMid: number; zAmp: number; from: number; dir: 1 | -1; linger?: number }): Key[] {
   // ângulos iguais, tempos diferentes: perto da frente (sen = 1) cada passo demora mais, então o
   // cursor desacelera de leve bem na frente da câmera, fica ali um instante e segue
   const n = 16;
@@ -284,7 +290,7 @@ export function orbit(o: { t0: number; t1: number; x: number; y: number; rx: num
     const d = Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2));
     return Math.exp(-(d * d) / (2 * 0.55 * 0.55));
   };
-  const w = Array.from({ length: n }, (_, i) => 1 / (1 - 0.72 * front((th(i) + th(i + 1)) / 2)));
+  const w = Array.from({ length: n }, (_, i) => 1 / (1 - (o.linger ?? 0.72) * front((th(i) + th(i + 1)) / 2)));
   const total = w.reduce((a, b) => a + b, 0);
   const keys: Key[] = [];
   let acc = 0;
@@ -296,7 +302,14 @@ export function orbit(o: { t0: number; t1: number; x: number; y: number; rx: num
   return keys;
 }
 
-/** O contador "cursores 01 +" que o primeiro cursor abre para criar os outros: o centro da pílula e o "+". */
+/** O instante em que a órbita passa mais perto da câmera (para piscar ali). */
+export function orbitPeak(keys: readonly Key[]): number {
+  let best = keys[0]!;
+  for (const key of keys) if (key.z > best.z) best = key;
+  return best.t;
+}
+
+/** Onde fica o "+" que o primeiro cursor abre para criar os outros. */
 export const SPAWNER_W = 150;
 export function spawner(L: Layout) {
   const x = Math.min(L.card.r + 64, L.vw / 2 - SPAWNER_W / 2 - 10);
@@ -347,10 +360,11 @@ export function spawner2(L: Layout) {
 
 /** O mapa das ligações que X abre: as rotas e o componente, com a ligação quebrada /entrar → <Login/>. */
 export function graphPanel(L: Layout) {
-  const w = Math.min(280, L.vw * 0.62);
-  const h = 168;
-  const x = -L.vw / 2 + 18;
-  const y = -L.vh / 2 + 70;
+  const free = L.vw / 2 - (L.card.r - L.card.l) / 2 - 40;
+  const w = Math.max(230, Math.min(330, free));
+  const h = 196;
+  const x = -L.vw / 2 + 20;
+  const y = -L.vh / 2 + 78;
   const at = (fx: number, fy: number) => ({ x: x + w * fx, y: y + h * fy });
   const nodes = [
     { id: 'root', label: '/', ...at(0.15, 0.36) },
@@ -368,7 +382,8 @@ export function graphPanel(L: Layout) {
   return { x, y, w, h, nodes, edges };
 }
 
-/** O DevTools que Y puxa da borda direita: largura, onde fica fechado e aberto, a aba Console e as linhas. */
+/** O DevTools que Y puxa da borda direita (na tela, preso ao canto: a câmera não o move): largura, onde
+ *  fica fechado e aberto, a aba Console e as linhas. */
 export const DEV_LINE_H = 24;
 export function devtools(L: Layout) {
   const w = Math.min(340, L.vw * 0.36);
@@ -399,6 +414,12 @@ export interface Track {
   gone: number;
   /** toques rápidos (cada tecla digitada), só para o cursor afundar um instante */
   taps: number[];
+  /** piscadas (os olhos fecham e abrem), como quando D passa bem perto da câmera */
+  blinks?: number[];
+  /** entra voando de fora da tela em vez de nascer num estalo */
+  enter?: boolean;
+  /** olhadas: os olhos pulam para (x, y) no instante t e ficam lá até a próxima (unidades do desenho) */
+  looks?: { t: number; x: number; y: number }[];
 }
 
 const k = (t: number, x: number, y: number, z: number, hold = false): Key => (hold ? { t, x, y, z, hold } : { t, x, y, z });
@@ -502,8 +523,16 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   const chaosTaps = [T.SPAWN_X, T.SPAWN_Y];
   const a: Track = {
     keys: [
-      k(T.A_POP, card.r, card.t, 0, true),
-      k(T.A_POP + 250, card.r + 10, card.t + 10, 0.05, true),
+      // entra pela direita, perto da câmera, e desacelera ao lado do cartão do meio
+      k(T.A_POP, vw / 2 + 40, spots.p0.y - 70, 0.6),
+      k(lerp(T.A_ENTER[0], T.A_ENTER[1], 0.55), spots.p0.x + 260, spots.p0.y - 20, 0.35),
+      k(T.A_ENTER[1], spots.p0.x + 200, spots.p0.y + 18, 0.2, true),
+      // olhando em volta: a cabeça quase parada
+      k(lerp(T.LOOK[0], T.LOOK[1], 0.4), spots.p0.x + 203, spots.p0.y + 15, 0.21),
+      k(T.LOOK[1], spots.p0.x + 198, spots.p0.y + 19, 0.2, true),
+      // a verificação: vai até o cartão e clica
+      k(T.VERIFY_CLICK, spots.p0.x + 70, spots.p0.y + 14, 0.05, true),
+      k(T.VERIFY[1], spots.p0.x + 96, spots.p0.y + 40, 0.1, true),
       k(T.SPAWNER[0], sp.x - 20, sp.y + 24, 0.05, true),
       ...spawnTaps.flatMap((st) => [k(st - 160, sp.plus.x + 2, sp.plus.y + 2, 0, true), k(st + 160, sp.plus.x + 8, sp.plus.y + 14, 0.02, true)]),
       k(T.SPAWNER2[0] - 120, sp.x - 30, sp2.y + 10, 0.05),
@@ -536,12 +565,22 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.HIGH5, meet.high5.x - 16, meet.high5.y + 4, 0.1),
       k(goneAt(3), meet.high5.x - 34, meet.high5.y - 6, 0.15, true),
     ],
-    press: [T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90], ...[...spawnTaps, ...chaosTaps].map((st): Interval => [st - 40, st + 70]), [T.SPAWNER[0] - 90, T.SPAWNER[0] + 10], [T.SPAWNER2[0] - 90, T.SPAWNER2[0] + 10]],
-    clicks: [T.FONT_OPEN, T.FONT_PICK, ...spawnTaps, ...chaosTaps, T.SPAWNER[0] - 60, T.SPAWNER2[0] - 60],
+    press: [[T.VERIFY_CLICK - 30, T.VERIFY_CLICK + 90], T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90], ...[...spawnTaps, ...chaosTaps].map((st): Interval => [st - 40, st + 70]), [T.SPAWNER[0] - 90, T.SPAWNER[0] + 10], [T.SPAWNER2[0] - 90, T.SPAWNER2[0] + 10]],
+    clicks: [T.VERIFY_CLICK, T.FONT_OPEN, T.FONT_PICK, ...spawnTaps, ...chaosTaps, T.SPAWNER[0] - 60, T.SPAWNER2[0] - 60],
     think: [T.THINK_A, T.THINK_A2],
     born: T.A_POP,
     gone: goneAt(3),
     taps: [],
+    enter: true,
+    blinks: [T.LOOK[0] + 60, T.LOOK[0] + 230, T.LOOK[1] - 140],
+    looks: [
+      { t: T.LOOK[0] + 330, x: -5, y: -2 },
+      { t: T.LOOK[0] + 500, x: -2, y: 1 },
+      { t: T.LOOK[0] + 680, x: 4.5, y: -3 },
+      { t: T.LOOK[0] + 830, x: 1, y: 3 },
+      { t: T.LOOK[1] + 150, x: -4.5, y: 2.5 },
+      { t: T.LOOK[1] + 330, x: -4, y: 0 },
+    ],
   };
 
   // B: puxa os balões para fora vindo para perto da câmera, dá a volta gigante, digita, erra e corrige
@@ -626,6 +665,8 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   // D: carrega o logo (levantando perto da câmera), esbarra em A, desenha o e-mail e o botão,
   // traz o link de volta lá de cima e dá a volta gigante
   const big = logoHandle(L);
+  const orbitD = orbit({ t0: T.ORBIT_D[0], t1: T.ORBIT_D[1], x: 0, y: cy(card) - 20, rx: Math.min(vw * 0.38, 450), ry: 110, zMid: 0.9, zAmp: 3.1, from: 0, dir: -1, linger: 0.82 });
+  const peakD = orbitPeak(orbitD);
   const d: Track = {
     keys: [
       k(T.SPAWN_D, sp.plus.x, sp.plus.y, 0, true),
@@ -645,7 +686,7 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.BACK[0], mis.back.x, mis.back.y, 0.2, true),
       k(lerp(T.BACK[0], T.BACK[1], 0.5), lerp(mis.back.x, cx(back), 0.5) + 130, lerp(mis.back.y, cy(back), 0.5), 1.3),
       k(T.BACK[1], cx(back), cy(back), 0.2, true),
-      ...orbit({ t0: T.ORBIT_D[0], t1: T.ORBIT_D[1], x: 0, y: cy(card) - 20, rx: Math.min(vw * 0.38, 450), ry: 110, zMid: 0.9, zAmp: 2.7, from: 0, dir: -1 }),
+      ...orbitD,
       k(T.HIGH5 - 300, meet.high5.x + 40, meet.high5.y - 60, 0),
       k(T.HIGH5, meet.high5.x + 2, meet.high5.y + 26, 0.1),
       k(goneAt(0), meet.high5.x + 4, meet.high5.y + 46, 0.15, true),
@@ -656,6 +697,7 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
     born: T.SPAWN_D,
     gone: goneAt(0),
     taps: [],
+    blinks: [peakD - 170, peakD + 150],
   };
 
   // X: abre o mapa das ligações, percorre os nós, para na ligação quebrada, depois confere a correção
@@ -670,18 +712,22 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.GRAPH_OPEN, g.x + g.w - 16, g.y + 12, 0.05, true),
       k(T.GRAPH_TRACE[0], n[0]!.x, n[0]!.y, 0.05, true),
       k(lerp(T.GRAPH_TRACE[0], T.GRAPH_FOUND, 0.45), n[1]!.x, n[1]!.y, 0.05, true),
-      ...ponder(T.GRAPH_FOUND - 450, T.GRAPH_FOUND, mid.x, mid.y + 4, 0.1, 8),
+      ...ponder(T.GRAPH_FOUND - 900, T.GRAPH_FOUND, mid.x, mid.y + 4, 0.1, 8),
       k(T.GRAPH_FOUND + 300, mid.x, mid.y, 0.05, true),
       k(lerp(T.GRAPH_FOUND, T.GRAPH_TRACE[1], 0.5), n[3]!.x, n[3]!.y, 0.05, true),
       k(T.GRAPH_TRACE[1], n[4]!.x, n[4]!.y, 0.05, true),
-      ...ponder(T.GRAPH_TRACE[1] + 400, T.GRAPH_FIXED - 400, g.x + g.w * 0.3, g.y + g.h + 40, 0, 16),
+      ...ponder(T.GRAPH_TRACE[1] + 400, T.GRAPH_FIXED - 1000, g.x + g.w * 0.3, g.y + g.h + 40, 0, 16),
+      ...ponder(T.GRAPH_FIXED - 800, T.GRAPH_FIXED - 40, mid.x + 6, mid.y + 10, 0.1, 8),
       k(T.GRAPH_FIXED, mid.x, mid.y, 0.05, true),
       k(T.GRAPH_CLOSE, g.x + g.w - 16, g.y + 12, 0.05, true),
       k(T.GRAPH_CLOSE + 400, g.x + g.w * 0.5, g.y + g.h * 0.5, 0.1, true),
     ],
     press: [[T.GRAPH_OPEN - 30, T.GRAPH_OPEN + 80], [T.GRAPH_FOUND + 270, T.GRAPH_FOUND + 380], [T.GRAPH_FIXED - 30, T.GRAPH_FIXED + 80], [T.GRAPH_CLOSE - 30, T.GRAPH_CLOSE + 80]],
     clicks: [T.GRAPH_OPEN, T.GRAPH_FOUND + 300, T.GRAPH_FIXED, T.GRAPH_CLOSE],
-    think: [[T.GRAPH_FOUND - 450, T.GRAPH_FOUND]],
+    think: [
+      [T.GRAPH_FOUND - 900, T.GRAPH_FOUND],
+      [T.GRAPH_FIXED - 800, T.GRAPH_FIXED - 40],
+    ],
     born: T.SPAWN_X,
     gone: T.GRAPH_CLOSE + 650,
     taps: [],
@@ -689,27 +735,28 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
 
   // Y: puxa o DevTools pela borda, clica em Console, examina os erros e marca o 404; no fim confere o 200
   const dv = devtools(L);
+  const scr = (key: Key): Key => ({ ...key, screen: true });
   const y: Track = {
     keys: [
       k(T.SPAWN_Y, sp2.plus.x, sp2.plus.y, 0, true),
       k(T.SPAWN_Y + 380, sp2.x + 50, sp2.y + 70, 0.15, true),
-      k(T.DEV_PULL[0] - 200, dv.closed - 30, dv.handleY + 20, 0.05),
-      k(T.DEV_PULL[0], dv.closed - 5, dv.handleY, 0, true),
-      k(T.DEV_PULL[1], dv.open + 5, dv.handleY, 0, true),
-      k(T.DEV_TAB, dv.open + dv.tab.dx, dv.tab.y, 0.05, true),
-      k(T.DEV_INSPECT[0], dv.open + dv.w * 0.55, dv.line(0), 0.05, true),
-      ...ponder(T.DEV_INSPECT[0] + 50, T.DEV_FOUND - 30, dv.open + dv.w * 0.6, dv.line(1), 0.08, 8),
-      k(T.DEV_FOUND, dv.open + dv.w * 0.5, dv.line(0), 0.05, true),
-      k(T.DEV_INSPECT[1], dv.open + dv.w * 0.45, dv.line(2), 0.05, true),
-      k(T.DEV_CLOSE[0], dv.open + 5, dv.handleY, 0, true),
-      k(T.DEV_CLOSE[1], dv.closed - 5, dv.handleY, 0, true),
-      ...ponder(T.DEV_CLOSE[1] + 400, T.DEV_FINAL[0] - 300, dv.closed - 90, dv.handleY + 120, -0.2, 18),
-      k(T.DEV_FINAL[0], dv.closed - 5, dv.handleY, 0, true),
-      k(T.DEV_FINAL[0] + 400, dv.open + 5, dv.handleY, 0, true),
-      k(T.DEV_OK, dv.open + dv.w * 0.5, dv.line(4), 0.05, true),
-      k(T.DEV_FINAL[1] - 400, dv.open + 5, dv.handleY, 0, true),
-      k(T.DEV_FINAL[1], dv.closed - 5, dv.handleY, 0, true),
-      k(T.DEV_FINAL[1] + 300, dv.closed - 60, dv.handleY + 40, 0.1, true),
+      scr(k(T.DEV_PULL[0] - 200, dv.closed - 30, dv.handleY + 20, 0.05)),
+      scr(k(T.DEV_PULL[0], dv.closed - 5, dv.handleY, 0, true)),
+      scr(k(T.DEV_PULL[1], dv.open + 5, dv.handleY, 0, true)),
+      scr(k(T.DEV_TAB, dv.open + dv.tab.dx, dv.tab.y, 0.05, true)),
+      scr(k(T.DEV_INSPECT[0], dv.open + dv.w * 0.55, dv.line(0), 0.05, true)),
+      ...ponder(T.DEV_INSPECT[0] + 50, T.DEV_FOUND - 30, dv.open + dv.w * 0.6, dv.line(1), 0.08, 8).map(scr),
+      scr(k(T.DEV_FOUND, dv.open + dv.w * 0.5, dv.line(0), 0.05, true)),
+      scr(k(T.DEV_INSPECT[1], dv.open + dv.w * 0.45, dv.line(2), 0.05, true)),
+      scr(k(T.DEV_CLOSE[0], dv.open + 5, dv.handleY, 0, true)),
+      scr(k(T.DEV_CLOSE[1], dv.closed - 5, dv.handleY, 0, true)),
+      ...ponder(T.DEV_CLOSE[1] + 400, T.DEV_FINAL[0] - 300, dv.closed - 90, dv.handleY + 120, -0.2, 18).map(scr),
+      scr(k(T.DEV_FINAL[0], dv.closed - 5, dv.handleY, 0, true)),
+      scr(k(T.DEV_FINAL[0] + 400, dv.open + 5, dv.handleY, 0, true)),
+      scr(k(T.DEV_OK, dv.open + dv.w * 0.5, dv.line(4), 0.05, true)),
+      scr(k(T.DEV_FINAL[1] - 400, dv.open + 5, dv.handleY, 0, true)),
+      scr(k(T.DEV_FINAL[1], dv.closed - 5, dv.handleY, 0, true)),
+      scr(k(T.DEV_FINAL[1] + 300, dv.closed - 60, dv.handleY + 40, 0.1, true)),
     ],
     press: [T.DEV_PULL, [T.DEV_TAB - 30, T.DEV_TAB + 80], [T.DEV_FOUND - 30, T.DEV_FOUND + 80], T.DEV_CLOSE, [T.DEV_FINAL[0], T.DEV_FINAL[0] + 400], [T.DEV_FINAL[1] - 400, T.DEV_FINAL[1]]],
     clicks: [T.DEV_TAB, T.DEV_FOUND],
@@ -724,28 +771,29 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
 
 /** A câmera durante a reconstrução: abre e inclina em 3D quando há muito acontecendo, aproxima nos consertos. */
 export function rebuildCamera(L: Layout): CamKey[] {
+  // pouca câmera: zoom entre 0,96 e 1,1, foco no máximo um quarto do caminho até o detalhe e
+  // inclinação pequena, para a tela de login ficar no meio
   const { title, button, card } = L;
-  const pal = palette(L);
-  const fonts = fontPicker(L);
-  const near = L.vw < 600 ? 1.1 : 1.22;
   const sp = spawner(L);
-  const birth = L.vw < 600 ? 1.15 : 1.35;
+  const birth = L.vw < 600 ? 1.12 : 1.25;
+  const q = 0.25;
   return [
-    { t: T.CAM_BACK[1], s: 1.2, fx: card.r * 0.8, fy: card.t * 0.8, rx: 0, ry: 0 },
-    { t: T.SPAWNER[0], s: birth, fx: sp.x * 0.85, fy: (sp.y - 30) * 0.85, rx: -3, ry: 4 },
-    { t: T.SPAWN_D + 400, s: birth, fx: sp.x * 0.85, fy: (sp.y - 40) * 0.85, rx: -3, ry: -3 },
-    { t: T.SPAWN_Y + 350, s: birth, fx: sp.x * 0.85, fy: (sp.y + 10) * 0.85, rx: 2, ry: -3 },
+    { t: T.CAM_BACK[1], s: 1.08, fx: 120, fy: -20, rx: 0, ry: 0 },
+    { t: T.A_ENTER[1], s: 1.3, fx: 175, fy: 10, rx: 0, ry: 2 },
+    { t: T.LOOK[1], s: 1.34, fx: 170, fy: 10, rx: -1, ry: 1 },
+    { t: T.VERIFY_CLICK, s: 1.22, fx: 60, fy: 0, rx: 0, ry: 0 },
+    { t: T.SPAWNER[0], s: birth, fx: sp.x * 0.7, fy: (sp.y - 30) * 0.7, rx: -2, ry: 3 },
+    { t: T.SPAWN_D + 400, s: birth, fx: sp.x * 0.7, fy: (sp.y - 40) * 0.7, rx: -2, ry: -2 },
+    { t: T.SPAWN_Y + 350, s: birth, fx: sp.x * 0.7, fy: (sp.y + 10) * 0.7, rx: 1, ry: -2 },
     { t: T.BOX[0], s: 1, fx: 0, fy: 0, hold: true },
-    { t: T.BOX[1], s: 0.95, fx: 0, fy: 0, rx: 7, ry: -9 },
-    { t: T.GRAB_P2[1], s: 0.9, fx: 0, fy: 0, rx: 4, ry: 11 },
-    { t: T.PALETTE_CLICK, s: 1.08, fx: (pal.x + PALETTE_W / 2) * 0.5, fy: pal.y * 0.5, rx: -5, ry: 7 },
-    { t: T.ERASE[0], s: near, fx: cx(title) * 0.7, fy: cy(title) * 0.7, rx: 2, ry: -6 },
-    { t: T.THINK_B[0], s: near + 0.04, fx: cx(title) * 0.7, fy: cy(title) * 0.7, rx: 0, ry: 3 },
-    { t: T.PAINT, s: 1.0, fx: cx(button) * 0.3, fy: cy(button) * 0.3, rx: 6, ry: -5 },
-    { t: T.TYPE2[1], s: near, fx: cx(title) * 0.6, fy: cy(title) * 0.6, rx: 0, ry: 0 },
-    { t: T.FONT_PICK, s: near, fx: (title.r + fonts.x) * 0.3, fy: cy(title) * 0.6, rx: -3, ry: 5 },
-    { t: T.ORBIT_D[1], s: 0.96, fx: 0, fy: 0, rx: 6, ry: -4 },
-    { t: T.HIGH5, s: 1.1, fx: cx(card) * 0.5, fy: (card.t + 34) * 0.5, rx: -3, ry: 0 },
+    { t: T.BOX[1], s: 0.98, fx: 0, fy: 0, rx: 3, ry: -3.5 },
+    { t: T.GRAB_P2[1], s: 0.96, fx: 0, fy: 0, rx: 2, ry: 3.5 },
+    { t: T.ERASE[0], s: 1.08, fx: cx(title) * q, fy: cy(title) * q, rx: 1, ry: -2 },
+    { t: T.THINK_B[0], s: 1.1, fx: cx(title) * q, fy: cy(title) * q, rx: 0, ry: 1.5 },
+    { t: T.PAINT, s: 1.02, fx: cx(button) * q, fy: cy(button) * q, rx: 2.5, ry: -2 },
+    { t: T.TYPE2[1], s: 1.08, fx: cx(title) * q, fy: cy(title) * q, rx: 0, ry: 0 },
+    { t: T.ORBIT_D[1], s: 0.98, fx: 0, fy: 0, rx: 2.5, ry: -1.5 },
+    { t: T.HIGH5, s: 1.05, fx: cx(card) * q, fy: (card.t + 34) * q, rx: -1.5, ry: 0 },
     { t: T.EXIT[1] - 100, s: 1, fx: 0, fy: 0, rx: 0, ry: 0, hold: true },
   ];
 }

@@ -110,11 +110,23 @@ describe('roteiro do Entrar', () => {
     expect(sample(tracks.b.keys, T.GRAB_P1[0]).z).toBeGreaterThan(0.5);
   });
 
-  it('o primeiro cursor nasce do ponto verde e cria os outros no "+"; ninguém vem de fora da tela', () => {
+  it('o primeiro cursor entra pela direita, olha em volta, verifica o erro e cria os outros no "+"', () => {
     const tracks = cursorTracks(L);
     const sp = spawner(L);
     expect(tracks.a.born).toBe(T.A_POP);
-    expect(sample(tracks.a.keys, T.A_POP)).toMatchObject({ x: L.card.r, y: L.card.t });
+    expect(tracks.a.enter).toBe(true);
+    expect(sample(tracks.a.keys, T.A_POP).x).toBeGreaterThan(L.vw / 2);
+    // para (desacelerando) antes de olhar em volta, e a cabeça quase não se mexe enquanto olha
+    const lookA = sample(tracks.a.keys, T.LOOK[0]);
+    const lookB = sample(tracks.a.keys, T.LOOK[1]);
+    expect(Math.hypot(lookA.x - lookB.x, lookA.y - lookB.y)).toBeLessThan(10);
+    // pisca rápido e as olhadas são pulos (cada uma fica parada pelo menos 150 ms)
+    expect(tracks.a.blinks!.some((b) => within(T.LOOK, b))).toBe(true);
+    const looks = tracks.a.looks!;
+    for (let i = 1; i < looks.length; i++) expect(looks[i]!.t - looks[i - 1]!.t).toBeGreaterThanOrEqual(150);
+    // e clica no cartão para começar a verificação antes de abrir o contador
+    expect(tracks.a.clicks).toContain(T.VERIFY_CLICK);
+    expect(T.VERIFY_CLICK).toBeLessThan(T.SPAWNER[0]);
     const order = [tracks.b, tracks.c, tracks.d];
     order.forEach((tr, i) => {
       expect(tr.born).toBe([T.SPAWN_B, T.SPAWN_C, T.SPAWN_D][i]);
@@ -125,7 +137,7 @@ describe('roteiro do Entrar', () => {
       expect(tracks.a.press.some((iv) => within(iv, tr.born))).toBe(true);
     });
     for (const [id, tr] of Object.entries(tracks)) {
-      for (let t = tr.born; t < tr.gone; t += 40) {
+      for (let t = id === 'a' ? T.A_ENTER[1] : tr.born; t < tr.gone; t += 40) {
         const p = sample(tr.keys, t);
         expect(Math.abs(p.x)).toBeLessThan(L.vw / 2 + 60);
       }
@@ -276,7 +288,16 @@ describe('roteiro do Entrar', () => {
       const c = sampleCam(cam, t);
       tilt = Math.max(tilt, Math.abs(c.rx), Math.abs(c.ry));
     }
-    expect(tilt).toBeGreaterThan(5);
+    // inclina, mas pouco, e quase não sai do centro: a tela de login fica no meio
+    expect(tilt).toBeGreaterThan(2);
+    expect(tilt).toBeLessThanOrEqual(4);
+    for (let t = T.BOX[0]; t < T.HIGH5; t += 50) {
+      const c = sampleCam(cam, t);
+      expect(c.s).toBeGreaterThan(0.94);
+      expect(c.s).toBeLessThan(1.13);
+      expect(Math.abs(c.fx)).toBeLessThan(60);
+      expect(Math.abs(c.fy)).toBeLessThan(60);
+    }
     expect(sampleCam(cam, T.END)).toMatchObject({ s: 1, rx: 0, ry: 0 });
   });
 
@@ -326,6 +347,25 @@ describe('roteiro do Entrar', () => {
     expect(sample(y.keys, T.DEV_FOUND).y).toBeCloseTo(dv.line(0));
     expect(sample(y.keys, T.DEV_OK).y).toBeCloseTo(dv.line(4));
     expect(T.DEV_FINAL[0]).toBeGreaterThan(T.GRAPH_FIXED);
+  });
+
+  it('D passa bem perto da câmera, desacelera e pisca duas vezes ali', () => {
+    const { d } = cursorTracks(L);
+    let peak = { t: 0, z: -Infinity };
+    for (let t = T.ORBIT_D[0]; t <= T.ORBIT_D[1]; t += 10) {
+      const z = sample(d.keys, t).z;
+      if (z > peak.z) peak = { t, z };
+    }
+    expect(depthScale(peak.z)).toBeGreaterThan(5.5);
+    expect(d.blinks).toHaveLength(2);
+    for (const b of d.blinks!) expect(Math.abs(b - peak.t)).toBeLessThan(260);
+  });
+
+  it('as chaves de Y no DevTools são da tela (o painel fica preso no canto, a câmera não o mexe)', () => {
+    const { y } = cursorTracks(L);
+    const inDev = y.keys.filter((k) => k.t >= T.DEV_PULL[0] && k.t <= T.DEV_FINAL[1]);
+    expect(inDev.length).toBeGreaterThan(8);
+    expect(inDev.every((k) => k.screen)).toBe(true);
   });
 
   it('o progresso vai de 0 a 100 sem voltar', () => {
