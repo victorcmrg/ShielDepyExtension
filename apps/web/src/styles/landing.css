@@ -125,6 +125,16 @@ img, svg { display: block; }
 .nav-links a:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .nav-actions { display: flex; align-items: center; gap: 6px; }
 @media (max-width: 820px) { .nav-links { display: none; } .nav-actions { margin-left: auto; } }
+/* celular: o menu cabe na largura (antes o "Começar" saía cortado na borda direita) */
+@media (max-width: 480px) {
+  .nav { gap: 10px; padding: 6px 6px 6px 14px; }
+  .nav-actions { gap: 2px; }
+  .nav .icon-button { width: 34px; height: 34px; }
+  .nav .link-quiet { padding: 8px; }
+  .nav .button.small { height: 36px; padding: 0 16px; }
+}
+/* telas bem estreitas (320 px): fica só o símbolo da marca */
+@media (max-width: 360px) { .nav .brand span { display: none; } }
 
 /* ---------------- topo da página ---------------- */
 .hero { position: relative; min-height: 100svh; display: flex; align-items: center; padding: 120px 24px 80px; overflow: visible; overflow-x: clip; }
