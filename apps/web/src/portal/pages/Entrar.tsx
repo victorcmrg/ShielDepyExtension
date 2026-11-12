@@ -156,6 +156,15 @@ function Scene() {
           <span className="ent-w goo g1" />
           <span className="ent-w goo g2" />
         </div>
+        {/* a ligação líquida entre o cartão do meio e o que sai dele */}
+        <svg className="ent-w ent-neck" width="1" height="1" aria-hidden="true">
+          <path />
+        </svg>
+        <svg className="ent-w ent-trails" width="1" height="1" aria-hidden="true">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <line key={i} />
+          ))}
+        </svg>
         <div className="ent-w ent-pop p0">
           <div className="ent-pop-body">
             <span className="ent-pop-tag">GET /entrar · 404</span>

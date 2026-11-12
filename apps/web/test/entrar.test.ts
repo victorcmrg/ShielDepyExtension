@@ -69,7 +69,7 @@ describe('roteiro do Entrar', () => {
   });
 
   it('os marcos da reconstrução vêm em ordem e cabem antes do fim', () => {
-    const order = [T.CAM_BACK[1], T.BOX[0], T.BOX[1], T.GRAB_P2[1], T.LOGO[1], T.SUB[1], T.PALETTE_CLICK, T.PASS[1], T.ERASE[1], T.TYPE1[1], T.BUTTON[1], T.PAINT, T.BACK[1], T.TYPE2[1], T.FONT_PICK, T.HIGH5, T.EXIT[1], T.END];
+    const order = [T.CAM_BACK[1], T.BOX[0], T.BOX[1], T.LOGO[1], T.GRAB_P2[1], T.SUB[1], T.PALETTE_CLICK, T.PASS[1], T.ERASE[1], T.TYPE1[1], T.BUTTON[1], T.PAINT, T.BACK[1], T.TYPE2[1], T.FONT_PICK, T.HIGH5, T.EXIT[1], T.END];
     for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThanOrEqual(order[i - 1]!);
   });
 
@@ -423,5 +423,50 @@ describe('física das peças', () => {
     const a = rng(404);
     const b = rng(404);
     expect([a(), a(), a()]).toEqual([b(), b(), b()]);
+  });
+});
+
+describe('divisão em líquido e teletransporte', () => {
+  it('o cartão novo estica além do lugar, segura, rompe e volta ao lugar', async () => {
+    const { splitPull, SPLIT_SNAP } = await import('../src/portal/pages/entrar/script');
+    expect(splitPull(0)).toBe(0);
+    let prev = -1;
+    for (let u = 0; u <= SPLIT_SNAP; u += 0.01) {
+      const f = splitPull(u);
+      expect(f).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = f;
+    }
+    expect(splitPull(SPLIT_SNAP)).toBeGreaterThan(1.15); // passou do lugar: a ponte está esticada
+    // segurando: anda bem pouco perto da ruptura
+    expect(splitPull(SPLIT_SNAP) - splitPull(SPLIT_SNAP - 0.1)).toBeLessThan(0.05);
+    expect(splitPull(1)).toBeCloseTo(1, 2);
+  });
+
+  it('a ponte líquida existe esticada e some depois dos respingos', async () => {
+    const { liquidNeck, SPLIT_SNAP } = await import('../src/portal/pages/entrar/script');
+    const a = { x: 0, y: 0, w: 300, h: 130 };
+    const b = { x: 200, y: -230, w: 300, h: 130 };
+    expect(liquidNeck(a, b, 0.05)).toBe('');
+    expect(liquidNeck(a, b, 0.5)).toMatch(/^M .* C .* A .* Z$/);
+    expect(liquidNeck(a, b, SPLIT_SNAP + 0.05)).toContain('a ');
+    expect(liquidNeck(a, b, SPLIT_SNAP + 0.2)).toBe('');
+  });
+
+  it('o agente do caos fica parado e aparece no ponto seguinte (sem passar pelo meio)', async () => {
+    const { teleportSample } = await import('../src/portal/pages/entrar/script');
+    const keys = [
+      { t: 0, x: 0, y: 0, z: 0, hold: true },
+      { t: 1000, x: 300, y: 0, z: 0, hold: true },
+    ];
+    expect(teleportSample(keys, 500)).toMatchObject({ x: 0, y: 0 });
+    expect(teleportSample(keys, 800)).toMatchObject({ x: 300, y: 0 });
+    // trecho curto: anda normal
+    const near = [
+      { t: 0, x: 0, y: 0, z: 0, hold: true },
+      { t: 1000, x: 20, y: 0, z: 0, hold: true },
+    ];
+    const mid = teleportSample(near, 500).x;
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(20);
   });
 });

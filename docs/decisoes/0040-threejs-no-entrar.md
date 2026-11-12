@@ -15,3 +15,5 @@
 - Trocar a fonte do 404 no CSS troca a das letras 3D junto, sem arquivo novo.
 
 **Acréscimo (2026-11-12, pedido do usuário):** a letra 3D tem o tamanho exato do texto da página: saiu o chanfro (que a engordava), a face é preta sem brilho (`MeshBasicMaterial`) e as laterais quase pretas, então não aparece borda cinza; no chão as peças deitam retas (90°, quase sem girar para os lados). O confete 3D do fim saiu, a pedido.
+
+**Acréscimo 2 (2026-11-13):** o contorno ficou rígido (sem arredondar as quinas, desenho 3 a 6 vezes maior e limiar no meio do anti-aliasing), para a letra não "inchar"; o three.js assume 1 s antes da queda e a sombra aparece com fade; a parede sobe a partir do chão e o chão vai da parede até a câmera (os dois se encontram no canto, com a mesma força de sombra), e a câmera da sombra cobre a cena inteira (sem cortes).

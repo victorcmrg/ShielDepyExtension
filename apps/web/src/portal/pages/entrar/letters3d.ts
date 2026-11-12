@@ -31,7 +31,8 @@ const DIST = 1100; // a mesma perspectiva da cena em CSS
 
 /** A forma 3D de um caractere, com a origem na pena (início da linha de base), em px da tela. */
 function glyphShapes(ch: string, font: string, px: number): THREE.Shape[] {
-  const up = px < 80 ? 4 : px < 160 ? 2 : 1; // letras pequenas são desenhadas maiores e reduzidas
+  // desenhada maior e reduzida: com mais pixels, o contorno sai fiel (quinas retas, sem "inchar")
+  const up = px < 80 ? 6 : 3;
   const size = px * up;
   const cv = document.createElement('canvas');
   const ctx = cv.getContext('2d', { willReadFrequently: true })!;
@@ -48,7 +49,7 @@ function glyphShapes(ch: string, font: string, px: number): THREE.Shape[] {
   ctx.textBaseline = 'alphabetic';
   ctx.fillText(ch, pad, base);
   const data = ctx.getImageData(0, 0, w, h).data;
-  const out = outlines((x, y) => data[(y * w + x) * 4 + 3]! > 110, w, h, 4 * up * up);
+  const out = outlines((x, y) => data[(y * w + x) * 4 + 3]! >= 128, w, h, 4 * up * up, 0);
   const toV = (p: readonly [number, number]) => new THREE.Vector2((p[0] - pad) / up, -(p[1] - base) / up);
   return out.map((o) => {
     const shape = new THREE.Shape(o.outer.map(toV));
@@ -81,31 +82,37 @@ export function createLetters3D(canvas: HTMLCanvasElement, glyphs: readonly Glyp
   const { renderer, camera } = makeRenderer(canvas, vw, vh, true);
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xffffff, 0xd9d9d9, 1.1));
+  const WALL_Z = -90;
   const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-  sun.position.set(-420, 760, 900);
-  sun.target.position.set(0, -floorY, 0);
+  sun.position.set(-380, 900, 1100);
+  sun.target.position.set(0, -floorY * 0.4, WALL_Z);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
-  sc.left = -vw * 0.8;
-  sc.right = vw * 0.8;
-  sc.top = vh * 0.9;
-  sc.bottom = -vh * 0.9;
-  sc.near = 10;
-  sc.far = 4000;
-  sun.shadow.radius = 5;
-  sun.shadow.bias = -0.0008;
+  sc.left = -vw * 1.1;
+  sc.right = vw * 1.1;
+  sc.top = vh * 1.3;
+  sc.bottom = -vh * 1.3;
+  sc.near = 1;
+  sc.far = 5000;
+  sun.shadow.radius = 4;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.8;
   scene.add(sun, sun.target);
 
   // o chão (onde as peças caem) e uma parede branca logo atrás (onde a sombra delas aparece em pé)
+  // o chão vai da parede até a câmera e a parede sobe do chão: os dois se encontram no canto, sem
+  // sobrar pedaço de um atrás do outro, e com a mesma força de sombra (a base da parede emenda no chão)
+  const FLOOR_DEPTH = 2400;
   const floorMat = new THREE.ShadowMaterial({ opacity: 0 });
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(vw * 4, 3000), floorMat);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(vw * 4, FLOOR_DEPTH), floorMat);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -floorY;
+  floor.position.set(0, -floorY, WALL_Z + FLOOR_DEPTH / 2);
   floor.receiveShadow = true;
+  const WALL_H = vh * 4;
   const wallMat = new THREE.ShadowMaterial({ opacity: 0 });
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(vw * 4, vh * 4), wallMat);
-  wall.position.z = -160;
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(vw * 4, WALL_H), wallMat);
+  wall.position.set(0, -floorY + WALL_H / 2, WALL_Z);
   wall.receiveShadow = true;
   scene.add(floor, wall);
 
@@ -144,8 +151,8 @@ export function createLetters3D(canvas: HTMLCanvasElement, glyphs: readonly Glyp
         // a ordem e os sinais do CSS: rotateY(yaw) rotateX(tip) rotateZ(spin), com o y para baixo
         g.rotation.set(-p.tip * DEG, p.yaw * DEG, -p.spin * DEG, 'YXZ');
       });
-      floorMat.opacity = 0.26 * shadowFade;
-      wallMat.opacity = 0.14 * shadowFade;
+      floorMat.opacity = 0.2 * shadowFade;
+      wallMat.opacity = 0.2 * shadowFade;
       if (camera.zoom !== cam.s) {
         camera.zoom = cam.s;
         camera.updateProjectionMatrix();

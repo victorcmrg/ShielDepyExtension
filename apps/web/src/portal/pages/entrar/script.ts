@@ -38,9 +38,9 @@ export const T = {
   SPAWN_Y: 17900, // Y abre o DevTools e examina o 404 no console
   DEV_PULL: [18550, 19350] as const, // Y puxa o DevTools pela borda direita
   DEV_TAB: 19650, // clica em "Console"
-  DEV_INSPECT: [19850, 20750] as const, // examina os erros, pensando
+  DEV_INSPECT: [19850, 21650] as const, // examina os erros, pensando (o DevTools fica aberto um bom tempo)
   DEV_FOUND: 20350, // marca o 404 como achado
-  DEV_CLOSE: [20850, 21350] as const, // empurra o DevTools de volta
+  DEV_CLOSE: [21750, 22250] as const, // empurra o DevTools de volta
   GRAPH_OPEN: 18700, // X abre o mapa das ligações
   GRAPH_TRACE: [18950, 21050] as const, // percorre nó por nó
   GRAPH_FOUND: 20450, // a ligação /entrar → ∅ quebrada
@@ -48,11 +48,11 @@ export const T = {
   ANCHOR: [18400, 19800] as const, // C segura o canto enquanto A puxa
   BOX: [18550, 19750] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
   SLOTS: [19650, 20250] as const, // as partes pontilhadas: onde cada peça vai ficar
-  GRAB_P1: [19650, 20050] as const, // B puxa os balões para fora
+  GRAB_P1: [19650, 20300] as const, // B pega cada balão pelo canto (pêndulo) e o lança para fora
   LOGO: [19850, 20850] as const, // D cria o logo grande e o encolhe puxando a alça do canto
   PALETTE_OPEN: 20150, // C abre a paleta e pensa bastante antes de escolher
-  GRAB_P2: [20300, 20700] as const,
-  ORBIT_B: [20750, 22150] as const, // B dá a volta e passa gigante na frente da câmera
+  GRAB_P2: [20450, 21100] as const,
+  ORBIT_B: [21150, 22450] as const, // B dá a volta e passa gigante na frente da câmera
   THINK_C1: [21100, 21750] as const,
   BUMP: 21150, // A e D se esbarram no meio do caminho
   SUB: [21300, 21950] as const, // A leva o subtítulo torto para o lugar
@@ -79,7 +79,7 @@ export const T = {
   FONT_PICK: 26250,
   FONT_CLOSE: 26500,
   GRAPH_FIXED: 25450, // depois da correção, a ligação fica verde
-  DEV_FINAL: [25650, 26750] as const, // Y reabre o DevTools: agora 200 e 0 erros
+  DEV_FINAL: [25650, 27350] as const, // Y reabre o DevTools: agora 200 e 0 erros
   DEV_OK: 26100,
   GRAPH_CLOSE: 26650,
   HIGH5: 27450, // os quatro se encontram em cima do cartão
@@ -178,6 +178,22 @@ export function sample(keys: readonly Key[], t: number): { x: number; y: number;
   return { x, y, z };
 }
 
+/** Teletransporte (os agentes do caos): em cada trecho longo o cursor fica parado e, aos 72% do tempo,
+ *  aparece no ponto seguinte; trechos curtos (pensar, rondar) seguem a curva normal. */
+export const TELEPORT_MIN = 50;
+export function teleportSample(keys: readonly Key[], t: number): { x: number; y: number; z: number } {
+  for (let i = 1; i < keys.length; i++) {
+    const b = keys[i]!;
+    if (t <= b.t) {
+      const a = keys[i - 1]!;
+      if (t <= a.t || Math.hypot(b.x - a.x, b.y - a.y) < TELEPORT_MIN) return sample(keys, t);
+      const u = (t - a.t) / (b.t - a.t || 1);
+      return u < 0.72 ? { x: a.x, y: a.y, z: a.z } : { x: b.x, y: b.y, z: b.z };
+    }
+  }
+  return sample(keys, t);
+}
+
 export type Interval = readonly [number, number];
 export const within = (iv: Interval, t: number) => t >= iv[0] && t < iv[1];
 
@@ -209,10 +225,95 @@ export interface Rect {
 export const cx = (r: Rect) => (r.l + r.r) / 2;
 export const cy = (r: Rect) => (r.t + r.b) / 2;
 
+/** A divisão em líquido: quanto do caminho (0 = no cartão do meio, 1 = no lugar) o cartão novo andou.
+ *  Sai rápido de trás, estica devagar (resistência), segura um instante perto do ponto de ruptura,
+ *  rompe e recua com mola até o lugar. */
+export const SPLIT_SNAP = 0.74;
+export function splitPull(u: number): number {
+  if (u <= 0.15) return 0.55 * ease.out(clamp01(u / 0.15));
+  if (u <= 0.62) return lerp(0.55, 1.18, ease.out((u - 0.15) / 0.47));
+  if (u <= SPLIT_SNAP) return lerp(1.18, 1.22, (u - 0.62) / (SPLIT_SNAP - 0.62));
+  const k = clamp01((u - SPLIT_SNAP) / (1 - SPLIT_SNAP));
+  return lerp(1.22, 1, 1 - Math.exp(-6 * k) * Math.cos(9 * k));
+}
+
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+type P2 = { x: number; y: number };
+const f1 = (n: number) => n.toFixed(1);
+const vecAt = (c: P2, a: number, r: number): P2 => ({ x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a) });
+
+/** A ponte entre dois círculos (o "metaball" clássico): duas curvas tangentes que afinam quando os
+ *  centros se afastam. `v` é a abertura: menor, mais fina. */
+function metaball(r1: number, r2: number, c1: P2, c2: P2, v: number): string {
+  const d = Math.hypot(c2.x - c1.x, c2.y - c1.y);
+  if (r1 <= 0 || r2 <= 0 || d <= Math.abs(r1 - r2) + 1) return '';
+  let u1 = 0;
+  let u2 = 0;
+  if (d < r1 + r2) {
+    u1 = Math.acos(clamp01((r1 * r1 + d * d - r2 * r2) / (2 * r1 * d)));
+    u2 = Math.acos(clamp01((r2 * r2 + d * d - r1 * r1) / (2 * r2 * d)));
+  }
+  const ab = Math.atan2(c2.y - c1.y, c2.x - c1.x);
+  const spread = Math.acos(Math.max(-1, Math.min(1, (r1 - r2) / d)));
+  const a1 = ab + u1 + (spread - u1) * v;
+  const a2 = ab - u1 - (spread - u1) * v;
+  const a3 = ab + Math.PI - u2 - (Math.PI - u2 - spread) * v;
+  const a4 = ab - Math.PI + u2 + (Math.PI - u2 - spread) * v;
+  const p1 = vecAt(c1, a1, r1);
+  const p2 = vecAt(c1, a2, r1);
+  const p3 = vecAt(c2, a3, r2);
+  const p4 = vecAt(c2, a4, r2);
+  const total = r1 + r2;
+  const d2 = Math.min(v * 2.4, Math.hypot(p3.x - p1.x, p3.y - p1.y) / total) * Math.min(1, (d * 2) / total);
+  const h1 = vecAt(p1, a1 - Math.PI / 2, r1 * d2);
+  const h2 = vecAt(p2, a2 + Math.PI / 2, r1 * d2);
+  const h3 = vecAt(p3, a3 + Math.PI / 2, r2 * d2);
+  const h4 = vecAt(p4, a4 - Math.PI / 2, r2 * d2);
+  const big = d > total ? 1 : 0;
+  return (
+    `M ${f1(p1.x)} ${f1(p1.y)} C ${f1(h1.x)} ${f1(h1.y)} ${f1(h3.x)} ${f1(h3.y)} ${f1(p3.x)} ${f1(p3.y)} ` +
+    `A ${f1(r2)} ${f1(r2)} 0 ${big} 0 ${f1(p4.x)} ${f1(p4.y)} C ${f1(h4.x)} ${f1(h4.y)} ${f1(h2.x)} ${f1(h2.y)} ${f1(p2.x)} ${f1(p2.y)} Z`
+  );
+}
+
+const circle = (c: P2, r: number) =>
+  r <= 0.5 ? '' : `M ${f1(c.x - r)} ${f1(c.y)} a ${f1(r)} ${f1(r)} 0 1 0 ${f1(2 * r)} 0 a ${f1(r)} ${f1(r)} 0 1 0 ${f1(-2 * r)} 0 Z`;
+
+/** A ligação líquida entre o cartão do meio (a) e o que sai dele (b) no instante u da divisão: a ponte
+ *  estica e afina até romper em SPLIT_SNAP; depois, dois respingos voltam para dentro de cada cartão. */
+export function liquidNeck(a: Box, b: Box, u: number): string {
+  if (u < 0.1) return '';
+  const r = Math.min(a.h, b.h) * 0.34;
+  const inside = (box: Box, p: P2): P2 => ({
+    x: Math.max(box.x - box.w / 2 + r, Math.min(box.x + box.w / 2 - r, p.x)),
+    y: Math.max(box.y - box.h / 2 + r, Math.min(box.y + box.h / 2 - r, p.y)),
+  });
+  const c1 = inside(a, b);
+  const c2 = inside(b, a);
+  if (u >= SPLIT_SNAP) {
+    const k = clamp01((u - SPLIT_SNAP) / 0.14);
+    if (k >= 1) return '';
+    const d = Math.hypot(c2.x - c1.x, c2.y - c1.y) || 1;
+    const ux = (c2.x - c1.x) / d;
+    const uy = (c2.y - c1.y) / d;
+    const reach = r * (1.05 - 0.6 * ease.out(k));
+    const rr = r * 0.42 * (1 - ease.in(k));
+    return circle({ x: c1.x + ux * reach, y: c1.y + uy * reach }, rr) + circle({ x: c2.x - ux * reach, y: c2.y - uy * reach }, rr);
+  }
+  // quanto mais perto da ruptura, mais fina a ponte
+  const tension = clamp01((u - 0.1) / (SPLIT_SNAP - 0.1));
+  return metaball(r, r * (1 - 0.25 * tension), c1, c2, lerp(0.62, 0.18, tension));
+}
+
 /** Onde ficam os balões, a partir do tamanho da tela. */
 export function balloonSpots(vw: number, vh: number) {
-  const dx = Math.min(250, Math.max(60, vw * 0.2));
-  const dy = Math.min(160, Math.max(110, vh * 0.17));
+  const dx = Math.min(260, Math.max(60, vw * 0.22));
+  const dy = Math.min(195, Math.max(150, vh * 0.24));
   return { p0: { x: 0, y: -10 }, p1: { x: dx, y: -10 - dy }, p2: { x: -dx, y: -10 + dy } };
 }
 
@@ -593,8 +694,10 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.SPAWN_B + 1300, spots.p1.x + 90, spots.p1.y - 80, 0.4),
       k(T.GRAB_P1[0] - 350, spots.p1.x - 70, spots.p1.y - 60, 0.9),
       { ...k(T.GRAB_P1[0], spots.p1.x, spots.p1.y, 1.1, true), tag: 'p1' },
+      k(lerp(T.GRAB_P1[0], T.GRAB_P1[1], 0.42), spots.p1.x - 60, spots.p1.y + 36, 1.05),
       k(T.GRAB_P1[1], W - 40, -H + 30, 1.1),
       { ...k(T.GRAB_P2[0], spots.p2.x, spots.p2.y, 0.9, true), tag: 'p2' },
+      k(lerp(T.GRAB_P2[0], T.GRAB_P2[1], 0.42), spots.p2.x + 70, spots.p2.y - 30, 0.85),
       k(T.GRAB_P2[1], -W + 40, spots.p2.y + 60, 0.9),
       ...orbit({ t0: T.ORBIT_B[0], t1: T.ORBIT_B[1] - 200, x: 0, y: cy(card) + 40, rx: Math.min(vw * 0.36, 430), ry: 90, zMid: 0.8, zAmp: 2.8, from: Math.PI, dir: 1 }),
       k(T.TYPE1[0] - 400, title.l - 50, below + 40, -0.2),

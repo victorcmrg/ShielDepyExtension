@@ -40,6 +40,15 @@ interface Pop {
   svy: number;
   jig: number;
   vjig: number;
+  // pêndulo (pego pelo canto): ângulo a partir da vertical, velocidade, comprimento e giro de partida
+  al: number;
+  val: number;
+  al0: number;
+  len: number;
+  rot0: number;
+  pvx: number;
+  pvy: number;
+  ty: number;
 }
 
 /** Uma peça que um cursor leva de um lugar errado para o certo. */
@@ -276,6 +285,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         });
         gl = glMod.createLetters3D($('.ent-gl') as unknown as HTMLCanvasElement, list, vw, vh, floor);
         root.classList.add('is-gl');
+        // o HTML do 404 sai na hora (sem depender de transição de CSS)
+        $('.ent-letters').style.visibility = 'hidden';
       } catch {
         gl = null;
       }
@@ -290,7 +301,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       }
     }
     if (gl) {
-      gl.frame(bodies, cam3, S.seg(t, S.T.FALL_TEXT, S.T.FALL_TEXT + 600, S.ease.out));
+      gl.frame(bodies, cam3, S.seg(t, S.T.NOT_FOUND - 900, S.T.NOT_FOUND - 100, S.ease.inOut));
       return;
     }
     bodies.forEach((b, i) => {
@@ -308,12 +319,13 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
 
   // ---------------- os balões ----------------
   const spots = S.balloonSpots(vw, vh);
-  const mkPop = (sel: string, p: Pt, sh: string): Pop => ({ el: $(sel), w: 0, h: 0, x: p.x, y: p.y, rot: 0, vx: 0, vy: 0, vr: 0, mode: 'idle', gx: 0, gy: 0, phase: rand() * 6, z: 0, sh: $(sh), lx: p.x, ly: p.y, svx: 0, svy: 0, jig: 0, vjig: 0 });
+  const mkPop = (sel: string, p: Pt, sh: string): Pop => ({ el: $(sel), w: 0, h: 0, x: p.x, y: p.y, rot: 0, vx: 0, vy: 0, vr: 0, mode: 'idle', gx: 0, gy: 0, phase: rand() * 6, z: 0, sh: $(sh), lx: p.x, ly: p.y, svx: 0, svy: 0, jig: 0, vjig: 0, al: 0, val: 0, al0: 0, len: 1, rot0: 0, pvx: 0, pvy: 0, ty: 0 });
   const p0 = mkPop('.ent-pop.p0', spots.p0, '.ent-psh[data-for="p0"]');
   const p1 = mkPop('.ent-pop.p1', spots.p1, '.ent-psh[data-for="p1"]');
   const p2 = mkPop('.ent-pop.p2', spots.p2, '.ent-psh[data-for="p2"]');
 
   const goo = $('.ent-goo');
+  const neckPath = root.querySelector<SVGPathElement>('.ent-neck path')!;
   const g0 = $('.goo.g0');
   const g1 = $('.goo.g1');
   const g2 = $('.goo.g2');
@@ -382,6 +394,26 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         { transform: at(p.x - 20, p.y - 20, ' scale(1.7)', Z.ripple), opacity: 0 },
       ],
       { duration: 480, easing: 'cubic-bezier(.2,.7,.2,1)' }
+    );
+  }
+  const trails = Array.from(root.querySelectorAll<SVGLineElement>('.ent-trails line'));
+  let trailNext = 0;
+  /** O rastro do teletransporte: um traço vermelho que corre e some. */
+  function trail(a: Pt, b: Pt) {
+    const ln = trails[trailNext++ % trails.length]!;
+    ln.setAttribute('x1', (a.x + 12).toFixed(1));
+    ln.setAttribute('y1', (a.y + 12).toFixed(1));
+    ln.setAttribute('x2', (b.x + 12).toFixed(1));
+    ln.setAttribute('y2', (b.y + 12).toFixed(1));
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    ln.style.strokeDasharray = `${len.toFixed(0)} ${len.toFixed(0)}`;
+    ln.animate(
+      [
+        { strokeDashoffset: `${len.toFixed(0)}`, opacity: 1 },
+        { strokeDashoffset: '0', opacity: 1, offset: 0.35 },
+        { strokeDashoffset: `${(-len).toFixed(0)}`, opacity: 0 },
+      ],
+      { duration: 520, easing: 'cubic-bezier(.3,.7,.2,1)' }
     );
   }
   const sparks = $$('.ent-spark');
@@ -704,7 +736,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     p.y += dy;
     p.vx = p.vx * 0.5 + (dx / Math.max(dt, 0.008)) * 0.25;
     p.vy = p.vy * 0.5 + (dy / Math.max(dt, 0.008)) * 0.25;
-    p.vr += (dx - dy) * 0.6;
+    p.vr = 0;
+    p.rot += (0 - p.rot) * 0.5;
     p.vjig += Math.min(1.2, Math.abs(dx) + Math.abs(dy)) * 0.35;
   }
 
@@ -734,6 +767,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   }
 
   function stepPop(p: Pop, t: number, dt: number) {
+    p.ty *= p.mode === 'held' ? 1 : Math.exp(-4 * dt);
     if (p.mode === 'idle') {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -743,6 +777,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       p.vr *= Math.exp(-5 * dt);
       p.rot = Math.max(-18, Math.min(18, p.rot));
     } else if (p.mode === 'fly') {
+      // lançado com o embalo do balanço: segue a curva e cai um pouco (gravidade)
+      p.vy += 900 * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.rot += p.vr * dt;
@@ -769,7 +805,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       put(
         p.el,
         'transform',
-        at(w.x - p.w / 2, w.y - p.h / 2, `${lensOf(p.x, p.y, p.z)}${stretch(p.svx, p.svy, 0.22)} rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg) scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop + p.z)
+        at(w.x - p.w / 2, w.y - p.h / 2, `${lensOf(p.x, p.y, p.z)}${stretch(p.svx, p.svy, 0.22)} rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg) rotateY(${p.ty.toFixed(1)}deg) scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop + p.z)
       );
     }
     wallShadow(p.sh, p.x, p.y + bob, p.w, p.h, p.rot, 34 + p.z, p.mode !== 'gone' && p.el.classList.contains('is-in'));
@@ -781,7 +817,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     const base: Pt[] = [];
     for (const cur of cursors) {
       const track = tr[cur.id];
-      const p = S.sample(track.keys, t);
+      const chaos = S.CHAOS.includes(cur.id);
+      const p = chaos ? S.teleportSample(track.keys, t) : S.sample(track.keys, t);
       // as chaves da tela (o DevTools preso no canto) viram um ponto do plano com a câmera de agora
       cur.scr = { x: p.x, y: p.y };
       if (track.keys[0]?.screen) {
@@ -856,6 +893,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     cursors.forEach((cur, i) => {
       const x = base[i]!.x + cur.ox;
       const y = base[i]!.y + cur.oy;
+      // o agente do caos pulou: deixa um rastro vermelho de onde estava até onde apareceu
+      if (S.CHAOS.includes(cur.id) && cur.prev && cur.on && Math.hypot(x - cur.prev.x, y - cur.prev.y) > 40) {
+        trail(cur.prev, { x, y });
+        cur.svg.animate([{ scale: '0.6 1.3', opacity: 0.4 }, { scale: '1', opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.9,.2,1.3)' });
+      }
       cur.tip = { x, y };
       if (cur.prev && dt > 0) {
         cur.v.x = cur.v.x * 0.7 + ((x - cur.prev.x) / dt) * 0.3;
@@ -919,7 +961,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     put(cam, 'transform', `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg) scale(${c.s.toFixed(4)}) translate3d(${(-c.fx).toFixed(1)}px, ${(-c.fy).toFixed(1)}px, 0)`);
 
     flag(root, 'is-falling', t >= S.T.FALL_TEXT);
-    if (!measuredGlyphs && t >= S.T.FALL_TEXT - 100) {
+    if (!measuredGlyphs && t >= S.T.NOT_FOUND - 1000) {
       setupBodies();
       measuredGlyphs = true;
     }
@@ -937,27 +979,44 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       flag(p0.el, 'is-loaded', t >= S.T.LOADED);
       const s1 = S.seg(t, S.T.SPLIT1[0], S.T.SPLIT1[1], S.ease.inOut);
       const s2 = S.seg(t, S.T.SPLIT2[0], S.T.SPLIT2[1], S.ease.inOut);
-      // o cartão nítido entra enquanto o líquido ainda está lá, e o líquido sai devagar por baixo dele
-      flag(p1.el, 'is-in', t >= S.T.SPLIT1[0] + (S.T.SPLIT1[1] - S.T.SPLIT1[0]) * 0.65);
-      flag(p2.el, 'is-in', t >= S.T.SPLIT2[0] + (S.T.SPLIT2[1] - S.T.SPLIT2[0]) * 0.65);
+      // o cartão novo sai de trás do do meio (sempre nítido, sem trocar de lugar) e a ligação líquida
+      // entre os dois estica, segura um instante e rompe; os respingos voltam para dentro de cada um
+      void s1;
+      void s2;
+      flag(goo, 'is-on', false);
+      flag(p1.el, 'is-in', t >= S.T.SPLIT1[0]);
+      flag(p2.el, 'is-in', t >= S.T.SPLIT2[0]);
       flag(p0.el, 'is-verifying', t >= S.T.VERIFY_CLICK);
-      const gooOn = (t > S.T.SPLIT1[0] - 50 && t < S.T.SPLIT1[1] - 40) || (t > S.T.SPLIT2[0] - 50 && t < S.T.SPLIT2[1] - 40);
-      flag(goo, 'is-on', gooOn);
-      if (gooOn) {
-        put(g0, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2));
-        const blob = (g: HTMLElement, to: Pt, size: Pop, p: number) => {
-          const x = S.lerp(p0.x, to.x, p);
-          const y = S.lerp(p0.y, to.y, p);
-          const sc = S.lerp(0.4, 1, p);
-          const stretch = 1 + Math.sin(Math.PI * p) * 0.22;
-          put(g, 'transform', at(x - size.w / 2, y - size.h / 2, ` scale(${(sc * stretch).toFixed(3)}, ${(sc / stretch).toFixed(3)})`));
-        };
-        blob(g1, spots.p1, p1, s1);
-        blob(g2, spots.p2, p2, s2);
+      let neck = '';
+      for (const [p, iv, to] of [
+        [p1, S.T.SPLIT1, spots.p1],
+        [p2, S.T.SPLIT2, spots.p2],
+      ] as const) {
+        if (!S.within(iv, t)) continue;
+        const u = (t - iv[0]) / (iv[1] - iv[0]);
+        const f = S.splitPull(u);
+        p.x = S.lerp(p0.x, to.x, f);
+        p.y = S.lerp(p0.y, to.y, f);
+        p.vx = 0;
+        p.vy = 0;
+        if (once(`snap-${iv[0]}`, u >= S.SPLIT_SNAP)) {
+          p.vjig -= 5;
+          p0.vjig += 3;
+        }
+        p.vjig += (-260 * p.jig - 9 * p.vjig) * dt;
+        p.jig += p.vjig * dt;
+        const jg = Math.max(-0.2, Math.min(0.2, p.jig));
+        put(p.el, 'transform', at(p.x - p.w / 2, p.y - p.h / 2, ` scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop - 0.15));
+        wallShadow(p.sh, p.x, p.y, p.w, p.h, 0, 34, true);
+        neck = S.liquidNeck({ x: p0.x, y: p0.y, w: p0.w, h: p0.h }, { x: p.x, y: p.y, w: p.w, h: p.h }, u);
       }
+      if (neckPath.getAttribute('d') !== neck) neckPath.setAttribute('d', neck);
+      p0.vjig += (-260 * p0.jig - 9 * p0.vjig) * dt;
+      p0.jig += p0.vjig * dt;
       // verificado, o cartão do meio encolhe um pouco e some no lugar (sem virar bola)
       const k0 = S.seg(t, S.T.COLLAPSE[0], S.T.COLLAPSE[1], S.ease.inOut);
-      put(p0.el, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, ` scale(${S.lerp(1, 0.86, k0).toFixed(3)})`, Z.pop));
+      const j0 = Math.max(-0.15, Math.min(0.15, p0.jig));
+      put(p0.el, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, ` scale(${(S.lerp(1, 0.86, k0) * (1 + j0)).toFixed(3)}, ${(S.lerp(1, 0.86, k0) * (1 - j0)).toFixed(3)})`, Z.pop));
       put(p0.el, 'opacity', (1 - k0).toFixed(3));
       wallShadow(p0.sh, p0.x, p0.y, p0.w, p0.h, 0, 34, t >= S.T.POPUP + 200 && t < S.T.COLLAPSE[1], 1 - k0);
     }
@@ -968,8 +1027,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     }
     if (L && tracks && pal && meet) rebuild(L, tracks, pal, meet, dt);
     else if (popsMeasured) {
-      if (t >= S.T.SPLIT1[1] - 200) stepPop(p1, t, dt);
-      if (t >= S.T.SPLIT2[1] - 200) stepPop(p2, t, dt);
+      if (t >= S.T.SPLIT1[1]) stepPop(p1, t, dt);
+      if (t >= S.T.SPLIT2[1]) stepPop(p2, t, dt);
     }
 
     flag(root, 'is-reveal', t >= S.T.END);
@@ -1137,21 +1196,53 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       [p2, S.T.GRAB_P2],
     ] as const) {
       if (p.mode === 'idle' && S.within(iv, t)) {
+        // pega pelo canto de cima mais perto do cursor: o centro fica pendurado abaixo da pega
         p.mode = 'held';
         p.vjig += 3;
-        Object.assign(p, grabOffset(p, B.tip));
+        const side = B.tip.x < p.x ? -1 : 1;
+        const cxp = p.x + side * (p.w / 2 - 14);
+        const cyp = p.y - p.h / 2 + 12;
+        const rx = p.x - cxp;
+        const ry = p.y - cyp;
+        p.len = Math.hypot(rx, ry) || 1;
+        p.al = Math.atan2(rx, ry);
+        p.al0 = p.al;
+        p.val = 0;
+        p.rot0 = p.rot;
+        p.pvx = B.v.x;
+        p.pvy = B.v.y;
+        p.gx = cxp - B.tip.x;
+        p.gy = cyp - B.tip.y;
       }
       if (p.mode === 'held') {
-        p.x = B.tip.x + p.gx;
-        p.y = B.tip.y + p.gy;
+        // o pêndulo: a gravidade puxa o centro para baixo da pega; o movimento da mão (aceleração) o
+        // balança para o outro lado, como uma placa segura pela ponta
+        const px = B.tip.x + p.gx;
+        const py = B.tip.y + p.gy;
+        const dtc = Math.max(dt, 1e-3);
+        const ax = Math.max(-9000, Math.min(9000, (B.v.x - p.pvx) / dtc));
+        const ay = Math.max(-9000, Math.min(9000, (B.v.y - p.pvy) / dtc));
+        p.pvx = B.v.x;
+        p.pvy = B.v.y;
+        const n = Math.max(1, Math.ceil(dt / 0.008));
+        for (let i = 0; i < n; i++) {
+          const h = dt / n;
+          const acc = -(2300 / p.len) * Math.sin(p.al) - 1.3 * p.val - (ax * Math.cos(p.al) - ay * Math.sin(p.al)) / p.len;
+          p.val += acc * h;
+          p.al += p.val * h;
+        }
+        p.x = px + p.len * Math.sin(p.al);
+        p.y = py + p.len * Math.cos(p.al);
+        p.rot = p.rot0 + ((p.al0 - p.al) * 180) / Math.PI;
+        p.ty = Math.max(-28, Math.min(28, p.val * 9));
         p.z += (S.depthPx(B.z) * 0.85 - p.z) * Math.min(1, dt * 7);
-        p.rot += (-10 - p.rot) * Math.min(1, dt * 6);
         if (t >= iv[1]) {
+          // solto com o embalo: a velocidade da mão mais a do balanço
           p.mode = 'fly';
           p.vjig -= 4;
-          p.vx = B.v.x * 1.1 + Math.sign(p.x || 1) * 300;
-          p.vy = B.v.y * 1.1;
-          p.vr = Math.sign(p.vx) * 380;
+          p.vx = B.v.x + p.len * p.val * Math.cos(p.al);
+          p.vy = B.v.y - p.len * p.val * Math.sin(p.al);
+          p.vr = (-p.val * 180) / Math.PI;
         }
       }
       stepPop(p, t, dt);

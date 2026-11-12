@@ -9,6 +9,10 @@ O que está sendo feito agora e o que falta. É curto de propósito: as decisõe
 3. Ler as decisões que a etapa cita, em [`docs/decisoes/`](docs/decisoes/README.md).
 4. Rodar `git log --oneline -15` para ver as últimas tarefas feitas.
 
+## Onde estamos (2026-11-13)
+
+- **Portal: o "Entrar" com a ligação líquida nova, o pêndulo e o teletransporte ✅ (2026-11-13, a pedido do usuário; `feat/portal-404-login`, sem push; acréscimos na [0039](docs/decisoes/0039-entrar-encenado.md) e na [0040](docs/decisoes/0040-threejs-no-entrar.md)):** ponte líquida que estica, segura e rompe (sem piscar nem trocar de lugar); balão reto contra a caixa e pego pelo canto como pêndulo; agentes do caos com teletransporte e rastro vermelho; DevTools aberto mais tempo; câmera sem `will-change`; 404 3D rígido com a sombra em fade antes da queda; chão e parede sem cortes. **Conferido:** typecheck; `vitest run apps` 229 passando e 4 pulados (47 da animação); build; no `web:dev`, screenshots do 404 rígido com a sombra entrando, da ponte esticada e rompida e do pêndulo. **Não conferido:** quadros por segundo em tempo real, o rastro vermelho em movimento (o painel escondido não anima) e o celular. A linha branca vertical do primeiro cartão não apareceu nas capturas; a causa provável era o `will-change` da câmera, que saiu.
+
 ## Onde estamos (2026-11-12)
 
 - **Portal: ajustes no "Entrar" (fim limpo, 404 3D fiel) ✅ (2026-11-12, a pedido do usuário; `feat/portal-404-login`, sem push; acréscimos na [0039](docs/decisoes/0039-entrar-encenado.md) e na [0040](docs/decisoes/0040-threejs-no-entrar.md)):** sem partículas no fim e sem o indicador de reconstrução; o 404 3D com o tamanho exato do HTML (sem chanfro, face preta, laterais quase pretas) e deitando reto no chão; o primeiro cursor olha em volta por mais 0,5 s, com paradas mais longas entre as olhadas. **Conferido:** typecheck; os 44 testes da animação; no `web:dev`, o 404 em HTML e o 3D logo depois da troca lado a lado (mesmo tamanho, sem cinza), as peças deitadas e o fim sem partículas nem indicador. **Não conferido:** quadros por segundo em tempo real e o celular.

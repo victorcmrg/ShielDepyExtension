@@ -149,9 +149,9 @@ function smooth(p: Poly, iterations: number): Poly {
  * A letra inteira: contornos de fora com os furos dentro deles, já suavizados. `minArea` descarta
  * sujeira de anti-aliasing (laços minúsculos).
  */
-export function outlines(inside: (x: number, y: number) => boolean, w: number, h: number, minArea = 6): Outline[] {
+export function outlines(inside: (x: number, y: number) => boolean, w: number, h: number, minArea = 6, smoothing = 0): Outline[] {
   const loops = traceLoops(inside, w, h)
-    .map((l) => smooth(simplify(dropCollinear(l), 0.75), 2))
+    .map((l) => smooth(simplify(dropCollinear(l), 0.6), smoothing))
     .filter((l) => Math.abs(area(l)) >= minArea);
   // com as arestas como estão em traceLoops, o contorno de fora tem área negativa e o furo, positiva
   const outers = loops.filter((l) => area(l) < 0);
