@@ -113,18 +113,28 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const vh = window.innerHeight;
   const rand = rng(404);
   // os sons (baixinhos), ligados por padrão (decisão 0041). Vindo do "Entrar" da landing, o clique
-  // já liberou o áudio; se o navegador ainda bloquear, o primeiro toque na página libera
+  // já liberou o áudio. Num reload (ou abrindo o link direto) o navegador bloqueia o som até a primeira
+  // interação: aí o primeiro clique, toque ou tecla só liga o som, e a animação segue (pular fica para o
+  // seguinte). Esc não libera áudio no navegador, então continua pulando.
   const sfx = createSfx();
   let quiet = false; // o gancho de desenvolvimento avança a cena sem tocar nada
   const snd = (name: SfxName, o?: PlayOpts) => {
     if (!quiet) sfx.play(name, o);
   };
   const wood = sfx.loop('wood-drag');
-  const onGesture = () => {
-    if (sfx.blocked) void sfx.unlock();
+  let unlockedByGesture = false;
+  const onGesture = (e: Event) => {
+    if (!sfx.blocked || unlockedByGesture) return;
+    if (e instanceof KeyboardEvent && e.key === 'Escape') return;
+    // o toque no celular só libera o áudio ao soltar (pointerup/touchend): o pointerdown já é engolido aqui
+    if (e.type === 'pointerdown' || e.type === 'keydown') e.stopImmediatePropagation();
+    void sfx.unlock().then((ok) => {
+      if (ok) unlockedByGesture = true;
+    });
+    if (e.type === 'pointerup' || e.type === 'touchend' || e.type === 'keydown') unlockedByGesture = true;
   };
-  window.addEventListener('pointerdown', onGesture, true);
-  window.addEventListener('keydown', onGesture, true);
+  const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'keydown'] as const;
+  GESTURES.forEach((g) => window.addEventListener(g, onGesture, true));
   let lastHum = -1e9;
   let popN = 0; // cada bot criado faz o "pop" um passo acima do anterior
   // o 404 em 3D de verdade e o confete do fim usam three.js, num pedaço à parte (decisão 0040); se não
@@ -1532,8 +1542,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     };
   }
   return () => {
-    window.removeEventListener('pointerdown', onGesture, true);
-    window.removeEventListener('keydown', onGesture, true);
+    GESTURES.forEach((g) => window.removeEventListener(g, onGesture, true));
     wood.stop();
     sfx.close();
     gl?.dispose();
