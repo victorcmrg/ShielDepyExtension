@@ -895,7 +895,19 @@ section { position: relative; }
 /* seções marcadas com data-pause recebem .paused (landing.js) quando saem da tela */
 .paused, .paused *, .paused *::before, .paused *::after { animation-play-state: paused !important; }
 /* o navegador nem desenha estas seções enquanto estão longe da tela */
-.security, .closing, .footer, .bento-wrap { content-visibility: auto; contain-intrinsic-size: auto 760px; }
+.security, .closing, .footer, .bento-wrap, .pricing { content-visibility: auto; contain-intrinsic-size: auto 760px; }
+/* a história tem altura própria (420vh no desktop) e só mede a si mesma: também pode ficar de fora */
+.story { content-visibility: auto; contain-intrinsic-size: auto 2400px; }
+
+/* modo leve (.lite no <html>: celular, aparelho fraco ou quadros lentos; decisão 0042): sem desfoque de
+   fundo nem refração no vidro (refeitos a cada quadro), sem os desfoques grandes e o título entra sem blur */
+html.lite .glass, html.lite .lg, html.lite .lg.lg-ready { -webkit-backdrop-filter: none; backdrop-filter: none; }
+html.lite .glass { background: color-mix(in srgb, var(--surface) 94%, transparent); }
+html.lite .lg { --lg-tint: color-mix(in srgb, var(--surface) 92%, transparent); }
+html.lite .hero-light, html.lite .pricing-mesh span { filter: none; }
+html.lite .hero-title .w { animation-name: word-in-lite; }
+html.lite .hero-title .accent { animation-name: word-in-lite, paint; }
+@keyframes word-in-lite { from { opacity: 0; transform: translateY(0.45em); } to { opacity: 1; transform: none; } }
 
 /* ---------------- revelar ao rolar (só onde faz sentido) ---------------- */
 .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.8s var(--ease), transform 0.9s var(--ease); }

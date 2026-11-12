@@ -1,7 +1,9 @@
 // Efeitos de página inteira da landing, ligados uma vez depois da hidratação (Landing.tsx). São
 // decorativos e leem o DOM já desenhado pelo React — as seções não precisam saber deles.
+import { ambient } from './ambient';
 import { addScrollJob } from './scroll';
 import { idle, indexChildren, reduceMotion } from './motion';
+import { isLite, watchFrames } from './perf';
 
 type Cleanup = () => void;
 
@@ -39,15 +41,37 @@ export function initPauseOffscreen(): Cleanup {
   return () => pauser.disconnect();
 }
 
-/** Liga os loops contínuos (bola, tinta dos botões) só quando as animações de entrada do topo já acabaram. */
+// os loops decorativos lentos que andam no relógio de 20 quadros/s (ambient.ts), com quem os contém
+const AMBIENT: [string, readonly string[]][] = [
+  ['.hero-blob', ['blob-spin', 'blob-squash', 'blob-orbit', 'blob-breathe']],
+  ['.button-brand', ['btn-tex']],
+  ['.tex-move', ['tex-move']],
+  ['.security-mascot', ['bob']],
+  ['.pricing-mesh', ['drift']],
+  ['.closing-card', ['turn']],
+];
+
+/**
+ * Liga os loops contínuos (bola, tinta dos botões) só quando as animações de entrada do topo já acabaram,
+ * e põe todos no relógio lento; depois o vigia de quadros decide se a página vai para o modo leve.
+ */
 export function initLoops(): Cleanup {
   let timer = 0;
-  const start = () => (timer = window.setTimeout(() => document.documentElement.classList.add('loop-on'), 2200));
+  const offs: Cleanup[] = [];
+  const start = () =>
+    (timer = window.setTimeout(() => {
+      document.documentElement.classList.add('loop-on');
+      for (const [sel, names] of AMBIENT) {
+        document.querySelectorAll(sel).forEach((el) => offs.push(ambient(el, (n) => names.includes(n))));
+      }
+      offs.push(watchFrames());
+    }, 2200));
   if (document.readyState === 'complete') start();
   else window.addEventListener('load', start, { once: true });
   return () => {
     clearTimeout(timer);
     window.removeEventListener('load', start);
+    offs.forEach((off) => off());
   };
 }
 
@@ -162,7 +186,8 @@ export function initGlass(defs: SVGSVGElement | null): Cleanup {
   const reduce = reduceMotion();
   const glassEls = Array.from(document.querySelectorAll<HTMLElement>('.lg'));
   const brands = (navigator as Navigator & { userAgentData?: { brands: { brand: string }[] } }).userAgentData?.brands ?? [];
-  const liquid = !reduce && !!defs && brands.some((b) => /Chromium/i.test(b.brand));
+  // no modo leve (celular, aparelho fraco) não há refração: o vidro fica só com a tinta
+  const liquid = !reduce && !isLite() && !!defs && brands.some((b) => /Chromium/i.test(b.brand));
 
   // A refração (filtro SVG atrás do vidro) é refeita a cada quadro quando o que está atrás se mexe. Medido: no
   // menu (por cima da bola girando, do vídeo, da rolagem) ela sozinha ocupava mais da metade da GPU. Por isso só

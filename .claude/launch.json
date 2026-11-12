@@ -21,6 +21,22 @@
         "@shieldepy/web"
       ],
       "port": 5173
+    },
+    {
+      "name": "shieldepy-landing-build",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec",
+        "-w",
+        "@shieldepy/web",
+        "--",
+        "vite",
+        "preview",
+        "--port",
+        "4173",
+        "--strictPort"
+      ],
+      "port": 4173
     }
   ]
 }
