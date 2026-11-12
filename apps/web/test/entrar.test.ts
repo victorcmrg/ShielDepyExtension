@@ -21,6 +21,12 @@ import {
   TITLE_TYPO,
   depthPx,
   within,
+  spawner,
+  lens,
+  logoHandle,
+  orbit,
+  typingTaps,
+  BUMP_WINDOWS,
   type Layout,
   type Rect,
 } from '../src/portal/pages/entrar/script';
@@ -95,14 +101,73 @@ describe('roteiro do Entrar', () => {
     expect(a.press.some((iv) => within(iv, (T.BOX[0] + T.BOX[1]) / 2))).toBe(true);
   });
 
-  it('B chega perto da câmera para puxar os balões e todos saem da tela no fim', () => {
+  it('B chega perto da câmera para puxar os balões', () => {
     const tracks = cursorTracks(L);
     expect(sample(tracks.b.keys, T.GRAB_P1[0]).z).toBeGreaterThan(0.5);
+  });
+
+  it('o primeiro cursor nasce do ponto verde e cria os outros no "+"; ninguém vem de fora da tela', () => {
+    const tracks = cursorTracks(L);
+    const sp = spawner(L);
+    expect(tracks.a.born).toBe(T.A_POP);
+    expect(sample(tracks.a.keys, T.A_POP)).toMatchObject({ x: L.card.r, y: L.card.t });
+    const order = [tracks.b, tracks.c, tracks.d];
+    order.forEach((tr, i) => {
+      expect(tr.born).toBe([T.SPAWN_B, T.SPAWN_C, T.SPAWN_D][i]);
+      expect(sample(tr.keys, tr.born)).toMatchObject({ x: sp.x, y: sp.y });
+      // A está clicando no "+" quando cada um nasce
+      expect(tracks.a.press.some((iv) => within(iv, tr.born))).toBe(true);
+    });
     for (const tr of Object.values(tracks)) {
-      const end = sample(tr.keys, T.EXIT[1]);
-      expect(end.z).toBe(-1);
-      expect(Math.abs(end.x) > L.vw / 2 || Math.abs(end.y) > L.vh / 2).toBe(true);
+      for (let t = tr.born; t < tr.gone; t += 40) {
+        const p = sample(tr.keys, t);
+        expect(Math.abs(p.x)).toBeLessThan(L.vw / 2 + 60);
+      }
+      expect(tr.gone).toBeGreaterThan(T.HIGH5);
+      expect(tr.gone).toBeLessThanOrEqual(T.END);
     }
+  });
+
+  it('a elipse demora mais bem na frente da câmera (o cursor fica ali um instante)', () => {
+    const keys = orbit({ t0: 0, t1: 1600, x: 0, y: 0, rx: 300, ry: 80, zMid: 0.8, zAmp: 2.8, from: Math.PI, dir: 1 });
+    let front = 0;
+    let all = 0;
+    for (let t = 0; t <= 1600; t += 4) {
+      all++;
+      if (sample(keys, t).z > 0.8 + 2.8 * 0.8) front++;
+    }
+    // sen > 0,8 ocupa ~20% do ângulo; no tempo, bem mais que isso
+    expect(front / all).toBeGreaterThan(0.3);
+  });
+
+  it('os esbarrões só valem no encontro combinado e no fim (nada de tremer na digitação)', () => {
+    const inBump = (t: number) => BUMP_WINDOWS.some((iv) => within(iv, t));
+    expect(inBump(T.BUMP)).toBe(true);
+    expect(inBump(T.HIGH5)).toBe(true);
+    for (let t = T.ERASE[0]; t < T.TYPE2[1]; t += 50) expect(inBump(t)).toBe(false);
+  });
+
+  it('B afunda a cada tecla: as letras, os três apagares e a correção', () => {
+    const taps = typingTaps();
+    expect(taps.length).toBe(TITLE_TYPO.length + 6);
+    expect(cursorTracks(L).b.taps).toEqual(taps);
+  });
+
+  it('D cria o logo grande e o encolhe pela alça do canto', () => {
+    const { d } = cursorTracks(L);
+    expect(sample(d.keys, T.LOGO[0] + 350)).toMatchObject(logoHandle(L));
+    expect(sample(d.keys, T.LOGO[1])).toMatchObject({ x: L.logo.r, y: L.logo.b });
+  });
+
+  it('olho de peixe invertido: nada no meio, cresce e vai para fora perto da borda', () => {
+    expect(lens(0, 0, 1000, 700)).toEqual({ dx: 0, dy: 0, k: 1 });
+    expect(lens(200, 100, 1000, 700).k).toBe(1);
+    const edge = lens(480, 0, 1000, 700);
+    expect(edge.k).toBeGreaterThan(1.15);
+    expect(edge.dx).toBeGreaterThan(10);
+    const corner = lens(-480, 330, 1000, 700);
+    expect(corner.dx).toBeLessThan(0);
+    expect(corner.dy).toBeGreaterThan(0);
   });
 
   it('C clica na última cor da paleta, a do fundo', () => {
@@ -113,9 +178,8 @@ describe('roteiro do Entrar', () => {
     expect(c.clicks).toContain(T.PALETTE_CLICK);
   });
 
-  it('D leva o logo e desenha o e-mail e o botão; C desenha a senha ao mesmo tempo', () => {
+  it('D desenha o e-mail e o botão; C desenha a senha ao mesmo tempo', () => {
     const { c, d } = cursorTracks(L);
-    expect(sample(d.keys, T.LOGO[1])).toMatchObject({ x: cx(L.logo), y: cy(L.logo) });
     expect(sample(d.keys, T.EMAIL[1])).toMatchObject({ x: L.email.r, y: L.email.b });
     expect(sample(c.keys, T.PASS[1])).toMatchObject({ x: L.pass.r, y: L.pass.b });
     expect(sample(d.keys, T.BUTTON[1])).toMatchObject({ x: L.button.r, y: L.button.b });

@@ -33,6 +33,13 @@ interface Pop {
   /** quanto saiu do plano (px), levantado pelo cursor */
   z: number;
   sh: HTMLElement;
+  // velocidade na tela (para esticar na direção do movimento) e a gelatina (mola de escala)
+  lx: number;
+  ly: number;
+  svx: number;
+  svy: number;
+  jig: number;
+  vjig: number;
 }
 
 /** Uma peça que um cursor leva de um lugar errado para o certo. */
@@ -61,6 +68,7 @@ interface Cursor {
   el: HTMLElement;
   sh: HTMLElement;
   eyes: SVGGElement;
+  svg: SVGSVGElement;
   prev: Pt | null;
   v: Pt;
   tip: Pt;
@@ -78,6 +86,7 @@ interface Cursor {
   bonkUntil: number;
   phase: number;
   thinking: boolean;
+  tapping: boolean;
 }
 
 export function runEntrar(root: HTMLElement, done: () => void): () => void {
@@ -149,6 +158,23 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     }
     return { x: X, y: Y };
   };
+  /** Olho de peixe invertido: perto da borda, a coisa cresce e é puxada para fora (o cursor perto da
+   *  câmera fica de fora: ele está "na frente da lente"). */
+  const lensOf = (x: number, y: number, zPx: number) => {
+    if (zPx > 200) return '';
+    const sp = project(x, y, zPx);
+    const l = S.lens(sp.x, sp.y, vw, vh);
+    if (l.k === 1) return '';
+    return ` translate(${l.dx.toFixed(1)}px, ${l.dy.toFixed(1)}px) scale(${l.k.toFixed(3)})`;
+  };
+  /** Esticar na direção do movimento e afinar na outra (squash & stretch): peças maleáveis. */
+  const stretch = (vx: number, vy: number, max: number) => {
+    const sp = Math.hypot(vx, vy);
+    if (sp < 40) return '';
+    const k = 1 + Math.min(max, sp / 3200);
+    const ang = (Math.atan2(vy, vx) * 180) / Math.PI;
+    return ` rotate(${ang.toFixed(1)}deg) scale(${k.toFixed(3)}, ${(1 / k).toFixed(3)}) rotate(${(-ang).toFixed(1)}deg)`;
+  };
   const rel = (el: Element): S.Rect => {
     const r = el.getBoundingClientRect();
     return { l: r.left - vw / 2, t: r.top - vh / 2, r: r.right - vw / 2, b: r.bottom - vh / 2 };
@@ -203,7 +229,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     bodies.forEach((b, i) => {
       const o = origin[i]!;
       const g = glyphs[i]!;
-      put(g, 'transform', at(b.x - o.x, b.y - o.y, ` rotateY(${b.yaw.toFixed(1)}deg) rotateX(${b.tip.toFixed(1)}deg) rotateZ(${b.spin.toFixed(1)}deg)`));
+      put(g, 'transform', at(b.x - o.x, b.y - o.y, `${lensOf(b.x, b.y - b.h / 2, 0)} rotateY(${b.yaw.toFixed(1)}deg) rotateX(${b.tip.toFixed(1)}deg) rotateZ(${b.spin.toFixed(1)}deg)`));
       flag(g, 'is-3d', b.tipped);
       const sh = shadows[i]!;
       const near = b.active ? Math.max(0, 1 - (floor - b.y) / 320) : 0;
@@ -215,7 +241,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
 
   // ---------------- os balões ----------------
   const spots = S.balloonSpots(vw, vh);
-  const mkPop = (sel: string, p: Pt, sh: string): Pop => ({ el: $(sel), w: 0, h: 0, x: p.x, y: p.y, rot: 0, vx: 0, vy: 0, vr: 0, mode: 'idle', gx: 0, gy: 0, phase: rand() * 6, z: 0, sh: $(sh) });
+  const mkPop = (sel: string, p: Pt, sh: string): Pop => ({ el: $(sel), w: 0, h: 0, x: p.x, y: p.y, rot: 0, vx: 0, vy: 0, vr: 0, mode: 'idle', gx: 0, gy: 0, phase: rand() * 6, z: 0, sh: $(sh), lx: p.x, ly: p.y, svx: 0, svy: 0, jig: 0, vjig: 0 });
   const p0 = mkPop('.ent-pop.p0', spots.p0, '.ent-psh[data-for="p1"]');
   const p1 = mkPop('.ent-pop.p1', spots.p1, '.ent-psh[data-for="p1"]');
   const p2 = mkPop('.ent-pop.p2', spots.p2, '.ent-psh[data-for="p2"]');
@@ -255,6 +281,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     el: $(`.ent-cur[data-id="${id}"]`),
     sh: $(`.ent-cur-sh[data-id="${id}"]`),
     eyes: root.querySelector<SVGGElement>(`.ent-cur[data-id="${id}"] .eyes`)!,
+    svg: root.querySelector<SVGSVGElement>(`.ent-cur[data-id="${id}"] .ent-cur-svg`)!,
     prev: null,
     v: { x: 0, y: 0 },
     tip: { x: 0, y: 0 },
@@ -271,6 +298,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     bonkUntil: 0,
     phase: i * 1.7,
     thinking: false,
+    tapping: false,
   }));
   const [A, B, C, D] = cursors as [Cursor, Cursor, Cursor, Cursor];
   const lastBonk = new Map<string, number>();
@@ -312,10 +340,30 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   };
 
   const box = $('.ent-box');
+  let logoScale = 1;
+  const spawnEl = $('.ent-spawner');
+  const gizmos = $$('.ent-gizmo');
+  const mpaths = { sub: root.querySelector<SVGPathElement>('.ent-mpath .mp-sub')!, back: root.querySelector<SVGPathElement>('.ent-mpath .mp-back')! };
+  const mpathSvg = root.querySelector<SVGSVGElement>('.ent-mpath')!;
   const seed = $('.ent-seed');
   const wtitle = $('.ent-wtitle');
   const wLetters = $$('.ent-wtitle .wl');
   const title = $('.ent-title');
+  let shownTitle = '';
+  /** O título letra a letra: cada letra nova entra com um pulinho; o apagar tira só as do fim. */
+  function syncTitle(text: string) {
+    if (text === shownTitle) return;
+    let i = 0;
+    while (i < shownTitle.length && i < text.length && shownTitle[i] === text[i]) i++;
+    while (titleIn.childNodes.length > i) titleIn.lastChild!.remove();
+    for (const ch of text.slice(i)) {
+      const sp = document.createElement('span');
+      sp.className = 'ch';
+      sp.textContent = ch;
+      titleIn.appendChild(sp);
+    }
+    shownTitle = text;
+  }
   const titleIn = $('.ent-title-in');
   const fontsEl = $('.ent-fonts');
   const fontOpts = $$('.ent-fonts .fo');
@@ -351,7 +399,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       vw,
       vh,
       card: m('card'),
-      logo: m('logo'),
+      // o logo é uma linha inteira (flex centrado): a medida é só a do ícone com o nome
+      logo: Array.from(root.querySelector('.ent-final [data-m="logo"]')!.children)
+        .map(rel)
+        .reduce(union),
       title: m('title'),
       subtitle: m('subtitle'),
       emailLabel: m('emailLabel'),
@@ -409,7 +460,6 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     };
 
     // as peças fora do lugar
-    const ph = $('.ent-ph');
     const sub = $('.ent-sub');
     const backlink = $('.ent-backlink');
     const size = (el: HTMLElement, r?: S.Rect) => {
@@ -427,8 +477,17 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       sh.style.height = `${h}px`;
       return { el, cur, iv, w, h, x: home.x, y: home.y, rot: home.rot, sc: 1, z: 0, sh, target: { ...target, rot: 0 }, state: 'idle', gx: 0, gy: 0, gz: 0, from: { x: 0, y: 0, rot: 0, sc: 0, t: 0 } };
     };
+    const spw = S.spawner(lay);
+    put(spawnEl, 'transform', at(spw.x - 22, spw.y - 22, '', Z.palette));
+    // o caminho que cada peça carregada vai fazer (pontilhado, com os nós), como num programa de animação
+    const curve = (a: Pt, b: Pt, bend: number) => {
+      const mx = (a.x + b.x) / 2 + bend;
+      const my = (a.y + b.y) / 2 - Math.abs(bend) * 0.4;
+      return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+    };
+    mpaths.sub.setAttribute('d', curve(mis.sub, { x: S.cx(lay.subtitle), y: S.cy(lay.subtitle) }, -60));
+    mpaths.back.setAttribute('d', curve(mis.back, { x: S.cx(lay.back), y: S.cy(lay.back) }, 150));
     carries = [
-      mk(ph, 3, S.T.LOGO, mis.logo, { x: S.cx(lay.logo), y: S.cy(lay.logo) }),
       mk(sub, 0, S.T.SUB, mis.sub, { x: S.cx(lay.subtitle), y: S.cy(lay.subtitle) }, lay.subtitle),
       mk(backlink, 3, S.T.BACK, mis.back, { x: S.cx(lay.back), y: S.cy(lay.back) }, lay.back),
     ];
@@ -507,6 +566,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     p.vx = p.vx * 0.5 + (dx / Math.max(dt, 0.008)) * 0.25;
     p.vy = p.vy * 0.5 + (dy / Math.max(dt, 0.008)) * 0.25;
     p.vr += (dx - dy) * 0.6;
+    p.vjig += Math.min(1.2, Math.abs(dx) + Math.abs(dy)) * 0.35;
   }
 
   /** A sombra de algo que está zPx acima do plano: cai para baixo e para a direita, maior e mais fraca quanto mais alto. */
@@ -539,11 +599,25 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     const bob = p.mode === 'idle' ? Math.sin(t / 650 + p.phase) * 3 : 0;
     if (p.mode === 'idle') p.z *= Math.exp(-6 * dt);
     flag(p.el, 'is-gone', p.mode === 'gone');
+    // a gelatina: uma mola na escala, cutucada quando o balão é agarrado, solto ou empurrado
+    p.vjig += (-260 * p.jig - 9 * p.vjig) * dt;
+    p.jig += p.vjig * dt;
+    if (dt > 0) {
+      p.svx = p.svx * 0.7 + ((p.x - p.lx) / dt) * 0.3;
+      p.svy = p.svy * 0.7 + ((p.y - p.ly) / dt) * 0.3;
+    }
+    p.lx = p.x;
+    p.ly = p.y;
     if (p.mode !== 'gone') {
       const w = lifted(p.x, p.y + bob, p.z);
       // levantado, o balão inclina um pouco em 3D, como uma folha segura pela ponta
       const tiltX = Math.min(18, p.z * 0.04);
-      put(p.el, 'transform', at(w.x - p.w / 2, w.y - p.h / 2, ` rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg)`, Z.pop + p.z));
+      const jg = Math.max(-0.2, Math.min(0.2, p.jig));
+      put(
+        p.el,
+        'transform',
+        at(w.x - p.w / 2, w.y - p.h / 2, `${lensOf(p.x, p.y, p.z)}${stretch(p.svx, p.svy, 0.22)} rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg) scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop + p.z)
+      );
     }
     planeShadow(p.sh, p.x, p.y, p.w, p.h, p.mode === 'gone' ? 0 : p.z);
   }
@@ -555,11 +629,21 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     for (const cur of cursors) {
       const track = tr[cur.id];
       const p = S.sample(track.keys, t);
-      cur.thinking = t >= S.T.CURSORS_IN[0] && t < S.T.EXIT[1] && track.think.some((iv) => S.within(iv, t));
+      cur.on = t >= track.born && t < track.gone;
+      cur.thinking = cur.on && track.think.some((iv) => S.within(iv, t));
       cur.z = p.z;
       cur.sc = S.depthScale(p.z);
-      cur.on = t >= S.T.CURSORS_IN[0] && t < S.T.EXIT[1];
       cur.pressed = track.press.some((iv) => S.within(iv, t));
+      cur.tapping = track.taps.some((tt) => t >= tt && t < tt + 70);
+      // nasce num estalo (cresce passando do ponto) e some num estalo
+      if (once(`born-${cur.id}`, cur.on)) {
+        cur.svg.animate([{ scale: '0' }, { scale: '1.3', offset: 0.6 }, { scale: '1' }], { duration: 460, easing: 'cubic-bezier(.2,.9,.2,1)' });
+        burst({ x: p.x + 20, y: p.y + 20 }, 6, 0.8);
+      }
+      if (once(`gone-${cur.id}`, t >= track.gone - 280)) {
+        cur.svg.animate([{ scale: '1' }, { scale: '1.3', offset: 0.35 }, { scale: '0' }], { duration: 280, easing: 'ease-in', fill: 'forwards' });
+        burst({ x: p.x + 20, y: p.y + 20 }, 8, 1);
+      }
       cur.vox += (-90 * cur.ox - 11 * cur.vox) * dt;
       cur.voy += (-90 * cur.oy - 11 * cur.voy) * dt;
       cur.ox += cur.vox * dt;
@@ -572,7 +656,9 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       for (let j = i + 1; j < cursors.length; j++) {
         const a = cursors[i]!;
         const b = cursors[j]!;
-        if (!a.on || !b.on || a.pressed || b.pressed || Math.abs(a.z - b.z) > 0.5) continue;
+        // só nos encontros combinados, e nunca com quem está trabalhando ou pensando (nada de tremer)
+        if (!S.BUMP_WINDOWS.some((iv) => S.within(iv, t))) continue;
+        if (!a.on || !b.on || a.pressed || b.pressed || a.thinking || b.thinking || Math.abs(a.z - b.z) > 0.5) continue;
         const ax = base[i]!.x + a.ox + 24 * a.sc;
         const ay = base[i]!.y + a.oy + 24 * a.sc;
         const bx = base[j]!.x + b.ox + 24 * b.sc;
@@ -619,9 +705,9 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       const z = cur.z;
       const zPx = S.depthPx(z) + (cur.pressed ? 0 : 6);
       const w3 = lifted(x, y, zPx);
-      put(cur.el, 'transform', at(w3.x, w3.y, ` rotate(${cur.tilt.toFixed(2)}deg) scale(0.2)`, zPx));
+      put(cur.el, 'transform', at(w3.x, w3.y, `${lensOf(x, y, zPx)} rotate(${cur.tilt.toFixed(2)}deg)${stretch(cur.v.x, cur.v.y, 0.12)} scale(0.2)`, zPx));
       put(cur.el, 'opacity', Math.max(0.5, z < 0 ? 1 + z * 0.3 : 1).toFixed(3));
-      flag(cur.el, 'is-press', cur.pressed);
+      flag(cur.el, 'is-press', cur.pressed || cur.tapping);
       flag(cur.el, 'is-bonk', t < cur.bonkUntil);
       flag(cur.el, 'is-thinking', cur.thinking);
       if (cur.pressed && !cur.pressedBefore && cur.on) ripple(cur.tip);
@@ -737,6 +823,12 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       for (const ct of tr[cur.id].clicks) if (once(`click-${cur.id}-${ct}`, t >= ct)) ripple(cur.tip);
     }
 
+    // o "+" que A abre: cada clique dele cria um cursor, que sai de trás do botão
+    flag(spawnEl, 'is-on', S.within(S.T.SPAWNER, t));
+    for (const st of [S.T.SPAWN_B, S.T.SPAWN_C, S.T.SPAWN_D]) {
+      if (once(`spawn-${st}`, t >= st)) spawnEl.animate([{ scale: '1' }, { scale: '0.8', offset: 0.3 }, { scale: '1.1', offset: 0.7 }, { scale: '1' }], { duration: 340, easing: 'ease-out' });
+    }
+
     // a caixa: C segura o canto de cima à direita, A puxa o de baixo à esquerda
     let bx: S.Rect = card;
     if (t < S.T.BOX[1]) {
@@ -781,6 +873,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     ] as const) {
       if (p.mode === 'idle' && S.within(iv, t)) {
         p.mode = 'held';
+        p.vjig += 3;
         Object.assign(p, grabOffset(p, B.tip));
       }
       if (p.mode === 'held') {
@@ -790,6 +883,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         p.rot += (-10 - p.rot) * Math.min(1, dt * 6);
         if (t >= iv[1]) {
           p.mode = 'fly';
+          p.vjig -= 4;
           p.vx = B.v.x * 1.1 + Math.sign(p.x || 1) * 300;
           p.vy = B.v.y * 1.1;
           p.vr = Math.sign(p.vx) * 380;
@@ -808,10 +902,18 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     flag(root, 'is-colored', t >= S.T.PALETTE_CLICK);
 
     // as peças levadas para o lugar: o logo (D), o subtítulo e o link de volta (A)
-    const [ph, sub, backlink] = carries as [Carry, Carry, Carry];
+    const [sub, backlink] = carries as [Carry, Carry];
     for (const c of carries) stepCarry(c, t, dt);
-    flag(ph.el, 'is-on', t >= S.T.CURSORS_IN[1] && ph.state !== 'placed');
-    flag(logo, 'is-on', ph.state === 'placed');
+    // o logo: D clica e ele nasce grande; D puxa a alça do canto para dentro e ele encolhe até o tamanho certo
+    const lg = lay.logo;
+    const lgW = (lg.r - lg.l) / 2;
+    let ls = 1;
+    if (t < S.T.LOGO[0] + 350) ls = S.LOGO_BIG;
+    else if (t < S.T.LOGO[1]) ls = Math.max(1, Math.min(S.LOGO_BIG, (D.tip.x - S.cx(lg)) / lgW));
+    else ls = S.lerp(1.06, 1, S.seg(t, S.T.LOGO[1], S.T.LOGO[1] + 320, S.ease.out));
+    logoScale = ls;
+    flag(logo, 'is-on', t >= S.T.LOGO[0]);
+    put(logo, 'transform', at(lg.l, lg.t, ` scale(${ls.toFixed(3)})`, Z.content + (ls > 1.01 ? 2 : 0)));
     flag(sub.el, 'is-on', inBox(S.misplaced(lay).sub.x, S.misplaced(lay).sub.y) || t >= S.T.BOX[1]);
     flag(sub.el, 'is-placed', sub.state === 'placed');
     flag(backlink.el, 'is-on', t >= S.T.SLOTS[0]);
@@ -821,8 +923,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     flag(wtitle, 'is-on', inBox(S.cx(lay.title), S.cy(lay.title)) || (t >= S.T.BOX[1] && t < S.T.ERASE[1] + 300));
     const erased = S.seg(t, S.T.ERASE[0], S.T.ERASE[1], S.ease.linear);
     wLetters.forEach((el, i) => flag(el, 'is-erased', (i + 0.5) / wLetters.length < erased));
-    const text = S.titleText(t);
-    if (titleIn.textContent !== text) titleIn.textContent = text;
+    syncTitle(S.titleText(t));
     flag(title, 'is-typing', t >= S.T.TYPE1[0] && t < S.T.TYPE2[1] + 300);
 
     // a fonte: A abre o seletor, pensa entre as três e escolhe a da marca; o título vira em 3D
@@ -898,6 +999,44 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       burst(mt.high5, 14, 1.8);
       for (const cur of cursors) cur.bonkUntil = t + 420;
     }
+
+    // o blueprint: enquanto uma peça é criada ou movida, ela mostra a caixa com alças, a âncora com os
+    // eixos e o arco de rotação (como num programa de motion graphics); some quando a peça fica pronta
+    const giz: { r: S.Rect; rot: number; tag: string }[] = [];
+    if (S.within(S.T.BOX, t)) giz.push({ r: bx, rot: 0, tag: 'cartão' });
+    if (t >= S.T.LOGO[0] && t < S.T.LOGO[1] + 250) {
+      const hw = lgW * logoScale;
+      const hh = ((lg.b - lg.t) / 2) * logoScale;
+      giz.push({ r: { l: S.cx(lg) - hw, t: S.cy(lg) - hh, r: S.cx(lg) + hw, b: S.cy(lg) + hh }, rot: 0, tag: `logo · ${Math.round(logoScale * 100)}%` });
+    }
+    for (const [c, tag] of [
+      [sub, 'subtítulo'],
+      [backlink, 'link'],
+    ] as const) {
+      if (c.state === 'held' || c.state === 'settle') giz.push({ r: { l: c.x - c.w / 2, t: c.y - c.h / 2, r: c.x + c.w / 2, b: c.y + c.h / 2 }, rot: c.rot, tag });
+    }
+    const drawRect = (iv: S.Interval, r: S.Rect, tip: Pt, tag: string) => {
+      if (S.within(iv, t)) giz.push({ r: { l: r.l, t: r.t, r: Math.max(r.l + 4, tip.x), b: Math.max(r.t + 4, tip.y) }, rot: 0, tag });
+    };
+    drawRect(S.T.EMAIL, lay.email, D.tip, 'campo · e-mail');
+    drawRect(S.T.PASS, lay.pass, C.tip, 'campo · senha');
+    drawRect(S.T.BUTTON, lay.button, D.tip, 'botão');
+    if (t >= S.T.FONT_OPEN && t < S.T.FONT_PICK + 300) giz.push({ r: lay.title, rot: 0, tag: 'texto · fonte' });
+    gizmos.forEach((el, i) => {
+      const g = giz[i];
+      flag(el, 'is-on', !!g);
+      if (!g) return;
+      const w = g.r.r - g.r.l;
+      const h = g.r.b - g.r.t;
+      put(el, 'width', `${w.toFixed(1)}px`);
+      put(el, 'height', `${h.toFixed(1)}px`);
+      put(el, 'transform', at(g.r.l, g.r.t, ` rotate(${g.rot.toFixed(2)}deg)`, Z.palette + 0.5));
+      const tagEl = el.firstElementChild as HTMLElement;
+      if (tagEl.textContent !== g.tag) tagEl.textContent = g.tag;
+    });
+    flag(mpathSvg, 'is-on', sub.state === 'held' || backlink.state === 'held');
+    flag(mpaths.sub, 'is-on', sub.state === 'held' || sub.state === 'settle');
+    flag(mpaths.back, 'is-on', backlink.state === 'held' || backlink.state === 'settle');
 
     // progresso
     const n = S.progressAt(t);

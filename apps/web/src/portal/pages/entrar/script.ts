@@ -23,43 +23,48 @@ export const T = {
   PLAN: 12000, // mede a tela final e monta os trajetos
   COLLAPSE: [12100, 12700] as const, // o balão do meio vira o ponto de partida da caixa
   CAM_BACK: [12100, 13400] as const,
-  CURSORS_IN: [12700, 13400] as const,
-  ANCHOR: [13250, 14650] as const, // C segura o canto enquanto A puxa
-  BOX: [13400, 14600] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
-  SLOTS: [14500, 15100] as const, // as partes pontilhadas: onde cada peça vai ficar
-  GRAB_P1: [14500, 14900] as const, // B puxa os balões para fora
-  LOGO: [14700, 15700] as const, // D carrega o logo para o lugar
-  PALETTE_OPEN: 15000, // C abre a paleta e pensa bastante antes de escolher
-  GRAB_P2: [15150, 15550] as const,
-  ORBIT_B: [15600, 17000] as const, // B dá a volta e passa gigante na frente da câmera
-  THINK_C1: [15950, 16600] as const,
-  BUMP: 16000, // A e D se esbarram no meio do caminho
-  SUB: [16150, 16800] as const, // A leva o subtítulo torto para o lugar
-  PALETTE_CLICK: 16800,
-  THINK_A: [16900, 17550] as const, // A olha o título errado antes de apagar
-  EMAIL: [17000, 17600] as const, // D e C desenham os campos ao mesmo tempo
-  PALETTE_CLOSE: 17150,
-  PASS: [17300, 17900] as const,
-  ERASE: [17600, 18500] as const, // A apaga o título errado...
-  TYPE1: [17800, 18900] as const, // ...e B digita logo atrás, com um erro no fim
-  CPF: [18100, 18550] as const, // C joga fora o campo que não devia estar ali
-  BUTTON: [18300, 18900] as const, // D desenha o botão
-  THINK_B: [18950, 19500] as const, // B percebe o erro
-  THINK_C2: [19000, 19600] as const, // C pensa na cor do botão
-  BACK: [19100, 20000] as const, // D traz o link de volta lá de cima
-  BACKSPACE: [19500, 19800] as const,
-  PAINT: 19700,
-  TYPE2: [19850, 20200] as const,
-  FOCUS_EMAIL: 20000, // C confere o foco de cada campo
-  FOCUS_PASS: 20250,
-  FONT_OPEN: 20300, // A abre as fontes, pensa e escolhe a do título
-  ORBIT_D: [20300, 21700] as const, // D dá a volta gigante
-  THINK_A2: [20350, 21000] as const,
-  FONT_PICK: 21100,
-  FONT_CLOSE: 21350,
-  HIGH5: 22300, // os quatro se encontram em cima do cartão
-  EXIT: [22500, 23200] as const,
-  END: 23400,
+  A_POP: 12750, // o primeiro cursor nasce do ponto verde, num estalo
+  SPAWNER: [12950, 13900] as const, // e abre um "+" ao lado dele: cada clique cria um cursor
+  SPAWN_B: 13150,
+  SPAWN_C: 13400,
+  SPAWN_D: 13650,
+  CURSORS_IN: [12750, 13650] as const,
+  ANCHOR: [13950, 15350] as const, // C segura o canto enquanto A puxa
+  BOX: [14100, 15300] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
+  SLOTS: [15200, 15800] as const, // as partes pontilhadas: onde cada peça vai ficar
+  GRAB_P1: [15200, 15600] as const, // B puxa os balões para fora
+  LOGO: [15400, 16400] as const, // D cria o logo grande e o encolhe puxando a alça do canto
+  PALETTE_OPEN: 15700, // C abre a paleta e pensa bastante antes de escolher
+  GRAB_P2: [15850, 16250] as const,
+  ORBIT_B: [16300, 17700] as const, // B dá a volta e passa gigante na frente da câmera
+  THINK_C1: [16650, 17300] as const,
+  BUMP: 16700, // A e D se esbarram no meio do caminho
+  SUB: [16850, 17500] as const, // A leva o subtítulo torto para o lugar
+  PALETTE_CLICK: 17500,
+  THINK_A: [17600, 18250] as const, // A olha o título errado antes de apagar
+  EMAIL: [17700, 18300] as const, // D e C desenham os campos ao mesmo tempo
+  PALETTE_CLOSE: 17850,
+  PASS: [18000, 18600] as const,
+  ERASE: [18300, 19200] as const, // A apaga o título errado...
+  TYPE1: [18500, 19600] as const, // ...e B digita logo atrás, com um erro no fim
+  CPF: [18800, 19250] as const, // C joga fora o campo que não devia estar ali
+  BUTTON: [19000, 19600] as const, // D desenha o botão
+  THINK_B: [19650, 20200] as const, // B percebe o erro
+  THINK_C2: [19700, 20300] as const, // C pensa na cor do botão
+  BACK: [19800, 20700] as const, // D traz o link de volta lá de cima
+  BACKSPACE: [20200, 20500] as const,
+  PAINT: 20400,
+  TYPE2: [20550, 20900] as const,
+  FOCUS_EMAIL: 20700, // C confere o foco de cada campo
+  FOCUS_PASS: 20950,
+  FONT_OPEN: 21000, // A abre as fontes, pensa e escolhe a do título
+  ORBIT_D: [21000, 22400] as const, // D dá a volta gigante
+  THINK_A2: [21050, 21700] as const,
+  FONT_PICK: 21800,
+  FONT_CLOSE: 22050,
+  HIGH5: 23000, // os quatro se encontram em cima do cartão
+  EXIT: [23200, 23900] as const,
+  END: 24100,
   REVEAL: 400, // a tela de verdade entra por cima
 } as const;
 
@@ -126,7 +131,10 @@ function spline<K extends { t: number; hold?: boolean }>(keys: readonly K[], t: 
     if (t <= b.t) {
       const a = keys[i - 1]!;
       const dt = b.t - a.t || 1;
-      const u = (t - a.t) / dt;
+      let u = (t - a.t) / dt;
+      // chegando onde vai parar: o freio é mais longo; saindo de uma parada: arranca devagar
+      if (b.hold && !a.hold) u = lerp(u, 1 - (1 - u) * (1 - u), 0.55);
+      else if (a.hold && !b.hold) u = lerp(u, u * u, 0.3);
       const u2 = u * u;
       const u3 = u2 * u;
       const h00 = 2 * u3 - 3 * u2 + 1;
@@ -252,18 +260,51 @@ export function meetingPoints(L: Layout) {
 
 /** Uma volta em elipse: perto da câmera embaixo (z alto, gigante), longe em cima (z baixo, pequeno). */
 export function orbit(o: { t0: number; t1: number; x: number; y: number; rx: number; ry: number; zMid: number; zAmp: number; from: number; dir: 1 | -1 }): Key[] {
-  const n = 8;
+  // ângulos iguais, tempos diferentes: perto da frente (sen = 1) cada passo demora mais, então o
+  // cursor desacelera de leve bem na frente da câmera, fica ali um instante e segue
+  const n = 16;
+  const th = (i: number) => o.from + o.dir * ((Math.PI * 2 * i) / n);
+  const front = (a: number) => {
+    const d = Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2));
+    return Math.exp(-(d * d) / (2 * 0.55 * 0.55));
+  };
+  const w = Array.from({ length: n }, (_, i) => 1 / (1 - 0.72 * front((th(i) + th(i + 1)) / 2)));
+  const total = w.reduce((a, b) => a + b, 0);
   const keys: Key[] = [];
+  let acc = 0;
   for (let i = 0; i <= n; i++) {
-    const th = o.from + o.dir * ((Math.PI * 2 * i) / n);
-    keys.push({
-      t: o.t0 + ((o.t1 - o.t0) * i) / n,
-      x: o.x + o.rx * Math.cos(th),
-      y: o.y + o.ry * Math.sin(th),
-      z: o.zMid + o.zAmp * Math.sin(th),
-    });
+    const a = th(i);
+    keys.push({ t: o.t0 + ((o.t1 - o.t0) * acc) / total, x: o.x + o.rx * Math.cos(a), y: o.y + o.ry * Math.sin(a), z: o.zMid + o.zAmp * Math.sin(a) });
+    acc += w[i] ?? 0;
   }
   return keys;
+}
+
+/** Onde fica o "+" que o primeiro cursor abre para criar os outros. */
+export function spawner(L: Layout) {
+  return { x: Math.min(L.card.r + 64, L.vw / 2 - 50), y: cy(L.card) - 60 };
+}
+
+/** Os esbarrões só valem nos encontros combinados (fora deles, um cursor não empurra o outro). */
+export const BUMP_WINDOWS: readonly Interval[] = [
+  [T.BUMP - 350, T.BUMP + 350],
+  [T.HIGH5 - 500, T.HIGH5 + 300],
+];
+
+/** O logo nasce grande (LOGO_BIG vezes) e D o encolhe puxando a alça do canto. */
+export const LOGO_BIG = 2.4;
+
+/** Olho de peixe invertido: perto da borda da tela, as coisas crescem e são puxadas para fora. */
+export const LENS_START = 0.6;
+export function lens(sx: number, sy: number, vw: number, vh: number): { dx: number; dy: number; k: number } {
+  const nx = sx / (vw / 2);
+  const ny = sy / (vh / 2);
+  const e = Math.max(Math.abs(nx), Math.abs(ny));
+  if (e <= LENS_START) return { dx: 0, dy: 0, k: 1 };
+  const f = Math.min(1.4, (e - LENS_START) / (1 - LENS_START));
+  const f2 = f * f;
+  const r = Math.hypot(nx, ny) || 1;
+  return { dx: (nx / r) * f2 * 34, dy: (ny / r) * f2 * 34, k: 1 + f2 * 0.28 };
 }
 
 export type CursorId = 'a' | 'b' | 'c' | 'd';
@@ -275,6 +316,11 @@ export interface Track {
   clicks: number[];
   /** momentos em que o cursor para e pensa (balão de "…", olhos procurando) */
   think: Interval[];
+  /** quando o cursor aparece (num estalo) e quando some (outro estalo) */
+  born: number;
+  gone: number;
+  /** toques rápidos (cada tecla digitada), só para o cursor afundar um instante */
+  taps: number[];
 }
 
 const k = (t: number, x: number, y: number, z: number, hold = false): Key => (hold ? { t, x, y, z, hold } : { t, x, y, z });
@@ -308,6 +354,13 @@ function typeTimes(): number[] {
 }
 const TYPE_TIMES = typeTimes();
 
+/** Cada tecla (as letras, os três apagares e as três letras da correção): o cursor afunda um instante. */
+export function typingTaps(): number[] {
+  const back = [1, 2, 3].map((i) => T.BACKSPACE[0] + ((T.BACKSPACE[1] - T.BACKSPACE[0]) * (i - 0.5)) / 3);
+  const fix = [1, 2, 3].map((i) => T.TYPE2[0] + ((T.TYPE2[1] - T.TYPE2[0]) * (i - 0.5)) / 3);
+  return [...TYPE_TIMES, ...back, ...fix];
+}
+
 /** O título que está escrito no instante t (B digita, erra, apaga e corrige). */
 export function titleText(t: number): string {
   if (t < T.TYPE1[0]) return '';
@@ -333,6 +386,14 @@ export function fontPicker(L: Layout) {
   return { x, y, opts };
 }
 
+/** A alça do canto de baixo à direita do logo quando ele nasce grande. */
+export function logoHandle(L: Layout): Pt2 {
+  const hw = ((L.logo.r - L.logo.l) / 2) * LOGO_BIG;
+  const hh = ((L.logo.b - L.logo.t) / 2) * LOGO_BIG;
+  return { x: cx(L.logo) + hw, y: cy(L.logo) + hh };
+}
+type Pt2 = { x: number; y: number };
+
 /** Os trajetos dos quatro cursores, a partir da tela final medida. */
 export function cursorTracks(L: Layout): Record<CursorId, Track> {
   const { vw, vh, card, title, email, pass, button, logo, back, subtitle } = L;
@@ -344,7 +405,10 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
   const meet = meetingPoints(L);
   const fonts = fontPicker(L);
   const sw = pal.swatches;
+  const sp = spawner(L);
   const tw = title.r - title.l;
+  // a saída: depois do encontro, cada um some num estalo, um depois do outro
+  const goneAt = (i: number) => T.EXIT[0] + i * 170 + 280;
   const caretX = (n: number) => title.l + (tw * n) / TITLE.length;
 
   // A: puxa a caixa, esbarra em D, endireita o subtítulo, pensa e apaga o título, escolhe a fonte
@@ -355,9 +419,13 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
     zig.push(k(T.ERASE[0] + (T.ERASE[1] - T.ERASE[0]) * p, lerp(title.l, title.r, p) + (i % 2 ? 16 : -16), cy(title) + (i % 2 ? -7 : 7), 0.2, i === passes));
   }
   const f = fonts.opts;
+  const spawnTaps = [T.SPAWN_B, T.SPAWN_C, T.SPAWN_D];
   const a: Track = {
     keys: [
-      k(T.CURSORS_IN[0], W, H, -1),
+      k(T.A_POP, card.r, card.t, 0, true),
+      k(T.SPAWNER[0], sp.x - 30, sp.y + 22, 0.05, true),
+      ...spawnTaps.map((st) => k(st, sp.x - 4, sp.y + 4, 0, true)),
+      k(T.SPAWNER[1], sp.x - 40, sp.y + 30, 0),
       k(T.BOX[0] - 150, card.r + 30, card.t + 40, -0.1),
       k(T.BOX[0], card.r, card.t, 0, true),
       k(lerp(T.BOX[0], T.BOX[1], 0.55), lerp(card.r, card.l, 0.62), lerp(card.t, card.b, 0.5), 0.15),
@@ -382,49 +450,56 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.FONT_CLOSE + 300, card.r + 50, card.t + 30, -0.2),
       k(T.HIGH5 - 400, meet.high5.x - 70, meet.high5.y + 40, 0),
       k(T.HIGH5, meet.high5.x - 16, meet.high5.y + 4, 0.1),
-      k(T.EXIT[0], card.r - 30, card.t - 10, 0),
-      k(T.EXIT[1], W, H, -1),
+      k(goneAt(3), meet.high5.x - 34, meet.high5.y - 6, 0.15, true),
     ],
-    press: [T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90]],
-    clicks: [T.FONT_OPEN, T.FONT_PICK],
+    press: [T.BOX, T.SUB, T.ERASE, [T.FONT_OPEN - 30, T.FONT_OPEN + 80], [T.FONT_PICK - 30, T.FONT_PICK + 90], ...spawnTaps.map((st): Interval => [st - 40, st + 70])],
+    clicks: [T.FONT_OPEN, T.FONT_PICK, ...spawnTaps],
     think: [T.THINK_A, T.THINK_A2],
+    born: T.A_POP,
+    gone: goneAt(3),
+    taps: [],
   };
 
   // B: puxa os balões para fora vindo para perto da câmera, dá a volta gigante, digita, erra e corrige
-  const typeKeys: Key[] = [0.25, 0.5, 0.75].map((p) => k(lerp(T.TYPE1[0], T.TYPE1[1], p), caretX(TITLE.length * p) + 4, cy(title) + 16 + (p === 0.5 ? -3 : 2), 0.05));
+  const below = cy(title) + 30;
+  const typeKeys: Key[] = [0.25, 0.5, 0.75].map((p) => k(lerp(T.TYPE1[0], T.TYPE1[1], p), caretX(TITLE.length * p) - 18, below + (p === 0.5 ? 2 : 0), 0.05));
   const b: Track = {
     keys: [
-      k(T.CURSORS_IN[0], -W, -H, -1),
-      k(T.CURSORS_IN[1], -card.r * 0.5, -vh * 0.3, -0.3),
+      k(T.SPAWN_B, sp.x, sp.y, 0, true),
+      k(T.SPAWN_B + 300, sp.x + 46, sp.y - 54, 0.25),
+      k(T.SPAWN_B + 900, spots.p1.x + 90, spots.p1.y - 80, 0.4),
       k(T.GRAB_P1[0] - 350, spots.p1.x - 70, spots.p1.y - 60, 0.9),
       { ...k(T.GRAB_P1[0], spots.p1.x, spots.p1.y, 1.1, true), tag: 'p1' },
       k(T.GRAB_P1[1], W - 40, -H + 30, 1.1),
       { ...k(T.GRAB_P2[0], spots.p2.x, spots.p2.y, 0.9, true), tag: 'p2' },
       k(T.GRAB_P2[1], -W + 40, spots.p2.y + 60, 0.9),
       ...orbit({ t0: T.ORBIT_B[0], t1: T.ORBIT_B[1] - 200, x: 0, y: cy(card) + 40, rx: Math.min(vw * 0.36, 430), ry: 90, zMid: 0.8, zAmp: 2.8, from: Math.PI, dir: 1 }),
-      k(T.TYPE1[0] - 400, title.l - 40, cy(title) + 50, -0.2),
-      k(T.TYPE1[0], caretX(0), cy(title) + 16, 0.05, true),
+      k(T.TYPE1[0] - 400, title.l - 50, below + 40, -0.2),
+      k(T.TYPE1[0], caretX(0) - 18, below, 0.05, true),
       ...typeKeys,
-      k(T.TYPE1[1], caretX(TITLE.length), cy(title) + 16, 0.05, true),
-      ...ponder(T.THINK_B[0], T.THINK_B[1], caretX(TITLE.length) + 10, cy(title) + 26, 0.1, 9),
-      k(T.BACKSPACE[1], caretX(FIX_FROM), cy(title) + 16, 0.05, true),
-      k(T.TYPE2[1], caretX(TITLE.length), cy(title) + 16, 0.05, true),
+      k(T.TYPE1[1], caretX(TITLE.length) - 18, below, 0.05, true),
+      ...ponder(T.THINK_B[0], T.THINK_B[1], caretX(TITLE.length) + 6, below + 8, 0.1, 9),
+      k(T.BACKSPACE[1], caretX(FIX_FROM) - 18, below, 0.05, true),
+      k(T.TYPE2[1], caretX(TITLE.length) - 18, below, 0.05, true),
       k(T.TYPE2[1] + 600, card.l - 60, cy(card) - 40, -0.3),
       k(T.HIGH5 - 600, card.l + 20, card.t - 40, -0.2),
       k(T.HIGH5, meet.high5.x - 2, meet.high5.y - 22, 0.1),
-      k(T.EXIT[0], card.l + 40, card.t - 30, 0),
-      k(T.EXIT[1], -W, -H, -1),
+      k(goneAt(2), meet.high5.x - 6, meet.high5.y - 40, 0.15, true),
     ],
     press: [T.GRAB_P1, T.GRAB_P2],
     clicks: [],
     think: [T.THINK_B],
+    born: T.SPAWN_B,
+    gone: goneAt(2),
+    taps: typingTaps(),
   };
 
   // C: segura o canto, pensa muito antes de escolher a cor, desenha a senha, joga fora o CPF,
   // pensa na cor do botão e o pinta, confere o foco dos campos
   const c: Track = {
     keys: [
-      k(T.CURSORS_IN[0], W, 0, -1),
+      k(T.SPAWN_C, sp.x, sp.y, 0, true),
+      k(T.SPAWN_C + 280, sp.x + 40, sp.y + 34, 0.2),
       k(T.ANCHOR[0], card.r + 14, card.t - 14, 0, true),
       k(T.ANCHOR[1], card.r + 14, card.t - 14, 0, true),
       k(T.PALETTE_OPEN - 50, pal.x - 26, pal.y + 12, 0.1, true),
@@ -446,8 +521,7 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.FOCUS_PASS + 600, card.r + 70, card.b - 40, -0.3),
       k(T.HIGH5 - 500, meet.high5.x + 80, meet.high5.y + 50, 0),
       k(T.HIGH5, meet.high5.x + 16, meet.high5.y + 4, 0.1),
-      k(T.EXIT[0], card.r + 20, cy(card), 0),
-      k(T.EXIT[1], W, 0, -1),
+      k(goneAt(1), meet.high5.x + 34, meet.high5.y - 4, 0.15, true),
     ],
     press: [
       T.ANCHOR,
@@ -460,19 +534,22 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
     ],
     clicks: [T.PALETTE_CLICK, T.PAINT, T.FOCUS_EMAIL, T.FOCUS_PASS],
     think: [[T.PALETTE_OPEN + 250, T.PALETTE_CLICK - 60], T.THINK_C2],
+    born: T.SPAWN_C,
+    gone: goneAt(1),
+    taps: [],
   };
 
   // D: carrega o logo (levantando perto da câmera), esbarra em A, desenha o e-mail e o botão,
   // traz o link de volta lá de cima e dá a volta gigante
-  const midLogo = { x: lerp(mis.logo.x, cx(logo), 0.5), y: Math.min(mis.logo.y, cy(logo)) - 50 };
+  const big = logoHandle(L);
   const d: Track = {
     keys: [
-      k(T.CURSORS_IN[0], -W, vh * 0.2, -1),
-      k(T.CURSORS_IN[1], -vw * 0.3, vh * 0.22, -0.4),
-      k(T.LOGO[0] - 300, mis.logo.x - 30, mis.logo.y + 30, 0.1),
-      k(T.LOGO[0], mis.logo.x, mis.logo.y, 0.25, true),
-      k(lerp(T.LOGO[0], T.LOGO[1], 0.5), midLogo.x, midLogo.y, 1.2),
-      k(T.LOGO[1], cx(logo), cy(logo), 0.25, true),
+      k(T.SPAWN_D, sp.x, sp.y, 0, true),
+      k(T.SPAWN_D + 300, sp.x - 50, sp.y + 40, 0.2),
+      k(T.LOGO[0] - 400, cx(logo) - 60, cy(logo) + 50, 0.1),
+      k(T.LOGO[0], cx(logo), cy(logo), 0.1, true),
+      k(T.LOGO[0] + 350, big.x, big.y, 0.15, true),
+      k(T.LOGO[1], logo.r, logo.b, 0.1, true),
       k(T.BUMP - 150, meet.bump.x + 60, meet.bump.y - 70, 0.05),
       k(T.BUMP, meet.bump.x, meet.bump.y, 0),
       k(T.EMAIL[0] - 300, email.l - 40, email.t - 30, -0.1),
@@ -487,12 +564,14 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       ...orbit({ t0: T.ORBIT_D[0], t1: T.ORBIT_D[1], x: 0, y: cy(card) - 20, rx: Math.min(vw * 0.38, 450), ry: 110, zMid: 0.9, zAmp: 2.7, from: 0, dir: -1 }),
       k(T.HIGH5 - 300, meet.high5.x + 40, meet.high5.y - 60, 0),
       k(T.HIGH5, meet.high5.x + 2, meet.high5.y + 26, 0.1),
-      k(T.EXIT[0], card.l + 10, card.b - 30, 0),
-      k(T.EXIT[1], -W, vh * 0.2, -1),
+      k(goneAt(0), meet.high5.x + 4, meet.high5.y + 46, 0.15, true),
     ],
-    press: [T.LOGO, T.EMAIL, T.BUTTON, T.BACK],
-    clicks: [],
+    press: [[T.LOGO[0] - 30, T.LOGO[0] + 80], [T.LOGO[0] + 350, T.LOGO[1]], T.EMAIL, T.BUTTON, T.BACK],
+    clicks: [T.LOGO[0]],
     think: [],
+    born: T.SPAWN_D,
+    gone: goneAt(0),
+    taps: [],
   };
 
   return { a, b, c, d };

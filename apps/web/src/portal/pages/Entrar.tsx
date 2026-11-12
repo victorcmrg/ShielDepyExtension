@@ -152,6 +152,7 @@ function Scene() {
         </div>
         <div className="ent-w ent-pop p0">
           <div className="ent-pop-body">
+            <span className="ent-pop-tag">GET /entrar · 404</span>
             <Ball />
             <strong>Erro detectado</strong>
             <span className="ent-pop-sub">corrigindo…</span>
@@ -159,6 +160,7 @@ function Scene() {
         </div>
         <div className="ent-w ent-pop p1">
           <div className="ent-pop-body">
+            <span className="ent-pop-tag">rota</span>
             <Ball />
             <strong>Ajustando rota</strong>
             <span className="ent-pop-sub">/entrar → /login</span>
@@ -166,6 +168,7 @@ function Scene() {
         </div>
         <div className="ent-w ent-pop p2">
           <div className="ent-pop-body">
+            <span className="ent-pop-tag">tela</span>
             <Ball />
             <strong>Corrigindo tela de login</strong>
             <span className="ent-pop-sub">8 blocos fora do lugar</span>
@@ -180,12 +183,33 @@ function Scene() {
         </div>
         <span className="ent-w ent-seed" aria-hidden="true" />
 
-        {['p1', 'p2', 'logo', 'sub', 'back'].map((k) => (
+        {['p1', 'p2', 'sub', 'back'].map((k) => (
           <span key={k} className="ent-w ent-psh" data-for={k} aria-hidden="true" />
         ))}
-        <div className="ent-w ent-ph" data-carry="logo" aria-hidden="true">
-          [img: logo-mark.svg]
-        </div>
+        {/* o "+" que o primeiro cursor abre para criar os outros */}
+        <span className="ent-w ent-spawner" aria-hidden="true" />
+        {/* o blueprint de motion graphics: caixa com alças, âncora com os eixos e o arco de rotação */}
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="ent-w ent-gizmo" aria-hidden="true">
+            <span className="gz-tag" />
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((h) => (
+              <i key={h} className={`gz-h gz-h${h}`} />
+            ))}
+            <span className="gz-anchor" />
+            <span className="gz-x" />
+            <span className="gz-y" />
+            <span className="gz-rot" />
+          </div>
+        ))}
+        <svg className="ent-w ent-mpath" width="1" height="1" aria-hidden="true">
+          <defs>
+            <marker id="ent-node" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7">
+              <circle cx="5" cy="5" r="3.4" />
+            </marker>
+          </defs>
+          <path className="mp-sub" markerStart="url(#ent-node)" markerEnd="url(#ent-node)" />
+          <path className="mp-back" markerStart="url(#ent-node)" markerEnd="url(#ent-node)" />
+        </svg>
         <div className="ent-w ent-logo" aria-hidden="true">
           <img src="/logo-mark.svg" alt="" />
           <span>ShielDepy</span>
