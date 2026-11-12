@@ -17,10 +17,11 @@
 .ent.is-colored .ent-bg2,
 .ent.is-done .ent-bg2 { opacity: 1; }
 
-.ent-scene { position: absolute; inset: 0; transition: opacity 0.4s ease; }
+.ent-scene { position: absolute; inset: 0; transition: opacity 0.4s ease; perspective: 1100px; perspective-origin: 50% 50%; }
 .ent.is-reveal .ent-scene { opacity: 0; }
 .ent-defs { position: absolute; }
-.ent-cam { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; }
+/* a câmera é um mundo 3D: o plano da tela inclina e o que está acima dele sai em profundidade */
+.ent-cam { position: absolute; inset: 0; transform-origin: 50% 50%; transform-style: preserve-3d; will-change: transform; }
 .ent-w { position: absolute; left: 50%; top: 50%; }
 
 /* antes da paleta: a tela em obra é preto no branco (os tokens voltam ao tema quando o fundo muda) */
@@ -87,7 +88,7 @@
 .ent-g.is-3d i { visibility: visible; }
 
 /* ---------------- os balões verdes e o líquido ---------------- */
-.ent-goo { position: absolute; inset: 0; z-index: 39; filter: url(#ent-goo); opacity: 0; pointer-events: none; }
+.ent-goo { position: absolute; inset: 0; z-index: 39; filter: url(#ent-goo); opacity: 0; pointer-events: none; transform: translateZ(2.5px); }
 .ent-goo.is-on { opacity: 1; }
 .goo { border-radius: 22px; background: var(--ent-green); transform-origin: 50% 50%; }
 
@@ -169,7 +170,36 @@
 .ent-wtitle { z-index: 22; white-space: nowrap; text-align: center; color: #111; font: 700 1.5rem/1.5 "Times New Roman", Times, serif; rotate: -3deg; translate: 14px 2px; }
 .wl { display: inline-block; white-space: pre; transition: opacity 0.18s ease, translate 0.3s ease; }
 .wl.is-erased { opacity: 0; translate: 0 8px; }
-.ent-title { z-index: 22; white-space: nowrap; text-align: center; color: var(--foreground); font: 600 1.2rem/1.5 var(--font-display); }
+.ent-title { z-index: 22; display: flex; align-items: center; white-space: nowrap; color: var(--foreground); font: 700 1.3rem/1 "Times New Roman", Times, serif; }
+.ent-title.is-final-font { font: 600 1.2rem/1 var(--font-display); }
+.ent-title-in { display: inline-block; white-space: pre; transform-origin: 50% 60%; }
+.ent-title.is-typing .ent-title-in::after { content: ""; display: inline-block; width: 2px; height: 1.1em; margin-left: 1px; vertical-align: -0.15em; background: var(--brand-to); animation: ent-caret 0.8s steps(1) infinite; }
+@keyframes ent-caret { 50% { opacity: 0; } }
+/* o seletor de fontes que A abre ao lado do título */
+.ent-fonts {
+  z-index: 48;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 14px;
+  background: #111614;
+  box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.5);
+  transform-origin: 0 100%;
+  opacity: 0;
+  scale: 0.6;
+  transition: opacity 0.2s ease, scale 0.35s cubic-bezier(0.2, 0.9, 0.2, 1.3);
+  pointer-events: none;
+}
+.ent-fonts.is-on { opacity: 1; scale: 1; }
+.ent-fonts .fo { width: 52px; height: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 9px; color: #e9efe9; background: rgba(255, 255, 255, 0.06); font-size: 17px; line-height: 1; transition: scale 0.15s ease, background 0.15s ease; }
+.ent-fonts .fo small { margin-top: 3px; font: 500 8px/1 var(--font-mono); letter-spacing: 0.04em; opacity: 0.6; }
+.fo-serif { font-family: "Times New Roman", Times, serif; font-weight: 700; }
+.fo-mono { font-family: var(--font-mono); }
+.fo-brand { font-family: var(--font-display); font-weight: 700; }
+.ent-fonts .fo.is-hover { scale: 1.12; background: rgba(255, 255, 255, 0.14); }
+.ent-fonts .fo.is-picked { background: var(--brand-to); color: #08130d; }
+/* a sombra no plano do que foi levantado (balão, logo, subtítulo, link) */
+.ent-psh { z-index: 21; border-radius: 18px; background: rgba(0, 0, 0, 0.55); filter: blur(10px); opacity: 0; transform-origin: 50% 50%; pointer-events: none; }
 .tl { opacity: 0; white-space: pre; }
 .tl.is-on { opacity: 1; }
 .tl.is-caret { box-shadow: 2px 0 0 var(--brand-to); }
@@ -203,6 +233,22 @@
 .ent-btn-label { position: relative; color: #08130d; font: 600 0.95rem/1 var(--font-sans); opacity: 0; transition: opacity 0.3s ease 0.2s; }
 .ent-btn.is-painted .ent-btn-label { opacity: 1; }
 .ent-backlink { z-index: 22; text-align: center; color: var(--muted); font: 0.85rem/1.5 var(--font-sans); }
+/* as partes pontilhadas: a planta da tela, peça por peça */
+.ent-slot {
+  z-index: 21;
+  border: 1.5px dotted color-mix(in srgb, var(--muted) 70%, transparent);
+  border-radius: 10px;
+  opacity: 0;
+  scale: 0.92;
+  transition: opacity 0.25s ease, scale 0.35s cubic-bezier(0.2, 0.9, 0.2, 1.3);
+  pointer-events: none;
+}
+.ent-slot[data-k="button"] { border-radius: 999px; }
+.ent-slot.is-on { opacity: 1; scale: 1; animation: ent-slot-pulse 1.6s ease-in-out infinite; }
+@keyframes ent-slot-pulse { 50% { opacity: 0.45; } }
+/* a peça levantada por um cursor ganha sombra, como se saísse do chão */
+.ent-sub.is-held, .ent-backlink.is-held, .ent-ph.is-held { box-shadow: 0 18px 30px -16px rgba(0, 0, 0, 0.45); border-radius: 8px; }
+.ent-field.is-focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-to) 28%, transparent); border-color: color-mix(in srgb, var(--brand-to) 70%, transparent); transition: box-shadow 0.2s ease, border-color 0.2s ease; }
 .ent-draw { z-index: 23; border: 1.5px dashed var(--brand-to); border-radius: 10px; background: color-mix(in srgb, var(--brand-to) 8%, transparent); transition: none; }
 .ent-draw.db { border-radius: 999px; }
 
@@ -232,11 +278,37 @@
 .ent-palette .sw.is-picked { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--brand-to); }
 
 /* ---------------- os cursores ---------------- */
-.ent-cur { width: 46px; height: 46px; margin: -2px 0 0 -2px; transform-origin: 2px 2px; visibility: hidden; will-change: transform; pointer-events: none; }
+/* o cursor é desenhado com 5x o tamanho (230 px) e entra reduzido: perto da câmera ele cresce sem borrar */
+.ent-cur { width: 230px; height: 230px; margin: -9px 0 0 -9px; transform-origin: 9px 9px; visibility: hidden; will-change: transform; pointer-events: none; }
 .ent-cur.is-on { visibility: visible; }
-.ent-cur-svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 2px 2px; transition: scale 0.12s ease; }
+.ent-cur-svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 9px 9px; transition: scale 0.12s ease; }
 .ent-cur.is-press .ent-cur-svg { scale: 0.86; }
 .ent-cur-tip { fill: #000; stroke: #fff; stroke-width: 6; stroke-linejoin: round; paint-order: stroke; }
+/* pensando: o balãozinho com as reticências, em cima e à direita do corpo */
+.ent-think {
+  position: absolute;
+  left: 175px;
+  top: -70px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 22px 26px;
+  border-radius: 60px;
+  background: #fff;
+  box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.45), 0 0 0 5px #111;
+  opacity: 0;
+  scale: 0.4;
+  transform-origin: 0 100%;
+  transition: opacity 0.2s ease, scale 0.3s cubic-bezier(0.2, 0.9, 0.2, 1.4);
+}
+.ent-think::after { content: ""; position: absolute; left: -10px; bottom: -14px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 5px #111; }
+.ent-think i { width: 20px; height: 20px; border-radius: 50%; background: #111; animation: ent-dots 1s ease-in-out infinite; }
+.ent-think i:nth-child(2) { animation-delay: 0.15s; }
+.ent-think i:nth-child(3) { animation-delay: 0.3s; }
+.ent-cur.is-thinking .ent-think { opacity: 1; scale: 1; }
+.ent-cur.is-thinking .ent-cur-svg { animation: ent-ponder 1.6s ease-in-out infinite; }
+@keyframes ent-dots { 0%, 100% { opacity: 0.25; translate: 0 0; } 40% { opacity: 1; translate: 0 -8px; } }
+@keyframes ent-ponder { 0%, 100% { rotate: 0deg; } 30% { rotate: -7deg; } 65% { rotate: 5deg; } }
 .ent-cur-body { fill: #000; stroke: #fff; stroke-width: 4; }
 .eyes { transition: transform 0.12s linear; }
 .eyes rect { fill: #fff0e8; }
@@ -251,13 +323,28 @@
   z-index: 50;
   width: 46px;
   height: 46px;
-  margin: -2px 0 0 -2px;
+  margin: 0;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
   transform-origin: 23px 23px;
   opacity: 0;
   pointer-events: none;
 }
+/* o esbarrão: o cursor sacode e aperta os olhos */
+.ent-cur.is-bonk .ent-cur-svg { animation: ent-bonk 0.34s ease-out; }
+.ent-cur.is-bonk .eyes-in { scale: 1.1 0.3; }
+@keyframes ent-bonk { 0% { rotate: 0deg; } 25% { rotate: -16deg; } 55% { rotate: 10deg; } 80% { rotate: -4deg; } 100% { rotate: 0deg; } }
+.ent-spark {
+  z-index: 62;
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--brand-to);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+}
+.ent-spark:nth-child(3n) { background: #ffd166; }
+.ent-spark:nth-child(3n + 1) { background: #fff; }
 .ent-rip { z-index: 58; width: 40px; height: 40px; border: 2px solid var(--brand-to); border-radius: 50%; opacity: 0; pointer-events: none; }
 
 /* ---------------- fora da câmera ---------------- */

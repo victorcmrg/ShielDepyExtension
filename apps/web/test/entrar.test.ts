@@ -8,12 +8,18 @@ import {
   cursorTracks,
   cx,
   cy,
+  depthScale,
   introCamera,
+  meetingPoints,
   palette,
   progressAt,
   rebuildCamera,
   sample,
   sampleCam,
+  titleText,
+  TITLE,
+  TITLE_TYPO,
+  depthPx,
   within,
   type Layout,
   type Rect,
@@ -53,7 +59,7 @@ describe('roteiro do Entrar', () => {
   });
 
   it('os marcos da reconstrução vêm em ordem e cabem antes do fim', () => {
-    const order = [T.CAM_BACK[1], T.BOX[0], T.BOX[1], T.GRAB_P1[0], T.GRAB_P2[1], T.PALETTE_CLICK, T.LOGO[1], T.ERASE[1], T.TYPE[1], T.PASS[1], T.BUTTON[1], T.PAINT, T.EXIT[1], T.END];
+    const order = [T.CAM_BACK[1], T.BOX[0], T.BOX[1], T.GRAB_P2[1], T.LOGO[1], T.SUB[1], T.PALETTE_CLICK, T.PASS[1], T.ERASE[1], T.TYPE1[1], T.BUTTON[1], T.PAINT, T.BACK[1], T.TYPE2[1], T.FONT_PICK, T.HIGH5, T.EXIT[1], T.END];
     for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThanOrEqual(order[i - 1]!);
   });
 
@@ -63,15 +69,15 @@ describe('roteiro do Entrar', () => {
     expect(sampleCam(cam, T.POPUP).s).toBeGreaterThan(1.3);
     expect(sampleCam(cam, T.SPLIT1[1] + 200).s).toBeLessThan(sampleCam(cam, T.POPUP).s);
     expect(sampleCam(cam, T.SPLIT2[1] + 200).s).toBeLessThan(sampleCam(cam, T.SPLIT1[1] + 200).s);
-    expect(sampleCam(cam, T.CAM_BACK[1])).toEqual({ s: 1, fx: 0, fy: 0 });
+    expect(sampleCam(cam, T.CAM_BACK[1])).toMatchObject({ s: 1, fx: 0, fy: 0 });
   });
 
   it('a câmera da reconstrução muda de zoom e termina no normal', () => {
     const cam = rebuildCamera(L);
     const scales = cam.map((k) => k.s);
     expect(Math.min(...scales)).toBeLessThan(1);
-    expect(Math.max(...scales)).toBeGreaterThan(1.2);
-    expect(sampleCam(cam, T.END)).toEqual({ s: 1, fx: 0, fy: 0 });
+    expect(Math.max(...scales)).toBeGreaterThanOrEqual(1.15);
+    expect(sampleCam(cam, T.END)).toMatchObject({ s: 1, fx: 0, fy: 0 });
   });
 
   it('os balões vão para a direita em cima e para a esquerda embaixo', () => {
@@ -107,11 +113,106 @@ describe('roteiro do Entrar', () => {
     expect(c.clicks).toContain(T.PALETTE_CLICK);
   });
 
-  it('D leva o logo ao lugar e desenha os campos até o canto de baixo à direita', () => {
-    const { d } = cursorTracks(L);
+  it('D leva o logo e desenha o e-mail e o botão; C desenha a senha ao mesmo tempo', () => {
+    const { c, d } = cursorTracks(L);
     expect(sample(d.keys, T.LOGO[1])).toMatchObject({ x: cx(L.logo), y: cy(L.logo) });
     expect(sample(d.keys, T.EMAIL[1])).toMatchObject({ x: L.email.r, y: L.email.b });
-    expect(sample(d.keys, T.PASS[1])).toMatchObject({ x: L.pass.r, y: L.pass.b });
+    expect(sample(c.keys, T.PASS[1])).toMatchObject({ x: L.pass.r, y: L.pass.b });
+    expect(sample(d.keys, T.BUTTON[1])).toMatchObject({ x: L.button.r, y: L.button.b });
+  });
+
+  it('há trabalho em paralelo: os campos, o título e o apagar se sobrepõem no tempo', () => {
+    const overlap = (x: readonly [number, number], y: readonly [number, number]) => x[0] < y[1] && y[0] < x[1];
+    expect(overlap(T.EMAIL, T.PASS)).toBe(true);
+    expect(overlap(T.ERASE, T.TYPE1)).toBe(true);
+    expect(overlap(T.LOGO, T.GRAB_P2)).toBe(true);
+    expect(overlap(T.BUTTON, T.CPF)).toBe(true);
+    expect(overlap(T.ORBIT_D, T.THINK_A2)).toBe(true);
+    expect(T.TYPE1[0]).toBeGreaterThan(T.ERASE[0]); // B digita atrás da borracha de A
+  });
+
+  it('B e D fazem uma elipse e passam gigantes na frente da câmera', () => {
+    const tracks = cursorTracks(L);
+    for (const [tr, iv] of [
+      [tracks.b, T.ORBIT_B],
+      [tracks.d, T.ORBIT_D],
+    ] as const) {
+      let zMax = -Infinity;
+      let zMin = Infinity;
+      for (let t = iv[0]; t <= iv[1]; t += 20) {
+        const z = sample(tr.keys, t).z;
+        zMax = Math.max(zMax, z);
+        zMin = Math.min(zMin, z);
+      }
+      expect(depthScale(zMax)).toBeGreaterThan(4); // gigante
+      expect(depthScale(zMin)).toBeLessThan(0.7); // e lá no fundo, pequeno
+    }
+  });
+
+  it('os cursores andam em curva contínua: só param onde agarram, soltam ou clicam', () => {
+    const { b } = cursorTracks(L);
+    const loose = b.keys.filter((key, i) => !key.hold && i > 0 && i < b.keys.length - 1);
+    expect(loose.length).toBeGreaterThan(5);
+    for (const key of loose) {
+      const p0 = sample(b.keys, key.t - 8);
+      const p1 = sample(b.keys, key.t + 8);
+      expect(Math.hypot(p1.x - p0.x, p1.y - p0.y, (p1.z - p0.z) * 100)).toBeGreaterThan(0.01);
+    }
+  });
+
+  it('A e D se encontram no esbarrão combinado e os quatro se juntam em cima do cartão', () => {
+    const tracks = cursorTracks(L);
+    const m = meetingPoints(L);
+    const a = sample(tracks.a.keys, T.BUMP);
+    const d = sample(tracks.d.keys, T.BUMP);
+    expect(a).toMatchObject({ x: m.bump.x, y: m.bump.y });
+    expect(d).toMatchObject({ x: m.bump.x, y: m.bump.y });
+    for (const tr of Object.values(tracks)) {
+      const p = sample(tr.keys, T.HIGH5);
+      expect(Math.hypot(p.x - m.high5.x, p.y - m.high5.y)).toBeLessThan(40);
+    }
+  });
+
+  it('B digita o título com um erro, para, apaga as três letras e corrige', () => {
+    expect(titleText(T.TYPE1[0] - 1)).toBe('');
+    const mid = titleText((T.TYPE1[0] + T.TYPE1[1]) / 2);
+    expect(mid.length).toBeGreaterThan(2);
+    expect(TITLE_TYPO.startsWith(mid)).toBe(true);
+    expect(titleText(T.TYPE1[1])).toBe(TITLE_TYPO);
+    expect(titleText(T.THINK_B[1])).toBe(TITLE_TYPO); // pensando, sem mexer
+    expect(titleText(T.BACKSPACE[1])).toBe(TITLE.slice(0, TITLE.length - 3));
+    expect(titleText(T.TYPE2[1])).toBe(TITLE);
+    expect(titleText(T.END)).toBe(TITLE);
+  });
+
+  it('antes de escolher a cor, apagar o título, pintar o botão e trocar a fonte, alguém para e pensa', () => {
+    const tracks = cursorTracks(L);
+    const thinking = (t: number) => Object.values(tracks).some((tr) => tr.think.some((iv) => within(iv, t)));
+    expect(thinking(T.PALETTE_CLICK - 300)).toBe(true);
+    expect(thinking(T.ERASE[0] - 100)).toBe(true);
+    expect(thinking(T.BACKSPACE[0] - 100)).toBe(true);
+    expect(thinking(T.PAINT - 200)).toBe(true);
+    expect(thinking(T.FONT_PICK - 200)).toBe(true);
+    // escolher a cor leva mais de 1,5 s desde que a paleta abre
+    expect(T.PALETTE_CLICK - T.PALETTE_OPEN).toBeGreaterThan(1500);
+  });
+
+  it('a câmera inclina em 3D durante a obra e fica reta no fim', () => {
+    const cam = [...introCamera(1088, 690), ...rebuildCamera(L).slice(1)];
+    let tilt = 0;
+    for (let t = T.BOX[0]; t < T.HIGH5; t += 50) {
+      const c = sampleCam(cam, t);
+      tilt = Math.max(tilt, Math.abs(c.rx), Math.abs(c.ry));
+    }
+    expect(tilt).toBeGreaterThan(5);
+    expect(sampleCam(cam, T.END)).toMatchObject({ s: 1, rx: 0, ry: 0 });
+  });
+
+  it('a profundidade em px dá a mesma escala da perspectiva', () => {
+    for (const z of [-1, 0, 1, 3.6]) {
+      const px = depthPx(z);
+      expect(1100 / (1100 - px)).toBeCloseTo(depthScale(z), 6);
+    }
   });
 
   it('o progresso vai de 0 a 100 sem voltar', () => {

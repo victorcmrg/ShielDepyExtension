@@ -93,6 +93,12 @@ function Cursor({ id }: { id: string }) {
             </g>
           </g>
         </svg>
+        {/* pensando: um balãozinho com reticências */}
+        <span className="ent-think">
+          <i />
+          <i />
+          <i />
+        </span>
       </div>
     </>
   );
@@ -166,12 +172,18 @@ function Scene() {
           </div>
         </div>
 
+        {['logo', 'title', 'subtitle', 'email', 'pass', 'button', 'back'].map((k) => (
+          <span key={k} className="ent-w ent-slot" data-k={k} aria-hidden="true" />
+        ))}
         <div className="ent-w ent-box" aria-hidden="true">
           <span className="ent-box-fill" />
         </div>
         <span className="ent-w ent-seed" aria-hidden="true" />
 
-        <div className="ent-w ent-ph" aria-hidden="true">
+        {['p1', 'p2', 'logo', 'sub', 'back'].map((k) => (
+          <span key={k} className="ent-w ent-psh" data-for={k} aria-hidden="true" />
+        ))}
+        <div className="ent-w ent-ph" data-carry="logo" aria-hidden="true">
           [img: logo-mark.svg]
         </div>
         <div className="ent-w ent-logo" aria-hidden="true">
@@ -186,13 +198,20 @@ function Scene() {
           ))}
         </div>
         <div className="ent-w ent-title" aria-hidden="true">
-          {TITLE.split('').map((ch, i) => (
-            <span key={i} className="tl">
-              {ch === ' ' ? ' ' : ch}
-            </span>
-          ))}
+          <span className="ent-title-in" />
         </div>
-        <div className="ent-w ent-sub" aria-hidden="true">
+        <div className="ent-w ent-fonts" aria-hidden="true">
+          <span className="fo fo-serif">
+            Aa<small>serifada</small>
+          </span>
+          <span className="fo fo-mono">
+            Aa<small>mono</small>
+          </span>
+          <span className="fo fo-brand">
+            Aa<small>Manrope</small>
+          </span>
+        </div>
+        <div className="ent-w ent-sub" data-carry="sub" aria-hidden="true">
           Conecte sua conta à extensão ShielDepy.
         </div>
         <div className="ent-w ent-label le" aria-hidden="true">
@@ -214,7 +233,7 @@ function Scene() {
           <span className="ent-btn-paint" />
           <span className="ent-btn-label">Entrar</span>
         </div>
-        <div className="ent-w ent-backlink" aria-hidden="true">
+        <div className="ent-w ent-backlink" data-carry="back" aria-hidden="true">
           ← Voltar para o início
         </div>
         <span className="ent-w ent-draw de" aria-hidden="true" />
@@ -234,6 +253,9 @@ function Scene() {
         ))}
         {[0, 1, 2, 3].map((i) => (
           <span key={i} className="ent-w ent-rip" aria-hidden="true" />
+        ))}
+        {Array.from({ length: 18 }, (_, i) => (
+          <span key={i} className="ent-w ent-spark" aria-hidden="true" />
         ))}
       </div>
 

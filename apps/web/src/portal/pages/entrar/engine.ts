@@ -3,6 +3,14 @@
 // transform, opacity e classes. Nada de React por quadro: a página monta a cena uma vez e este
 // arquivo a anima. O relógio anda no máximo 50 ms por quadro: com a aba escondida, a cena pausa em
 // vez de pular.
+//
+// Por cima do roteiro, um pouco de física nos cursores: um balanço leve quando estão soltos, a
+// inclinação para o lado em que andam e o esbarrão quando dois se cruzam na mesma profundidade (eles
+// se empurram, piscam e soltam faíscas).
+//
+// A cena tem perspectiva de verdade: a câmera inclina o plano em 3D, e cursores, balões e peças
+// levantadas saem do plano (translateZ) e projetam a sombra nele. Para o que está fora do plano
+// continuar onde o roteiro manda na tela, a posição é dividida pelo aumento da perspectiva.
 import { kickAround, makeBody, rng, stepBody, type Body } from './physics';
 import * as S from './script';
 
@@ -22,13 +30,61 @@ interface Pop {
   gx: number;
   gy: number;
   phase: number;
+  /** quanto saiu do plano (px), levantado pelo cursor */
+  z: number;
+  sh: HTMLElement;
 }
 
-/** No `npm run web:dev`, expõe `window.__entrarSeek(ms)`, que pausa o relógio da cena e o avança até ms
- *  (para conferir quadros sem esperar, mesmo com a aba escondida). No build, o Vite troca DEV por false e
- *  o código sai. */
+/** Uma peça que um cursor leva de um lugar errado para o certo. */
+interface Carry {
+  el: HTMLElement;
+  cur: number;
+  iv: S.Interval;
+  w: number;
+  h: number;
+  x: number;
+  y: number;
+  rot: number;
+  sc: number;
+  z: number;
+  sh: HTMLElement;
+  target: Pt & { rot: number };
+  state: 'idle' | 'held' | 'settle' | 'placed';
+  gx: number;
+  gy: number;
+  gz: number;
+  from: { x: number; y: number; rot: number; sc: number; t: number };
+}
+
+interface Cursor {
+  id: S.CursorId;
+  el: HTMLElement;
+  sh: HTMLElement;
+  eyes: SVGGElement;
+  prev: Pt | null;
+  v: Pt;
+  tip: Pt;
+  z: number;
+  sc: number;
+  on: boolean;
+  pressed: boolean;
+  pressedBefore: boolean;
+  // desvio do trajeto (esbarrões), com mola
+  ox: number;
+  oy: number;
+  vox: number;
+  voy: number;
+  tilt: number;
+  bonkUntil: number;
+  phase: number;
+  thinking: boolean;
+}
+
 export function runEntrar(root: HTMLElement, done: () => void): () => void {
+  // no `npm run web:dev`, window.__entrarSeek(ms) pausa a cena e a leva ao instante pedido (para
+  // conferir quadros sem esperar, mesmo com a aba escondida); no build o Vite troca DEV por false
   const dev = import.meta.env.DEV;
+  const dbg = window as unknown as { __entrarProject?: (x: number, y: number, z: number) => Pt };
   const $ = (s: string) => root.querySelector<HTMLElement>(s)!;
   const $$ = (s: string) => Array.from(root.querySelectorAll<HTMLElement>(s));
   const vw = window.innerWidth;
@@ -47,7 +103,52 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const flag = (el: Element, cls: string, on: boolean) => {
     if (el.classList.contains(cls) !== on) el.classList.toggle(cls, on);
   };
-  const at = (x: number, y: number, extra = '') => `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)${extra}`;
+  const at = (x: number, y: number, extra = '', z = 0) => `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, ${z.toFixed(1)}px)${extra}`;
+  // camadas do mesmo plano: um fio de profundidade decide quem fica por cima (z-index não vale em 3D)
+  const Z = { slot: 0.4, box: 0, content: 1, seed: 2, shadow: 2.5, pop: 3, popShadow: 0.8, curShadow: 3.6, palette: 4, ripple: 5, spark: 6 } as const;
+  let cam3 = { s: 1, fx: 0, fy: 0, rx: 0, ry: 0 };
+  let cosX = 1;
+  let sinX = 0;
+  let cosY = 1;
+  let sinY = 0;
+  /** Onde um ponto do mundo (relativo ao centro, z acima do plano) cai na tela: a mesma conta do navegador
+   *  para "rotateX rotateY scale translate" na câmera e a perspectiva da cena. */
+  const project = (X: number, Y: number, Zw: number): Pt => {
+    const x0 = (X - cam3.fx) * cam3.s;
+    const y0 = (Y - cam3.fy) * cam3.s;
+    // rotateY
+    const x1 = x0 * cosY + Zw * sinY;
+    const z1 = -x0 * sinY + Zw * cosY;
+    // rotateX
+    const y2 = y0 * cosX - z1 * sinX;
+    const z2 = y0 * sinX + z1 * cosX;
+    const k = S.PERSPECTIVE / (S.PERSPECTIVE - z2);
+    return { x: x1 * k, y: y2 * k };
+  };
+  /** Onde pôr no mundo algo que está zPx acima do plano para ele aparecer, na tela, em cima do ponto
+   *  (x, y) do plano (Gauss-Newton em 2 variáveis: converge em 2 ou 3 passos). */
+  const lifted = (x: number, y: number, zPx: number): Pt => {
+    if (Math.abs(zPx) < 0.5) return { x, y };
+    const want = project(x, y, 0);
+    let X = x;
+    let Y = y;
+    for (let i = 0; i < 4; i++) {
+      const p = project(X, Y, zPx);
+      const ex = p.x - want.x;
+      const ey = p.y - want.y;
+      if (Math.abs(ex) + Math.abs(ey) < 0.05) break;
+      const px = project(X + 1, Y, zPx);
+      const py = project(X, Y + 1, zPx);
+      const a11 = px.x - p.x;
+      const a21 = px.y - p.y;
+      const a12 = py.x - p.x;
+      const a22 = py.y - p.y;
+      const det = a11 * a22 - a12 * a21 || 1;
+      X -= (ex * a22 - ey * a12) / det;
+      Y -= (ey * a11 - ex * a21) / det;
+    }
+    return { x: X, y: Y };
+  };
   const rel = (el: Element): S.Rect => {
     const r = el.getBoundingClientRect();
     return { l: r.left - vw / 2, t: r.top - vh / 2, r: r.right - vw / 2, b: r.bottom - vh / 2 };
@@ -62,7 +163,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const shadows = $$('.ent-sh');
   const floor = vh / 2 - 14;
   let bodies: Body[] = [];
-  let origin: Pt[] = [];
+  const origin: Pt[] = [];
   const digitPlan = [
     { start: S.T.FALL_4A, tip: -80, yaw: 22, kick: -90 },
     { start: S.T.FALL_0, tip: 84, yaw: -8, kick: 40 },
@@ -94,7 +195,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   function stepBodies(t: number, dt: number) {
     const n = Math.max(1, Math.ceil(dt / 0.012));
     const h = dt / n;
-    for (let k = 0; k < n; k++) {
+    for (let i = 0; i < n; i++) {
       for (const b of bodies) {
         if (stepBody(b, h, t, floor, -vw / 2 + 8, vw / 2 - 8) === 'impact' && b.w > 60) kickAround(b, bodies, rand);
       }
@@ -114,10 +215,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
 
   // ---------------- os balões ----------------
   const spots = S.balloonSpots(vw, vh);
-  const mkPop = (sel: string, p: Pt): Pop => ({ el: $(sel), w: 0, h: 0, x: p.x, y: p.y, rot: 0, vx: 0, vy: 0, vr: 0, mode: 'idle', gx: 0, gy: 0, phase: rand() * 6 });
-  const p0 = mkPop('.ent-pop.p0', spots.p0);
-  const p1 = mkPop('.ent-pop.p1', spots.p1);
-  const p2 = mkPop('.ent-pop.p2', spots.p2);
+  const mkPop = (sel: string, p: Pt, sh: string): Pop => ({ el: $(sel), w: 0, h: 0, x: p.x, y: p.y, rot: 0, vx: 0, vy: 0, vr: 0, mode: 'idle', gx: 0, gy: 0, phase: rand() * 6, z: 0, sh: $(sh) });
+  const p0 = mkPop('.ent-pop.p0', spots.p0, '.ent-psh[data-for="p1"]');
+  const p1 = mkPop('.ent-pop.p1', spots.p1, '.ent-psh[data-for="p1"]');
+  const p2 = mkPop('.ent-pop.p2', spots.p2, '.ent-psh[data-for="p2"]');
   p2.rot = -4;
   const goo = $('.ent-goo');
   const g0 = $('.goo.g0');
@@ -129,6 +230,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       p.w = p.el.offsetWidth;
       p.h = p.el.offsetHeight;
     }
+    for (const p of [p1, p2]) {
+      p.sh.style.width = `${p.w}px`;
+      p.sh.style.height = `${p.h}px`;
+    }
     for (const [g, p] of [
       [g0, p0],
       [g1, p1],
@@ -139,46 +244,81 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     }
     popsMeasured = true;
   }
-  const placePop = (p: Pop, extra = '') => put(p.el, 'transform', at(p.x - p.w / 2, p.y - p.h / 2, ` rotate(${p.rot.toFixed(2)}deg)${extra}`));
 
   // ---------------- a reconstrução (montada quando a tela final já pode ser medida) ----------------
   let L: S.Layout | null = null;
   let tracks: Record<S.CursorId, S.Track> | null = null;
   let pal: ReturnType<typeof S.palette> | null = null;
-  let ph: Pt = { x: 0, y: 0 };
-  const cursors = (['a', 'b', 'c', 'd'] as const).map((id) => ({
+  let meet: ReturnType<typeof S.meetingPoints> | null = null;
+  const cursors: Cursor[] = (['a', 'b', 'c', 'd'] as const).map((id, i) => ({
     id,
     el: $(`.ent-cur[data-id="${id}"]`),
     sh: $(`.ent-cur-sh[data-id="${id}"]`),
     eyes: root.querySelector<SVGGElement>(`.ent-cur[data-id="${id}"] .eyes`)!,
-    prev: null as Pt | null,
+    prev: null,
     v: { x: 0, y: 0 },
     tip: { x: 0, y: 0 },
     z: -1,
+    sc: 1,
+    on: false,
+    pressed: false,
     pressedBefore: false,
+    ox: 0,
+    oy: 0,
+    vox: 0,
+    voy: 0,
+    tilt: 0,
+    bonkUntil: 0,
+    phase: i * 1.7,
+    thinking: false,
   }));
+  const [A, B, C, D] = cursors as [Cursor, Cursor, Cursor, Cursor];
+  const lastBonk = new Map<string, number>();
+
   const ripples = $$('.ent-rip');
   let rippleNext = 0;
-  const fired = new Set<string>();
   function ripple(p: Pt) {
     const r = ripples[rippleNext++ % ripples.length]!;
     r.animate(
       [
-        { transform: at(p.x - 20, p.y - 20, ' scale(0.3)'), opacity: 0.9 },
-        { transform: at(p.x - 20, p.y - 20, ' scale(1.7)'), opacity: 0 },
+        { transform: at(p.x - 20, p.y - 20, ' scale(0.3)', Z.ripple), opacity: 0.9 },
+        { transform: at(p.x - 20, p.y - 20, ' scale(1.7)', Z.ripple), opacity: 0 },
       ],
       { duration: 480, easing: 'cubic-bezier(.2,.7,.2,1)' }
     );
   }
+  const sparks = $$('.ent-spark');
+  let sparkNext = 0;
+  function burst(p: Pt, n: number, power: number) {
+    for (let i = 0; i < n; i++) {
+      const s = sparks[sparkNext++ % sparks.length]!;
+      const ang = rand() * Math.PI * 2;
+      const dist = (22 + rand() * 30) * power;
+      const rot = (rand() - 0.5) * 180;
+      s.animate(
+        [
+          { transform: at(p.x - 6, p.y - 6, ` rotate(0deg) scale(${(0.6 + rand() * 0.6).toFixed(2)})`, Z.spark), opacity: 1 },
+          { transform: at(p.x - 6 + Math.cos(ang) * dist, p.y - 6 + Math.sin(ang) * dist, ` rotate(${rot.toFixed(0)}deg) scale(0.15)`, Z.spark + 40 * rand()), opacity: 0 },
+        ],
+        { duration: 420 + rand() * 260, easing: 'cubic-bezier(.15,.75,.25,1)' }
+      );
+    }
+  }
+  const fired = new Set<string>();
+  const once = (key: string, cond: boolean) => {
+    if (!cond || fired.has(key)) return false;
+    fired.add(key);
+    return true;
+  };
 
   const box = $('.ent-box');
   const seed = $('.ent-seed');
   const wtitle = $('.ent-wtitle');
   const wLetters = $$('.ent-wtitle .wl');
   const title = $('.ent-title');
-  const tLetters = $$('.ent-title .tl');
-  const sub = $('.ent-sub');
-  const phEl = $('.ent-ph');
+  const titleIn = $('.ent-title-in');
+  const fontsEl = $('.ent-fonts');
+  const fontOpts = $$('.ent-fonts .fo');
   const logo = $('.ent-logo');
   const drawE = $('.ent-draw.de');
   const drawP = $('.ent-draw.dp');
@@ -189,23 +329,25 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const labelP = $('.ent-label.lp');
   const cpf = $('.ent-cpf');
   const btn = $('.ent-btn');
-  const backlink = $('.ent-backlink');
   const palEl = $('.ent-palette');
   const swatches = $$('.ent-palette .sw');
   const prog = $('.ent-prog');
   const progN = $('.ent-prog-n');
+  const slots = $$('.ent-slot');
   const cpfState = { x: 0, y: 0, rot: 0, vy: 0, mode: 'idle' as 'idle' | 'held' | 'fly' | 'gone', gx: 0, gy: 0 };
-  const phState = { gx: 0, gy: 0, held: false };
+  let carries: Carry[] = [];
+  let slotDone: Record<string, number> = {};
 
-  const placeRect = (el: HTMLElement, r: S.Rect) => {
+  const placeRect = (el: HTMLElement, r: S.Rect, z: number = Z.content) => {
     el.style.width = `${(r.r - r.l).toFixed(1)}px`;
     el.style.height = `${(r.b - r.t).toFixed(1)}px`;
-    put(el, 'transform', at(r.l, r.t));
+    put(el, 'transform', at(r.l, r.t, '', z));
   };
+  const union = (a: S.Rect, b: S.Rect): S.Rect => ({ l: Math.min(a.l, b.l), t: Math.min(a.t, b.t), r: Math.max(a.r, b.r), b: Math.max(a.b, b.b) });
 
   function plan() {
-    const m = (k: string) => rel(root.querySelector(`.ent-final [data-m="${k}"]`)!);
-    L = {
+    const m = (key: string) => rel(root.querySelector(`.ent-final [data-m="${key}"]`)!);
+    const lay: S.Layout = {
       vw,
       vh,
       card: m('card'),
@@ -219,28 +361,118 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       button: m('button'),
       back: m('back'),
     };
-    tracks = S.cursorTracks(L);
-    camKeys = [...S.introCamera(vw, vh), ...S.rebuildCamera(L)];
-    pal = S.palette(L);
-    ph = S.logoPlaceholder(L);
-    put(palEl, 'transform', at(pal.x, pal.y));
-    placeRect(wtitle, L.title);
-    placeRect(title, L.title);
-    placeRect(sub, L.subtitle);
-    placeRect(logo, L.logo);
-    placeRect(fieldE, L.email);
-    placeRect(fieldP, L.pass);
-    placeRect(labelE, L.emailLabel);
-    placeRect(labelP, L.passLabel);
-    placeRect(btn, L.button);
-    placeRect(backlink, L.back);
-    const bw = L.button.r - L.button.l;
-    const bh = L.button.b - L.button.t;
-    cpf.style.width = `${bw}px`;
-    cpf.style.height = `${bh}px`;
-    cpfState.x = S.cx(L.button);
-    cpfState.y = S.cy(L.button);
+    L = lay;
+    tracks = S.cursorTracks(lay);
+    camKeys = [...S.introCamera(vw, vh), ...S.rebuildCamera(lay).slice(1)];
+    pal = S.palette(lay);
+    meet = S.meetingPoints(lay);
+    const mis = S.misplaced(lay);
+    put(palEl, 'transform', at(pal.x, pal.y, '', Z.palette));
+    const fpk = S.fontPicker(lay);
+    put($('.ent-fonts'), 'transform', at(fpk.x, fpk.y, '', Z.palette));
+    placeRect(wtitle, lay.title);
+    placeRect(title, lay.title);
+    placeRect(logo, lay.logo);
+    placeRect(fieldE, lay.email);
+    placeRect(fieldP, lay.pass);
+    placeRect(labelE, lay.emailLabel);
+    placeRect(labelP, lay.passLabel);
+    placeRect(btn, lay.button);
+    cpf.style.width = `${lay.button.r - lay.button.l}px`;
+    cpf.style.height = `${lay.button.b - lay.button.t}px`;
+    cpfState.x = S.cx(lay.button);
+    cpfState.y = S.cy(lay.button);
     cpfState.rot = 2;
+
+    // as partes pontilhadas: onde cada peça vai ficar, até ela chegar
+    const slotRects: Record<string, S.Rect> = {
+      logo: lay.logo,
+      title: lay.title,
+      subtitle: lay.subtitle,
+      email: union(lay.emailLabel, lay.email),
+      pass: union(lay.passLabel, lay.pass),
+      button: lay.button,
+      back: lay.back,
+    };
+    for (const el of slots) {
+      const r = slotRects[el.dataset.k!]!;
+      placeRect(el, { l: r.l - 4, t: r.t - 3, r: r.r + 4, b: r.b + 3 }, Z.slot);
+    }
+    slotDone = {
+      logo: S.T.LOGO[1] + 150,
+      title: S.T.FONT_PICK + 200,
+      subtitle: S.T.SUB[1] + 200,
+      email: S.T.EMAIL[1] + 80,
+      pass: S.T.PASS[1] + 80,
+      button: S.T.BUTTON[1] + 80,
+      back: S.T.BACK[1] + 200,
+    };
+
+    // as peças fora do lugar
+    const ph = $('.ent-ph');
+    const sub = $('.ent-sub');
+    const backlink = $('.ent-backlink');
+    const size = (el: HTMLElement, r?: S.Rect) => {
+      if (r) {
+        el.style.width = `${(r.r - r.l).toFixed(1)}px`;
+        el.style.height = `${(r.b - r.t).toFixed(1)}px`;
+        return { w: r.r - r.l, h: r.b - r.t };
+      }
+      return { w: el.offsetWidth, h: el.offsetHeight };
+    };
+    const mk = (el: HTMLElement, cur: number, iv: S.Interval, home: { x: number; y: number; rot: number }, target: Pt, r?: S.Rect): Carry => {
+      const { w, h } = size(el, r);
+      const sh = $(`.ent-psh[data-for="${el.dataset.carry}"]`);
+      sh.style.width = `${w}px`;
+      sh.style.height = `${h}px`;
+      return { el, cur, iv, w, h, x: home.x, y: home.y, rot: home.rot, sc: 1, z: 0, sh, target: { ...target, rot: 0 }, state: 'idle', gx: 0, gy: 0, gz: 0, from: { x: 0, y: 0, rot: 0, sc: 0, t: 0 } };
+    };
+    carries = [
+      mk(ph, 3, S.T.LOGO, mis.logo, { x: S.cx(lay.logo), y: S.cy(lay.logo) }),
+      mk(sub, 0, S.T.SUB, mis.sub, { x: S.cx(lay.subtitle), y: S.cy(lay.subtitle) }, lay.subtitle),
+      mk(backlink, 3, S.T.BACK, mis.back, { x: S.cx(lay.back), y: S.cy(lay.back) }, lay.back),
+    ];
+  }
+
+  function stepCarry(c: Carry, t: number, dt: number) {
+    const cur = cursors[c.cur]!;
+    if (c.state === 'idle' && S.within(c.iv, t)) {
+      c.state = 'held';
+      c.gx = c.x - cur.tip.x;
+      c.gy = c.y - cur.tip.y;
+      c.gz = cur.z;
+    }
+    if (c.state === 'held') {
+      // levantada para perto da câmera, a peça sai do plano junto com o cursor (e cresce pela perspectiva)
+      c.z = Math.max(0, S.depthPx(cur.z) - S.depthPx(c.gz)) + 10;
+      c.sc = S.depthScale(cur.z - c.gz);
+      c.x = cur.tip.x + c.gx * c.sc;
+      c.y = cur.tip.y + c.gy * c.sc;
+      const sway = Math.max(-10, Math.min(10, cur.v.x * 0.006));
+      c.rot += (sway - c.rot) * Math.min(1, dt * 5);
+      if (t >= c.iv[1]) {
+        c.state = 'settle';
+        c.from = { x: c.x, y: c.y, rot: c.rot, sc: c.z, t };
+      }
+    }
+    if (c.state === 'settle') {
+      const p = S.seg(t, c.from.t, c.from.t + 300, S.ease.back);
+      c.x = S.lerp(c.from.x, c.target.x, p);
+      c.y = S.lerp(c.from.y, c.target.y, p);
+      c.rot = S.lerp(c.from.rot, 0, p);
+      c.z = Math.max(0, S.lerp(c.from.sc, 0, Math.min(1, p)));
+      if (t >= c.from.t + 300) c.state = 'placed';
+    }
+    if (c.state === 'placed') {
+      c.x = c.target.x;
+      c.y = c.target.y;
+      c.rot = 0;
+      c.z = 0;
+    }
+    const w = lifted(c.x, c.y, c.z);
+    put(c.el, 'transform', at(w.x - c.w / 2, w.y - c.h / 2, ` rotate(${c.rot.toFixed(2)}deg) rotateX(${Math.min(14, c.z * 0.05).toFixed(1)}deg)`, Z.content + c.z));
+    flag(c.el, 'is-held', c.state === 'held');
+    planeShadow(c.sh, c.x, c.y, c.w, c.h, c.state === 'idle' || c.state === 'placed' ? 0 : c.z);
   }
 
   /** O ponto preso ao cursor, sem escapar do objeto (o balão pode ter andado desde o roteiro). */
@@ -258,7 +490,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     const t = p.y - p.h / 2;
     const b = p.y + p.h / 2;
     if (r <= bx.l || l >= bx.r || b <= bx.t || t >= bx.b) return;
-    const penL = dirs.l ? r - bx.l : Infinity; // empurrar para a esquerda
+    const penL = dirs.l ? r - bx.l : Infinity;
     const penR = dirs.r ? bx.r - l : Infinity;
     const penU = dirs.u ? b - bx.t : Infinity;
     const penD = dirs.d ? bx.b - t : Infinity;
@@ -275,6 +507,17 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     p.vx = p.vx * 0.5 + (dx / Math.max(dt, 0.008)) * 0.25;
     p.vy = p.vy * 0.5 + (dy / Math.max(dt, 0.008)) * 0.25;
     p.vr += (dx - dy) * 0.6;
+  }
+
+  /** A sombra de algo que está zPx acima do plano: cai para baixo e para a direita, maior e mais fraca quanto mais alto. */
+  function planeShadow(el: HTMLElement, x: number, y: number, w: number, h: number, zPx: number) {
+    if (zPx < 4) {
+      put(el, 'opacity', '0');
+      return;
+    }
+    const sc = 1 + zPx / 700;
+    put(el, 'transform', at(x - w / 2 + zPx * 0.12, y - h / 2 + zPx * 0.16, ` scale(${sc.toFixed(3)})`, Z.popShadow));
+    put(el, 'opacity', (Math.min(1, zPx / 120) * Math.max(0.25, 1 - zPx / 1400) * 0.5).toFixed(3));
   }
 
   function stepPop(p: Pop, t: number, dt: number) {
@@ -294,8 +537,111 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       if (Math.abs(p.x) > reach || Math.abs(p.y) > reach) p.mode = 'gone';
     }
     const bob = p.mode === 'idle' ? Math.sin(t / 650 + p.phase) * 3 : 0;
+    if (p.mode === 'idle') p.z *= Math.exp(-6 * dt);
     flag(p.el, 'is-gone', p.mode === 'gone');
-    if (p.mode !== 'gone') put(p.el, 'transform', at(p.x - p.w / 2, p.y - p.h / 2 + bob, ` rotate(${p.rot.toFixed(2)}deg)`));
+    if (p.mode !== 'gone') {
+      const w = lifted(p.x, p.y + bob, p.z);
+      // levantado, o balão inclina um pouco em 3D, como uma folha segura pela ponta
+      const tiltX = Math.min(18, p.z * 0.04);
+      put(p.el, 'transform', at(w.x - p.w / 2, w.y - p.h / 2, ` rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg)`, Z.pop + p.z));
+    }
+    planeShadow(p.sh, p.x, p.y, p.w, p.h, p.mode === 'gone' ? 0 : p.z);
+  }
+
+  // ---------------- os cursores ----------------
+  function stepCursors(tr: Record<S.CursorId, S.Track>, t: number, dt: number) {
+    // 1) onde o roteiro manda cada um, mais o desvio dos esbarrões (mola) e um balanço quando solto
+    const base: Pt[] = [];
+    for (const cur of cursors) {
+      const track = tr[cur.id];
+      const p = S.sample(track.keys, t);
+      cur.thinking = t >= S.T.CURSORS_IN[0] && t < S.T.EXIT[1] && track.think.some((iv) => S.within(iv, t));
+      cur.z = p.z;
+      cur.sc = S.depthScale(p.z);
+      cur.on = t >= S.T.CURSORS_IN[0] && t < S.T.EXIT[1];
+      cur.pressed = track.press.some((iv) => S.within(iv, t));
+      cur.vox += (-90 * cur.ox - 11 * cur.vox) * dt;
+      cur.voy += (-90 * cur.oy - 11 * cur.voy) * dt;
+      cur.ox += cur.vox * dt;
+      cur.oy += cur.voy * dt;
+      const loose = cur.pressed ? 0 : cur.thinking ? 0.5 : 1;
+      base.push({ x: p.x + Math.sin(t / 420 + cur.phase) * 3.5 * loose, y: p.y + Math.cos(t / 530 + cur.phase * 1.3) * 3 * loose });
+    }
+    // 2) esbarrões: dois soltos na mesma profundidade não se atravessam
+    for (let i = 0; i < cursors.length; i++) {
+      for (let j = i + 1; j < cursors.length; j++) {
+        const a = cursors[i]!;
+        const b = cursors[j]!;
+        if (!a.on || !b.on || a.pressed || b.pressed || Math.abs(a.z - b.z) > 0.5) continue;
+        const ax = base[i]!.x + a.ox + 24 * a.sc;
+        const ay = base[i]!.y + a.oy + 24 * a.sc;
+        const bx = base[j]!.x + b.ox + 24 * b.sc;
+        const by = base[j]!.y + b.oy + 24 * b.sc;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const dist = Math.hypot(dx, dy) || 0.01;
+        const reach = 19 * (a.sc + b.sc);
+        if (dist >= reach) continue;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const over = reach - dist;
+        a.ox -= nx * over * 0.5;
+        a.oy -= ny * over * 0.5;
+        b.ox += nx * over * 0.5;
+        b.oy += ny * over * 0.5;
+        a.vox -= nx * over * 28;
+        a.voy -= ny * over * 28;
+        b.vox += nx * over * 28;
+        b.voy += ny * over * 28;
+        const key = a.id + b.id;
+        if (t - (lastBonk.get(key) ?? -1e9) > 500) {
+          lastBonk.set(key, t);
+          a.bonkUntil = b.bonkUntil = t + 340;
+          burst({ x: (ax + bx) / 2, y: (ay + by) / 2 }, 6, 1);
+        }
+      }
+    }
+    // 3) desenha
+    cursors.forEach((cur, i) => {
+      const x = base[i]!.x + cur.ox;
+      const y = base[i]!.y + cur.oy;
+      cur.tip = { x, y };
+      if (cur.prev && dt > 0) {
+        cur.v.x = cur.v.x * 0.7 + ((x - cur.prev.x) / dt) * 0.3;
+        cur.v.y = cur.v.y * 0.7 + ((y - cur.prev.y) / dt) * 0.3;
+      }
+      cur.prev = { x, y };
+      flag(cur.el, 'is-on', cur.on);
+      const lean = Math.max(-1, Math.min(1, cur.v.x / 1400)) * 14;
+      cur.tilt += (lean - cur.tilt) * Math.min(1, dt * 8);
+      // fora do plano de verdade: a perspectiva da cena aumenta (perto) ou diminui (fundo) o cursor.
+      // O desenho tem 5x o tamanho e entra reduzido (0,2), para continuar nítido quando chega perto.
+      const z = cur.z;
+      const zPx = S.depthPx(z) + (cur.pressed ? 0 : 6);
+      const w3 = lifted(x, y, zPx);
+      put(cur.el, 'transform', at(w3.x, w3.y, ` rotate(${cur.tilt.toFixed(2)}deg) scale(0.2)`, zPx));
+      put(cur.el, 'opacity', Math.max(0.5, z < 0 ? 1 + z * 0.3 : 1).toFixed(3));
+      flag(cur.el, 'is-press', cur.pressed);
+      flag(cur.el, 'is-bonk', t < cur.bonkUntil);
+      flag(cur.el, 'is-thinking', cur.thinking);
+      if (cur.pressed && !cur.pressedBefore && cur.on) ripple(cur.tip);
+      cur.pressedBefore = cur.pressed;
+      if (cur.thinking) {
+        // pensando: os olhos procuram em volta, devagar
+        cur.eyes.style.transform = `translate(${(Math.sin(t / 260 + cur.phase) * 4.5).toFixed(2)}px, ${(-2.5 + Math.cos(t / 410) * 1.5).toFixed(2)}px)`;
+      } else {
+        const sp = Math.hypot(cur.v.x, cur.v.y) || 1;
+        const look = Math.min(1, sp / 700) * 5;
+        cur.eyes.style.transform = `translate(${((cur.v.x / sp) * look).toFixed(2)}px, ${((cur.v.y / sp) * look).toFixed(2)}px)`;
+      }
+      // sombra no plano: mais alto o cursor, mais longe, maior e mais fraca
+      const bodyX = x + 24 * cur.sc;
+      const bodyY = y + 24 * cur.sc;
+      const up = Math.max(0, zPx);
+      const shScale = 1 + up / 450;
+      put(cur.sh, 'transform', at(bodyX - 23 + up * 0.12, bodyY - 23 + up * 0.16, ` scale(${shScale.toFixed(3)})`, Z.curShadow));
+      put(cur.sh, 'opacity', (cur.on && z > -0.15 ? 0.34 * Math.max(0.3, 1 - up / 1500) : 0).toFixed(3));
+    });
   }
 
   // ---------------- o quadro ----------------
@@ -307,13 +653,16 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   let ended = false;
 
   function update(dt: number) {
-    // câmera
     const c = S.sampleCam(camKeys, t);
     camS = c.s;
-    put(cam, 'transform', `scale(${c.s.toFixed(4)}) translate3d(${(-c.fx).toFixed(1)}px, ${(-c.fy).toFixed(1)}px, 0)`);
+    cam3 = c;
+    cosX = Math.cos((c.rx * Math.PI) / 180);
+    sinX = Math.sin((c.rx * Math.PI) / 180);
+    cosY = Math.cos((c.ry * Math.PI) / 180);
+    sinY = Math.sin((c.ry * Math.PI) / 180);
+    put(cam, 'transform', `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg) scale(${c.s.toFixed(4)}) translate3d(${(-c.fx).toFixed(1)}px, ${(-c.fy).toFixed(1)}px, 0)`);
 
     flag(root, 'is-falling', t >= S.T.FALL_TEXT);
-    // peças
     if (!measuredGlyphs && t >= S.T.FALL_TEXT - 100) {
       setupBodies();
       measuredGlyphs = true;
@@ -321,7 +670,6 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     if (measuredGlyphs && t < S.T.LETTERS_GONE + 300) stepBodies(t, dt);
     flag(root, 'letters-gone', t >= S.T.LETTERS_GONE);
 
-    // balões
     if (!popsMeasured && t >= S.T.POPUP - 150) measurePops();
     if (popsMeasured) {
       flag(p0.el, 'is-in', t >= S.T.POPUP && t < S.T.COLLAPSE[1]);
@@ -334,34 +682,32 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       flag(goo, 'is-on', gooOn);
       if (gooOn) {
         put(g0, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2));
-        const blob = (g: HTMLElement, from: Pop, to: Pt, size: Pop, p: number) => {
-          const x = S.lerp(from.x, to.x, p);
-          const y = S.lerp(from.y, to.y, p);
+        const blob = (g: HTMLElement, to: Pt, size: Pop, p: number) => {
+          const x = S.lerp(p0.x, to.x, p);
+          const y = S.lerp(p0.y, to.y, p);
           const sc = S.lerp(0.4, 1, p);
           const stretch = 1 + Math.sin(Math.PI * p) * 0.22;
           put(g, 'transform', at(x - size.w / 2, y - size.h / 2, ` scale(${(sc * stretch).toFixed(3)}, ${(sc / stretch).toFixed(3)})`));
         };
-        blob(g1, p0, spots.p1, p1, s1);
-        blob(g2, p0, spots.p2, p2, s2);
+        blob(g1, spots.p1, p1, s1);
+        blob(g2, spots.p2, p2, s2);
       }
-
       // o balão do meio vira o ponto de partida da caixa
       if (t < S.T.COLLAPSE[0] || !L) {
-        placePop(p0);
+        put(p0.el, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, '', Z.pop));
       } else {
         const k = S.seg(t, S.T.COLLAPSE[0], S.T.COLLAPSE[1], S.ease.in);
         const x = S.lerp(spots.p0.x, L.card.r, k);
         const y = S.lerp(spots.p0.y, L.card.t, k);
-        put(p0.el, 'transform', at(x - p0.w / 2, y - p0.h / 2, ` scale(${S.lerp(1, 0.06, k).toFixed(3)})`));
+        put(p0.el, 'transform', at(x - p0.w / 2, y - p0.h / 2, ` scale(${S.lerp(1, 0.06, k).toFixed(3)})`, Z.pop));
       }
     }
 
-    // plano da reconstrução
     if (!planned && t >= S.T.PLAN) {
       plan();
       planned = true;
     }
-    if (L && tracks && pal) rebuild(dt);
+    if (L && tracks && pal && meet) rebuild(L, tracks, pal, meet, dt);
     else if (popsMeasured) {
       if (t >= S.T.SPLIT1[1] - 200) stepPop(p1, t, dt);
       if (t >= S.T.SPLIT2[1] - 200) stepPop(p2, t, dt);
@@ -370,78 +716,52 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     flag(root, 'is-reveal', t >= S.T.END);
   }
 
-  function rebuild(dt: number) {
-    const lay = L!;
-    const tr = tracks!;
-    const pl = pal!;
+  function rebuild(lay: S.Layout, tr: Record<S.CursorId, S.Track>, pl: ReturnType<typeof S.palette>, mt: ReturnType<typeof S.meetingPoints>, dt: number) {
+    const card = lay.card;
+    const fp = S.fontPicker(lay);
 
     // os ganchos do cursor B: no instante do agarrão, o balão pode ter sido empurrado
-    for (const k of tr.b.keys) {
-      if (k.tag === 'p1' && !fired.has('patch-p1') && t >= S.T.GRAB_P1[0] - 380) {
-        fired.add('patch-p1');
-        k.x = p1.x - p1.w * 0.2;
-        k.y = p1.y;
+    for (const key of tr.b.keys) {
+      if (key.tag === 'p1' && once('patch-p1', t >= S.T.GRAB_P1[0] - 380)) {
+        key.x = p1.x - p1.w * 0.2;
+        key.y = p1.y;
       }
-      if (k.tag === 'p2' && !fired.has('patch-p2') && t >= S.T.GRAB_P2[0] - 300) {
-        fired.add('patch-p2');
-        k.x = p2.x + p2.w * 0.15;
-        k.y = p2.y - p2.h * 0.1;
+      if (key.tag === 'p2' && once('patch-p2', t >= S.T.GRAB_P2[0] - 300)) {
+        key.x = p2.x + p2.w * 0.15;
+        key.y = p2.y - p2.h * 0.1;
       }
     }
 
-    // cursores
+    stepCursors(tr, t, dt);
     for (const cur of cursors) {
-      const track = tr[cur.id];
-      const p = S.sample(track.keys, t);
-      cur.tip = { x: p.x, y: p.y };
-      cur.z = p.z;
-      if (cur.prev && dt > 0) {
-        cur.v.x = cur.v.x * 0.75 + ((p.x - cur.prev.x) / dt) * 0.25;
-        cur.v.y = cur.v.y * 0.75 + ((p.y - cur.prev.y) / dt) * 0.25;
-      }
-      cur.prev = { x: p.x, y: p.y };
-      const on = t >= S.T.CURSORS_IN[0] && t < S.T.EXIT[1];
-      flag(cur.el, 'is-on', on);
-      const sc = 1 + 0.55 * p.z;
-      put(cur.el, 'transform', at(p.x, p.y, ` scale(${sc.toFixed(3)})`));
-      put(cur.el, 'zIndex', p.z > 0.2 ? '60' : p.z < -0.2 ? '24' : '45');
-      put(cur.el, 'opacity', (p.z < 0 ? 1 + p.z * 0.4 : 1).toFixed(3));
-      const pressed = track.press.some((iv) => S.within(iv, t));
-      flag(cur.el, 'is-press', pressed);
-      if (pressed && !cur.pressedBefore && on) ripple(cur.tip);
-      cur.pressedBefore = pressed;
-      const sp = Math.hypot(cur.v.x, cur.v.y) || 1;
-      const look = Math.min(1, sp / 700) * 5;
-      cur.eyes.style.transform = `translate(${((cur.v.x / sp) * look).toFixed(2)}px, ${((cur.v.y / sp) * look).toFixed(2)}px)`;
-      // sombra: quanto mais perto da câmera, mais longe e mais espalhada ela cai sobre o que está embaixo
-      const z = p.z;
-      put(cur.sh, 'transform', at(p.x + 6 + z * 30, p.y + 10 + z * 40, ` scale(${(0.8 + z * 0.9).toFixed(3)})`));
-      put(cur.sh, 'opacity', (on && z > -0.15 ? 0.14 + z * 0.3 : 0).toFixed(3));
+      for (const ct of tr[cur.id].clicks) if (once(`click-${cur.id}-${ct}`, t >= ct)) ripple(cur.tip);
     }
-    const [A, B, C, D] = cursors;
 
-    // a caixa: desenhada do canto de cima à direita até o de baixo à esquerda
-    const card = lay.card;
+    // a caixa: C segura o canto de cima à direita, A puxa o de baixo à esquerda
     let bx: S.Rect = card;
     if (t < S.T.BOX[1]) {
-      const corner = t >= S.T.BOX[0] ? A!.tip : { x: card.r, y: card.t };
+      const corner = t >= S.T.BOX[0] ? A.tip : { x: card.r, y: card.t };
       bx = { l: Math.min(card.r, corner.x), t: Math.min(card.t, corner.y), r: Math.max(card.r, corner.x), b: Math.max(card.t, corner.y) };
     }
     flag(box, 'is-on', t >= S.T.BOX[0]);
     if (t >= S.T.BOX[0]) {
-      put(box, 'transform', at(bx.l, bx.t));
+      put(box, 'transform', at(bx.l, bx.t, '', Z.box));
       put(box, 'width', `${Math.max(2, bx.r - bx.l).toFixed(1)}px`);
       put(box, 'height', `${Math.max(2, bx.b - bx.t).toFixed(1)}px`);
     }
     flag(box, 'is-filled', t >= S.T.PALETTE_CLICK);
     flag(seed, 'is-on', t >= S.T.COLLAPSE[1] - 80 && t < S.T.BOX[1] + 100);
-    const sp = t >= S.T.BOX[0] && t < S.T.BOX[1] ? A!.tip : t >= S.T.BOX[1] ? { x: card.l, y: card.b } : { x: card.r, y: card.t };
-    put(seed, 'transform', at(sp.x - 9, sp.y - 9));
+    const sp = t >= S.T.BOX[0] && t < S.T.BOX[1] ? A.tip : t >= S.T.BOX[1] ? { x: card.l, y: card.b } : { x: card.r, y: card.t };
+    put(seed, 'transform', at(sp.x - 9, sp.y - 9, '', Z.seed));
     const inBox = (x: number, y: number) => t >= S.T.BOX[0] && x >= bx.l && x <= bx.r && y >= bx.t && y <= bx.b;
 
-    // os balões: empurrados pela caixa, depois puxados para fora pelo cursor B
-    // antes da caixa, os balões abrem espaço: o de cima vai para cima do cartão, o de baixo encosta no
-    // canto de baixo à esquerda (onde a caixa vai passar e empurrá-lo)
+    // as partes pontilhadas aparecem uma a uma e somem quando a peça chega
+    slots.forEach((el, i) => {
+      const k = el.dataset.k!;
+      flag(el, 'is-on', t >= S.T.SLOTS[0] + i * 90 && t < (slotDone[k] ?? 0));
+    });
+
+    // os balões: abrem espaço, são empurrados pela caixa e puxados para fora pelo cursor B
     if (t < S.T.BOX[0]) {
       const k = Math.min(1, dt * 2.5);
       const r1 = { x: Math.min(card.r - p1.w * 0.2, vw / 2 - p1.w / 2 - 12), y: card.t - p1.h / 2 - 16 };
@@ -461,16 +781,17 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     ] as const) {
       if (p.mode === 'idle' && S.within(iv, t)) {
         p.mode = 'held';
-        Object.assign(p, grabOffset(p, B!.tip));
+        Object.assign(p, grabOffset(p, B.tip));
       }
       if (p.mode === 'held') {
-        p.x = B!.tip.x + p.gx;
-        p.y = B!.tip.y + p.gy;
+        p.x = B.tip.x + p.gx;
+        p.y = B.tip.y + p.gy;
+        p.z += (S.depthPx(B.z) * 0.85 - p.z) * Math.min(1, dt * 7);
         p.rot += (-10 - p.rot) * Math.min(1, dt * 6);
         if (t >= iv[1]) {
           p.mode = 'fly';
-          p.vx = B!.v.x * 1.1 + Math.sign(p.x || 1) * 300;
-          p.vy = B!.v.y * 1.1;
+          p.vx = B.v.x * 1.1 + Math.sign(p.x || 1) * 300;
+          p.vy = B.v.y * 1.1;
           p.vr = Math.sign(p.vx) * 380;
         }
       }
@@ -481,73 +802,82 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     flag(palEl, 'is-on', t >= S.T.PALETTE_OPEN && t < S.T.PALETTE_CLOSE);
     swatches.forEach((sw, i) => {
       const s = pl.swatches[i]!;
-      flag(sw, 'is-hover', t < S.T.PALETTE_CLOSE && Math.hypot(C!.tip.x - s.x, C!.tip.y - s.y) < 15);
+      flag(sw, 'is-hover', t < S.T.PALETTE_CLOSE && Math.hypot(C.tip.x - s.x, C.tip.y - s.y) < 15);
       flag(sw, 'is-picked', i === 4 && t >= S.T.PALETTE_CLICK);
     });
     flag(root, 'is-colored', t >= S.T.PALETTE_CLICK);
-    for (const ct of tracks!.c.clicks) {
-      const key = 'click-' + ct;
-      if (!fired.has(key) && t >= ct) {
-        fired.add(key);
-        ripple(C!.tip);
-      }
-    }
 
-    // logo: D busca o errado e o deixa no lugar, onde ele vira o certo
-    const logoIv = S.T.LOGO;
-    if (!phState.held && S.within(logoIv, t)) {
-      phState.held = true;
-      phState.gx = ph.x - D!.tip.x;
-      phState.gy = ph.y - D!.tip.y;
-    }
-    flag(phEl, 'is-on', t >= S.T.CURSORS_IN[1] && t < logoIv[1]);
-    const phPos = phState.held ? { x: D!.tip.x + phState.gx, y: D!.tip.y + phState.gy } : ph;
-    const phRot = S.lerp(-14, 0, S.seg(t, logoIv[0], logoIv[1]));
-    put(phEl, 'transform', at(phPos.x, phPos.y, ` translate(-50%, -50%) rotate(${phRot.toFixed(2)}deg)`));
-    flag(logo, 'is-on', t >= logoIv[1]);
+    // as peças levadas para o lugar: o logo (D), o subtítulo e o link de volta (A)
+    const [ph, sub, backlink] = carries as [Carry, Carry, Carry];
+    for (const c of carries) stepCarry(c, t, dt);
+    flag(ph.el, 'is-on', t >= S.T.CURSORS_IN[1] && ph.state !== 'placed');
+    flag(logo, 'is-on', ph.state === 'placed');
+    flag(sub.el, 'is-on', inBox(S.misplaced(lay).sub.x, S.misplaced(lay).sub.y) || t >= S.T.BOX[1]);
+    flag(sub.el, 'is-placed', sub.state === 'placed');
+    flag(backlink.el, 'is-on', t >= S.T.SLOTS[0]);
+    flag(backlink.el, 'is-placed', backlink.state === 'placed');
 
-    // título: o errado aparece com a caixa, A o apaga, B digita o certo
+    // título: o errado aparece com a caixa, A o apaga e B digita o certo logo atrás
     flag(wtitle, 'is-on', inBox(S.cx(lay.title), S.cy(lay.title)) || (t >= S.T.BOX[1] && t < S.T.ERASE[1] + 300));
     const erased = S.seg(t, S.T.ERASE[0], S.T.ERASE[1], S.ease.linear);
     wLetters.forEach((el, i) => flag(el, 'is-erased', (i + 0.5) / wLetters.length < erased));
-    const typed = Math.floor(S.seg(t, S.T.TYPE[0], S.T.TYPE[1], S.ease.linear) * tLetters.length + 1e-6);
-    tLetters.forEach((el, i) => flag(el, 'is-on', i < typed));
-    const typing = t >= S.T.TYPE[0] && t < S.T.TYPE[1] + 250;
-    tLetters.forEach((el, i) => flag(el, 'is-caret', typing && i === typed - 1));
-    flag(sub, 'is-on', t >= S.T.SUBTITLE);
+    const text = S.titleText(t);
+    if (titleIn.textContent !== text) titleIn.textContent = text;
+    flag(title, 'is-typing', t >= S.T.TYPE1[0] && t < S.T.TYPE2[1] + 300);
 
-    // campos: D desenha cada um arrastando do canto de cima à esquerda
+    // a fonte: A abre o seletor, pensa entre as três e escolhe a da marca; o título vira em 3D
+    flag(fontsEl, 'is-on', t >= S.T.FONT_OPEN && t < S.T.FONT_CLOSE);
+    fontOpts.forEach((el, i) => {
+      const o = fp.opts[i]!;
+      flag(el, 'is-hover', t < S.T.FONT_CLOSE && Math.abs(A.tip.x - o.x) < S.FONT_OPT_W / 2 && Math.abs(A.tip.y - o.y) < S.FONT_OPT_H / 2);
+      flag(el, 'is-picked', i === 2 && t >= S.T.FONT_PICK);
+    });
+    if (once('font-flip', t >= S.T.FONT_PICK)) {
+      titleIn.animate(
+        [
+          { transform: 'rotateX(0deg)' },
+          { transform: 'rotateX(88deg)', offset: 0.45 },
+          { transform: 'rotateX(-88deg)', offset: 0.46 },
+          { transform: 'rotateX(0deg)' },
+        ],
+        { duration: 460, easing: 'ease-in-out' }
+      );
+    }
+    flag(title, 'is-final-font', t >= S.T.FONT_PICK + 200);
+
+    // campos e botão: desenhados arrastando do canto de cima à esquerda (D o e-mail, C a senha, D o botão)
     const draw = (el: HTMLElement, iv: S.Interval, r: S.Rect, tip: Pt) => {
       const on = S.within(iv, t);
       flag(el, 'is-on', on);
       if (on) {
-        const w = Math.max(4, tip.x - r.l);
-        const h = Math.max(4, tip.y - r.t);
-        put(el, 'transform', at(r.l, r.t));
-        put(el, 'width', `${w.toFixed(1)}px`);
-        put(el, 'height', `${h.toFixed(1)}px`);
+        put(el, 'transform', at(r.l, r.t, '', Z.content + 0.5));
+        put(el, 'width', `${Math.max(4, tip.x - r.l).toFixed(1)}px`);
+        put(el, 'height', `${Math.max(4, tip.y - r.t).toFixed(1)}px`);
       }
     };
-    draw(drawE, S.T.EMAIL, lay.email, D!.tip);
-    draw(drawP, S.T.PASS, lay.pass, D!.tip);
+    draw(drawE, S.T.EMAIL, lay.email, D.tip);
+    draw(drawP, S.T.PASS, lay.pass, C.tip);
+    draw(drawB, S.T.BUTTON, lay.button, D.tip);
     flag(fieldE, 'is-on', t >= S.T.EMAIL[1]);
     flag(labelE, 'is-on', t >= S.T.EMAIL[1] + 80);
     flag(fieldP, 'is-on', t >= S.T.PASS[1]);
     flag(labelP, 'is-on', t >= S.T.PASS[1] + 80);
+    flag(fieldE, 'is-focus', t >= S.T.FOCUS_EMAIL && t < S.T.FOCUS_EMAIL + 700);
+    flag(fieldP, 'is-focus', t >= S.T.FOCUS_PASS && t < S.T.FOCUS_PASS + 700);
 
     // o campo que não devia existir: C o arrasta para fora
     if (cpfState.mode === 'idle' && S.within(S.T.CPF, t)) {
       cpfState.mode = 'held';
-      cpfState.gx = cpfState.x - C!.tip.x;
-      cpfState.gy = cpfState.y - C!.tip.y;
+      cpfState.gx = cpfState.x - C.tip.x;
+      cpfState.gy = cpfState.y - C.tip.y;
     }
     if (cpfState.mode === 'held') {
-      cpfState.x = C!.tip.x + cpfState.gx;
-      cpfState.y = C!.tip.y + cpfState.gy;
+      cpfState.x = C.tip.x + cpfState.gx;
+      cpfState.y = C.tip.y + cpfState.gy;
       cpfState.rot += (12 - cpfState.rot) * Math.min(1, dt * 5);
       if (t >= S.T.CPF[1]) {
         cpfState.mode = 'fly';
-        cpfState.vy = Math.max(600, C!.v.y);
+        cpfState.vy = Math.max(600, C.v.y);
       }
     } else if (cpfState.mode === 'fly') {
       cpfState.vy += 2400 * dt;
@@ -556,13 +886,18 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       if (cpfState.y > vh / camS) cpfState.mode = 'gone';
     }
     flag(cpf, 'is-on', cpfState.mode !== 'gone' && (inBox(S.cx(lay.button), S.cy(lay.button)) || t >= S.T.BOX[1]));
-    put(cpf, 'transform', at(cpfState.x, cpfState.y, ` translate(-50%, -50%) rotate(${cpfState.rot.toFixed(2)}deg)`));
+    const cpfZ = cpfState.mode === 'held' || cpfState.mode === 'fly' ? Math.max(0, S.depthPx(C.z)) + 10 : 0;
+    const cw = lifted(cpfState.x, cpfState.y, cpfZ);
+    put(cpf, 'transform', at(cw.x, cw.y, ` translate(-50%, -50%) rotate(${cpfState.rot.toFixed(2)}deg)`, Z.content + cpfZ));
 
-    // botão: C desenha e pinta
-    draw(drawB, S.T.BUTTON, lay.button, C!.tip);
     flag(btn, 'is-on', t >= S.T.BUTTON[1]);
     flag(btn, 'is-painted', t >= S.T.PAINT);
-    flag(backlink, 'is-on', t >= S.T.BACKLINK);
+
+    // os quatro se encontram em cima do cartão: faíscas
+    if (once('high5', t >= S.T.HIGH5)) {
+      burst(mt.high5, 14, 1.8);
+      for (const cur of cursors) cur.bonkUntil = t + 420;
+    }
 
     // progresso
     const n = S.progressAt(t);
@@ -604,6 +939,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   window.addEventListener('resize', onResize);
   const w = window as unknown as { __entrarSeek?: (ms: number) => number };
   if (dev) {
+    dbg.__entrarProject = (x: number, y: number, z: number) => project(x, y, z);
     w.__entrarSeek = (ms: number) => {
       paused = true;
       while (t < ms && !ended) {
