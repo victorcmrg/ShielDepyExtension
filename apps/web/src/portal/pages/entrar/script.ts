@@ -48,11 +48,11 @@ export const T = {
   ANCHOR: [18400, 19800] as const, // C segura o canto enquanto A puxa
   BOX: [18550, 19750] as const, // A desenha a caixa do canto de cima à direita ao de baixo à esquerda
   SLOTS: [19650, 20250] as const, // as partes pontilhadas: onde cada peça vai ficar
-  GRAB_P1: [19650, 20300] as const, // B pega cada balão pelo canto (pêndulo) e o lança para fora
+  GRAB_P1: [19650, 20450] as const, // B pega cada balão pelo canto: ele cai pendurado (pêndulo) e B o leva devagar para fora
   LOGO: [19850, 20850] as const, // D cria o logo grande e o encolhe puxando a alça do canto
   PALETTE_OPEN: 20150, // C abre a paleta e pensa bastante antes de escolher
-  GRAB_P2: [20450, 21100] as const,
-  ORBIT_B: [21150, 22450] as const, // B dá a volta e passa gigante na frente da câmera
+  GRAB_P2: [20800, 21600] as const,
+  ORBIT_B: [21700, 22650] as const, // B dá a volta e passa gigante na frente da câmera
   THINK_C1: [21100, 21750] as const,
   BUMP: 21150, // A e D se esbarram no meio do caminho
   SUB: [21300, 21950] as const, // A leva o subtítulo torto para o lugar
@@ -693,12 +693,16 @@ export function cursorTracks(L: Layout): Record<CursorId, Track> {
       k(T.SPAWN_B + 380, spawnFan(L, 0).x, spawnFan(L, 0).y, 0.15, true),
       k(T.SPAWN_B + 1300, spots.p1.x + 90, spots.p1.y - 80, 0.4),
       k(T.GRAB_P1[0] - 350, spots.p1.x - 70, spots.p1.y - 60, 0.9),
+      // pega pelo canto e segura parada um instante (o balão cai pendurado); depois sai devagar, como
+      // quem carrega uma placa pesada, até passar da borda da tela
       { ...k(T.GRAB_P1[0], spots.p1.x, spots.p1.y, 1.1, true), tag: 'p1' },
-      k(lerp(T.GRAB_P1[0], T.GRAB_P1[1], 0.42), spots.p1.x - 60, spots.p1.y + 36, 1.05),
-      k(T.GRAB_P1[1], W - 40, -H + 30, 1.1),
+      k(T.GRAB_P1[0] + 260, spots.p1.x + 6, spots.p1.y + 5, 1.1, true),
+      k(lerp(T.GRAB_P1[0] + 260, T.GRAB_P1[1], 0.55), lerp(spots.p1.x, W + 170, 0.42), spots.p1.y - 6, 1.1),
+      k(T.GRAB_P1[1], W + 170, spots.p1.y - 18, 1.1),
       { ...k(T.GRAB_P2[0], spots.p2.x, spots.p2.y, 0.9, true), tag: 'p2' },
-      k(lerp(T.GRAB_P2[0], T.GRAB_P2[1], 0.42), spots.p2.x + 70, spots.p2.y - 30, 0.85),
-      k(T.GRAB_P2[1], -W + 40, spots.p2.y + 60, 0.9),
+      k(T.GRAB_P2[0] + 260, spots.p2.x - 6, spots.p2.y + 5, 0.9, true),
+      k(lerp(T.GRAB_P2[0] + 260, T.GRAB_P2[1], 0.55), lerp(spots.p2.x, -W - 170, 0.42), spots.p2.y + 4, 0.9),
+      k(T.GRAB_P2[1], -W - 170, spots.p2.y + 14, 0.9),
       ...orbit({ t0: T.ORBIT_B[0], t1: T.ORBIT_B[1] - 200, x: 0, y: cy(card) + 40, rx: Math.min(vw * 0.36, 430), ry: 90, zMid: 0.8, zAmp: 2.8, from: Math.PI, dir: 1 }),
       k(T.TYPE1[0] - 400, title.l - 50, below + 40, -0.2),
       k(T.TYPE1[0], caretX(0) - 18, below, 0.05, true),
@@ -905,8 +909,8 @@ export function rebuildCamera(L: Layout): CamKey[] {
 const PROGRESS: readonly (readonly [number, number])[] = [
   [T.BOX[0], 0],
   [T.BOX[1], 10],
-  [T.GRAB_P2[1], 18],
-  [T.LOGO[1], 26],
+  [T.LOGO[1], 18],
+  [T.GRAB_P2[1], 26],
   [T.SUB[1], 33],
   [T.PALETTE_CLICK + 300, 40],
   [T.PASS[1], 50],

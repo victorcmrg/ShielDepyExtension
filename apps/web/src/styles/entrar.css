@@ -653,8 +653,11 @@
 /* a câmera sem will-change: o navegador redesenha o conteúdo na escala de agora (bordas iguais do começo ao fim) */
 .ent-cam { will-change: auto; }
 /* a ligação líquida e o rastro do teletransporte */
-.ent-neck { overflow: visible; pointer-events: none; transform: translateZ(2.8px); }
-.ent-neck path { fill: var(--ent-ink); }
+/* a ponte vive dentro da camada do líquido (o filtro funde ela com as bolhas, como antes); o traço
+   compensa o que o borrar come das partes finas, para ela só romper quando o roteiro manda */
+.ent-goo { transform: translateZ(1.2px); }
+.ent-neck { overflow: visible; pointer-events: none; }
+.ent-neck path { fill: var(--ent-ink); stroke: var(--ent-ink); stroke-width: 12px; stroke-linejoin: round; }
 .ent-trails { overflow: visible; pointer-events: none; transform: translateZ(8px); }
 .ent-trails line { stroke: #e5484d; stroke-width: 3; stroke-linecap: round; opacity: 0; filter: drop-shadow(0 0 4px rgba(229, 72, 77, 0.7)); }
 /* os cartões novos saem de trás do do meio já opacos (sem fade: a ponte líquida não aparece através deles) */

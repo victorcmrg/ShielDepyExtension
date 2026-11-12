@@ -135,7 +135,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   };
   const at = (x: number, y: number, extra = '', z = 0) => `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, ${z.toFixed(1)}px)${extra}`;
   // camadas do mesmo plano: um fio de profundidade decide quem fica por cima (z-index não vale em 3D)
-  const Z = { slot: 0.4, box: 0, content: 1, seed: 2, shadow: 2.5, pop: 3, popShadow: 0.8, curShadow: 3.6, palette: 4, ripple: 5, spark: 6 } as const;
+  const Z = { slot: 0.4, box: 0, content: 1, seed: 2, shadow: 2.5, pop: 3, popBehind: 2, popShadow: 0.8, curShadow: 3.6, palette: 4, ripple: 5, spark: 6 } as const;
   let cam3 = { s: 1, fx: 0, fy: 0, rx: 0, ry: 0 };
   let cosX = 1;
   let sinX = 0;
@@ -301,7 +301,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       }
     }
     if (gl) {
-      gl.frame(bodies, cam3, S.seg(t, S.T.NOT_FOUND - 900, S.T.NOT_FOUND - 100, S.ease.inOut));
+      // a sombra do 404 entra devagar (~2,5 s), a partir de quando o 3D assumiu
+      gl.frame(bodies, cam3, S.seg(t, Math.max(S.T.NOT_FOUND - 2600, glAt), S.T.NOT_FOUND - 100, S.ease.inOutSine));
       return;
     }
     bodies.forEach((b, i) => {
@@ -738,7 +739,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     p.vy = p.vy * 0.5 + (dy / Math.max(dt, 0.008)) * 0.25;
     p.vr = 0;
     p.rot += (0 - p.rot) * 0.5;
-    p.vjig += Math.min(1.2, Math.abs(dx) + Math.abs(dy)) * 0.35;
+    p.vjig += Math.min(1.2, Math.abs(dx) + Math.abs(dy)) * 0.12;
   }
 
   /** A sombra na parede branca atrás: o mesmo formato da peça (tamanho, cantos e giro), deslocada para baixo
@@ -782,14 +783,16 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.rot += p.vr * dt;
+      p.vr *= Math.exp(-3 * dt);
       const reach = Math.max(vw, vh) / Math.min(camS, 1) / 2 + Math.max(p.w, p.h);
       if (Math.abs(p.x) > reach || Math.abs(p.y) > reach) p.mode = 'gone';
     }
     const bob = p.mode === 'idle' ? Math.sin(t / 650 + p.phase) * 3 : 0;
     if (p.mode === 'idle') p.z *= Math.exp(-6 * dt);
     flag(p.el, 'is-gone', p.mode === 'gone');
-    // a gelatina: uma mola na escala, cutucada quando o balão é agarrado, solto ou empurrado
-    p.vjig += (-260 * p.jig - 9 * p.vjig) * dt;
+    // a gelatina: uma mola na escala, cutucada quando o balão é agarrado, solto ou empurrado (firme: os
+    // cursores mexem nos balões sem eles virarem geleia)
+    p.vjig += (-300 * p.jig - 22 * p.vjig) * dt;
     p.jig += p.vjig * dt;
     if (dt > 0) {
       p.svx = p.svx * 0.7 + ((p.x - p.lx) / dt) * 0.3;
@@ -801,11 +804,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       const w = lifted(p.x, p.y + bob, p.z);
       // levantado, o balão inclina um pouco em 3D, como uma folha segura pela ponta
       const tiltX = Math.min(18, p.z * 0.04);
-      const jg = Math.max(-0.2, Math.min(0.2, p.jig));
+      const jg = Math.max(-0.06, Math.min(0.06, p.jig));
       put(
         p.el,
         'transform',
-        at(w.x - p.w / 2, w.y - p.h / 2, `${lensOf(p.x, p.y, p.z)}${stretch(p.svx, p.svy, 0.22)} rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg) rotateY(${p.ty.toFixed(1)}deg) scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop + p.z)
+        at(w.x - p.w / 2, w.y - p.h / 2, `${lensOf(p.x, p.y, p.z)}${stretch(p.svx, p.svy, 0.05)} rotate(${p.rot.toFixed(2)}deg) rotateX(${tiltX.toFixed(1)}deg) rotateY(${p.ty.toFixed(1)}deg) scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop + p.z)
       );
     }
     wallShadow(p.sh, p.x, p.y + bob, p.w, p.h, p.rot, 34 + p.z, p.mode !== 'gone' && p.el.classList.contains('is-in'));
@@ -947,6 +950,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   let lastNow = performance.now();
   let raf = 0;
   let measuredGlyphs = false;
+  let glAt = 0;
   let planned = false;
   let ended = false;
 
@@ -961,7 +965,9 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     put(cam, 'transform', `rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg) scale(${c.s.toFixed(4)}) translate3d(${(-c.fx).toFixed(1)}px, ${(-c.fy).toFixed(1)}px, 0)`);
 
     flag(root, 'is-falling', t >= S.T.FALL_TEXT);
-    if (!measuredGlyphs && t >= S.T.NOT_FOUND - 1000) {
+    // o 404 em 3D assume cedo (assim que o three.js chegou) para a sombra ter tempo de entrar em fade
+    if (!measuredGlyphs && (t >= S.T.NOT_FOUND - 1000 || (glMod && t >= S.T.NOT_FOUND - 2700))) {
+      glAt = t;
       setupBodies();
       measuredGlyphs = true;
     }
@@ -983,7 +989,10 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       // entre os dois estica, segura um instante e rompe; os respingos voltam para dentro de cada um
       void s1;
       void s2;
-      flag(goo, 'is-on', false);
+      // o filtro do líquido fica ligado do começo da primeira divisão até os respingos voltarem na segunda;
+      // liga e desliga em fade (CSS), sem piscar
+      const gooOn = t >= S.T.SPLIT1[0] && t < S.T.SPLIT2[0] + (S.T.SPLIT2[1] - S.T.SPLIT2[0]) * (S.SPLIT_SNAP + 0.16);
+      flag(goo, 'is-on', gooOn);
       flag(p1.el, 'is-in', t >= S.T.SPLIT1[0]);
       flag(p2.el, 'is-in', t >= S.T.SPLIT2[0]);
       flag(p0.el, 'is-verifying', t >= S.T.VERIFY_CLICK);
@@ -1006,19 +1015,36 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         p.vjig += (-260 * p.jig - 9 * p.vjig) * dt;
         p.jig += p.vjig * dt;
         const jg = Math.max(-0.2, Math.min(0.2, p.jig));
-        put(p.el, 'transform', at(p.x - p.w / 2, p.y - p.h / 2, ` scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`, Z.pop - 0.15));
+        const sj = ` scale(${(1 + jg).toFixed(3)}, ${(1 - jg).toFixed(3)})`;
+        // bem atrás do cartão do meio (não 0,15 px): planos quase iguais em 3D dão costura e corte
+        put(p.el, 'transform', at(p.x - p.w / 2, p.y - p.h / 2, sj, Z.popBehind));
+        // rompida a ponte, a bolha de quem saiu encolhe para dentro do próprio cartão (escondida): a mola
+        // traz os dois cartões para perto e, com a bolha inteira, o filtro voltaria a grudá-los
+        const ins = S.seg(u, S.SPLIT_SNAP, S.SPLIT_SNAP + 0.05, S.ease.out) * 44;
+        put(p === p1 ? g1 : g2, 'transform', at(p.x - p.w / 2, p.y - p.h / 2, ` scale(${((1 + jg) * (1 - ins / p.w)).toFixed(3)}, ${((1 - jg) * (1 - ins / p.h)).toFixed(3)})`));
         wallShadow(p.sh, p.x, p.y, p.w, p.h, 0, 34, true);
         neck = S.liquidNeck({ x: p0.x, y: p0.y, w: p0.w, h: p0.h }, { x: p.x, y: p.y, w: p.w, h: p.h }, u);
       }
       if (neckPath.getAttribute('d') !== neck) neckPath.setAttribute('d', neck);
       p0.vjig += (-260 * p0.jig - 9 * p0.vjig) * dt;
       p0.jig += p0.vjig * dt;
+      if (gooOn) {
+        const j = Math.max(-0.15, Math.min(0.15, p0.jig));
+        put(g0, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, ` scale(${(1 + j).toFixed(3)}, ${(1 - j).toFixed(3)})`));
+        // a bolha de quem ainda não saiu fica escondida atrás da do meio
+        if (t < S.T.SPLIT2[0]) put(g2, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, ' scale(0.7)'));
+        // depois que a primeira rompeu, a bolha dela volta para trás da do meio (o cartão já anda sozinho)
+        if (t >= S.T.SPLIT1[1]) put(g1, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, ' scale(0.7)'));
+      }
       // verificado, o cartão do meio encolhe um pouco e some no lugar (sem virar bola)
       const k0 = S.seg(t, S.T.COLLAPSE[0], S.T.COLLAPSE[1], S.ease.inOut);
       const j0 = Math.max(-0.15, Math.min(0.15, p0.jig));
       put(p0.el, 'transform', at(p0.x - p0.w / 2, p0.y - p0.h / 2, ` scale(${(S.lerp(1, 0.86, k0) * (1 + j0)).toFixed(3)}, ${(S.lerp(1, 0.86, k0) * (1 - j0)).toFixed(3)})`, Z.pop));
       put(p0.el, 'opacity', (1 - k0).toFixed(3));
-      wallShadow(p0.sh, p0.x, p0.y, p0.w, p0.h, 0, 34, t >= S.T.POPUP + 200 && t < S.T.COLLAPSE[1], 1 - k0);
+      // a sombra cresce junto com o cartão (que entra com escala de 0,2 a 1 em 0,5 s): aparecer inteira
+      // atrás de um cartão ainda pequeno parecia um corte nele
+      const in0 = S.seg(t, S.T.POPUP + 80, S.T.POPUP + 700, S.ease.inOutSine);
+      wallShadow(p0.sh, p0.x, p0.y, p0.w * S.lerp(0.5, 1, in0), p0.h * S.lerp(0.5, 1, in0), 0, 34, t >= S.T.POPUP && t < S.T.COLLAPSE[1], in0 * (1 - k0));
     }
 
     if (!planned && t >= S.T.PLAN) {
@@ -1196,10 +1222,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
       [p2, S.T.GRAB_P2],
     ] as const) {
       if (p.mode === 'idle' && S.within(iv, t)) {
-        // pega pelo canto de cima mais perto do cursor: o centro fica pendurado abaixo da pega
+        // pega pelo canto de cima do lado para onde vai levar (p1 para a direita, p2 para a esquerda): o
+        // resto do balão cai, pendurado pela pega, e vem arrastado atrás da mão
         p.mode = 'held';
-        p.vjig += 3;
-        const side = B.tip.x < p.x ? -1 : 1;
+        p.vjig += 1;
+        const side = p === p1 ? 1 : -1;
         const cxp = p.x + side * (p.w / 2 - 14);
         const cyp = p.y - p.h / 2 + 12;
         const rx = p.x - cxp;
@@ -1215,8 +1242,8 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         p.gy = cyp - B.tip.y;
       }
       if (p.mode === 'held') {
-        // o pêndulo: a gravidade puxa o centro para baixo da pega; o movimento da mão (aceleração) o
-        // balança para o outro lado, como uma placa segura pela ponta
+        // o pêndulo pesado: a gravidade derruba o centro para baixo da pega, o atrito segura o balanço e a
+        // mão (que anda devagar) só o arrasta, como uma placa pesada segura pela ponta
         const px = B.tip.x + p.gx;
         const py = B.tip.y + p.gy;
         const dtc = Math.max(dt, 1e-3);
@@ -1227,22 +1254,22 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
         const n = Math.max(1, Math.ceil(dt / 0.008));
         for (let i = 0; i < n; i++) {
           const h = dt / n;
-          const acc = -(2300 / p.len) * Math.sin(p.al) - 1.3 * p.val - (ax * Math.cos(p.al) - ay * Math.sin(p.al)) / p.len;
+          const acc = -(1700 / p.len) * Math.sin(p.al) - 3.2 * p.val - (0.45 * (ax * Math.cos(p.al) - ay * Math.sin(p.al))) / p.len;
           p.val += acc * h;
           p.al += p.val * h;
         }
         p.x = px + p.len * Math.sin(p.al);
         p.y = py + p.len * Math.cos(p.al);
         p.rot = p.rot0 + ((p.al0 - p.al) * 180) / Math.PI;
-        p.ty = Math.max(-28, Math.min(28, p.val * 9));
+        p.ty = Math.max(-12, Math.min(12, p.val * 4));
         p.z += (S.depthPx(B.z) * 0.85 - p.z) * Math.min(1, dt * 7);
         if (t >= iv[1]) {
-          // solto com o embalo: a velocidade da mão mais a do balanço
+          // já fora da tela, solto: segue devagar com o embalo da mão e cai (pesado), sem girar
           p.mode = 'fly';
-          p.vjig -= 4;
-          p.vx = B.v.x + p.len * p.val * Math.cos(p.al);
-          p.vy = B.v.y - p.len * p.val * Math.sin(p.al);
-          p.vr = (-p.val * 180) / Math.PI;
+          p.vjig -= 1;
+          p.vx = B.v.x * 0.9;
+          p.vy = B.v.y * 0.9;
+          p.vr = (-p.val * 0.25 * 180) / Math.PI;
         }
       }
       stepPop(p, t, dt);

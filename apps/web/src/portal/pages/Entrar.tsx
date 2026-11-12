@@ -151,15 +151,16 @@ function Scene() {
           </p>
         </div>
 
+        {/* o líquido: uma bolha atrás de cada cartão e a ponte entre eles, fundidas pelo filtro (borrar e
+            cortar), com o movimento da ponte (estica, segura e rompe) vindo do roteiro */}
         <div className="ent-goo" aria-hidden="true">
           <span className="ent-w goo g0" />
           <span className="ent-w goo g1" />
           <span className="ent-w goo g2" />
+          <svg className="ent-w ent-neck" width="1" height="1">
+            <path />
+          </svg>
         </div>
-        {/* a ligação líquida entre o cartão do meio e o que sai dele */}
-        <svg className="ent-w ent-neck" width="1" height="1" aria-hidden="true">
-          <path />
-        </svg>
         <svg className="ent-w ent-trails" width="1" height="1" aria-hidden="true">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <line key={i} />

@@ -139,7 +139,9 @@ describe('roteiro do Entrar', () => {
     for (const [id, tr] of Object.entries(tracks)) {
       for (let t = id === 'a' ? T.A_ENTER[1] : tr.born; t < tr.gone; t += 40) {
         const p = sample(tr.keys, t);
-        expect(Math.abs(p.x)).toBeLessThan(L.vw / 2 + 60);
+        // B sai da tela de verdade quando leva cada balão para fora (pendurado, pesado) e volta de lá
+        const carrying = id === 'b' && t >= T.GRAB_P1[0] && t <= T.ORBIT_B[0] + 150;
+        expect(Math.abs(p.x)).toBeLessThan(L.vw / 2 + (carrying ? 280 : 60));
       }
       // os agentes do caos saem depois de conferir; os outros ficam para o encontro do fim
       if (!CHAOS.includes(id as 'x')) expect(tr.gone).toBeGreaterThan(T.HIGH5);
