@@ -357,6 +357,13 @@ button.tile[aria-pressed="true"] span { color: var(--text); }
 .compo .seg.na { background: var(--muted); opacity: 0.55; }
 .compo .seg.off { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
 .shape.na { background: var(--muted); border-radius: 50%; opacity: 0.7; }
+/* Ícones do resultado de cada teste: o desenho diz o que aconteceu, a cor repete o tom. */
+.mark { display: inline-flex; width: 11px; height: 11px; flex: none; color: var(--muted); }
+.mark svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mark.bad { color: var(--red); }
+.mark.ok { color: var(--green); }
+.mark.warn { color: var(--yellow); }
+.route-row .res .mark { width: 10px; height: 10px; }
 .legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 4px; margin-top: -2px; }
 .legend button.tile { display: flex; align-items: center; gap: 7px; padding: 5px 8px; background: none; border-radius: 8px; }
 .legend button.tile:hover:not(:disabled) { background: var(--fill); }
@@ -1385,6 +1392,21 @@ const APP = String.raw`
     const routeIds = [...new Set(CHAOS.outcomes.map((o) => o.routeId).concat(CHAOS.untested.map((u) => u.routeId)))];
     const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     const shape = (tone) => el('span', 'shape ' + tone);
+    // o resultado de um teste tem ícone próprio (✕ quebrou, ✓ aguentou, ⊘ inválido, — não se
+    // aplica, ◌ sem teste); as formas do semáforo ficam para o estado geral (veredito e rota)
+    const MARK = {
+      bad: '<path d="M3 3l6 6M9 3l-6 6"/>',
+      ok: '<path d="M2.5 6.4l2.4 2.4 4.6-5.3"/>',
+      warn: '<circle cx="6" cy="6" r="4.2"/><path d="M3.1 8.9l5.8-5.8"/>',
+      na: '<path d="M3 6h6"/>',
+      off: '<circle cx="6" cy="6" r="4.2" stroke-dasharray="2 1.6"/>',
+    };
+    const mark = (tone) => {
+      const s = el('span', 'mark ' + tone);
+      s.setAttribute('aria-hidden', 'true');
+      s.innerHTML = '<svg viewBox="0 0 12 12">' + (MARK[tone] || MARK.off) + '</svg>';
+      return s;
+    };
     const secs = (ms) => (ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' s';
     // o caminho a partir do projeto (a mensagem do Vitest vem com o caminho absoluto da máquina)
     const rel = (p) => {
@@ -1463,7 +1485,7 @@ const APP = String.raw`
         const can = p[1] > 0 && onMap(p[0]);
         if (can) b.title = 'Mostrar no grafo só as rotas com resultado "' + (p[1] === 1 ? p[2] : p[3]) + '"';
         else b.disabled = true;
-        b.append(shape(p[4]), el('b', '', fmt(p[1])), el('span', '', p[1] === 1 ? p[2] : p[3]));
+        b.append(mark(p[4]), el('b', '', fmt(p[1])), el('span', '', p[1] === 1 ? p[2] : p[3]));
         b.onclick = () => filterByTile(p[0]);
         legend.append(b);
       }
@@ -1525,7 +1547,7 @@ const APP = String.raw`
       for (const { c, list } of groups.values()) {
         const card = el('div', 'cause' + (list.every((o) => o.notApplicable) ? ' na' : ''));
         const top = el('div', 'cause-head');
-        top.append(shape(list.every((o) => o.notApplicable) ? 'na' : 'warn'), el('b', '', c.title), el('span', 'count', plural(list.length, 'teste', 'testes')));
+        top.append(mark(list.every((o) => o.notApplicable) ? 'na' : 'warn'), el('b', '', c.title), el('span', 'count', plural(list.length, 'teste', 'testes')));
         card.append(top);
         if (c.where) card.append(el('p', 'cause-where', c.where));
         if (c.fix) card.append(el('p', 'cause-fix', c.fix));
@@ -1563,7 +1585,7 @@ const APP = String.raw`
           const r = el(vscodeApi ? 'button' : 'div', 'route-row ' + st[0]);
           if (vscodeApi) { r.type = 'button'; r.title = 'Abrir o teste ' + o.testFile; r.onclick = () => vscodeApi.postMessage({ type: 'openTest', file: o.testFile }); }
           const res = el('span', 'res');
-          res.append(shape(st[0]), o.status === 'failed' && o.severity ? st[1] + ', ' + o.severity : st[1]);
+          res.append(mark(st[0]), o.status === 'failed' && o.severity ? st[1] + ', ' + o.severity : st[1]);
           r.append(el('code', 'fail', o.failure), el('span', 'target', o.target), res, el('span', 'dur', o.status === 'invalid' && !o.durationMs ? 'não rodou' : secs(o.durationMs)));
           grid.append(r);
         }
@@ -1571,7 +1593,7 @@ const APP = String.raw`
           const r = el('div', 'route-row off');
           r.title = u.reason;
           const res = el('span', 'res');
-          res.append(shape('off'), 'sem teste');
+          res.append(mark('off'), 'sem teste');
           r.append(el('code', 'fail', u.failure), el('span', 'target', u.target), res, el('span', 'dur', ''));
           grid.append(r);
         }
