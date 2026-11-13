@@ -62,6 +62,8 @@ export interface ViewerChaos {
    */
   stale?: boolean;
   ran: boolean;
+  /** 'offline' (regras do ShielDepy) ou o motor com IA. */
+  engine?: string;
   runError?: string;
   failOn: string;
   hits: number;
@@ -339,6 +341,69 @@ button.tile[aria-pressed="true"] span { color: var(--text); }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
+/* ---- Caos: veredito, composição, ficha da execução, achados, causas e a tabela por rota */
+.verdict { display: grid; grid-template-columns: 12px 1fr; column-gap: 9px; row-gap: 3px; align-items: center; padding: 10px 11px; border-radius: var(--radius); background: var(--fill); }
+.verdict .shape { width: 10px; height: 10px; }
+.verdict b { font-size: 13px; font-weight: 650; letter-spacing: -0.01em; }
+.verdict.bad b { color: var(--red); }
+.verdict.warn b { color: var(--yellow); }
+.verdict.ok b { color: var(--green); }
+.verdict p { grid-column: 2; margin: 0; font-size: 12px; line-height: 1.45; }
+.compo { display: flex; gap: 2px; height: 6px; border-radius: 999px; overflow: hidden; background: var(--fill); }
+.compo .seg { min-width: 4px; }
+.compo .seg.bad { background: var(--red); }
+.compo .seg.ok { background: var(--green); }
+.compo .seg.warn { background: repeating-linear-gradient(-45deg, var(--yellow) 0 3px, color-mix(in srgb, var(--yellow) 40%, transparent) 3px 6px); }
+.compo .seg.na { background: var(--muted); opacity: 0.55; }
+.compo .seg.off { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
+.shape.na { background: var(--muted); border-radius: 50%; opacity: 0.7; }
+.legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 4px; margin-top: -2px; }
+.legend button.tile { display: flex; align-items: center; gap: 7px; padding: 5px 8px; background: none; border-radius: 8px; }
+.legend button.tile:hover:not(:disabled) { background: var(--fill); }
+.legend button.tile b { display: inline; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.legend button.tile span:last-child { display: inline; font-size: 11.5px; color: var(--muted); }
+.legend button.tile.zero { opacity: 0.42; }
+.legend button.tile.warn b { color: var(--yellow); }
+.legend.filtering button.tile[aria-pressed="false"] { opacity: 0.45; }
+.run-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; margin: 0; padding: 9px 11px; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; line-height: 1.4; }
+.run-facts dt { color: var(--muted); }
+.run-facts dd { margin: 0; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.run-facts dd.warn { color: var(--yellow); }
+.run-facts code, .cause code, .cause pre, .route-row .fail { font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace; font-size: 11px; }
+.finding.bad { box-shadow: inset 3px 0 0 var(--red); }
+.finding.warn { box-shadow: inset 3px 0 0 var(--yellow); }
+.finding.ok { box-shadow: inset 3px 0 0 var(--green); }
+.finding.warn .sev { color: var(--yellow); }
+.finding.ok .sev { color: var(--green); }
+.cause { display: flex; flex-direction: column; gap: 5px; padding: 9px 11px 10px; border-radius: var(--radius); background: var(--fill); box-shadow: inset 3px 0 0 var(--yellow); }
+.cause.na { box-shadow: inset 3px 0 0 var(--muted); }
+.cause-head { display: flex; align-items: center; gap: 8px; }
+.cause-head b { flex: 1; min-width: 0; font-weight: 650; overflow-wrap: anywhere; }
+.cause-head .count { margin-left: 0; font-weight: 500; }
+.cause p { margin: 0; font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.cause-where { color: var(--muted); }
+.cause-cmd { display: block; padding: 6px 8px; border-radius: 6px; background: var(--fill-strong); overflow-wrap: anywhere; user-select: all; }
+.cause-raw summary { cursor: pointer; font-size: 11px; color: var(--muted); }
+.cause-raw pre { margin: 6px 0 0; padding: 7px 8px; border-radius: 6px; background: var(--fill-strong); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); max-height: 160px; overflow: auto; }
+.by-route { display: flex; flex-direction: column; gap: 8px; }
+.route-block { border-radius: var(--radius); background: var(--fill); overflow: hidden; }
+.route-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.route-head:hover { background: var(--fill); }
+.route-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.route-rows { border-top: 1px solid var(--line); }
+.route-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "fail res" "target dur"; column-gap: 10px; row-gap: 1px; width: 100%; padding: 6px 10px 7px; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+button.route-row { cursor: pointer; }
+button.route-row:hover { background: var(--fill); }
+.route-row + .route-row { border-top: 1px solid var(--line); }
+.route-row .fail { grid-area: fail; overflow-wrap: anywhere; }
+.route-row .target { grid-area: target; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.route-row .res { grid-area: res; display: inline-flex; align-items: center; gap: 5px; justify-self: end; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.route-row .res .shape { width: 7px; height: 7px; }
+.route-row.bad .res { color: var(--red); }
+.route-row.warn .res { color: var(--yellow); }
+.route-row.ok .res { color: var(--green); }
+.route-row.na .res, .route-row.off .res { color: var(--muted); }
+.route-row .dur { grid-area: dur; justify-self: end; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .banner { padding: 8px 10px; border-radius: 8px; font-size: 12px; }
 .banner.bad { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
 .banner.ok { background: color-mix(in srgb, var(--green) 13%, transparent); color: var(--green); }
@@ -1027,7 +1092,7 @@ const APP = String.raw`
   const tileFilter = { active: null, nodes: {} };
   function setActiveTile(key) {
     tileFilter.active = key;
-    const tiles = document.querySelector('#chaos .tiles');
+    const tiles = document.querySelector('#chaos .legend');
     if (!tiles) return;
     tiles.classList.toggle('filtering', !!key);
     for (const b of tiles.querySelectorAll('button[data-tile]')) b.setAttribute('aria-pressed', String(b.dataset.tile === key));
@@ -1253,16 +1318,57 @@ const APP = String.raw`
     const notApplicable = CHAOS.outcomes.filter((o) => o.notApplicable);
     const invalid = CHAOS.outcomes.filter((o) => o.status === 'invalid' && !o.notApplicable);
     const stale = typeof CHAOS.stale === 'boolean' ? CHAOS.stale : !!TOPOLOGY && CHAOS.topologyHash !== TOPOLOGY.contentHash;
-    let html = '<div class="sec-head"><h2>Caos</h2><span class="sec-meta">' + escape(CHAOS.project) + '</span></div>';
-    if (stale) html += '<div class="banner warn">Este resultado é de outra versão do mapa. Rode o <code>shieldepy chaos</code> de novo.</div>';
-    if (CHAOS.runError) html += '<div class="banner warn">Os testes não rodaram (erro de ambiente): ' + escape(CHAOS.runError.split('\n')[0]) + '</div>';
-    else if (!CHAOS.ran) html += '<div class="banner warn">Testes gerados, mas não executados (<code>--no-run</code>).</div>';
-    else if (CHAOS.hits > 0) html += '<div class="banner bad"><b>Bloqueado:</b> ' + CHAOS.hits + ' achado(s)' + (CHAOS.failOn === 'Baixo' ? '' : ' com severidade ' + escape(CHAOS.failOn) + ' ou pior') + '.</div>';
-    else if (CHAOS.scope && CHAOS.scope.tested.length === 0) html += '<div class="banner ok">Nenhuma rota sensível tocada pelo PR.</div>';
-    // nenhum teste valeu: não dá para dizer que o código aguentou
-    else if (!failed.length && !passed.length && invalid.length) html += '<div class="banner warn">Nenhum teste valeu: ' + (invalid.length === 1 ? 'o único foi inválido' : 'os ' + invalid.length + ' foram inválidos') + '. O motivo está logo abaixo.</div>';
-    else html += '<div class="banner ok">O código aguentou ' + (failed.length ? 'o portão (' + failed.length + ' achado(s) abaixo dele)' : 'todas as falhas injetadas') + '.</div>';
-    // cada cartão é um botão que filtra o grafo pelas rotas daquele grupo (sem rota no mapa: desligado)
+    const total = CHAOS.outcomes.length + CHAOS.untested.length;
+    const routeIds = [...new Set(CHAOS.outcomes.map((o) => o.routeId).concat(CHAOS.untested.map((u) => u.routeId)))];
+    const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+    const shape = (tone) => el('span', 'shape ' + tone);
+    const secs = (ms) => (ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' s';
+    // o caminho a partir do projeto (a mensagem do Vitest vem com o caminho absoluto da máquina)
+    const rel = (p) => {
+      const f = String(p).split('\\').join('/');
+      const k = f.indexOf('/' + CHAOS.project + '/');
+      return k >= 0 ? f.slice(k + CHAOS.project.length + 2) : f;
+    };
+    /**
+     * A causa de um teste que não valeu, em termos do que fazer: o Vitest diz "Failed to load url
+     * express (...) in .../app.ts" e o painel diz que a dependência não está instalada e onde instalar.
+     */
+    function cause(message) {
+      const raw = String(message || 'sem motivo registrado');
+      const load = /Failed to load url (\S+) \(resolved id: [^)]*\) in (.+?)\. Does the file exist\?/.exec(raw);
+      if (load) {
+        const file = rel(load[2]);
+        // a pasta do projeto: o que vem antes do src/ (no próprio projeto, a raiz dele)
+        const at = ('/' + file).lastIndexOf('/src/');
+        const slash = file.lastIndexOf('/');
+        const dir = at > 0 ? file.slice(0, at - 1) : at === 0 || slash <= 0 ? '.' : file.slice(0, slash);
+        const local = load[1].startsWith('.') || load[1].startsWith('/');
+        return local
+          ? { title: 'Arquivo não encontrado: ' + load[1], where: 'Importado por ' + file, fix: 'Confira o caminho do import ou gere o arquivo antes de rodar.', raw }
+          : { title: 'Dependência não instalada: ' + load[1], where: 'Importada por ' + file, fix: 'Instale as dependências ' + (dir === '.' ? 'na raiz do projeto' : 'em ' + dir) + ' e rode o caos de novo:', cmd: (dir === '.' ? '' : 'cd ' + dir + ' && ') + 'npm install', raw };
+      }
+      if (/o controle \(sem caos\) falhou/.test(raw)) return { title: 'O teste falha mesmo sem falha injetada', where: raw.replace(/^.*?o controle \(sem caos\) falhou:\s*/, ''), fix: 'O cenário de controle não passa: o teste ou o app precisam de ajuste antes de medir o caos.', raw };
+      if (/não carregou/.test(raw)) return { title: 'O teste não carregou', where: raw.replace(/^o teste não carregou:\s*/, ''), fix: 'Rode o teste sozinho para ver o erro completo.', raw };
+      return { title: raw.split('\n')[0], where: '', fix: '', raw };
+    }
+
+    // ---- o veredito: uma frase que diz o que o resultado prova (ou por que não prova nada)
+    let verdict;
+    if (CHAOS.runError) verdict = { tone: 'warn', title: 'Os testes não rodaram', text: 'Erro de ambiente: ' + CHAOS.runError.split('\n')[0] };
+    else if (!CHAOS.ran) verdict = { tone: 'off', title: 'Testes gerados, não executados', text: 'A execução foi pulada (--no-run). Nada foi provado ainda.' };
+    else if (CHAOS.hits > 0) verdict = { tone: 'bad', title: 'Portão bloqueado', text: plural(CHAOS.hits, 'falha provada', 'falhas provadas') + (CHAOS.failOn === 'Baixo' ? '' : ' com severidade ' + CHAOS.failOn + ' ou pior') + ': o código quebra sob o caos injetado.' };
+    else if (!failed.length && !passed.length && invalid.length) verdict = { tone: 'warn', title: 'Inconclusivo', text: (invalid.length === 1 ? 'O único teste não chegou' : 'Nenhum dos ' + invalid.length + ' testes chegou') + ' a medir o código: nada foi provado nem descartado.' };
+    else if (CHAOS.scope && CHAOS.scope.tested.length === 0) verdict = { tone: 'ok', title: 'Nada a testar', text: 'O PR não toca nenhuma rota sensível.' };
+    else if (failed.length) verdict = { tone: 'warn', title: 'Portão liberado, com achados', text: plural(failed.length, 'falha provada', 'falhas provadas') + ' abaixo de ' + CHAOS.failOn + ', o limite do portão.' };
+    else verdict = { tone: 'ok', title: 'O código aguentou', text: plural(passed.length, 'falha injetada', 'falhas injetadas') + ' sem quebrar nenhuma invariante.' };
+
+    const head = el('div', 'sec-head');
+    head.append(el('h2', '', 'Caos'), el('span', 'sec-meta', CHAOS.project));
+    const v = el('div', 'verdict ' + verdict.tone);
+    v.append(shape(verdict.tone), el('b', '', verdict.title), el('p', '', verdict.text));
+    sec.replaceChildren(head, v);
+
+    // ---- a composição: cada teste num segmento da barra, e a legenda filtra o grafo
     const routesOf = (list) => [...new Set(list.map((o) => o.routeId))];
     tileFilter.nodes = {
       failed: { routes: routesOf(failed), targets: true },
@@ -1272,49 +1378,146 @@ const APP = String.raw`
       notApplicable: { routes: routesOf(notApplicable) },
     };
     const onMap = (key) => !!TOPOLOGY && tileFilter.nodes[key].routes.some((id) => TOPOLOGY.routes.some((r) => r.id === id));
-    const tile = (key, n, one, many, tone) => {
-      const label = n === 1 ? one : many;
-      const can = n > 0 && onMap(key);
-      return '<button type="button" class="tile' + (n && tone ? ' ' + tone : '') + '" data-tile="' + key + '" aria-pressed="false"' + (can ? ' title="Mostrar só ' + label + ' no grafo"' : ' disabled') + '><b>' + fmt(n) + '</b><span>' + label + '</span></button>';
-    };
-    html += '<div class="tiles four">' + tile('failed', failed.length, 'achado', 'achados', 'bad') + tile('passed', passed.length, 'aguentou', 'aguentaram', 'ok') + tile('invalid', invalid.length, 'inválido', 'inválidos') + tile('untested', CHAOS.untested.length, 'sem teste', 'sem teste') + (notApplicable.length ? tile('notApplicable', notApplicable.length, 'não se aplica', 'não se aplicam') : '') + '</div>';
-    if (CHAOS.scope) html += '<p class="note">Escopo: ' + (CHAOS.scope.all ? 'todas as rotas (' + escape(CHAOS.scope.all) + ')' : CHAOS.scope.tested.length + ' rota(s) tocada(s) desde ' + escape(CHAOS.scope.base)) + '</p>';
-    sec.innerHTML = html;
-    for (const b of sec.querySelectorAll('button[data-tile]')) b.onclick = () => filterByTile(b.dataset.tile);
-    for (const o of failed) {
-      const card = document.createElement('div');
-      card.className = 'finding' + (o.severity === 'Crítico' ? '' : ' alto');
-      const b = row([], o.failure + ' em ' + o.target + ', ' + (o.durationMs / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' s' + (o.message ? '. ' + o.message : ''), () => openRoute(o.routeId, o.routeId + ', ' + o.failure + ' em ' + o.target));
-      const sev = document.createElement('span');
-      sev.className = 'sev';
-      sev.textContent = o.severity || '';
-      b.querySelector('.row-title').append(sev, ...routeTitle(o.routeId));
-      const code = document.createElement('code');
-      code.textContent = o.testFile.slice(o.testFile.lastIndexOf('/') + 1);
-      code.title = o.testFile;
-      b.querySelector('.row-main').append(code);
-      card.append(b);
-      if (vscodeApi) {
-        const actions = document.createElement('div');
-        actions.className = 'actions';
-        const t = document.createElement('button');
-        t.type = 'button';
-        t.className = 'btn';
-        t.textContent = 'Abrir teste';
-        t.onclick = () => vscodeApi.postMessage({ type: 'openTest', file: o.testFile });
-        actions.append(t);
-        card.append(actions);
+    const parts = [
+      ['failed', failed.length, 'quebrou', 'quebraram', 'bad'],
+      ['passed', passed.length, 'aguentou', 'aguentaram', 'ok'],
+      ['invalid', invalid.length, 'inválido', 'inválidos', 'warn'],
+      ['notApplicable', notApplicable.length, 'não se aplica', 'não se aplicam', 'na'],
+      ['untested', CHAOS.untested.length, 'sem teste', 'sem teste', 'off'],
+    ];
+    if (total > 0) {
+      const bar = el('div', 'compo');
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', parts.filter((p) => p[1]).map((p) => p[1] + ' ' + (p[1] === 1 ? p[2] : p[3])).join(', '));
+      for (const p of parts) if (p[1]) { const seg = el('span', 'seg ' + p[4]); seg.style.flexGrow = String(p[1]); bar.append(seg); }
+      const legend = el('div', 'legend');
+      for (const p of parts) {
+        if (p[0] === 'notApplicable' && !p[1]) continue;
+        const b = el('button', 'tile ' + p[4] + (p[1] ? '' : ' zero'));
+        b.type = 'button';
+        b.dataset.tile = p[0];
+        b.setAttribute('aria-pressed', 'false');
+        const can = p[1] > 0 && onMap(p[0]);
+        if (can) b.title = 'Mostrar no grafo só as rotas com resultado "' + (p[1] === 1 ? p[2] : p[3]) + '"';
+        else b.disabled = true;
+        b.append(shape(p[4]), el('b', '', fmt(p[1])), el('span', '', p[1] === 1 ? p[2] : p[3]));
+        b.onclick = () => filterByTile(p[0]);
+        legend.append(b);
       }
-      sec.append(card);
+      sec.append(bar, legend);
     }
-    if (passed.length) sec.append(fold('Aguentaram', passed.length, group(passed.map((o) => row(routeTitle(o.routeId), o.failure + ' em ' + o.target, () => openRoute(o.routeId, o.routeId + ', ' + o.failure), 'ok'))), false));
-    if (invalid.length) sec.append(fold('Inválidos (não contam no portão)', invalid.length, byReason(invalid, (o) => o.message, (o) => o.failure + ' em ' + o.target), invalid.length <= 3 || (!failed.length && !passed.length)));
-    if (notApplicable.length) sec.append(fold('Não se aplica (a falha não disparou; não contam no portão)', notApplicable.length, byReason(notApplicable, (o) => o.message, (o) => o.failure + ' em ' + o.target), false));
-    if (CHAOS.untested.length) sec.append(fold('Sem teste nesta execução', CHAOS.untested.length, byReason(CHAOS.untested, (u) => u.reason, (u) => u.failure + ' em ' + u.target), false));
-    const legend = document.createElement('p');
-    legend.className = 'note';
-    legend.textContent = 'No mapa: rota vermelha (pulsando) quebrou, borda verde aguentou, borda tracejada: nenhum teste valeu; operação com borda vermelha (pulsando) é o alvo de um achado. Os números acima filtram o grafo.';
-    sec.append(legend);
+
+    // ---- a ficha da execução: o que foi testado, com qual motor e contra qual versão do mapa
+    const facts = el('dl', 'run-facts');
+    const fact = (term, value, tone) => { const d = el('dd', tone || ''); if (Array.isArray(value)) d.append(...value); else d.textContent = value; facts.append(el('dt', '', term), d); };
+    fact('Hipóteses', plural(total, 'falha injetada', 'falhas injetadas') + ' em ' + plural(routeIds.length, 'rota', 'rotas'));
+    if (CHAOS.engine) fact('Motor', CHAOS.engine === 'offline' ? 'offline (regras do ShielDepy, sem IA)' : String(CHAOS.engine));
+    fact('Portão', 'bloqueia falhas ' + CHAOS.failOn + (CHAOS.failOn === 'Crítico' ? '' : ' ou piores'));
+    if (CHAOS.scope) fact('Escopo', CHAOS.scope.all ? 'todas as rotas (' + CHAOS.scope.all + ')' : plural(CHAOS.scope.tested.length, 'rota tocada', 'rotas tocadas') + ' desde ' + CHAOS.scope.base);
+    if (stale) fact('Mapa', ['desatualizado: o código mudou depois desta execução. Rode ', el('code', '', 'shieldepy chaos'), ' de novo.'], 'warn');
+    else fact('Mapa', 'atual');
+    sec.append(facts);
+
+    // ---- os achados: o que quebrou, onde e qual invariante, com o teste que prova
+    const SAY = {
+      race_condition: 'Corrida em {t}: requisições simultâneas quebram o estado.',
+      partial_failure_after_external_call: 'Falha parcial em {t}: a API externa já foi chamada, a gravação falhou e nada foi compensado.',
+      timeout: 'API lenta ({t}): a rota fica sem responder.',
+      http_5xx_intermittent: 'API com erro ({t}): a rota não trata a falha.',
+      malformed_response: 'Resposta inválida de {t}: a rota não trata a falha.',
+      retry_storm: 'Retentativas sem limite em {t}.',
+    };
+    const say = (o) => (SAY[o.failure] || o.failure + ' em {t}.').split('{t}').join(o.target);
+    if (failed.length) {
+      const list = el('div', 'stack');
+      for (const o of failed) {
+        const sevTone = o.severity === 'Crítico' || o.severity === 'Alto' ? 'bad' : o.severity === 'Médio' ? 'warn' : 'ok';
+        const card = el('div', 'finding ' + sevTone);
+        const b = row([], say(o) + (o.message ? ' Invariante violada: ' + o.message : ''), () => openRoute(o.routeId, o.routeId + ', ' + o.failure + ' em ' + o.target));
+        const sev = el('span', 'sev', o.severity || 'sem severidade');
+        b.querySelector('.row-title').append(sev, ...routeTitle(o.routeId));
+        const code = el('code', '', o.testFile.slice(o.testFile.lastIndexOf('/') + 1) + ', ' + secs(o.durationMs));
+        code.title = o.testFile;
+        b.querySelector('.row-main').append(code);
+        card.append(b);
+        if (vscodeApi) {
+          const actions = el('div', 'actions');
+          const t = el('button', 'btn', 'Abrir teste');
+          t.type = 'button';
+          t.onclick = () => vscodeApi.postMessage({ type: 'openTest', file: o.testFile });
+          actions.append(t);
+          card.append(actions);
+        }
+        list.append(card);
+      }
+      sec.append(fold('Achados', failed.length, list, true));
+    }
+
+    // ---- por que os testes não valeram: um bloco por causa, com onde e como resolver
+    const unproved = invalid.concat(notApplicable);
+    if (unproved.length) {
+      const groups = new Map();
+      for (const o of unproved) { const c = cause(o.message); const k = c.title + '|' + c.where; if (!groups.has(k)) groups.set(k, { c, list: [] }); groups.get(k).list.push(o); }
+      const box = el('div', 'stack');
+      for (const { c, list } of groups.values()) {
+        const card = el('div', 'cause' + (list.every((o) => o.notApplicable) ? ' na' : ''));
+        const top = el('div', 'cause-head');
+        top.append(shape(list.every((o) => o.notApplicable) ? 'na' : 'warn'), el('b', '', c.title), el('span', 'count', plural(list.length, 'teste', 'testes')));
+        card.append(top);
+        if (c.where) card.append(el('p', 'cause-where', c.where));
+        if (c.fix) card.append(el('p', 'cause-fix', c.fix));
+        if (c.cmd) card.append(el('code', 'cause-cmd', c.cmd));
+        if (c.raw && c.raw !== c.title) {
+          const d = el('details', 'cause-raw');
+          d.append(el('summary', '', 'Mensagem do Vitest'), el('pre', '', c.raw));
+          card.append(d);
+        }
+        box.append(card);
+      }
+      sec.append(fold(failed.length || passed.length ? 'Testes que não valeram' : 'Por que nenhum teste valeu', unproved.length, box, true));
+    }
+
+    // ---- por rota: cada falha injetada, o alvo, o resultado e quanto levou
+    if (routeIds.length) {
+      const STATUS = { failed: ['bad', 'quebrou'], passed: ['ok', 'aguentou'], invalid: ['warn', 'inválido'] };
+      const table = el('div', 'by-route');
+      for (const id of routeIds) {
+        const rows = CHAOS.outcomes.filter((o) => o.routeId === id);
+        const missing = CHAOS.untested.filter((u) => u.routeId === id);
+        const block = el('div', 'route-block');
+        const h = el('button', 'route-head');
+        h.type = 'button';
+        h.title = 'Abrir o fluxo desta rota no mapa';
+        const name = el('span', 'route-name');
+        name.append(...routeTitle(id));
+        const worst = rows.some((o) => o.status === 'failed') ? 'bad' : rows.some((o) => o.status === 'invalid' && !o.notApplicable) ? 'warn' : rows.some((o) => o.status === 'passed') ? 'ok' : 'off';
+        h.append(shape(worst), name, el('span', 'count', fmt(rows.length + missing.length)));
+        h.onclick = () => openRoute(id, id);
+        block.append(h);
+        const grid = el('div', 'route-rows');
+        for (const o of rows) {
+          const st = o.notApplicable ? ['na', 'não se aplica'] : STATUS[o.status] || ['off', o.status];
+          const r = el(vscodeApi ? 'button' : 'div', 'route-row ' + st[0]);
+          if (vscodeApi) { r.type = 'button'; r.title = 'Abrir o teste ' + o.testFile; r.onclick = () => vscodeApi.postMessage({ type: 'openTest', file: o.testFile }); }
+          const res = el('span', 'res');
+          res.append(shape(st[0]), o.status === 'failed' && o.severity ? st[1] + ', ' + o.severity : st[1]);
+          r.append(el('code', 'fail', o.failure), el('span', 'target', o.target), res, el('span', 'dur', o.status === 'invalid' && !o.durationMs ? 'não rodou' : secs(o.durationMs)));
+          grid.append(r);
+        }
+        for (const u of missing) {
+          const r = el('div', 'route-row off');
+          r.title = u.reason;
+          const res = el('span', 'res');
+          res.append(shape('off'), 'sem teste');
+          r.append(el('code', 'fail', u.failure), el('span', 'target', u.target), res, el('span', 'dur', ''));
+          grid.append(r);
+        }
+        block.append(grid);
+        table.append(block);
+      }
+      sec.append(fold('Por rota', routeIds.length, table, routeIds.length <= 6));
+    }
+    sec.append(el('p', 'note', 'No mapa, a rota que quebrou pulsa em vermelho, a que aguentou ganha borda verde e a sem resultado válido fica tracejada; a operação atingida por um achado pulsa em vermelho.'));
   }
 
   // ---- seção "Mudanças do PR" (V2)

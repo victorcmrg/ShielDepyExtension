@@ -3,8 +3,8 @@ import { toFileId, type FindingSeverity } from '@shieldepy/core';
 import type { AnalyzingDecorationProvider } from '../analysis/AnalyzingDecorationProvider';
 import type { FindingsManager } from '../analysis/FindingsManager';
 import { t } from '../i18n';
+import { badgeFor } from './explorerBadge';
 
-const GLYPH: Record<FindingSeverity, string> = { error: '■', warning: '▲', info: '●' };
 const COLOR: Record<FindingSeverity, string> = {
   error: 'shieldepy.importantForeground',
   warning: 'shieldepy.attentionForeground',
@@ -15,7 +15,8 @@ const RANK: Record<FindingSeverity, number> = { info: 0, warning: 1, error: 2 };
 
 /**
  * Único dono da decoração dos arquivos no Explorer (e nas abas/listas de arquivos):
- *   - com achados: a forma da severidade mais grave (■ ▲ ●) na cor dela, e a pasta herda a cor
+ *   - com achados: as formas dos tipos presentes (■▲, explorerBadge.ts) na cor do mais grave, e a
+ *     pasta herda a cor; a contagem fica ao lado, a dos diagnósticos do próprio VS Code
  *   - analisando: a forma anima, mas a COR continua a dos achados (ou verde, se ainda não há)
  * Um provedor só, de propósito: com dois (análise + achados) o arquivo ficava um instante sem
  * decoração na troca e piscava branco.
@@ -56,7 +57,7 @@ export class ExplorerDecorations implements vscode.FileDecorationProvider, vscod
       .filter((s) => counts[s] > 0)
       .map((s) => `${t(NAME_KEY[s])}: ${counts[s]}`);
     const decoration = new vscode.FileDecoration(
-      frame ?? GLYPH[worst],
+      frame ?? badgeFor(counts),
       `ShielDepy: ${parts.join(', ')}${frame ? t('explorerAnalyzingSuffix') : ''}`,
       new vscode.ThemeColor(COLOR[worst])
     );
