@@ -8,8 +8,13 @@
 // Esta página só monta a cena; quem anima é entrar/engine.ts, num requestAnimationFrame que escreve
 // transform e opacity direto no DOM. Clique ou tecla pula para o fim; com prefers-reduced-motion, o
 // 404 vai direto para a tela pronta.
+//
+// Em tela deitada (16:9 e parecidas), em vez da encenação ao vivo toca o vídeo pré-renderizado dela
+// (decisão 0043): o mesmo resultado sem custo de processamento, com o som já no vídeo. Sem controles,
+// sem borda: o poster é o primeiro quadro, e no fim o vídeo some por cima da tela de verdade.
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import '../../styles/entrar.css';
+import { pickEntrarVideo, type EntrarVideo } from '../../shared/entrarVideo';
 import { runEntrar } from './entrar/engine';
 import { TITLE, TITLE_WRONG } from './entrar/script';
 
@@ -25,6 +30,17 @@ export default function Entrar() {
   const [reduced] = useState(prefersReducedMotion);
   const [done, setDone] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // o vídeo (null: encenação ao vivo); se ele falhar, cai para a encenação
+  const [video, setVideo] = useState<EntrarVideo | null>(pickEntrarVideo);
+  const [videoGone, setVideoGone] = useState(false);
+  const vidRef = useRef<HTMLVideoElement>(null);
+  // o navegador bloqueou o som (reload, link direto): o vídeo toca mudo e o primeiro toque liga o som
+  const mutedByBlock = useRef(false);
+  useEffect(() => {
+    if (!done || !video) return;
+    const id = window.setTimeout(() => setVideoGone(true), 500);
+    return () => window.clearTimeout(id);
+  }, [done, video]);
 
   useEffect(() => {
     document.title = done ? 'Entrar — ShielDepy' : '404';
@@ -39,27 +55,113 @@ export default function Entrar() {
       const id = window.setTimeout(() => setDone(true), 3000);
       return () => window.clearTimeout(id);
     }
+    if (video) return;
     return runEntrar(rootRef.current!, () => setDone(true));
-  }, [done, reduced]);
+  }, [done, reduced, video]);
 
-  // clique ou tecla: pula para o fim
+  // clique ou tecla: pula para o fim. No vídeo com o som bloqueado, o primeiro toque só liga o som
+  // (como na encenação ao vivo, decisão 0041): ao soltar (o toque no celular só libera o áudio aí),
+  // ou na tecla; Esc sempre pula
   useEffect(() => {
     if (done) return;
-    const skip = () => setDone(true);
-    window.addEventListener('pointerdown', skip);
-    window.addEventListener('keydown', skip);
+    const unmute = () => {
+      mutedByBlock.current = false;
+      const v = vidRef.current;
+      if (v) v.muted = false;
+    };
+    const onDown = (e: PointerEvent) => {
+      if (mutedByBlock.current) return;
+      setDone(true);
+    };
+    const onUp = () => {
+      if (mutedByBlock.current) unmute();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (mutedByBlock.current && e.key !== 'Escape') unmute();
+      else setDone(true);
+    };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('pointerdown', skip);
-      window.removeEventListener('keydown', skip);
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('keydown', onKey);
     };
   }, [done]);
 
   return (
     <div className={'ent' + (done ? ' is-done' : '')} ref={rootRef}>
       <div className="ent-bg2" aria-hidden="true" />
-      {!done && <Scene />}
+      {!done && !video && <Scene />}
       <FinalLogin ghost={!done} />
+      {video && !videoGone && (
+        <VideoScene
+          pick={video}
+          vref={vidRef}
+          out={done}
+          onBlocked={() => (mutedByBlock.current = true)}
+          onEnd={() => setDone(true)}
+          onFail={() => {
+            if (!done) setVideo(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** O vídeo da encenação: sem controles nem marca, por cima de tudo até o fim. */
+function VideoScene({
+  pick,
+  vref,
+  out,
+  onBlocked,
+  onEnd,
+  onFail,
+}: {
+  pick: EntrarVideo;
+  vref: React.RefObject<HTMLVideoElement | null>;
+  out: boolean;
+  onBlocked: () => void;
+  onEnd: () => void;
+  onFail: () => void;
+}) {
+  useEffect(() => {
+    const v = vref.current!;
+    let cancelled = false;
+    // com som se o navegador deixar (veio do clique no "Entrar"); se não, mudo, e o toque liga o som
+    v.muted = false;
+    v.play().catch((err: DOMException) => {
+      if (cancelled) return;
+      if (err?.name !== 'NotAllowedError') return onFail();
+      v.muted = true;
+      onBlocked();
+      v.play().catch(() => !cancelled && onFail());
+    });
+    return () => {
+      cancelled = true;
+    };
+    // só ao montar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <video
+      ref={vref}
+      className={'ent-video' + (out ? ' is-out' : '')}
+      poster={pick.poster}
+      preload="auto"
+      playsInline
+      disablePictureInPicture
+      disableRemotePlayback
+      controls={false}
+      tabIndex={-1}
+      aria-hidden="true"
+      onEnded={onEnd}
+      onError={onFail}
+    >
+      <source src={pick.src} type={pick.type} onError={onFail} />
+    </video>
   );
 }
 

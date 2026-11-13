@@ -106,6 +106,12 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   // no `npm run web:dev`, window.__entrarSeek(ms) pausa a cena e a leva ao instante pedido (para
   // conferir quadros sem esperar, mesmo com a aba escondida); no build o Vite troca DEV por false
   const dev = import.meta.env.DEV;
+  // ?capture (só no web:dev): a cena não anda sozinha; quem captura o vídeo chama
+  // window.__entrarCapture.step(ms) quadro a quadro (decisão 0043). Os sons não tocam: viram marcações
+  // com o tempo exato (__entrarCues), que depois viram a trilha do vídeo.
+  const capture = dev && new URLSearchParams(location.search).has('capture');
+  const cues: { t: number; name: SfxName; o?: PlayOpts }[] = [];
+  const woodCues: [number, number][] = [];
   const dbg = window as unknown as { __entrarProject?: (x: number, y: number, z: number) => Pt };
   const $ = (s: string) => root.querySelector<HTMLElement>(s)!;
   const $$ = (s: string) => Array.from(root.querySelectorAll<HTMLElement>(s));
@@ -119,9 +125,18 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   const sfx = createSfx();
   let quiet = false; // o gancho de desenvolvimento avança a cena sem tocar nada
   const snd = (name: SfxName, o?: PlayOpts) => {
-    if (!quiet) sfx.play(name, o);
+    if (capture) cues.push({ t, name, o });
+    else if (!quiet) sfx.play(name, o);
   };
-  const wood = sfx.loop('wood-drag');
+  const wood = capture
+    ? {
+        set: (g: number) => {
+          const lastG = woodCues.length ? woodCues[woodCues.length - 1]![1] : 0;
+          if (Math.abs(g - lastG) >= 0.005) woodCues.push([t, +g.toFixed(3)]);
+        },
+        stop: () => {},
+      }
+    : sfx.loop('wood-drag');
   let unlockedByGesture = false;
   const onGesture = (e: Event) => {
     if (!sfx.blocked || unlockedByGesture) return;
@@ -141,7 +156,7 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
   // carregar a tempo ou não houver WebGL, as letras seguem no 3D em CSS
   let glMod: typeof import('./letters3d') | null = null;
   let gl: import('./letters3d').Letters3D | null = null;
-  import('./letters3d')
+  const glReady = import('./letters3d')
     .then((m) => {
       glMod = m;
     })
@@ -1508,10 +1523,11 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     }
     raf = requestAnimationFrame(frame);
   };
-  raf = requestAnimationFrame((now) => {
-    lastNow = now;
-    raf = requestAnimationFrame(frame);
-  });
+  if (!capture)
+    raf = requestAnimationFrame((now) => {
+      lastNow = now;
+      raf = requestAnimationFrame(frame);
+    });
 
   // mudou o tamanho da tela no meio: os trajetos foram medidos para outra tela, então vai para o fim
   // (só largura ou uma mudança grande de altura: a barra do navegador no celular não conta)
@@ -1523,7 +1539,42 @@ export function runEntrar(root: HTMLElement, done: () => void): () => void {
     }
   };
   window.addEventListener('resize', onResize);
-  const w = window as unknown as { __entrarSeek?: (ms: number) => number };
+  const w = window as unknown as {
+    __entrarSeek?: (ms: number) => number;
+    __entrarCapture?: { ready: Promise<unknown>; step(ms: number): { t: number; ended: boolean }; cues(): unknown };
+  };
+  if (capture) {
+    // o relógio de tudo: a cena (update), as animações de CSS, as transições e as do .animate() andam
+    // juntas, exatamente `ms` por quadro (as do navegador ficam pausadas e são avançadas à mão)
+    const owned = new WeakSet<Animation>();
+    const tickAnims = (ms: number) => {
+      for (const a of document.getAnimations()) {
+        if (!owned.has(a)) {
+          owned.add(a);
+          a.pause();
+          continue; // nasceu neste quadro: começa do zero, como no navegador
+        }
+        const ct = Number(a.currentTime) || 0;
+        a.currentTime = ct + ms;
+      }
+    };
+    w.__entrarCapture = {
+      ready: Promise.all([glReady, document.fonts.ready]),
+      step(ms: number) {
+        if (!ended) {
+          t += ms;
+          update(ms / 1000);
+          if (t >= S.T.END + S.T.REVEAL) {
+            ended = true;
+            done();
+          }
+        }
+        tickAnims(ms);
+        return { t, ended };
+      },
+      cues: () => ({ fps: 60, end: S.T.END, reveal: S.T.REVEAL, cues, wood: woodCues }),
+    };
+  }
   if (dev) {
     dbg.__entrarProject = (x: number, y: number, z: number) => project(x, y, z);
     w.__entrarSeek = (ms: number) => {

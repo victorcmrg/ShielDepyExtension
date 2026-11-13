@@ -34,7 +34,7 @@ export function createHandler(deps: AppDeps): (req: IncomingMessage, res: Server
         if (handled) return;
         throw new HttpError(404, 'rota não encontrada');
       }
-      if (req.method === 'GET') return await serveStatic(res, parsedUrl);
+      if (req.method === 'GET') return await serveStatic(res, parsedUrl, req.headers.range);
       throw new HttpError(405, 'método não permitido');
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;

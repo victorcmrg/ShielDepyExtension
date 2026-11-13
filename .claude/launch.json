@@ -37,6 +37,20 @@
         "--strictPort"
       ],
       "port": 4173
+    },
+    {
+      "name": "shieldepy-prod-check",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "start",
+        "-w",
+        "@shieldepy/api"
+      ],
+      "port": 3002,
+      "env": {
+        "PORT": "3002",
+        "SHIELDEPY_DATA_DIR": "C:\\Users\\VctrCmrg\\AppData\\Local\\Temp\\shieldepy-prod-check"
+      }
     }
   ]
 }

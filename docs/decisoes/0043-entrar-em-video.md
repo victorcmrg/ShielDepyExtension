@@ -1,0 +1,20 @@
+# 0043 — O "Entrar" vira um vídeo pré-renderizado (com o som dentro), e a encenação ao vivo fica de reserva
+
+**Data:** 2026-11-13 (pedido do usuário: renderizar a animação num vídeo com a mesma qualidade, para passar até num telão, leve, com o primeiro quadro na hora e sem nenhuma marca de player) · **Estado:** valendo
+
+**Contexto.** A encenação do `/entrar` ([0039](0039-entrar-encenado.md), [0040](0040-threejs-no-entrar.md), sons na [0041](0041-sons-do-entrar.md)) é desenhada ao vivo: three.js, centenas de transforms por quadro e filtros. Em máquina fraca ela pesa, e cada GPU desenha um pouco diferente.
+
+**Decisão.**
+- **Captura quadro a quadro, determinística:** `?capture` (só no `web:dev`) para a cena; `window.__entrarCapture.step(ms)` avança, juntos e exatamente 1/60 s por quadro, o relógio da cena, as animações de CSS, as transições e as do `.animate()` (as do navegador ficam pausadas e são avançadas à mão). `apps/web/scripts/entrar-video/capture.mjs` dirige o Edge (ou Chrome) headless da máquina pelo protocolo de depuração (CDP), com o WebSocket do Node, sem instalar nada. A tela é fixa em **1920×1080 com densidade 1**, e o script confere isso antes de começar. Saem 1.785 PNG (29,75 s) em ~4,5 min. Os sons não tocam: viram marcações com o tempo exato.
+- **A trilha** (`audio.mjs`) refaz fora do navegador a mesma mistura do Web Audio (ganho, tom, corte com fade, volume geral 0,32, a madeira em laço com a mesma suavização) e vai **dentro do vídeo**: sincronizada por construção.
+- **Codificação** (`encode.mjs`, um passo por vez, 4 threads): **AV1 10 bits + Opus** em WebM (SVT-AV1 preset 5, CRF 28: 5,3 MB, ~1,5 Mbit/s) para Chrome, Edge, Firefox e Safari com AV1; **H.264 High 4.2 + AAC** em MP4 (x264 slow, CRF 17, `tune animation`, `faststart`: 6,7 MB, ~1,9 Mbit/s) para o resto e para players de telão; cores marcadas BT.709; 1080p a 60 quadros/s. Conferido contra os PNG: o H.264 tem PSNR médio de 55 dB (SSIM 0,9995); o AV1, de 46 a 48 dB nos quadros com movimento. O 10 bits do AV1 evita degraus nas sombras e degradês.
+- **Na página:** em tela deitada (proporção de 1,3 a 2,4), com movimento, o `/entrar` toca o vídeo em vez da encenação (`object-fit: cover`), sem controles, borda nem ícone, e não recebe clique. O poster (o primeiro quadro, WebP sem perda, 5 KB) vira o fundo da página já na primeira pintura, pelo CSS, antes de qualquer JavaScript. No fim (ou ao pular), o vídeo some em 0,45 s por cima da tela de login de verdade. Em tela em pé (celular), com `?live`, se o vídeo falhar ou sem suporte, roda a encenação ao vivo. Com `prefers-reduced-motion`, nem vídeo nem encenação (o 404 e depois a tela pronta, como antes).
+- **Som:** o vídeo tenta tocar com som (vindo do clique no "Entrar", o navegador deixa); se for bloqueado, toca mudo e o primeiro toque ou tecla liga o som sem pular, como na 0041.
+- **Pré-carga:** a landing, depois de carregar, num momento ocioso e com prioridade baixa, baixa o poster e o vídeo que este navegador vai tocar (não baixa com economia de dados nem em tela em pé). A API passou a servir vídeo e som com o tipo certo, cache de um dia e pedidos por faixa (`206`/`416`).
+
+**Consequências.**
+- Mudou a encenação? Gerar o vídeo de novo: `npm run web:dev` e, sem mexer nos arquivos da página enquanto roda (a recarga do Vite reinicia a cena):
+  `node apps/web/scripts/entrar-video/capture.mjs --out <pasta>`, `node apps/web/scripts/entrar-video/audio.mjs <pasta>`, `node apps/web/scripts/entrar-video/encode.mjs <pasta> apps/web/public/video`.
+- O repositório ganha ~12 MB de vídeo.
+- Medido no Edge headless com GPU, em produção: a landing pré-carrega o vídeo aos 0,3 s; ao abrir o `/entrar`, todos os arquivos chegam em 56 ms, e a primeira pintura (já com o primeiro quadro) e o vídeo rodando saem por volta de 0,37 a 0,40 s (o headless segura a primeira pintura; num navegador normal, a navegação no mesmo site mantém a landing na tela até essa pintura, sem branco no meio).
+- Em telas com outra proporção, o `cover` corta uma faixa fina nas bordas, e a troca do último quadro para a tela de verdade é suavizada pelo fade (o layout pode mudar alguns pixels).
