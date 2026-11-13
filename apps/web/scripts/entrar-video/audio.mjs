@@ -3,7 +3,7 @@
 // cada som com o ganho, a velocidade (tom), o corte com fade e o volume geral de lá; a madeira é o laço
 // com o volume seguindo as marcações (com a mesma suavização de 60 ms). Sai PCM float 48 kHz mono.
 //
-//   node apps/web/scripts/entrar-video/audio.mjs <pasta com cues.json>   →   <pasta>/audio.f32
+//   node apps/web/scripts/entrar-video/audio.mjs <pasta com cues.json> [atraso em ms, 70]   →   <pasta>/audio.f32
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -12,6 +12,9 @@ import { fileURLToPath } from 'node:url';
 const dir = process.argv[2];
 if (!dir) throw new Error('uso: audio.mjs <pasta com cues.json>');
 const RATE = 48000;
+// a trilha toca um pouco depois da imagem: o ouvido nota som adiantado a partir de ~45 ms, mas aceita
+// som atrasado até ~125 ms; e vários sons marcam o início de algo que ainda está aparecendo
+const DELAY_MS = Number(process.argv[3] ?? 70);
 const MASTER = 0.32; // o mesmo de sfx.ts
 const here = fileURLToPath(new URL('.', import.meta.url));
 const SFX = resolve(here, '../../public/sfx');
@@ -41,7 +44,7 @@ for (const c of cues) {
   const o = c.o || {};
   const gain = o.gain ?? 1;
   const rate = o.rate ?? 1;
-  const start = Math.round((c.t / 1000) * RATE);
+  const start = Math.round(((c.t + DELAY_MS) / 1000) * RATE);
   const off = (o.offset ?? 0) * RATE;
   const len = o.dur ? Math.round(o.dur * RATE) : Math.ceil((buf.length - off) / rate);
   const fadeFrom = o.dur ? Math.max(0, o.dur - 0.12) * RATE : Infinity;
@@ -63,12 +66,12 @@ if (wood.length) {
   const k = 1 - Math.exp(-1 / tau);
   const first = wood.find(([, g]) => g > 0);
   if (first) {
-    const s0 = Math.round((first[0] / 1000) * RATE);
+    const s0 = Math.round(((first[0] + DELAY_MS) / 1000) * RATE);
     let target = 0;
     let g = 0;
     let wi = 0;
     for (let j = s0; j < out.length; j++) {
-      while (wi < wood.length && (wood[wi][0] / 1000) * RATE <= j) target = wood[wi++][1];
+      while (wi < wood.length && ((wood[wi][0] + DELAY_MS) / 1000) * RATE <= j) target = wood[wi++][1];
       g += (target - g) * k;
       if (g < 1e-4 && target === 0) continue;
       out[j] += buf[(j - s0) % buf.length] * g * MASTER;
@@ -81,4 +84,4 @@ for (const v of out) peak = Math.max(peak, Math.abs(v));
 // sem clipar: se algum pico passar de 0,98, abaixa tudo junto (não acontece com os volumes de hoje)
 if (peak > 0.98) for (let j = 0; j < out.length; j++) out[j] *= 0.98 / peak;
 writeFileSync(join(dir, 'audio.f32'), Buffer.from(out.buffer, 0, Math.ceil(seconds * RATE) * 4));
-console.log(`trilha: ${cues.length} sons, ${wood.length} marcas da madeira, ${seconds.toFixed(2)} s, pico ${peak.toFixed(3)}`);
+console.log(`trilha (+${DELAY_MS} ms): ${cues.length} sons, ${wood.length} marcas da madeira, ${seconds.toFixed(2)} s, pico ${peak.toFixed(3)}`);

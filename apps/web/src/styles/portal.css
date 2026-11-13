@@ -33,8 +33,12 @@ html[data-boot="404"], html[data-boot="404"] body { background: #fff; color-sche
 /* o vídeo do "Entrar" (decisão 0043): o primeiro quadro já na primeira pintura, como fundo, antes de
    qualquer JavaScript, nas telas que vão tocar o vídeo (deitadas e com movimento; o theme-init.js marca
    data-boot-video fora do ?live e do ?capture). O vídeo, com o mesmo quadro de poster, entra por cima. */
-@media (min-aspect-ratio: 13/10) and (max-aspect-ratio: 12/5) and (prefers-reduced-motion: no-preference) {
-  html[data-boot="404"][data-boot-video] body { background: #fff url(/video/poster.webp) center / cover no-repeat; }
+/* duas versões (src/shared/entrarVideo.ts): 1920×1080 até a proporção 1,98 e 1920×872 acima dela */
+@media (min-aspect-ratio: 13/10) and (max-aspect-ratio: 99/50) and (prefers-reduced-motion: no-preference) {
+  html[data-boot="404"][data-boot-video] body { background: #fff url(/video/entrar-1080-poster.webp) center / cover no-repeat; }
+}
+@media (min-aspect-ratio: 99/50) and (max-aspect-ratio: 13/5) and (prefers-reduced-motion: no-preference) {
+  html[data-boot="404"][data-boot-video] body { background: #fff url(/video/entrar-872-poster.webp) center / cover no-repeat; }
 }
 
 * { box-sizing: border-box; border-color: var(--border); }

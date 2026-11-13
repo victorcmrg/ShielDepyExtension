@@ -1,10 +1,10 @@
 // Captura a encenação do "Entrar" quadro a quadro (decisão 0043), no Edge/Chrome headless da máquina,
 // pelo protocolo de depuração (CDP) e o WebSocket do próprio Node: nada para instalar.
 //
-//   node apps/web/scripts/entrar-video/capture.mjs --out <pasta> [--from ms] [--to ms] [--fps 60]
+//   node apps/web/scripts/entrar-video/capture.mjs --out <pasta> [--width 1920 --height 1080] [--from ms] [--to ms] [--fps 60]
 //
 // Precisa do `npm run web:dev` rodando (a página abre com ?capture, que só existe no modo dev). A tela é
-// fixa em 1920×1080 com densidade 1 (janela, página e captura do mesmo tamanho) e o script confere isso
+// fixa (1920×1080 por padrão, ou --width/--height) com densidade 1 (janela, página e captura do mesmo tamanho) e o script confere isso
 // antes de começar. Cada quadro avança o relógio da cena e de todas as animações em exatamente 1/fps s
 // (window.__entrarCapture.step) e sai como PNG: <out>/f00000.png… e <out>/cues.json (os sons).
 // Uma coisa por vez: um navegador só, um quadro por vez.
@@ -29,8 +29,8 @@ if (!OUT || OUT === true) throw new Error('falta --out <pasta>');
 const FPS = Number(args.fps || 60);
 const FROM = Number(args.from || 0);
 const TO = args.to ? Number(args.to) : Infinity;
-const W = 1920;
-const H = 1080;
+const W = Number(args.width || 1920);
+const H = Number(args.height || 1080);
 const URL_ = args.url || 'http://localhost:5173/entrar?capture';
 const PORT = 9333;
 
