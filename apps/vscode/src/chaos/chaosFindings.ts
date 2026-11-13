@@ -8,14 +8,17 @@ import type { ChaosResults } from '@shieldepy/agent/chaos';
 type Outcome = ChaosResults['outcomes'][number];
 type Operation = NonNullable<ChaosResults['surface']>['routes'][number]['operations'][number];
 
-/** O que a falha injetada quer dizer, em português (o mesmo vocabulário do portal e do relatório). */
-const WHAT: Record<string, (target: string) => string> = {
-  race_condition: (t) => `Corrida em ${t}: requisições simultâneas quebram o estado`,
-  partial_failure_after_external_call: (t) => `Falha parcial em ${t}: a API externa já foi chamada, a gravação falhou e nada foi compensado`,
-  timeout: (t) => `API lenta (${t}): a rota fica sem responder`,
-  http_5xx_intermittent: (t) => `API com erro (${t}): a rota não trata a falha`,
-  malformed_response: (t) => `Resposta inválida de ${t}: a rota não trata a falha`,
-  retry_storm: (t) => `Retentativas sem limite em ${t}`,
+/**
+ * O que a falha injetada quer dizer, em duas partes curtas: o nome do problema e a consequência (o
+ * mesmo vocabulário do portal e do relatório). A frase inteira é a mensagem do Problems.
+ */
+const WHAT: Record<string, (target: string) => [string, string]> = {
+  race_condition: (t) => [`Corrida em ${t}`, 'requisições ao mesmo tempo quebram o estado'],
+  partial_failure_after_external_call: (t) => [`Falha parcial em ${t}`, 'a API foi chamada, a gravação falhou e nada foi desfeito'],
+  timeout: (t) => [`API lenta (${t})`, 'a rota fica sem responder'],
+  http_5xx_intermittent: (t) => [`API com erro (${t})`, 'a rota não trata a falha'],
+  malformed_response: (t) => [`Resposta inválida de ${t}`, 'a rota não trata a falha'],
+  retry_storm: (t) => [`Retentativas sem limite em ${t}`, 'a rota repete a chamada sem parar'],
 };
 
 const SEVERITY: Record<string, FindingSeverity> = { Crítico: 'error', Alto: 'error', Médio: 'warning', Baixo: 'info' };
@@ -53,14 +56,25 @@ export function chaosToFindings(results: ChaosResults, projectDir: string, ranAt
   for (const o of results.outcomes) {
     if (o.status !== 'failed') continue;
     const route = routes.get(o.routeId);
-    const what = (WHAT[o.failure] ?? ((t: string) => `${o.failure} em ${t}`))(o.target);
-    const message = `${what}. Invariante violada: ${o.message ?? 'o teste falhou'} (${o.routeId}).`;
+    const [headline, explain] = (WHAT[o.failure] ?? ((t: string): [string, string] => [`${o.failure} em ${t}`, 'o teste falhou']))(o.target);
+    const message = `${headline}: ${explain}.`;
     const test = path.resolve(projectDir, o.testFile);
     const routeAt = route ? location(projectDir, route.at) : undefined;
     const related = [
-      { file: test, line: 0, message: 'o teste de caos que provou a falha (gerado pelo ShielDepy)' },
-      ...(routeAt ? [{ file: routeAt.file, line: routeAt.line, message: `a rota ${o.routeId}` }] : []),
+      { file: test, line: 0, message: 'teste que prova a falha' },
+      ...(routeAt ? [{ file: routeAt.file, line: routeAt.line, message: `rota ${o.routeId}` }] : []),
     ];
+    const chaos = {
+      headline,
+      explain,
+      ...(o.severity && { severity: o.severity }),
+      route: o.routeId,
+      failure: o.failure,
+      target: o.target,
+      ...(o.message && { invariant: o.message }),
+      test,
+      durationMs: o.durationMs,
+    };
     const targets = hitOperations(o, route?.operations ?? [])
       .map((op) => ({ op, at: location(projectDir, op.at) }))
       .filter((x): x is { op: Operation; at: { file: string; line: number } } => !!x.at);
@@ -77,6 +91,7 @@ export function chaosToFindings(results: ChaosResults, projectDir: string, ranAt
         related,
         confidence: 100,
         key: `caos:${o.hypothesisId}:${p.at.file}:${p.at.line}`,
+        chaos,
         ...(ranAt !== undefined && { ranAt }),
       });
     }

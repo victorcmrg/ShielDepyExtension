@@ -5,6 +5,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { toFileId } from '@shieldepy/core';
 import type { ChaosResults } from '@shieldepy/agent/chaos';
 import type { FindingsManager } from '../analysis/FindingsManager';
 import { chaosToFindings } from './chaosFindings';
@@ -41,7 +42,11 @@ export class ChaosController implements vscode.Disposable {
       return undefined; // ainda sendo gravado, ou apagado
     }
     const byFile = new Map<string, ReturnType<typeof chaosToFindings>>();
-    for (const f of chaosToFindings(results, projectDir, ranAt)) byFile.set(f.file, [...(byFile.get(f.file) ?? []), f]);
+    // a chave normalizada (a mesma do editor e do Explorer), para limpar e publicar o mesmo arquivo
+    for (const f of chaosToFindings(results, projectDir, ranAt)) {
+      const id = toFileId(f.file);
+      byFile.set(id, [...(byFile.get(id) ?? []), { ...f, file: id }]);
+    }
     for (const file of this.published.get(projectDir) ?? []) if (!byFile.has(file)) this.findings.clear(file, 'caos');
     for (const [file, list] of byFile) this.findings.set(file, 'caos', list);
     this.published.set(projectDir, new Set(byFile.keys()));

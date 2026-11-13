@@ -62,6 +62,10 @@ export class FindingsManager implements vscode.Disposable {
   }
 
   set(fileId: string, group: FindingGroup, findings: Finding[]): void {
+    // a chave é sempre a forma normalizada (toFileId: barras normais, letra do disco minúscula): o
+    // editor e o Explorer procuram por ela. O caos chegava com o caminho cru do Windows
+    // (C:/ com barras invertidas e a letra maiúscula) e as linhas não pintavam, embora o Problems mostrasse os achados.
+    fileId = toFileId(fileId);
     const byGroup = this.groups.get(fileId) ?? new Map<FindingGroup, Finding[]>();
     byGroup.set(group, findings);
     this.groups.set(fileId, byGroup);
@@ -69,7 +73,7 @@ export class FindingsManager implements vscode.Disposable {
   }
 
   get(fileId: string): StoredFinding[] {
-    return this.store.get(fileId) ?? [];
+    return this.store.get(toFileId(fileId)) ?? [];
   }
 
   /** Só os achados de um grupo (ex.: reaproveitar os da IA na próxima passada incremental). */
@@ -105,6 +109,7 @@ export class FindingsManager implements vscode.Disposable {
 
   /** Arquivo fechado/deletado: some a análise dele. Colisões só somem quando as regras somem. */
   clear(fileId: string, group?: FindingGroup): void {
+    fileId = toFileId(fileId);
     const byGroup = this.groups.get(fileId);
     if (!byGroup) return;
     if (group) byGroup.delete(group);
@@ -205,6 +210,11 @@ export class FindingsManager implements vscode.Disposable {
     md.supportHtml = true;
     group.forEach((f, i) => {
       const ref = this.refOf(f.id);
+      if (f.chaos) {
+        this.chaosHover(md, f, ref);
+        if (i < group.length - 1) md.appendMarkdown('\n\n---\n\n');
+        return;
+      }
       // Cabeçalho: forma colorida, severidade, #número e linha.
       md.appendMarkdown(
         `<span style="color:${GLYPH_COLOR[f.severity]};">${GLYPH[f.severity]}</span>&nbsp; **${t(SEVERITY_KEY[f.severity])}** &nbsp;#${ref} &nbsp;${t('lineLower', { n: f.startLine + 1 })}\n\n`
@@ -228,6 +238,32 @@ export class FindingsManager implements vscode.Disposable {
       if (i < group.length - 1) md.appendMarkdown('\n\n---\n\n');
     });
     return md;
+  }
+
+  /**
+   * O balão de um achado do caos, para ler de relance: a severidade e a rota, o problema em
+   * negrito e a consequência numa linha; embaixo, a invariante, a falha injetada e o teste (com a
+   * duração), cada um numa linha; e os botões. Sem os trechos de código das outras pontas.
+   */
+  private chaosHover(md: vscode.MarkdownString, f: StoredFinding, ref: number): void {
+    const c = f.chaos!;
+    const sev = c.severity ?? t(SEVERITY_KEY[f.severity]);
+    md.appendMarkdown(
+      `<span style="color:${GLYPH_COLOR[f.severity]};">${GLYPH[f.severity]}</span>&nbsp; **${escapeMd(sev)}** &nbsp;&nbsp;$(beaker) ${t('chaosTest')} &nbsp;&nbsp;\`${escapeCode(c.route)}\` &nbsp;&nbsp;#${ref}\n\n`
+    );
+    md.appendMarkdown(`**${escapeMd(c.headline)}**  \n`);
+    md.appendText(cap(c.explain) + '.');
+    md.appendMarkdown('\n\n');
+    const lines: string[] = [];
+    if (c.invariant) lines.push(`$(shield) ${t('chaosInvariant')} &nbsp;\`${escapeCode(c.invariant)}\``);
+    lines.push(`$(zap) ${t('chaosInjected')} &nbsp;\`${escapeCode(c.failure)}\` ${t('chaosOn')} \`${escapeCode(c.target)}\``);
+    const name = c.test.split(/[\\/]/).pop() ?? c.test;
+    const secs = (c.durationMs / 1000).toLocaleString(config.languageCode(), { maximumFractionDigits: 1 });
+    lines.push(`$(file-code) ${t('chaosProof')} &nbsp;[${escapeMd(name)}](${commandLink(CMD.openLocation, [c.test, 0])}) &nbsp;${secs} s`);
+    md.appendMarkdown(lines.join('  \n'));
+    const open = commandLink(CMD.openLocation, [c.test, 0]);
+    const ask = commandLink(CMD.attachFinding, [{ id: f.id, ref, fileId: f.file, line: f.startLine, message: f.message }]);
+    md.appendMarkdown(`\n\n---\n\n[$(go-to-file) ${t('chaosOpenTest')}](${open}) &nbsp;&nbsp; [$(sparkle) ${t('askAI')}](${ask})`);
   }
 
   private toDiagnostic(f: StoredFinding): vscode.Diagnostic {
@@ -260,6 +296,15 @@ const GLYPH_COLOR: Record<FindingSeverity, string> = { error: '#ff5f57', warning
 
 function commandLink(command: string, args: unknown[]): string {
   return `command:${command}?${encodeURIComponent(JSON.stringify(args))}`;
+}
+
+/** Texto dentro de `código` no Markdown: sem crase (fecharia o trecho). */
+function escapeCode(text: string): string {
+  return text.split('`').join("'");
+}
+
+function cap(text: string): string {
+  return text ? text[0]!.toUpperCase() + text.slice(1) : text;
 }
 
 function escapeMd(text: string): string {

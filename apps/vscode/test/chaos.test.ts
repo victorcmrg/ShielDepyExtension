@@ -76,11 +76,19 @@ describe('o resultado do caos vira erro na linha da operação atingida', () => 
     ]);
   });
 
-  it('a mensagem diz o que quebrou e a invariante; o teste e a rota vão como pontos relacionados', () => {
+  it('a mensagem é curta (o problema e a consequência); o resto vai nos dados do balão e nos pontos relacionados', () => {
     const partial = findings.find((f) => f.message.startsWith('Falha parcial'))!;
-    expect(partial.message).toBe(
-      'Falha parcial em orders: a API externa já foi chamada, a gravação falhou e nada foi compensado. Invariante violada: stateCheck: noChargeWithoutOrder (POST /checkout).'
-    );
+    expect(partial.message).toBe('Falha parcial em orders: a API foi chamada, a gravação falhou e nada foi desfeito.');
+    expect(partial.chaos).toMatchObject({
+      headline: 'Falha parcial em orders',
+      route: 'POST /checkout',
+      failure: 'partial_failure_after_external_call',
+      target: 'orders',
+      invariant: 'stateCheck: noChargeWithoutOrder',
+      severity: 'Crítico',
+    });
+    expect(rel(partial.chaos!.test)).toBe('.shieldepy/chaos-tests/POST__checkout__partial_failure_after_external_call__orders.spec.ts');
+    expect(partial.related!.map((r) => r.message)).toEqual(['teste que prova a falha', 'rota POST /checkout']);
     expect(partial).toMatchObject({ source: 'caos', confidence: 100, impact: 'Teste de caos (Crítico) em OrderRepository.insert.' });
     expect(partial.related!.map((r) => `${rel(r.file)}:${r.line + 1}`)).toEqual([
       '.shieldepy/chaos-tests/POST__checkout__partial_failure_after_external_call__orders.spec.ts:1',

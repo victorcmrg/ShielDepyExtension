@@ -18,6 +18,23 @@ export interface RelatedLocation {
   message: string;
 }
 
+/** O que um teste de caos provou: o balão do editor mostra isto em vez do texto corrido. */
+export interface FindingChaos {
+  /** "Falha parcial em orders" */
+  headline: string;
+  /** "a API foi chamada, a gravação falhou e nada foi desfeito" */
+  explain: string;
+  severity?: string;
+  route: string;
+  failure: string;
+  target: string;
+  /** a invariante que quebrou, como o teste registrou ("stateCheck: noChargeWithoutOrder") */
+  invariant?: string;
+  /** caminho absoluto do teste que prova a falha */
+  test: string;
+  durationMs: number;
+}
+
 export interface Finding {
   file: string;
   startLine: number;
@@ -37,4 +54,6 @@ export interface Finding {
   key?: string;
   /** Quando saiu o resultado salvo de onde o achado veio (ms desde 1970): ele reaparece ao abrir o projeto. */
   ranAt?: number;
+  /** Só nos achados do caos: os dados do teste que provou a falha. */
+  chaos?: FindingChaos;
 }
