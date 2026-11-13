@@ -117,11 +117,11 @@ export function renderGraphHtml(
   const nonce = mode.kind === 'webview' ? ` nonce="${mode.nonce}"` : '';
   const csp =
     mode.kind === 'webview'
-      ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${mode.cspSource} data:; style-src 'nonce-${mode.nonce}'; script-src 'nonce-${mode.nonce}' ${mode.cspSource};">`
+      ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${mode.cspSource} data:; style-src 'nonce-${mode.nonce}'; script-src 'nonce-${mode.nonce}' ${mode.cspSource}; connect-src ${mode.cspSource}; worker-src blob:;">`
       : '';
   const libraries =
     mode.kind === 'webview'
-      ? mode.libraryUris.map((uri) => `<script${nonce} src="${escapeHtml(uri)}"></script>`).join('\n')
+      ? mode.libraryUris.map((uri) => `<script${nonce} data-lib src="${escapeHtml(uri)}"></script>`).join('\n')
       : viewerLibraryPaths()
           .map((file) => `<script>${readFileSync(file, 'utf8').split('</script').join('<\/script')}</script>`)
           .join('\n');
@@ -181,6 +181,7 @@ ${csp}
   <div id="flowbar" hidden><button id="back" class="btn" type="button">Voltar ao mapa</button><span id="flowtitle"></span></div>
   <div class="canvas"><div id="cy" aria-label="Grafo do sistema"></div><div id="flow" aria-label="Fluxo escolhido" hidden></div><div id="pulses" aria-hidden="true"></div></div>
   <div id="loading" class="loading" role="status"><span class="blob"></span><span>Montando o mapa…</span></div>
+  <div id="arranging" class="arranging" role="status" hidden><span class="blob"></span><span>Organizando o mapa…</span></div>
   <button id="theme" class="theme" type="button" aria-label="Mudar para o tema claro" title="Mudar para o tema claro">${ICON_SUN}${ICON_MOON}</button>
 </main>
 ${libraries}
@@ -340,6 +341,21 @@ button.tile[aria-pressed="true"] span { color: var(--text); }
 .facts { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin: 0; padding: 8px 10px; border-radius: var(--radius); background: var(--fill); font-size: 12px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+/* Cobertura: cada tipo de ligação com o desenho da linha no mapa e uma frase do que ela é */
+.cov-kinds { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cov-kind { display: grid; grid-template-columns: 24px auto minmax(0, 1fr); column-gap: 8px; align-items: center; }
+.cov-kind .line { display: inline-flex; width: 24px; height: 12px; }
+.cov-kind .line svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cov-kind.ok .line { color: var(--green); }
+.cov-kind.warn .line { color: var(--yellow); }
+.cov-kind.bad .line { color: var(--red); }
+.cov-kind b { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.cov-label { font-size: 12px; font-weight: 600; }
+.cov-kind p { grid-column: 2 / -1; margin: 1px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+.cov-facts { display: grid; grid-template-columns: none; gap: 7px; }
+.cov-facts .fact { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.cov-facts dt { color: var(--text); }
+.cov-facts .fact-hint { grid-column: 1 / -1; text-align: left; font-size: 11px; line-height: 1.35; color: var(--muted); font-variant-numeric: normal; }
 
 /* ---- Caos: veredito, composição, ficha da execução, achados, causas e a tabela por rota */
 .verdict { display: grid; grid-template-columns: 12px 1fr; column-gap: 9px; row-gap: 3px; align-items: center; padding: 10px 11px; border-radius: var(--radius); background: var(--fill); }
@@ -455,6 +471,10 @@ code { font-size: 11px; }
 #flowbar { display: flex; align-items: center; gap: 12px; padding: 10px 60px 10px 12px; border-bottom: 1px solid var(--line); background: var(--panel); font-weight: 600; }
 #flowtitle { min-width: 0; overflow-wrap: anywhere; }
 .loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; color: var(--muted); pointer-events: none; }
+#cy.hidden-arranging { visibility: hidden; }
+.arranging { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--panel, var(--fill-strong)); box-shadow: 0 0 0 1px var(--line), 0 4px 14px rgba(0, 0, 0, 0.18); color: var(--muted); font-size: 12px; pointer-events: none; }
+.arranging[hidden] { display: none; }
+.arranging .blob { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 1.1s ease-in-out infinite; }
 .loading .blob { width: 12px; height: 12px; border-radius: 50%; background: var(--green); animation: pulse 1.1s ease-in-out infinite; }
 @keyframes pulse { 50% { transform: scale(0.6); opacity: 0.5; } }
 
@@ -607,14 +627,34 @@ const APP = String.raw`
   const internal = s.callsResolved + s.callsHeuristic + s.callsUnresolved;
   const pct = internal === 0 ? 100 : (100 * s.callsResolved) / internal;
   $('hash').textContent = SYSTEM.contentHash.slice(0, 16);
+  // Cada tipo de ligação tem o desenho da linha no mapa: contínua (provada), tracejada (só pelo nome)
+  // e cortada (sem alvo: não vira linha nenhuma).
+  const LINE = {
+    ok: '<svg viewBox="0 0 24 12"><path d="M2 6h17"/><path d="M15.5 2.8 19.5 6l-4 3.2"/></svg>',
+    warn: '<svg viewBox="0 0 24 12"><path d="M2 6h17" stroke-dasharray="3 2.4"/><path d="M15.5 2.8 19.5 6l-4 3.2"/></svg>',
+    bad: '<svg viewBox="0 0 24 12"><path d="M2 6h9"/><path d="M15 2.5l5 7M20 2.5l-5 7"/></svg>',
+  };
+  const kind = (tone, n, label, text) =>
+    '<li class="cov-kind ' + tone + '"><span class="line" aria-hidden="true">' + LINE[tone] + '</span><b>' + fmt(n) + '</b><span class="cov-label">' + label + '</span><p>' + text + '</p></li>';
+  const fact = (term, n, text) => '<div class="fact"><dt>' + term + '</dt><dd>' + fmt(n) + '</dd><dd class="fact-hint">' + text + '</dd></div>';
   $('coverage').innerHTML =
-    '<div class="sec-head"><h2>Cobertura das chamadas internas</h2></div>' +
-    '<div class="cov"><span class="big">' + pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%</span><span class="cov-sub">das chamadas entre funções do projeto foram provadas</span></div>' +
+    '<div class="sec-head"><h2>Ligações entre funções</h2></div>' +
+    '<div class="cov"><span class="big">' + pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%</span><span class="cov-sub">das chamadas de uma função do projeto para outra têm o destino provado</span></div>' +
     '<div class="bar" id="covbar"><span class="seg ok"></span><span class="seg warn"></span><span class="seg bad"></span></div>' +
-    '<ul class="keys"><li><span class="shape ok"></span><b>' + fmt(s.callsResolved) + '</b> provadas</li><li><span class="shape warn"></span><b>' + fmt(s.callsHeuristic) + '</b> só pelo nome</li><li><span class="shape bad"></span><b>' + fmt(s.callsUnresolved) + '</b> sem alvo</li></ul>' +
-    '<div class="tiles three"><div class="tile"><b>' + fmt(s.files) + '</b><span>arquivos</span></div><div class="tile"><b>' + fmt(s.symbols) + '</b><span>símbolos</span></div><div class="tile"><b>' + fmt(s.packages) + '</b><span>pacotes</span></div></div>' +
-    '<dl class="facts"><dt>Chamadas para pacotes</dt><dd>' + fmt(s.callsExternal) + '</dd><dt>Imports quebrados</dt><dd>' + fmt(s.importsUnresolved) + '</dd>' +
-    '<dt>Regras</dt><dd>' + fmt(s.rules) + '</dd><dt>Colisões entre regras</dt><dd>' + fmt(s.collisions) + '</dd></dl>';
+    '<ul class="cov-kinds">' +
+    kind('ok', s.callsResolved, 'provadas', 'O motor seguiu o import até a função chamada. No mapa: linha contínua.') +
+    kind('warn', s.callsHeuristic, 'só pelo nome', 'Ligadas porque o nome bate; podem apontar para a função errada. No mapa: linha tracejada.') +
+    kind('bad', s.callsUnresolved, 'sem alvo', 'Apontam para algo do projeto que não foi achado (export que não existe, import quebrado). Não aparecem no mapa.') +
+    '</ul>' +
+    '<p class="group-label">O que entrou no mapa</p>' +
+    '<div class="tiles three"><div class="tile"><b>' + fmt(s.files) + '</b><span>arquivos</span></div><div class="tile"><b>' + fmt(s.symbols) + '</b><span>funções, métodos e classes</span></div><div class="tile"><b>' + fmt(s.packages) + '</b><span>pacotes externos</span></div></div>' +
+    '<p class="group-label">Outros números</p>' +
+    '<dl class="facts cov-facts">' +
+    fact('Chamadas para pacotes', s.callsExternal, 'Para bibliotecas de fora (express, pg, axios…). Não entram na porcentagem.') +
+    fact('Imports quebrados', s.importsUnresolved, 'Imports de arquivos do projeto que não foram achados.') +
+    fact('Regras de evento', s.rules, 'Código que reage a um evento (ex.: pedido criado) e lê ou grava campos.') +
+    fact('Colisões entre regras', s.collisions, 'Duas regras do mesmo evento mexendo no mesmo campo.') +
+    '</dl>';
   // largura via CSSOM: atributo style="" em HTML é bloqueado pela CSP do webview
   [s.callsResolved, s.callsHeuristic, s.callsUnresolved].forEach((n, i) => {
     const seg = $('covbar').children[i];
@@ -856,8 +896,8 @@ const APP = String.raw`
     let box = null;
     let clamping = false;
     const measure = () => {
-      const bb = inst.elements().boundingBox();
-      box = bb && isFinite(bb.x1) && (bb.w > 0 || bb.h > 0) ? bb : null;
+      const bb = quickBox(inst);
+      box = bb && (bb.w > 0 || bb.h > 0) ? bb : null;
       const w = inst.width();
       const h = inst.height();
       if (!box || !w || !h) return;
@@ -882,7 +922,7 @@ const APP = String.raw`
     };
     measure();
     inst.on('viewport', clamp);
-    inst.on('dragfree', measure);
+    inst.on('dragfree relayout', measure);
     inst.on('resize', () => { measure(); clamp(); });
   }
 
@@ -946,8 +986,8 @@ const APP = String.raw`
   function overview(inst) {
     const r = inst.renderer();
     if (!r || !r.textureOnViewport || !r.data || !r.data.canvases || !r.data.contexts) return null;
-    const bb = inst.elements().boundingBox();
-    if (!bb || !isFinite(bb.x1) || bb.w <= 0 || bb.h <= 0) return null;
+    const bb = quickBox(inst);
+    if (!bb || bb.w <= 0 || bb.h <= 0) return null;
     const box = { x1: bb.x1 - 40, y1: bb.y1 - 40, w: bb.w + 80, h: bb.h + 80 };
     const s = Math.min(OVERVIEW_MAX / box.w, OVERVIEW_MAX / box.h, 4);
     const el = document.createElement('canvas');
@@ -994,12 +1034,47 @@ const APP = String.raw`
         timer = setTimeout(copy, 120);
       }
     };
+    const onDrag = () => ctx.clearRect(0, 0, el.width, el.height);
     inst.on('render', onRender);
-    inst.on('dragfree', () => ctx.clearRect(0, 0, el.width, el.height));
+    inst.on('dragfree', onDrag);
     return {
       clear() { ctx.clearRect(0, 0, el.width, el.height); },
-      destroy() { clearTimeout(timer); el.width = 0; el.height = 0; },
+      destroy() {
+        clearTimeout(timer);
+        if (!inst.destroyed()) { inst.off('render', onRender); inst.off('dragfree', onDrag); }
+        el.width = 0;
+        el.height = 0;
+      },
     };
+  }
+
+  /**
+   * A caixa do grafo pelas posições dos nós, com uma margem para os rótulos e as caixas dos
+   * arquivos. O boundingBox() do Cytoscape mede o rótulo de cada elemento e a curva de cada
+   * aresta: no mapa grande eram 1–2 s com a tela travada a cada troca de filtro; isto leva ~2 ms.
+   */
+  function quickBox(inst) {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    inst.nodes().forEach((n) => {
+      if (n.isParent()) return;
+      const p = n.position();
+      if (p.x < x1) x1 = p.x;
+      if (p.x > x2) x2 = p.x;
+      if (p.y < y1) y1 = p.y;
+      if (p.y > y2) y2 = p.y;
+    });
+    if (!isFinite(x1)) return null;
+    x1 -= 70; x2 += 70; y1 -= 30; y2 += 34;
+    return { x1, y1, x2, y2, w: x2 - x1, h: y2 - y1 };
+  }
+  /** Enquadra o grafo inteiro pela caixa rápida (o fit do Cytoscape mede todos os rótulos). */
+  function fitQuick(inst, padding) {
+    const b = quickBox(inst);
+    const w = inst.width();
+    const h = inst.height();
+    if (!b || !w || !h) return;
+    const z = Math.min(inst.maxZoom(), Math.max(inst.minZoom(), Math.min((w - 2 * padding) / b.w, (h - 2 * padding) / b.h)));
+    inst.viewport({ zoom: z, pan: { x: (w - z * (b.x1 + b.x2)) / 2, y: (h - z * (b.y1 + b.y2)) / 2 } });
   }
   const overviewOf = (inst) => (inst && !inst.destroyed() ? inst.scratch('_overview') : null);
 
@@ -1010,7 +1085,9 @@ const APP = String.raw`
     // redesenhar milhares de elementos a cada quadro; parado, o desenho é o mesmo.
     const inst = cytoscape({ container, style: makeStyle(), minZoom: 0.05, textureOnViewport: els.length > 2000 });
     inst.add(els);
-    inst.layout(layout).run();
+    // sem layout: os nós já vêm com a posição, e o enquadramento é pela caixa rápida
+    if (layout) inst.layout(layout).run();
+    else fitQuick(inst, 30);
     walls(inst);
     inst.scratch('_overview', overview(inst));
     inst.on('tap', 'node', (ev) => select(ev.target));
@@ -1093,24 +1170,250 @@ const APP = String.raw`
     if (main) main.resize();
     if (pulse.inst !== cy) attachPulses(cy);
   }
-  function build() {
+  /**
+   * O mapa se monta em duas partes, para a tela não travar:
+   * 1. na hora, na thread da tela: os elementos com as posições que já se têm (as guardadas desta
+   *    combinação de filtros, ou as do mapa que estava na tela, com os nós novos perto dos vizinhos);
+   * 2. se faltou posição para muita coisa, o fcose roda num Web Worker (outra thread) e as posições
+   *    dele entram quando ele termina. Enquanto isso, o mapa e o painel respondem.
+   * onReady roda quando as posições finais estão no lugar (na hora, se não houve parte 2).
+   */
+  let buildSeq = 0;
+  function build(onReady) {
+    // mesmo agrupamento: muda no grafo da tela só o que entrou e o que saiu. Recriar o grafo inteiro
+    // reaplicava o estilo e recalculava a curva de ~15 mil elementos (2–3 s de tela travada no mapa
+    // deste repositório); assim o custo é o do que mudou, e o que ficou não sai do lugar.
+    if (main && !main.destroyed() && main.scratch('_group') === state.group) return update(onReady);
+    const prev = main && !main.destroyed() ? { pos: positionsOf(main), group: main.scratch('_group') } : null;
     closeFlow();
     if (main) destroy(main);
     $('details').hidden = true;
+    const token = ++buildSeq;
     const els = elements();
     const sig = signature();
-    const reuse = reusePositions(els, layouts[sig]);
-    if (reuse) {
-      main = create($('cy'), els, { name: 'preset', positions: (n) => reuse.pos[n.id()], fit: true, padding: 30, animate: false });
-      cy = main;
-      if (reuse.changed) saveLayout(sig);
-    } else {
-      main = create($('cy'), els, Object.assign({}, FCOSE, { quality: els.length > 6000 ? 'draft' : 'default' }));
-      cy = main;
-      saveLayout(sig);
-    }
+    // as guardadas desta combinação; senão as da tela, se o agrupamento não mudou (com ele, as caixas
+    // dos arquivos mudam e as posições antigas não servem)
+    let reuse = reusePositions(els, layouts[sig]);
+    let fromScreen = false;
+    // (as da tela só valem se não forem as provisórias de um layout que ainda não chegou)
+    if (!reuse && prev && prev.group === state.group && !arranging) { reuse = reusePositions(els, prev.pos); fromScreen = !!reuse; }
+    const pos = reuse ? reuse.pos : interimPositions(els, prev && prev.group === state.group ? prev.pos : null);
+    for (const e of els) if (e.group === 'nodes' && pos[e.data.id]) e.position = pos[e.data.id];
+    const waitFirst = !reuse && (!prev || $('cy').classList.contains('hidden-arranging'));
+    if (reuse) arranging = false;
+    $('cy').classList.toggle('hidden-arranging', waitFirst);
+    if (!waitFirst) $('loading').hidden = true;
+    main = create($('cy'), els, null);
+    main.scratch('_group', state.group);
+    cy = main;
+    if (reuse && (reuse.changed || fromScreen)) saveLayout(sig);
     attachPulses(cy);
     setActiveTile(null);
+    if (reuse) {
+      $('arranging').hidden = true;
+      if (onReady) onReady();
+      return;
+    }
+    // parte 2
+    if (!waitFirst) $('arranging').hidden = false;
+    arrange(token, els, sig, onReady);
+  }
+  function update(onReady) {
+    closeFlow();
+    clearHighlight();
+    main.elements().unselect();
+    const token = ++buildSeq;
+    const els = elements();
+    const sig = signature();
+    const want = new Set(els.map((e) => e.data.id));
+    const gone = main.elements().filter((e) => !want.has(e.id()));
+    if (gone.nonempty()) main.batch(() => main.remove(gone));
+    const fresh = els.filter((e) => main.getElementById(e.data.id).empty());
+    // os nós novos entram perto dos vizinhos (ou dentro da caixa do arquivo deles)
+    const parents = new Set();
+    for (const e of els) if (e.data.parent) parents.add(e.data.parent);
+    const pos = {};
+    main.nodes().forEach((n) => { if (!n.isParent()) { const p = n.position(); pos[n.id()] = { x: p.x, y: p.y }; } });
+    const missing = [];
+    let leaves = 0;
+    for (const e of els) if (e.group === 'nodes' && !parents.has(e.data.id)) leaves++;
+    for (const e of fresh) if (e.group === 'nodes' && !parents.has(e.data.id)) missing.push(e.data);
+    if (missing.length) {
+      if (Object.keys(pos).length) placeNear(missing, els, pos);
+      else Object.assign(pos, interimPositions(els, null));
+    }
+    for (const e of fresh) if (e.group === 'nodes' && pos[e.data.id]) e.position = pos[e.data.id];
+    if (fresh.length) main.add(fresh);
+    main.emit('relayout');
+    const ov = overviewOf(main);
+    if (ov) ov.destroy();
+    main.scratch('_overview', overview(main));
+    attachPulses(main);
+    setActiveTile(null);
+    // entrou muita coisa de uma vez (mais de 10% dos nós), ou o layout anterior ainda não chegou (as
+    // posições na tela são provisórias): o fcose reorganiza o mapa no worker
+    if (arranging || missing.length > leaves * 0.1) {
+      // com o mapa ainda escondido, o aviso é o "Montando o mapa…" do centro
+      $('arranging').hidden = $('cy').classList.contains('hidden-arranging');
+      arrange(token, els, sig, onReady);
+      return;
+    }
+    $('arranging').hidden = true;
+    saveLayout(sig);
+    if (onReady) onReady();
+  }
+  function positionsOf(inst) {
+    const out = {};
+    inst.nodes().forEach((n) => {
+      if (n.isParent()) return;
+      const p = n.position();
+      out[n.id()] = [p.x, p.y];
+    });
+    return out;
+  }
+  /** Posições provisórias: as da tela onde houver, os nós novos perto dos vizinhos, o resto em grade. */
+  function interimPositions(els, prev) {
+    const pos = {};
+    const parents = new Set();
+    for (const e of els) if (e.data.parent) parents.add(e.data.parent);
+    const missing = [];
+    for (const e of els) {
+      if (e.group !== 'nodes' || parents.has(e.data.id)) continue;
+      const p = prev && prev[e.data.id];
+      if (p) pos[e.data.id] = { x: p[0], y: p[1] };
+      else missing.push(e.data);
+    }
+    if (Object.keys(pos).length) placeNear(missing, els, pos);
+    else {
+      const cols = Math.max(1, Math.ceil(Math.sqrt(missing.length)));
+      missing.forEach((n, i) => { pos[n.id] = { x: (i % cols) * 60, y: Math.floor(i / cols) * 60 }; });
+    }
+    return pos;
+  }
+  let arranging = false;
+  function arrange(token, els, sig, onReady) {
+    arranging = true;
+    // mapa grande: primeiro o rascunho (aparece logo), depois o refino a partir dele. Na página, sem
+    // worker, fica só o rascunho, como antes (o refino travaria a tela por vários segundos).
+    const big = els.length > 6000;
+    const steps = big
+      ? [Object.assign({}, FCOSE, { quality: 'draft' }), Object.assign({}, FCOSE, { quality: 'default', randomize: false })]
+      : [FCOSE];
+    const apply = (pos, last) => {
+      if (token !== buildSeq || !main || main.destroyed()) return;
+      if (pos) {
+        main.layout({ name: 'preset', positions: (n) => { const p = pos[n.id()]; return p ? { x: p[0], y: p[1] } : n.position(); }, fit: false, animate: false }).run();
+      } else {
+        // sem worker (ambiente sem suporte): o fcose roda aqui mesmo
+        main.layout(Object.assign({}, steps[0], { fit: false })).run();
+      }
+      fitQuick(main, 30);
+      main.emit('relayout');
+      const ov = overviewOf(main);
+      if (ov) ov.destroy();
+      main.scratch('_overview', overview(main));
+      $('cy').classList.remove('hidden-arranging');
+      $('loading').hidden = true;
+      $('arranging').hidden = last;
+      if (!last) return;
+      arranging = false;
+      saveLayout(sig);
+      if (onReady) onReady();
+    };
+    layoutInWorker(els, steps, apply).then((ok) => {
+      if (ok || token !== buildSeq) return;
+      // sem worker: dá um quadro para o aviso aparecer antes do layout travar a tela
+      setTimeout(() => apply(null, true), 30);
+    });
+  }
+
+  // ---- o fcose num Web Worker. O worker recebe as mesmas bibliotecas da página (o texto das tags
+  // inline no HTML da CLI; no webview, baixadas da extensão) e um Cytoscape sem tela. Rótulo não se
+  // mede lá: cada nó vai com o tamanho do desenho mais o do rótulo, medidos aqui num canvas.
+  // Cada passo (d.steps) devolve as posições assim que termina: no mapa grande, primeiro o rascunho
+  // (draft, rápido) e depois o refino a partir dele (default, sem sortear de novo).
+  const WORKER_MAIN =
+    'self.onmessage = function (ev) {' +
+    '  var d = ev.data;' +
+    '  try {' +
+    '    var g = cytoscape({ headless: true, styleEnabled: true, style: [{ selector: "node", style: { width: "data(w)", height: "data(h)" } }, { selector: ":parent", style: { padding: 10 } }] });' +
+    '    g.add(d.els);' +
+    '    for (var i = 0; i < d.steps.length; i++) {' +
+    '      g.layout(d.steps[i]).run();' +
+    '      var out = {};' +
+    '      g.nodes().forEach(function (n) { if (n.isParent()) return; var p = n.position(); out[n.id()] = [Math.round(p.x), Math.round(p.y)]; });' +
+    '      self.postMessage({ id: d.id, pos: out, last: i === d.steps.length - 1 });' +
+    '    }' +
+    '    g.destroy();' +
+    '  } catch (e) { self.postMessage({ id: d.id, error: String((e && e.message) || e) }); }' +
+    '};';
+  const worker = { url: null, inst: null, busy: false, seq: 0, broken: false };
+  function workerUrl() {
+    if (!worker.url) {
+      worker.url = (async () => {
+        if (typeof Worker === 'undefined' || typeof Blob === 'undefined') return null;
+        // webview: as tags com data-lib (src da extensão); HTML da CLI: as inline antes da dos dados
+        const all = [...document.querySelectorAll('script')];
+        let libs = all.filter((s) => s.hasAttribute('data-lib'));
+        if (!libs.length) libs = all.slice(0, Math.max(0, all.findIndex((s) => s.textContent.startsWith('const SYSTEM ='))));
+        if (!libs.length) return null;
+        const parts = await Promise.all(libs.map((s) => (s.src ? fetch(s.src).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }) : s.textContent)));
+        const chunks = [];
+        for (const p of parts) chunks.push(p, '\n;\n');
+        chunks.push(WORKER_MAIN);
+        return URL.createObjectURL(new Blob(chunks, { type: 'text/javascript' }));
+      })().catch(() => null);
+    }
+    return worker.url;
+  }
+  const NODE_SIZE = { route: [26, 18, 11], 'io-db': [20, 20, 10], 'io-api': [22, 20, 10], class: [18, 14, 10], selector: [8, 8, 10], package: [22, 22, 10], file: [16, 12, 10] };
+  let measureCtx = null;
+  function workerEls(els) {
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    const font = getComputedStyle(document.body).fontFamily || 'sans-serif';
+    const out = [];
+    for (const e of els) {
+      if (e.group === 'edges') { out.push({ group: 'edges', data: { id: e.data.id, source: e.data.source, target: e.data.target } }); continue; }
+      const sz = NODE_SIZE[e.data.kind] || [14, 14, 10];
+      measureCtx.font = (e.data.kind === 'route' ? '700 ' : '') + sz[2] + 'px ' + font;
+      const lw = Math.min(140, measureCtx.measureText(e.data.label || '').width);
+      const data = { id: e.data.id, w: Math.max(sz[0], lw), h: sz[1] + 3 + sz[2] * 1.3 };
+      if (e.data.parent) data.parent = e.data.parent;
+      out.push({ group: 'nodes', data });
+    }
+    return out;
+  }
+  /** Roda os passos no worker; onStep(pos, last) a cada passo. Devolve false se não houve worker. */
+  async function layoutInWorker(els, steps, onStep) {
+    if (worker.broken) return false;
+    const url = await workerUrl();
+    if (!url) { worker.broken = true; return false; }
+    // um pedido por vez: se o anterior ainda roda, ele é descartado (o resultado não serviria mais)
+    if (worker.inst && worker.busy) { worker.inst.terminate(); worker.inst = null; }
+    if (!worker.inst) {
+      try { worker.inst = new Worker(url); } catch { worker.broken = true; return false; }
+    }
+    const w = worker.inst;
+    const id = ++worker.seq;
+    worker.busy = true;
+    let lastPos = null;
+    return new Promise((resolve) => {
+      const finish = (ok) => { w.removeEventListener('message', onMsg); w.removeEventListener('error', onErr); if (worker.inst === w) worker.busy = false; resolve(ok); };
+      // falhou no meio: o último passo que chegou vale como final
+      const fail = () => { if (lastPos) { onStep(lastPos, true); finish(true); } else finish(false); };
+      const onMsg = (ev) => {
+        const d = ev.data;
+        if (!d || d.id !== id) return;
+        if (d.error) { fail(); return; }
+        lastPos = d.pos;
+        onStep(d.pos, d.last);
+        if (d.last) finish(true);
+      };
+      const onErr = (ev) => { if (ev.preventDefault) ev.preventDefault(); worker.broken = true; worker.inst = null; w.terminate(); fail(); };
+      w.addEventListener('message', onMsg);
+      w.addEventListener('error', onErr);
+      w.postMessage({ id, els: workerEls(els), steps: steps.map((s) => Object.assign({}, s, { fit: false, nodeDimensionsIncludeLabels: false })) });
+    });
   }
 
   /**
@@ -1169,7 +1472,7 @@ const APP = String.raw`
   }
   function filterByTile(key) {
     if (tileFilter.active === key) { clearHighlight(); return; }
-    if (!state.filters.routes) { state.filters.routes = true; const box = document.querySelector('[data-filter=routes]'); if (box) box.checked = true; build(); }
+    if (!state.filters.routes) { state.filters.routes = true; const box = document.querySelector('[data-filter=routes]'); if (box) box.checked = true; build(() => filterByTile(key)); return; }
     closeFlow();
     main.elements().unselect();
     const sel = tileFilter.nodes[key];
@@ -1325,7 +1628,7 @@ const APP = String.raw`
         if (!focus(w.file)) {
           state.group = true; $('group').checked = true;
           if (isTest(w.file)) { state.filters.tests = true; document.querySelector('[data-filter=tests]').checked = true; }
-          build(); focus(w.file);
+          build(() => focus(w.file));
         }
       }, w.callsUnresolved ? 'bad' : 'warn');
       b.title = w.file;
@@ -1650,9 +1953,11 @@ const APP = String.raw`
 
   function start() {
     applyTheme();
-    build();
-    $('loading').hidden = true;
-
+    build(() => { $('loading').hidden = true; openFromHash(); });
+    // sem posições guardadas, o "Montando o mapa…" fica até o worker devolver o layout
+    if (!$('cy').classList.contains('hidden-arranging')) $('loading').hidden = true;
+  }
+  function openFromHash() {
     // link direto: #foco=<id> seleciona um nó; #fluxo=<id> abre a cadeia a partir dele; #rota=POST /x abre a rota; #mudancas filtra o diff
     const hash = decodeURIComponent(location.hash.slice(1));
     const [mode, target] = [hash.slice(0, hash.indexOf('=')), hash.slice(hash.indexOf('=') + 1)];
