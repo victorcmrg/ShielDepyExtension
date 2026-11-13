@@ -125,12 +125,14 @@ export class ShieldepyViewProvider implements vscode.WebviewViewProvider {
     </div>
     <div class="actions" role="group">
       <button class="action" id="actMap" type="button">
-        <span class="action-icon codicon-like" aria-hidden="true">◇</span>
+        <span class="action-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5.6 5.4 10.4 4M5.4 7l4.9 3.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="3.8" cy="5.9" r="2.1" fill="currentColor"/><circle cx="12.1" cy="3.6" r="1.8" fill="currentColor"/><circle cx="11.6" cy="12" r="2.3" fill="currentColor"/></svg></span>
         <span class="action-text"><b>${escapeHtml(t('actionMap'))}</b><small>${escapeHtml(t('actionMapSub'))}</small></span>
+        <span class="chevron" aria-hidden="true"></span>
       </button>
       <button class="action primary" id="actChaos" type="button">
-        <span class="action-icon" aria-hidden="true">⚡</span>
+        <span class="action-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M9.3 1.3 3.5 9.1h4.1l-1 5.6 5.9-7.8H8.4l.9-5.6Z" fill="currentColor"/></svg><span class="morph-shape"></span></span>
         <span class="action-text"><b id="actChaosLabel">${escapeHtml(t('actionChaos'))}</b><small>${escapeHtml(t('actionChaosSub'))}</small></span>
+        <span class="chevron" aria-hidden="true"></span>
       </button>
     </div>
     <div class="analyzing" id="analyzingRow"><span class="morph-shape"></span><span id="analyzingText"></span></div>

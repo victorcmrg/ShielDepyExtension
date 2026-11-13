@@ -44,7 +44,7 @@ export interface Completion {
   usage?: TokenUsage;
 }
 
-export type ProviderName = 'anthropic' | 'gemini';
+export type ProviderName = 'anthropic' | 'gemini' | 'ollama';
 export type Engine = ProviderName | 'offline';
 
 export interface LLMProvider {
