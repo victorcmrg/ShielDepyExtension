@@ -13,22 +13,10 @@ export interface EntrarVideo {
   poster: string;
 }
 
-/** As versões gravadas (largura e altura da tela da gravação). */
-export const ENTRAR_VARIANTS = [
-  { name: 'entrar-1080', w: 1920, h: 1080 },
-  { name: 'entrar-872', w: 1920, h: 872 },
-] as const;
-/** Entre as duas proporções (1,78 e 2,20), a média geométrica: abaixo dela, a de 1080. O portal.css usa o mesmo corte. */
-export const ENTRAR_SPLIT = 1.98;
+import { variantFor } from './entrarVariants';
 
 const AV1 = 'video/webm; codecs="av01.0.09M.10, opus"';
 const H264 = 'video/mp4; codecs="avc1.64002A, mp4a.40.2"';
-
-/** A versão para uma janela de proporção `ar` (null fora da faixa em que o vídeo serve). */
-export function variantFor(ar: number): (typeof ENTRAR_VARIANTS)[number] | null {
-  if (ar < 1.3 || ar > 2.6) return null;
-  return ar < ENTRAR_SPLIT ? ENTRAR_VARIANTS[0] : ENTRAR_VARIANTS[1];
-}
 
 /** O vídeo que esta tela e este navegador vão tocar, ou null para a encenação ao vivo. */
 export function pickEntrarVideo(): EntrarVideo | null {

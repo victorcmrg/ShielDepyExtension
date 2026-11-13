@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENTRAR_SPLIT, ENTRAR_VARIANTS, variantFor } from '../src/shared/entrarVideo';
+import { ENTRAR_SPLIT, ENTRAR_VARIANTS, variantFor } from '../src/shared/entrarVariants';
 
 describe('vídeo do "Entrar": a versão pela proporção da janela (decisão 0043)', () => {
   it('janela do navegador numa tela 1080p (1920×871) toca a versão 1920×872', () => {
