@@ -14,3 +14,12 @@ export function variantFor(ar: number): (typeof ENTRAR_VARIANTS)[number] | null 
   if (ar < 1.3 || ar > 2.6) return null;
   return ar < ENTRAR_SPLIT ? ENTRAR_VARIANTS[0] : ENTRAR_VARIANTS[1];
 }
+
+/**
+ * A conta do object-fit: cover: o quadro w×h numa janela vw×vh fica reduzido (ou ampliado) por `s` e
+ * deslocado por (ox, oy). A tela real usa a mesma conta para cair exatamente em cima do último quadro.
+ */
+export function coverStage(vw: number, vh: number, w: number, h: number): { s: number; ox: number; oy: number } {
+  const s = Math.max(vw / w, vh / h);
+  return { s, ox: (vw - w * s) / 2, oy: (vh - h * s) / 2 };
+}

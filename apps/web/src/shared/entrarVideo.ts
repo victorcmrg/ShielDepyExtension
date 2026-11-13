@@ -11,9 +11,15 @@ export interface EntrarVideo {
   src: string;
   type: string;
   poster: string;
+  /** a tela da gravação: a tela real é montada nesse tamanho e reduzida como o vídeo (sem salto na troca) */
+  w: number;
+  h: number;
 }
 
+
 import { variantFor } from './entrarVariants';
+
+export { coverStage } from './entrarVariants';
 
 const AV1 = 'video/webm; codecs="av01.0.09M.10, opus"';
 const H264 = 'video/mp4; codecs="avc1.64002A, mp4a.40.2"';
@@ -29,8 +35,8 @@ export function pickEntrarVideo(): EntrarVideo | null {
   if (!v) return null;
   const el = document.createElement('video');
   const poster = `/video/${v.name}-poster.webp`;
-  if (el.canPlayType(AV1) === 'probably') return { src: `/video/${v.name}-av1.webm`, type: AV1, poster };
-  if (el.canPlayType(H264)) return { src: `/video/${v.name}-h264.mp4`, type: H264, poster };
+  if (el.canPlayType(AV1) === 'probably') return { src: `/video/${v.name}-av1.webm`, type: AV1, poster, w: v.w, h: v.h };
+  if (el.canPlayType(H264)) return { src: `/video/${v.name}-h264.mp4`, type: H264, poster, w: v.w, h: v.h };
   return null;
 }
 

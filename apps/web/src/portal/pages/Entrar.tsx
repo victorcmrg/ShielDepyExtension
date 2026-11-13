@@ -6,15 +6,16 @@
 // botão) até 100%. A tela final é mockada e aponta para o /login de verdade, que não mudou.
 //
 // Esta página só monta a cena; quem anima é entrar/engine.ts, num requestAnimationFrame que escreve
-// transform e opacity direto no DOM. Clique ou tecla pula para o fim; com prefers-reduced-motion, o
-// 404 vai direto para a tela pronta.
+// transform e opacity direto no DOM. Roda sempre até o fim (não há clique nem tecla que pule); com
+// prefers-reduced-motion, o 404 vai direto para a tela pronta.
 //
 // Em tela deitada (16:9 e parecidas), em vez da encenação ao vivo toca o vídeo pré-renderizado dela
 // (decisão 0043): o mesmo resultado sem custo de processamento, com o som já no vídeo. Sem controles,
-// sem borda: o poster é o primeiro quadro, e no fim o vídeo some por cima da tela de verdade.
+// sem borda: o poster é o primeiro quadro, e no fim o vídeo some por cima da tela de verdade, que é
+// montada no tamanho da gravação e reduzida pela mesma conta do vídeo (cai exatamente no último quadro).
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import '../../styles/entrar.css';
-import { pickEntrarVideo, type EntrarVideo } from '../../shared/entrarVideo';
+import { coverStage, pickEntrarVideo, type EntrarVideo } from '../../shared/entrarVideo';
 import { runEntrar } from './entrar/engine';
 import { TITLE, TITLE_WRONG } from './entrar/script';
 
@@ -34,6 +35,16 @@ export default function Entrar() {
   const [video, setVideo] = useState<EntrarVideo | null>(pickEntrarVideo);
   const [videoGone, setVideoGone] = useState(false);
   const vidRef = useRef<HTMLVideoElement>(null);
+  // no vídeo, a página inteira (o vídeo e a tela de verdade) vive num palco do tamanho da gravação,
+  // reduzido e centrado como o object-fit: cover; segue a janela se ela mudar de tamanho
+  const [view, setView] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  useEffect(() => {
+    if (!video) return;
+    const onResize = () => setView({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [video]);
+  const stage = video ? coverStage(view.w, view.h, video.w, video.h) : null;
   // o navegador bloqueou o som (reload, link direto): o vídeo toca mudo e o primeiro toque liga o som
   const mutedByBlock = useRef(false);
   useEffect(() => {
@@ -59,39 +70,39 @@ export default function Entrar() {
     return runEntrar(rootRef.current!, () => setDone(true));
   }, [done, reduced, video]);
 
-  // clique ou tecla: pula para o fim. No vídeo com o som bloqueado, o primeiro toque só liga o som
-  // (como na encenação ao vivo, decisão 0041): ao soltar (o toque no celular só libera o áudio aí),
-  // ou na tecla; Esc sempre pula
+  // nada pula a encenação: ela roda sempre até o fim. No vídeo com o som bloqueado, o primeiro toque
+  // ou tecla só liga o som (decisão 0041): ao soltar (o toque no celular só libera o áudio aí) ou na
+  // tecla. Na encenação ao vivo, quem liga o som é o próprio motor
   useEffect(() => {
-    if (done) return;
+    if (done || !video) return;
     const unmute = () => {
+      if (!mutedByBlock.current) return;
       mutedByBlock.current = false;
       const v = vidRef.current;
       if (v) v.muted = false;
     };
-    const onDown = (e: PointerEvent) => {
-      if (mutedByBlock.current) return;
-      setDone(true);
-    };
-    const onUp = () => {
-      if (mutedByBlock.current) unmute();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (mutedByBlock.current && e.key !== 'Escape') unmute();
-      else setDone(true);
-    };
-    window.addEventListener('pointerdown', onDown);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerup', unmute);
+    window.addEventListener('keydown', unmute);
     return () => {
-      window.removeEventListener('pointerdown', onDown);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerup', unmute);
+      window.removeEventListener('keydown', unmute);
     };
-  }, [done]);
+  }, [done, video]);
 
   return (
-    <div className={'ent' + (done ? ' is-done' : '')} ref={rootRef}>
+    <div
+      className={'ent' + (done ? ' is-done' : '') + (stage ? ' is-stage' : '')}
+      ref={rootRef}
+      style={
+        stage && video
+          ? ({
+              '--stage-w': `${video.w}px`,
+              '--stage-h': `${video.h}px`,
+              transform: `translate(${stage.ox.toFixed(2)}px, ${stage.oy.toFixed(2)}px) scale(${stage.s.toFixed(5)})`,
+            } as CSSProperties)
+          : undefined
+      }
+    >
       <div className="ent-bg2" aria-hidden="true" />
       {!done && !video && <Scene />}
       <FinalLogin ghost={!done} />

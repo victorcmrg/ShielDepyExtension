@@ -684,3 +684,19 @@
 .ent-video::-webkit-media-controls-panel,
 .ent-video::-webkit-media-controls-start-playback-button,
 .ent-video::-webkit-media-controls-overlay-play-button { display: none !important; -webkit-appearance: none; }
+
+/* o palco do vídeo (decisão 0043): a página inteira no tamanho da gravação (1920×1080 ou 1920×872),
+   reduzida e centrada pela mesma conta do object-fit: cover (Entrar.tsx). O vídeo, preso a este palco,
+   fica exatamente como com cover, e a tela de verdade que aparece no fim cai em cima do último quadro,
+   com a caixa do mesmo tamanho e no mesmo lugar, em qualquer janela */
+.ent.is-stage {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: var(--stage-w);
+  height: var(--stage-h);
+  min-height: 0;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+.ent.is-stage .auth-page { min-height: var(--stage-h); }
