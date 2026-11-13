@@ -204,3 +204,31 @@ describe('painel do admin', () => {
     expect((await call('POST', '/api/auth/login', { body: { email: 'troca@acme.test', password: 'Nova-Senha-22' } })).status).toBe(403);
   });
 });
+
+describe('login de teste (só em desenvolvimento)', () => {
+  it('desligado: 404; ligado: entra sem e-mail nem senha como admin, com empresa própria, sem duplicar', async () => {
+    delete process.env.SHIELDEPY_TEST_LOGIN;
+    expect((await call('POST', '/api/auth/test-login', { body: {} })).status).toBe(404);
+    process.env.SHIELDEPY_TEST_LOGIN = '1';
+    let cookie = '';
+    try {
+      const r = await call('POST', '/api/auth/test-login', { body: {} });
+      expect(r.status, JSON.stringify(r.data)).toBe(200);
+      expect(r.data).toMatchObject({ email: 'teste@shieldepy.test', isAdmin: true, home: '/admin' });
+      cookie = r.setCookie!.split(';')[0]!;
+      expect((await call('GET', '/api/auth/me', { cookie })).data).toMatchObject({ isAdmin: true, companyName: 'ShielDepy (teste)', role: 'owner' });
+      expect((await call('GET', '/api/admin/overview', { cookie })).status).toBe(200);
+      expect((await call('POST', '/api/auth/test-login', { body: {} })).status).toBe(200);
+      const list = (await call('GET', '/api/admin/companies', { cookie })).data as { name: string }[];
+      expect(list.filter((c) => c.name === 'ShielDepy (teste)')).toHaveLength(1);
+      // em produção, nem com a chave ligada
+      process.env.NODE_ENV = 'production';
+      expect((await call('POST', '/api/auth/test-login', { body: {} })).status).toBe(404);
+    } finally {
+      delete process.env.SHIELDEPY_TEST_LOGIN;
+      process.env.NODE_ENV = 'test';
+    }
+    // desligado de novo: a sessão de teste continua, mas deixa de ser admin
+    expect((await call('GET', '/api/admin/overview', { cookie })).status).toBe(403);
+  });
+});

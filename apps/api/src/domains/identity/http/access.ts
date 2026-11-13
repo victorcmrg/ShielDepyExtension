@@ -4,7 +4,7 @@ import type { Access } from '../../../shared/http/access';
 import { HttpError } from '../../../shared/http/http';
 import type { CompanyService } from '../../companies/application/companies';
 import type { IdentityService } from '../application/identity';
-import { isPlatformAdmin } from '../domain/user';
+import { isPlatformAdmin, testLoginEnabled } from '../domain/user';
 import { SESSION_COOKIE, parseCookies } from './cookies';
 
 export function accessGuards(identity: IdentityService, companies: CompanyService): Access {
@@ -18,7 +18,7 @@ export function accessGuards(identity: IdentityService, companies: CompanyServic
       if (!header || !header.startsWith('Bearer ')) return null;
       return identity.deviceUser(header.slice('Bearer '.length).trim());
     },
-    isAdmin: (user) => (user ? isPlatformAdmin(user.email, process.env.ADMIN_EMAIL) : false),
+    isAdmin: (user) => (user ? isPlatformAdmin(user.email, process.env.ADMIN_EMAIL, testLoginEnabled(process.env)) : false),
     async user(req) {
       const u = await access.session(req);
       if (!u) throw new HttpError(401, 'não autenticado');

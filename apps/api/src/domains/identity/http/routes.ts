@@ -6,7 +6,7 @@ import { RateLimiter } from '../../../shared/http/rateLimiter';
 import type { CompanyService } from '../../companies/application/companies';
 import type { IdentityService } from '../application/identity';
 import { parseProvider, type OAuthProvider } from '../domain/oauth';
-import { normalizeEmail, type AuthUser } from '../domain/user';
+import { TEST_LOGIN_COMPANY, TEST_LOGIN_EMAIL, normalizeEmail, testLoginEnabled, type AuthUser } from '../domain/user';
 import type { Access } from '../../../shared/http/access';
 import { SESSION_COOKIE, buildSetCookie, parseCookies } from './cookies';
 
@@ -52,6 +52,24 @@ export function identityRoutes(identity: IdentityService, companies: CompanyServ
     if (!result.ok) throw new HttpError(result.status, result.error);
     await openSession(res, result.user.id);
     sendJson(res, 200, { email: result.user.email, isAdmin: access.isAdmin(result.user), home: HOME });
+  }
+
+  /**
+   * Login de teste (só em desenvolvimento, `testLoginEnabled`): entra sem e-mail nem senha na conta de
+   * teste, admin da plataforma enquanto a chave está ligada, e vai para o painel de empresas. Na
+   * primeira vez cria a empresa dela. Desligado, responde como rota inexistente.
+   */
+  async function testLogin(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!testLoginEnabled(process.env)) throw new HttpError(404, 'rota não encontrada');
+    if (!(await companies.getAssignment(TEST_LOGIN_EMAIL))) {
+      const company = await companies.create(TEST_LOGIN_COMPANY);
+      await companies.setPermission(company.id, 'aiEnabled', true);
+      await companies.assign(TEST_LOGIN_EMAIL, company.id, null, 'owner');
+    }
+    const result = await identity.loginTestAccount();
+    if (!result.ok) throw new HttpError(result.status, result.error);
+    await openSession(res, result.user.id);
+    sendJson(res, 200, { email: result.user.email, isAdmin: access.isAdmin(result.user), home: '/admin' });
   }
 
   async function logout(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -197,6 +215,7 @@ export function identityRoutes(identity: IdentityService, companies: CompanyServ
   const id = (params: string[]) => Number(params[0]);
   return [
     ['POST', /^\/api\/auth\/login$/, (req, res) => login(req, res)],
+    ['POST', /^\/api\/auth\/test-login$/, (req, res) => testLogin(req, res)],
     ['POST', /^\/api\/auth\/logout$/, (req, res) => logout(req, res)],
     ['GET', /^\/api\/auth\/me$/, (req, res) => me(req, res)],
     ['GET', /^\/api\/auth\/oauth\/([^/]+)\/start$/, oauth('start')],

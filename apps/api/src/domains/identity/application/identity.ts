@@ -5,7 +5,7 @@ import { randomToken, sha256Hex } from '../../../shared/crypto/tokens';
 import { DEFAULT_DEVICE_LABEL, DEVICE_TOKEN_PREFIX, DEVICE_TOKEN_TTL_MS, SESSION_TTL_MS, deviceLabel, isUsable, type DeviceInfo } from '../domain/credentials';
 import { CEREMONY_TTL_MS, EXCHANGE_CODE_TTL_MS, canConfirm, canExchange, currentStatus, type CeremonyStatus } from '../domain/deviceAuth';
 import { OAUTH_STATE_TTL_MS, canConsumeState, deviceStateFrom, redirectContextFor, type OAuthProvider } from '../domain/oauth';
-import { MIN_PASSWORD, normalizeEmail, type AuthUser, type User, type UserListing } from '../domain/user';
+import { MIN_PASSWORD, TEST_LOGIN_EMAIL, normalizeEmail, type AuthUser, type User, type UserListing } from '../domain/user';
 import type { DeviceAuthRepository, DeviceTokenRepository, Invitations, OAuthClient, OAuthStateRepository, SessionRepository, UserRepository } from './ports';
 
 export type LoginResult = { ok: true; user: User } | { ok: false; status: 401 | 403; error: string };
@@ -43,6 +43,21 @@ export class IdentityService {
     } else {
       if (!user.passwordHash) return { ok: false, status: 401, error: 'esta conta usa login social — entre com Google ou GitHub' };
       if (!verifyPassword(password, user.passwordHash)) return { ok: false, status: 401, error: 'credenciais inválidas' };
+    }
+    await this.repos.users.touchLastLogin(user.id, this.now());
+    return { ok: true, user };
+  }
+
+  /**
+   * Login de teste, sem senha, na conta de teste (quem chama confere se está ligado e garante o
+   * convite dela). Primeiro login cria a conta pelo convite, como no login por senha.
+   */
+  async loginTestAccount(): Promise<LoginResult> {
+    let user = await this.repos.users.byEmail(TEST_LOGIN_EMAIL);
+    if (!user) {
+      const assignment = await this.invitations.getAssignment(TEST_LOGIN_EMAIL);
+      if (!assignment) return { ok: false, status: 403, error: 'a conta de teste não tem empresa' };
+      user = await this.repos.users.create(TEST_LOGIN_EMAIL, assignment.companyId, null, this.now());
     }
     await this.repos.users.touchLastLogin(user.id, this.now());
     return { ok: true, user };

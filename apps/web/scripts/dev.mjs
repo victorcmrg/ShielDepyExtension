@@ -33,7 +33,9 @@ function run(name, color, args, env, dir = cwd) {
   procs.push(child);
 }
 
-run('api', 32, [bin('tsx/cli'), 'watch', '--env-file-if-exists=../../.env', 'src/server.ts'], { PORT: API_PORT }, apiCwd);
+// SHIELDEPY_TEST_LOGIN: o "Entrar" encenado entra sem e-mail e senha numa conta de teste admin (0047);
+// só aqui, no ambiente de desenvolvimento (o `npm run web` e produção não ligam)
+run('api', 32, [bin('tsx/cli'), 'watch', '--env-file-if-exists=../../.env', 'src/server.ts'], { PORT: API_PORT, SHIELDEPY_TEST_LOGIN: '1' }, apiCwd);
 run('web', 36, [viteBin, '--port', WEB_PORT, '--strictPort'], { API_PORT });
 
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => procs.forEach(stop));

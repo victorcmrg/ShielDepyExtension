@@ -5,7 +5,7 @@ import { IdentityService, type IdentityRepositories } from '../src/domains/ident
 import { deviceLabel, isUsable } from '../src/domains/identity/domain/credentials';
 import { canConfirm, canExchange, currentStatus, type CeremonyStatus } from '../src/domains/identity/domain/deviceAuth';
 import { canConsumeState, deviceStateFrom, pickVerifiedEmail } from '../src/domains/identity/domain/oauth';
-import { isPlatformAdmin, type User } from '../src/domains/identity/domain/user';
+import { TEST_LOGIN_EMAIL, isPlatformAdmin, testLoginEnabled, type User } from '../src/domains/identity/domain/user';
 
 describe('regras de identidade', () => {
   it('credencial vale se não foi revogada e não venceu', () => {
@@ -40,6 +40,17 @@ describe('regras de identidade', () => {
   it('admin da plataforma é o ADMIN_EMAIL, sem diferença de maiúsculas; sem ADMIN_EMAIL, ninguém', () => {
     expect(isPlatformAdmin('Dono@Acme.test', 'dono@acme.test')).toBe(true);
     expect(isPlatformAdmin('dono@acme.test', undefined)).toBe(false);
+  });
+
+  it('login de teste: só com SHIELDEPY_TEST_LOGIN=1 e fora de produção; a conta de teste é admin só com ele ligado', () => {
+    expect(testLoginEnabled({ SHIELDEPY_TEST_LOGIN: '1' })).toBe(true);
+    expect(testLoginEnabled({ SHIELDEPY_TEST_LOGIN: '1', NODE_ENV: 'production' })).toBe(false);
+    expect(testLoginEnabled({ SHIELDEPY_TEST_LOGIN: 'true' })).toBe(false);
+    expect(testLoginEnabled({})).toBe(false);
+    expect(isPlatformAdmin(TEST_LOGIN_EMAIL, undefined, true)).toBe(true);
+    expect(isPlatformAdmin(TEST_LOGIN_EMAIL.toUpperCase(), undefined, true)).toBe(true);
+    expect(isPlatformAdmin(TEST_LOGIN_EMAIL, undefined, false)).toBe(false);
+    expect(isPlatformAdmin('dono@acme.test', undefined, true)).toBe(false);
   });
 });
 
@@ -92,6 +103,15 @@ describe('IdentityService (repositórios em memória)', () => {
     expect(await service.loginWithPassword('ana@acme.test', 'errada')).toMatchObject({ ok: false, status: 401, error: 'credenciais inválidas' });
     const ok = await service.loginWithPassword(' Ana@Acme.test ', 'Senha-Inicial-1');
     expect(ok).toMatchObject({ ok: true, user: { email: 'ana@acme.test', companyId: 1 } });
+    expect(users).toHaveLength(1);
+  });
+
+  it('login de teste: entra sem senha na conta de teste convidada; sem convite, recusa; não duplica a conta', async () => {
+    const { service, invitations, users } = memory();
+    expect(await service.loginTestAccount()).toMatchObject({ ok: false, status: 403 });
+    invitations.set(TEST_LOGIN_EMAIL, { companyId: 3, initialPasswordHash: null });
+    expect(await service.loginTestAccount()).toMatchObject({ ok: true, user: { email: TEST_LOGIN_EMAIL, companyId: 3 } });
+    expect(await service.loginTestAccount()).toMatchObject({ ok: true, user: { id: 1 } });
     expect(users).toHaveLength(1);
   });
 

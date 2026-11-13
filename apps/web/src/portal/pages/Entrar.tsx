@@ -3,7 +3,8 @@
 // chão; a câmera aproxima, o ShielDepy detecta o erro num balão verde que se divide como líquido, e
 // quatro cursores reconstroem a tela de login (desenham a caixa, empurram e jogam fora os balões,
 // escolhem a cor numa paleta, arrumam o logo, apagam o título errado, desenham os campos, pintam o
-// botão) até 100%. A tela final é mockada e aponta para o /login de verdade, que não mudou.
+// botão) até 100%. A tela final entra de verdade (0047): com e-mail e senha pelo login do portal, e
+// com os campos vazios pelo login de teste (só no ambiente de desenvolvimento); o admin cai no /admin.
 //
 // Esta página só monta a cena; quem anima é entrar/engine.ts, num requestAnimationFrame que escreve
 // transform e opacity direto no DOM. Roda sempre até o fim (não há clique nem tecla que pule); com
@@ -14,7 +15,11 @@
 // sem borda: o poster é o primeiro quadro, e no fim o vídeo some por cima da tela de verdade, que é
 // montada no tamanho da gravação e reduzida pela mesma conta do vídeo (cai exatamente no último quadro).
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../../styles/entrar.css';
+import { postJson } from '../api';
+import { useAuth } from '../auth';
+import { goTo } from '../navigation';
 import { coverStage, pickEntrarVideo, type EntrarVideo } from '../../shared/entrarVideo';
 import { runEntrar } from './entrar/engine';
 import { TITLE, TITLE_WRONG } from './entrar/script';
@@ -479,11 +484,43 @@ function Scene() {
   );
 }
 
+/** O login de teste da API (só em desenvolvimento); desligado, ela responde 404. */
+async function testLogin(): Promise<{ isAdmin?: boolean; home?: string }> {
+  const res = await fetch('/api/auth/test-login', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' });
+  if (res.status === 404) throw new Error('O login sem e-mail e senha só vale no ambiente de teste (npm run web:dev). Preencha e-mail e senha para entrar.');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'não foi possível entrar.');
+  return data;
+}
+
+/**
+ * A tela que a encenação monta. Ela entra de verdade (decisão 0047): com e-mail e senha, pelo login do
+ * portal; com os dois vazios, pelo login de teste. Depois do login, o admin vai para o painel de
+ * empresas (/admin) e os outros para os projetos.
+ */
 function FinalLogin({ ghost }: { ghost: boolean }) {
-  const [note, setNote] = useState(false);
-  function submit(e: FormEvent) {
+  const navigate = useNavigate();
+  const { refresh } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    setNote(true);
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const filled = email.trim() !== '' || password !== '';
+      const data = filled
+        ? await postJson<{ isAdmin?: boolean; home?: string }>('/api/auth/login', { email: email.trim(), password }, 'não foi possível entrar.')
+        : await testLogin();
+      await refresh().catch(() => null);
+      goTo(navigate, data.isAdmin ? '/admin' : data.home || '/projects');
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
   }
   return (
     <div className={'ent-final' + (ghost ? ' is-ghost' : '')} aria-hidden={ghost}>
@@ -505,21 +542,39 @@ function FinalLogin({ ghost }: { ghost: boolean }) {
                 <label htmlFor="ent-email" data-m="emailLabel">
                   E-mail
                 </label>
-                <input type="email" id="ent-email" placeholder="voce@empresa.com" autoComplete="off" data-m="email" tabIndex={ghost ? -1 : 0} />
+                <input
+                  type="email"
+                  id="ent-email"
+                  placeholder="voce@empresa.com"
+                  autoComplete="email"
+                  data-m="email"
+                  tabIndex={ghost ? -1 : 0}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
               <div className="field">
                 <label htmlFor="ent-password" data-m="passLabel">
                   Senha
                 </label>
-                <input type="password" id="ent-password" placeholder="••••••••" autoComplete="off" data-m="pass" tabIndex={ghost ? -1 : 0} />
+                <input
+                  type="password"
+                  id="ent-password"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  data-m="pass"
+                  tabIndex={ghost ? -1 : 0}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
-              <button type="submit" className="primary" data-m="button" tabIndex={ghost ? -1 : 0}>
-                Entrar
+              <button type="submit" className="primary" data-m="button" tabIndex={ghost ? -1 : 0} disabled={busy}>
+                {busy ? 'Entrando…' : 'Entrar'}
               </button>
             </form>
-            {note && (
-              <p className="ent-note" role="status">
-                Esta tela é uma encenação: nada foi enviado. Para entrar de verdade, use o <a href="/login">login do portal</a>.
+            {error && (
+              <p className="ent-note" role="alert">
+                {error}
               </p>
             )}
           </div>

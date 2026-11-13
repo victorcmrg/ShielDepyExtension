@@ -54,3 +54,5 @@ A primeira encenação (404 cru no canto, varredura e blocos se corrigindo, 8 s)
 **Acréscimo (2026-11-13, pedido do usuário):** a encenação ganhou sons baixinhos ([0041](0041-sons-do-entrar.md)); o botão "ativar som" do canto não pula a animação.
 
 **Acréscimo (2026-11-13, pedido do usuário):** o clique e a tecla não pulam mais a encenação: ela roda sempre até o fim ([0043](0043-entrar-em-video.md)).
+
+**Acréscimo (2026-11-13, pedido do usuário):** a tela final deixou de ser mockada: ela entra de verdade, e no ambiente de teste aceita e-mail e senha vazios; o admin cai no painel de empresas ([0047](0047-login-de-teste-no-entrar.md)).
