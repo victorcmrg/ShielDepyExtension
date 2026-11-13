@@ -168,6 +168,7 @@
       for (const c of item.conflicts) {
         const head = el('button', 'balloon-file');
         head.append(el('strong', '', c.fileName), ' ' + T('lineLower', { n: c.line + 1 }));
+        head.title = c.fileName;
         if (c.folder) head.title = c.folder + '/' + c.fileName;
         head.addEventListener('click', () => vscode.postMessage({ type: 'openRelated', file: c.file, line: c.line }));
         balloon.append(head, codeBlock(c));
@@ -214,7 +215,11 @@
     text.appendChild(el('span', 'finding-message', item.message));
     const meta = el('span', 'finding-meta');
     meta.append(el('span', 'ref', '#' + item.ref), el('span', '', T('lineN', { n: item.line + 1 })), renderOrigin(item));
-    if (conflictNames) meta.appendChild(el('span', 'conflict', T('conflictWith', { files: conflictNames })));
+    if (conflictNames) {
+      const conflict = el('span', 'conflict', T('conflictWith', { files: conflictNames }));
+      conflict.title = conflictNames;
+      meta.appendChild(conflict);
+    }
     text.appendChild(meta);
     row.appendChild(text);
 

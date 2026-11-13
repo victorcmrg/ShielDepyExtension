@@ -133,7 +133,8 @@ body { padding: 14px 12px 16px; }
 .finding-message { display: block; font-weight: 500; word-wrap: break-word; }
 .finding-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 11px; color: var(--sd-muted); margin-top: 2px; }
 .finding-meta .ref { color: var(--c); font-weight: 600; font-variant-numeric: tabular-nums; }
-.finding-meta .conflict { color: var(--sd-mint); }
+/* o nome longo (um teste de caos, por exemplo) termina em reticências; o nome inteiro fica na dica */
+.finding-meta .conflict { color: var(--sd-mint); min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finding-meta .origin { font-weight: 600; }
 .finding.new { animation: sd-arrive 0.8s var(--sd-ease); }
 @keyframes sd-arrive { from { background: var(--sd-mint-wash); } to { background: transparent; } }
@@ -141,16 +142,18 @@ body { padding: 14px 12px 16px; }
 /* --- Balão de detalhes ---------------------------------------------------------------------- */
 /* Fechado: altura zero. Mouse em cima: "espia" uns pixels e empurra o resto pra baixo — é o
    convite pra clicar. Aberto: altura inteira, com mola. */
-.balloon-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s var(--sd-ease); }
+/* A coluna da grade fica presa à largura do painel (minmax(0, 1fr)): sem isso, ela crescia até caber a
+   linha de código mais comprida e o balão saía pela borda. O código rola dentro da própria caixa. */
+.balloon-wrap { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 0fr; transition: grid-template-rows 0.35s var(--sd-ease); }
 .finding.balloon-open .balloon-wrap { grid-template-rows: 1fr; }
-.balloon-clip { overflow: hidden; min-height: 0; transition: min-height 0.3s var(--sd-ease); }
+.balloon-clip { overflow: hidden; min-width: 0; min-height: 0; transition: min-height 0.3s var(--sd-ease); }
 .finding:not(.balloon-open):hover .balloon-clip {
   min-height: 26px;
   -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
   mask-image: linear-gradient(to bottom, #000 45%, transparent);
 }
 .balloon {
-  position: relative; margin: 4px 8px 10px 22px; padding: 10px 10px 8px; border-radius: 12px;
+  position: relative; min-width: 0; margin: 4px 8px 10px 22px; padding: 10px 10px 8px; border-radius: 12px;
   background: color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
   backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
   box-shadow: 0 0 0 1px var(--sd-hairline), 0 8px 24px rgba(0, 0, 0, 0.22);
@@ -164,14 +167,14 @@ body { padding: 14px 12px 16px; }
   background: inherit; box-shadow: -1px -1px 0 0 var(--sd-hairline);
 }
 .balloon-file {
-  display: block; margin: 0 0 6px; padding: 0; border: none; background: none; cursor: pointer; text-align: left;
-  font-size: 11.5px; color: var(--sd-muted);
+  display: block; max-width: 100%; margin: 0 0 6px; padding: 0; border: none; background: none; cursor: pointer; text-align: left;
+  font-size: 11.5px; color: var(--sd-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .balloon-file strong { color: var(--vscode-textLink-foreground); font-weight: 600; }
 .balloon-file:hover strong { text-decoration: underline; text-underline-offset: 2px; }
 .code + .balloon-file { margin-top: 10px; }
 .code {
-  margin: 0; padding: 6px 0; border-radius: 8px; overflow-x: auto; background: var(--vscode-textCodeBlock-background, var(--sd-fill));
+  max-width: 100%; margin: 0; padding: 6px 0; border-radius: 8px; overflow-x: auto; background: var(--vscode-textCodeBlock-background, var(--sd-fill));
   font-family: var(--sd-code); font-size: 11.5px; line-height: 1.55;
 }
 .code-line { display: flex; padding: 0 10px 0 0; white-space: pre; }
