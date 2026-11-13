@@ -9,6 +9,7 @@ import type { CallDesc, RawArg, RawCall, Scope, TypeRef } from './extract-ts';
 import { csharpFrontend, javaFrontend, tsFrontend, type LanguageFrontend, type LanguageId, type NamespaceScope } from './frontend';
 import { parseCss, parseHtml, resolveWebRef } from './extract-web';
 import { GrammarParser, TsParser } from './parser';
+import { plainTree } from './plain-tree';
 import { ModuleResolver } from './resolve-import';
 import {
   isSymbolNode,
@@ -598,7 +599,9 @@ export class CodeGraph {
     }
 
     try {
-      const root = tree.rootNode;
+      // TS/JS: a cópia da árvore em JavaScript (plain-tree.ts, decisão 0045), feita uma vez e usada pela
+      // extração e pelos ouvintes (as regras de evento da extensão); C#/Java seguem com a árvore real
+      const root = frontend.language === 'ts' ? plainTree(tree.rootNode) : tree.rootNode;
       const implementedBefore = this.implementedNames(fileId);
       const classesBefore = this.classNames(fileId);
       const globalsBefore = (this.scopes.get(fileId)?.global ?? []).join('|');

@@ -8,7 +8,7 @@ import { extractModuleInfo, type ModuleInfo } from './extract-module';
 import { extractCalls, extractSymbols, extractValueCalls, type CallDesc, type RawCall, type SymbolInfo } from './extract-ts';
 import { topLevelHash } from './fingerprint';
 import { TsParser, type GrammarParser, type SyntaxNode, type Tree } from './parser';
-import { plainTree } from './plain-tree';
+import { PlainNode, plainTree } from './plain-tree';
 
 export type LanguageId = 'ts' | 'csharp' | 'java';
 
@@ -62,7 +62,8 @@ export function tsFrontend(parser: TsParser): LanguageFrontend {
     parse: (text, fsPath) => parser.parse(text, TsParser.isJsxPath(fsPath)),
     // a extração lê a cópia da árvore em JavaScript (plain-tree.ts): o mesmo conteúdo, sem o vaivém com o WASM
     extract: (real, fileId) => {
-      const root = plainTree(real);
+      // o CodeGraph já manda a cópia; quem chama direto com a árvore real ganha a cópia aqui
+      const root = real instanceof PlainNode ? real : plainTree(real);
       const symbols = extractSymbols(root, fileId);
       return {
         symbols,

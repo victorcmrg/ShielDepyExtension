@@ -8,6 +8,7 @@ export * from './code-graph/types';
 export * from './code-graph/CodeGraph';
 export * from './code-graph/frontend';
 export * from './code-graph/parser';
+export { plainTree, PlainNode } from './code-graph/plain-tree';
 export * from './code-graph/cycles';
 export * from './code-graph/resolve-import';
 export * from './code-graph/extract-module';

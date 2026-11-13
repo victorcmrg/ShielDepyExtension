@@ -14,3 +14,5 @@
 **Consequências.**
 - A indexação do repositório caiu de **20,3 s para 5,7 s** (corpus, as duas versões em seguida, nas mesmas condições); o `topology` completo, de 28,7 s para ~15 s nesta máquina.
 - O que ainda sobra: a leitura das regras (`@shieldepy/extractors`, ~3 s, uma segunda passada pelos arquivos com a API antiga), paralelizar parse e extração em workers e o cache em disco por impressão digital do conteúdo. São os próximos passos para chegar a 2–5 s.
+
+**Acréscimo (2026-11-13):** as regras de evento também leem a cópia: na indexação, o `CodeGraph` faz a cópia uma vez e entrega a mesma aos ouvintes (as regras da extensão, pelo `onParsed`), e na CLI o leitor de regras do TypeScript (`parseTsHandlers`) usa a cópia. As 48 regras do corpus saem idênticas pelos dois caminhos (mesmos hashes); a leitura das regras na CLI caiu de 5,3 s para 2,1 s. Ler os arquivos do disco à frente, em paralelo, não mudou o tempo (o disco não era o gargalo) e ficou de fora. Para chegar abaixo de ~4 s na indexação, o que resta é paralelizar parse e extração (workers) ou o cache em disco por conteúdo.

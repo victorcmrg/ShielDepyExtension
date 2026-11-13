@@ -8,7 +8,7 @@
 //   - sombreamento em função aninhada (um `order` interno não é o payload)
 //   - chamada de método (`order.recalc()`) NÃO conta como leitura de campo
 
-import type { SyntaxNode, TsParser } from '@shieldepy/core';
+import { plainTree, type SyntaxNode, type TsParser } from '@shieldepy/core';
 import type { ParsedRule } from '../types';
 import { prefixResource } from '../naming';
 
@@ -38,7 +38,8 @@ export function extractEventHandlers(root: SyntaxNode): ParsedRule[] {
 
 /** Versão autônoma: parseia o texto, extrai e libera a árvore. */
 export function parseTsHandlers(parser: TsParser, source: string, jsx = false): ParsedRule[] {
-  return parser.withTree(source, jsx, extractEventHandlers);
+  // na cópia da árvore em JavaScript (decisão 0045): o mesmo conteúdo, sem o vaivém com o WASM
+  return parser.withTree(source, jsx, (root) => extractEventHandlers(plainTree(root)));
 }
 
 // ---------------------------------------------------------------------------------------
