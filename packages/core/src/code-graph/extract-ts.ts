@@ -172,6 +172,67 @@ const FUNCTION_SCOPE_TYPES = new Set([
 const CLASS_TYPES = new Set(['class_declaration', 'abstract_class_declaration', 'class']);
 const BLOCK_TYPES = new Set(['statement_block', 'program']);
 
+/**
+ * O que um escopo declara, varrido uma vez por árvore. As buscas de declaração (`localType`,
+ * `declaresIn`, `declaringNode`, `paramIndexOf`) sobem a árvore a partir de cada chamada e, sem isto,
+ * varriam de novo todos os parâmetros e comandos de cada escopo no caminho: era a maior parte do tempo
+ * de indexação. A regra é a mesma de antes: vale o primeiro parâmetro e a primeira declaração com o nome.
+ */
+interface ScopeDecls {
+  start: number;
+  end: number;
+  /** o parâmetro único sem parênteses (`x => ...`) */
+  single?: string;
+  /** nome → o primeiro parâmetro com ele e a posição dele entre os filhos nomeados de `parameters` */
+  params?: Map<string, { node: SyntaxNode; index: number }>;
+  /** nome → o primeiro `variable_declarator` com ele, entre os comandos do bloco */
+  vars?: Map<string, SyntaxNode>;
+}
+const scopeCache = new WeakMap<object, Map<number, ScopeDecls>>();
+
+function scopeEntry(n: SyntaxNode): ScopeDecls {
+  let byId = scopeCache.get(n.tree);
+  if (!byId) scopeCache.set(n.tree, (byId = new Map()));
+  const start = n.startIndex;
+  const end = n.endIndex;
+  let entry = byId.get(n.id);
+  // o id é o endereço do nó na árvore; a posição confere que é o mesmo nó
+  if (!entry || entry.start !== start || entry.end !== end) byId.set(n.id, (entry = { start, end }));
+  return entry;
+}
+
+function paramsOf(fn: SyntaxNode): ScopeDecls {
+  const entry = scopeEntry(fn);
+  if (!entry.params) {
+    const single = fn.childForFieldName('parameter');
+    if (single?.type === 'identifier') entry.single = single.text;
+    entry.params = new Map();
+    (fn.childForFieldName('parameters')?.namedChildren ?? []).forEach((p, index) => {
+      const name = paramName(p);
+      if (name !== undefined && !entry.params!.has(name)) entry.params!.set(name, { node: p, index });
+    });
+  }
+  return entry;
+}
+
+function varsOf(block: SyntaxNode): Map<string, SyntaxNode> {
+  const entry = scopeEntry(block);
+  if (!entry.vars) {
+    const vars = new Map<string, SyntaxNode>();
+    for (const stmt of block.namedChildren) {
+      const decl = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') : stmt;
+      if (decl?.type !== 'lexical_declaration' && decl?.type !== 'variable_declaration') continue;
+      for (const d of decl.namedChildren) {
+        if (d.type !== 'variable_declarator') continue;
+        const name = d.childForFieldName('name')?.text;
+        if (name !== undefined && !vars.has(name)) vars.set(name, d);
+      }
+    }
+    entry.vars = vars;
+  }
+  return entry.vars;
+}
+
 function enclosingClass(node: SyntaxNode): SyntaxNode | undefined {
   for (let n = node.parent; n; n = n.parent) if (CLASS_TYPES.has(n.type)) return n;
   return undefined;
@@ -352,19 +413,18 @@ type LocalType = TypeRef | null | 'opaque' | { call: CallDesc } | { union: TypeR
  */
 function localType(from: SyntaxNode, name: string): LocalType {
   for (let n = from.parent; n; n = n.parent) {
-    if (FUNCTION_SCOPE_TYPES.has(n.type)) {
-      const single = n.childForFieldName('parameter');
-      if (single?.type === 'identifier' && single.text === name) return null;
-      for (const p of n.childForFieldName('parameters')?.namedChildren ?? []) {
-        if (paramName(p) === name) return annotatedType(p.childForFieldName('type'));
-      }
+    const type = n.type;
+    if (FUNCTION_SCOPE_TYPES.has(type)) {
+      const scope = paramsOf(n);
+      if (scope.single === name) return null;
+      const p = scope.params!.get(name);
+      if (p) return annotatedType(p.node.childForFieldName('type'));
     }
-    if (BLOCK_TYPES.has(n.type)) {
-      for (const stmt of n.namedChildren) {
-        const decl = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') : stmt;
-        if (decl?.type !== 'lexical_declaration' && decl?.type !== 'variable_declaration') continue;
-        for (const d of decl.namedChildren) {
-          if (d.type !== 'variable_declarator' || d.childForFieldName('name')?.text !== name) continue;
+    if (BLOCK_TYPES.has(type)) {
+      {
+        {
+          const d = varsOf(n).get(name);
+          if (!d) continue;
           // `const x = x.foo()` — a própria declaração: sem isso a descrição da chamada entra em laço
           if (from.startIndex >= d.startIndex && from.endIndex <= d.endIndex) return null;
           const value = d.childForFieldName('value');
@@ -442,28 +502,23 @@ function describeCall(node: SyntaxNode): CallDesc | undefined {
 
 /** O nome é declarado neste bloco (`const`/`let`/`var`, inclusive exportado)? `require()` é import, não valor local. */
 function declaresIn(block: SyntaxNode, name: string): boolean {
-  for (const stmt of block.namedChildren) {
-    const decl = stmt.type === 'export_statement' ? stmt.childForFieldName('declaration') : stmt;
-    if (decl?.type !== 'lexical_declaration' && decl?.type !== 'variable_declaration') continue;
-    for (const d of decl.namedChildren) {
-      if (d.type !== 'variable_declarator' || d.childForFieldName('name')?.text !== name) continue;
-      const value = d.childForFieldName('value');
-      return !(value && isRequire(value));
-    }
-  }
-  return false;
+  const d = varsOf(block).get(name);
+  if (!d) return false;
+  const value = d.childForFieldName('value');
+  return !(value && isRequire(value));
 }
 
 /** `name` é o parâmetro de índice n da função mais próxima que o declara? (Uma variável de mesmo nome antes dela → não.) */
 function paramIndexOf(from: SyntaxNode, name: string): number | undefined {
   for (let n = from.parent; n; n = n.parent) {
-    if (FUNCTION_SCOPE_TYPES.has(n.type)) {
-      const single = n.childForFieldName('parameter');
-      if (single?.type === 'identifier' && single.text === name) return 0;
-      const i = (n.childForFieldName('parameters')?.namedChildren ?? []).findIndex((p) => paramName(p) === name);
-      if (i >= 0) return i;
+    const type = n.type;
+    if (FUNCTION_SCOPE_TYPES.has(type)) {
+      const scope = paramsOf(n);
+      if (scope.single === name) return 0;
+      const p = scope.params!.get(name);
+      if (p) return p.index;
     }
-    if (BLOCK_TYPES.has(n.type) && declaresIn(n, name)) return undefined;
+    if (BLOCK_TYPES.has(type) && declaresIn(n, name)) return undefined;
   }
   return undefined;
 }
@@ -689,12 +744,12 @@ function declarationScope(from: SyntaxNode, name: string): Scope | undefined {
 /** A função (parâmetro) ou o bloco (variável) que declara `name`, visto de `from`. */
 function declaringNode(from: SyntaxNode, name: string): SyntaxNode | undefined {
   for (let n = from.parent; n; n = n.parent) {
-    if (FUNCTION_SCOPE_TYPES.has(n.type)) {
-      const single = n.childForFieldName('parameter');
-      if (single?.type === 'identifier' && single.text === name) return n;
-      if ((n.childForFieldName('parameters')?.namedChildren ?? []).some((p) => paramName(p) === name)) return n;
+    const type = n.type;
+    if (FUNCTION_SCOPE_TYPES.has(type)) {
+      const scope = paramsOf(n);
+      if (scope.single === name || scope.params!.has(name)) return n;
     }
-    if (BLOCK_TYPES.has(n.type) && declaresIn(n, name)) return n;
+    if (BLOCK_TYPES.has(type) && declaresIn(n, name)) return n;
   }
   return undefined;
 }

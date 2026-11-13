@@ -1,15 +1,47 @@
 // Utilitários de leitura da AST compartilhados pelos extratores (tudo via nós Tree-sitter, sem regex).
 
 import type { SyntaxNode } from './parser';
+import { PlainNode } from './plain-tree';
 
 /** Nome de um tipo como escrito no código: `Repo` → ['Repo'], `db.Pool` → ['db', 'Pool']. */
 export type TypeRef = string[];
 
 export const FUNCTION_VALUE_TYPES = new Set(['arrow_function', 'function_expression', 'function']);
 
+/**
+ * Visita `node` e todos os descendentes nomeados, em profundidade e na ordem do código (a mesma de
+ * descer por `namedChildren`). Com o cursor do Tree-sitter: descer por `namedChildren` montava a lista
+ * de filhos de cada nó do outro lado do WASM, e isso pesava na indexação. Como antes, não desce
+ * dentro de um nó anônimo (os tokens).
+ */
 export function walk(node: SyntaxNode, visit: (n: SyntaxNode) => void): void {
+  // na cópia em JavaScript (plain-tree.ts), descer pelos filhos já é barato
+  if (node instanceof PlainNode) return walkPlain(node, visit);
   visit(node);
-  for (const child of node.namedChildren) walk(child, visit);
+  const cursor = node.walk();
+  try {
+    if (!cursor.gotoFirstChild()) return;
+    let depth = 1;
+    for (;;) {
+      if (cursor.nodeIsNamed) {
+        visit(cursor.currentNode);
+        if (cursor.gotoFirstChild()) {
+          depth++;
+          continue;
+        }
+      }
+      while (!cursor.gotoNextSibling()) {
+        if (--depth === 0 || !cursor.gotoParent()) return;
+      }
+    }
+  } finally {
+    cursor.delete();
+  }
+}
+
+function walkPlain(node: PlainNode, visit: (n: SyntaxNode) => void): void {
+  visit(node as unknown as SyntaxNode);
+  for (const child of node.namedChildren) walkPlain(child, visit);
 }
 
 /** `a`, `this`, `super`, `a.b.c` → segmentos; qualquer outra expressão → undefined. */

@@ -1,0 +1,16 @@
+# 0045 — Indexação sem o vaivém com o WASM: a extração do TypeScript lê uma cópia da árvore em JavaScript
+
+**Data:** 2026-11-13 (pedido do usuário: o mapa da própria extensão levava ~26 s; gerar mais rápido sem perder fidelidade) · **Estado:** valendo
+
+**Contexto.** Medido no próprio repositório (485 arquivos, 4.470 nós): ~30 s no total, dos quais **28 s na extração de símbolos do TypeScript**; o parse do Tree-sitter levava 1,1 s, religar as chamadas 0,3 s e montar mapa, rotas e HTML menos de 1 s. O perfil de CPU mostrou duas causas: (1) as buscas de declaração (`localType`, `declaringNode`, `declaresIn`, `paramIndexOf`) subiam a árvore a partir de cada chamada e varriam de novo os parâmetros e comandos de cada escopo; (2) no web-tree-sitter, cada acesso a um nó (`.type`, `.parent`, `.namedChildren`, `.childForFieldName`…) atravessa a fronteira com o WASM e cria objetos, e a extração percorre cada árvore várias vezes (símbolos, chamadas, hashes, módulo, corpos das funções).
+
+**Decisão.**
+- **Cópia da árvore em JavaScript** (`code-graph/plain-tree.ts`): o frontend do TypeScript copia a árvore uma vez, com o cursor do Tree-sitter (todos os nós, nomeados e anônimos, posições, texto e campos, valendo o primeiro filho de cada campo), e toda a extração roda sobre ela. A interface é a mesma que os extratores usam, então o código deles não muda. Os ouvintes do `CodeGraph` (as regras) continuam recebendo a árvore real.
+- **Declarações por escopo guardadas** (`extract-ts.ts`): cada escopo é varrido uma vez por árvore (nome → primeiro parâmetro ou primeira declaração), com a mesma regra de antes.
+- **`walk` com cursor** na árvore real (e descida direta na cópia), na mesma ordem.
+
+**Fidelidade.** O repositório congelado num corpus e indexado com o código antigo e com o novo: os **4.470 nós e as 4.191 arestas saem idênticos** (símbolos, chamadas, rotas, operações); muda só o `topHash` de 79 arquivos (e os hashes que derivam dele). Motivo: a API de nó do web-tree-sitter 0.22 entrega alguns comentários com o tipo do pai (um `comment` dentro de `interface_body` vem como `interface_body`), e eles entravam na impressão digital, que deveria ignorar comentário (`fingerprint.ts`); a cópia vem do cursor, que dá o tipo certo. Na prática, editar um comentário nesses arquivos não muda mais a impressão digital. Um resultado de caos gravado antes desta versão aparece uma vez como "mapa desatualizado". O teste `plain-tree.test.ts` compara a cópia com a árvore real nó por nó em arquivos do repositório (as duas falhas conhecidas da API real, essa e um `childForFieldName` que devolve um nó que não é filho, estão documentadas lá).
+
+**Consequências.**
+- A indexação do repositório caiu de **20,3 s para 5,7 s** (corpus, as duas versões em seguida, nas mesmas condições); o `topology` completo, de 28,7 s para ~15 s nesta máquina.
+- O que ainda sobra: a leitura das regras (`@shieldepy/extractors`, ~3 s, uma segunda passada pelos arquivos com a API antiga), paralelizar parse e extração em workers e o cache em disco por impressão digital do conteúdo. São os próximos passos para chegar a 2–5 s.

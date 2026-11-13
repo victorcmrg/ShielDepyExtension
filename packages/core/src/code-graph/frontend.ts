@@ -8,6 +8,7 @@ import { extractModuleInfo, type ModuleInfo } from './extract-module';
 import { extractCalls, extractSymbols, extractValueCalls, type CallDesc, type RawCall, type SymbolInfo } from './extract-ts';
 import { topLevelHash } from './fingerprint';
 import { TsParser, type GrammarParser, type SyntaxNode, type Tree } from './parser';
+import { plainTree } from './plain-tree';
 
 export type LanguageId = 'ts' | 'csharp' | 'java';
 
@@ -59,7 +60,9 @@ export function tsFrontend(parser: TsParser): LanguageFrontend {
     language: 'ts',
     extensions: TS_EXTENSIONS,
     parse: (text, fsPath) => parser.parse(text, TsParser.isJsxPath(fsPath)),
-    extract: (root, fileId) => {
+    // a extração lê a cópia da árvore em JavaScript (plain-tree.ts): o mesmo conteúdo, sem o vaivém com o WASM
+    extract: (real, fileId) => {
+      const root = plainTree(real);
       const symbols = extractSymbols(root, fileId);
       return {
         symbols,
