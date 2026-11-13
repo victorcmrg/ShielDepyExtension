@@ -1,0 +1,11 @@
+# O modelo da equipe de IA no Ollama (decisão 0037).
+# Copie o .gguf para esta pasta (o git ignora *.gguf) e rode, daqui:
+#   ollama create shieldepy -f Modelfile
+FROM ./Llama-3.2-1B-Instruct.Q4_K_M.gguf
+
+# O que o próprio GGUF sugere (general.sampling.*), e o fim de turno do Llama 3
+PARAMETER temperature 0.6
+PARAMETER top_p 0.9
+PARAMETER stop "<|eot_id|>"
+# Os prompts de correção chegam a ~36 KB (a cadeia inteira da rota): 16k tokens cobrem com folga
+PARAMETER num_ctx 16384
