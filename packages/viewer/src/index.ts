@@ -1008,8 +1008,71 @@ const APP = String.raw`
     inst.scratch('_overview', overview(inst));
     inst.on('tap', 'node', (ev) => select(ev.target));
     inst.on('tap', (ev) => { if (ev.target === inst) { inst.elements().unselect(); clearHighlight(); } });
+    undoable(inst);
     return inst;
   }
+
+  // ---- Ctrl+Z: desfaz o último arraste de nós. Ao pegar, guarda onde cada nó estava; ao soltar, entra
+  // na pilha só o que mudou de lugar (vários nós arrastados juntos são um passo só). Uma pilha por
+  // grafo (o mapa e o fluxo de uma rota), com até 50 passos.
+  function undoable(inst) {
+    const stack = [];
+    let before = null;
+    inst.on('grab', 'node', () => {
+      if (before) return;
+      before = new Map();
+      inst.nodes().forEach((n) => {
+        if (n.isParent()) return;
+        const p = n.position();
+        before.set(n.id(), { x: p.x, y: p.y });
+      });
+    });
+    inst.on('free', 'node', () => {
+      if (!before) return;
+      const moved = [];
+      before.forEach((p, id) => {
+        const n = inst.getElementById(id);
+        if (n.empty()) return;
+        const q = n.position();
+        if (Math.abs(q.x - p.x) > 0.5 || Math.abs(q.y - p.y) > 0.5) moved.push([id, p]);
+      });
+      before = null;
+      if (moved.length === 0) return;
+      stack.push(moved);
+      if (stack.length > 50) stack.shift();
+    });
+    inst.scratch('_undo', () => {
+      const last = stack.pop();
+      if (!last) return false;
+      for (const [id, p] of last) {
+        const n = inst.getElementById(id);
+        if (!n.empty()) n.animate({ position: p }, { duration: 220, easing: 'ease-out-cubic' });
+      }
+      // no fim, cada nó vai para o lugar exato mesmo que a animação não tenha rodado (aba sem quadros);
+      // e as paredes em volta do grafo, que escutam o fim de um arraste, se atualizam
+      setTimeout(() => {
+        if (inst.destroyed()) return;
+        for (const [id, p] of last) {
+          const n = inst.getElementById(id);
+          if (n.empty()) continue;
+          n.stop(true, false);
+          n.position(p);
+        }
+        inst.emit('dragfree');
+      }, 300);
+      return true;
+    });
+  }
+  document.addEventListener('keydown', (ev) => {
+    if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey || String(ev.key).toLowerCase() !== 'z') return;
+    const t = ev.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    const undo = cy && cy.scratch('_undo');
+    if (undo && undo()) {
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+  });
   function destroy(inst) {
     const ov = overviewOf(inst);
     if (ov) ov.destroy();
