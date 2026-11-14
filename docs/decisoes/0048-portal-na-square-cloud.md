@@ -15,4 +15,5 @@
 - O `/entrar` e as rotas do portal saem do fallback da API (`app.html`), sem a cópia em `entrar/index.html`.
 - **Risco:** se a Square Cloud substituir a pasta inteira num deploy pelo GitHub, o `data/` (contas e empresas) se perde. Para dados que precisam durar, `DATABASE_URL` com um Postgres.
 - Login social (Google/GitHub) só com as chaves e o `OAUTH_REDIRECT_BASE` no painel.
-- Atualizar o site: `npm run squarecloud:montar -- <clone da branch squarecloud>`, commit e push da branch; a Square Cloud refaz o deploy sozinha a cada push.
+- Atualizar o site: `npm run squarecloud:montar -- <clone da branch>`, commit e push da branch; a Square Cloud refaz o deploy sozinha a cada push.
+- **O app criado como site estático não vira Node pelo `squarecloud.app`** (visto no primeiro envio, 2026-11-13): ele seguiu servindo arquivos, a raiz deu 403 por uns 5 minutos e a branch `squarecloud` voltou para a landing (revert). O pacote Node fica na branch `squarecloud-portal` até o usuário criar, no painel, o app em Node apontando para ela (com `ADMIN_EMAIL` e `ADMIN_INITIAL_PASSWORD`); como o subdomínio `shieldepy` é do app estático, a troca é apagar um e criar o outro, ou usar outro subdomínio.
