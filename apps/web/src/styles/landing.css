@@ -647,10 +647,10 @@ section { position: relative; }
 .finale-buddy img { position: relative; z-index: 1; display: block; width: 100%; height: auto; }
 .finale-buddy-shadow { position: absolute; z-index: 0; left: -20%; right: -20%; top: -12%; bottom: -8%; opacity: 0; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.32) 55%, transparent); }
 .finale-confetti { position: absolute; z-index: 2; left: 50%; top: 6%; width: 0; height: 0; }
-.finale-confetti i { position: absolute; left: -7px; top: -10px; width: 14px; height: 20px; border-radius: 3px; background: var(--c, #12f07a); opacity: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
+/* os confetes: o tamanho, a cor e a trajetória (física de papel) vêm do JS a cada festa */
+.finale-confetti i { position: absolute; left: -6px; top: -8px; width: 12px; height: 16px; border-radius: 2px; background: #12f07a; opacity: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); will-change: transform; }
 .finale.is-party .finale-buddy { animation: buddy-jump 0.95s forwards; }
 .finale.is-party .finale-buddy-shadow { animation: buddy-shadow 0.8s ease-out 0.2s forwards; }
-.finale.is-party .finale-confetti i { animation: buddy-confetti 2s cubic-bezier(0.2, 0.7, 0.3, 1) calc(0.42s + var(--d, 0ms)) forwards; }
 @keyframes buddy-jump {
   0% { opacity: 1; transform: translateY(115%); animation-timing-function: cubic-bezier(0.2, 0.75, 0.35, 1); }
   55% { opacity: 1; transform: translateY(-5%); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
@@ -658,16 +658,17 @@ section { position: relative; }
   100% { opacity: 1; transform: none; }
 }
 @keyframes buddy-shadow { to { opacity: 1; } }
-@keyframes buddy-confetti {
-  0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(0.5); }
-  45% { opacity: 1; transform: translate(var(--dx), var(--dy)) rotate(var(--r)) scale(1); }
-  80% { opacity: 1; }
-  100% { opacity: 0; transform: translate(calc(var(--dx) * 1.25), calc(var(--dy) + 230px)) rotate(calc(var(--r) * 1.8)) scale(0.9); }
+/* celular: a palavra desce para perto da borda de baixo (o texto e os créditos ficam no topo), para o mascote
+   chegar à mesma altura relativa do desktop, menor (~80% da tela), com o corpo cortado pela borda: 39,7vw é o
+   que sobra embaixo da palavra para 62% do mascote (a fonte é 19,5vw e a caixa 1,22em) */
+@media (max-width: 759px) {
+  .finale { justify-content: flex-start; }
+  .finale-bottom { order: 1; }
+  .finale-word { order: 2; margin-top: auto; margin-bottom: calc(39.7vw - 28px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .finale.is-party .finale-buddy { animation: none; opacity: 1; transform: none; }
   .finale.is-party .finale-buddy-shadow { animation: none; opacity: 1; }
-  .finale.is-party .finale-confetti i { animation: none; }
 }
 .finale-bottom { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 /* chegando na tela de finalização, o menu sobe e some; rolando para cima, ele volta */

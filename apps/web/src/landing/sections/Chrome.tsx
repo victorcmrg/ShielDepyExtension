@@ -66,19 +66,50 @@ export function Closing() {
 }
 
 /** A tela de finalização: o rodapé do tamanho da tela, com o ShielDepy grande (a aba "Footer" do menu). */
-/** Os confetes do mascote: direção, distância, giro e atraso fixos (o HTML é pré-renderizado: nada de
- *  sorteio no render). Saem para os dois lados, um pouco para cima, e caem. */
-const CONFETTI = Array.from({ length: 15 }, (_, i) => {
-  const side = i % 2 ? 1 : -1;
-  const k = (i * 37) % 15; // espalha sem padrão visível
-  return {
-    dx: side * (170 + k * 26),
-    dy: -(90 + ((i * 53) % 15) * 14),
-    r: side * (200 + k * 34),
-    d: ((i * 29) % 15) * 14,
-    c: ['#12f07a', '#5ef58c', '#b6fbb0', '#2bd96f', '#e9ffe6'][i % 5]!,
-  };
-});
+/** As cores dos confetes: os verdes do mascote. */
+const CONFETTI_COLORS = ['#12f07a', '#5ef58c', '#b6fbb0', '#2bd96f', '#e9ffe6'];
+const CONFETTI_COUNT = 15;
+
+/**
+ * Joga os confetes com física de papel: cada um sai com velocidade, tamanho e giro sorteados (a cada festa
+ * um arremesso diferente), sobe, perde força e cai com gravidade e resistência do ar (a velocidade tende a
+ * um limite, então ele flutua), girando e virando como papel. A trajetória é calculada e vira keyframes.
+ */
+function throwConfetti(pieces: HTMLElement[], scale: number) {
+  const G = 1700 * scale; // gravidade (px/s²)
+  const K = 1.5; // resistência do ar (1/s): velocidade limite G/K
+  const STEPS = 28;
+  pieces.forEach((el, i) => {
+    const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+    const side = i % 2 ? 1 : -1;
+    const vx = side * rnd(520, 1400) * scale;
+    const vy = -rnd(620, 1250) * scale;
+    const spin = rnd(-900, 900);
+    const flip = rnd(5, 11); // viradas por segundo (o papel mostrando a borda)
+    const w = rnd(8, 15);
+    const h = rnd(11, 20);
+    const dur = rnd(1.9, 2.8);
+    const delay = rnd(0, 160);
+    el.style.width = `${w.toFixed(1)}px`;
+    el.style.height = `${h.toFixed(1)}px`;
+    el.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length]!;
+    const frames: Keyframe[] = [];
+    for (let s = 0; s <= STEPS; s++) {
+      const t = (s / STEPS) * dur;
+      const e = 1 - Math.exp(-K * t);
+      const x = (vx / K) * e;
+      const y = (G * t) / K + ((vy - G / K) / K) * e;
+      const r = spin * t;
+      const fx = Math.cos(t * flip * Math.PI);
+      frames.push({
+        offset: s / STEPS,
+        transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${r.toFixed(0)}deg) scaleX(${fx.toFixed(2)})`,
+        opacity: s / STEPS < 0.75 ? 1 : (1 - s / STEPS) / 0.25,
+      });
+    }
+    el.animate(frames, { duration: dur * 1000, delay, easing: 'linear', fill: 'both' });
+  });
+}
 
 export function Footer() {
   // o ano entra no navegador (o HTML é pré-renderizado no build e não pode congelar o ano de lá)
@@ -91,28 +122,63 @@ export function Footer() {
   // solta os confetes; saindo da tela, ele volta a se esconder para a próxima chegada
   useEffect(() => {
     const finale = ref.current!;
-    // o jeito de cada confete vai pelo JS (a CSP da API não deixa style inline no HTML pré-renderizado)
-    finale.querySelectorAll<HTMLElement>('.finale-confetti i').forEach((el, i) => {
-      const c = CONFETTI[i]!;
-      el.style.setProperty('--dx', `${c.dx}px`);
-      el.style.setProperty('--dy', `${c.dy}px`);
-      el.style.setProperty('--r', `${c.r}deg`);
-      el.style.setProperty('--d', `${c.d}ms`);
-      el.style.setProperty('--c', c.c);
-    });
+    const box = finale.querySelector<HTMLElement>('.finale-word-box')!;
+    const buddy = finale.querySelector<HTMLElement>('.finale-buddy')!;
+    const pieces = Array.from(finale.querySelectorAll<HTMLElement>('.finale-confetti i'));
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // No celular a palavra fica no meio de uma tela alta: com as frações do desktop o mascote ficaria
+    // pequeno, inteiro e flutuando. Lá ele chega à mesma altura relativa à palavra (o topo da imagem nos
+    // 51,72% da caixa), menor, e o corpo vai até a borda de baixo, que corta ~38% dele (como no desktop):
+    // nem no alto do pulo (+5%) os pés aparecem, então ele não sai do chão.
+    const layout = () => {
+      if (window.innerWidth >= 760) {
+        for (const p of ['left', 'top', 'width'] as const) buddy.style.removeProperty(p);
+        return;
+      }
+      const b = box.getBoundingClientRect();
+      const f = finale.getBoundingClientRect();
+      const top = b.height * 0.5172;
+      const h = (f.bottom - (b.top + top)) / 0.62;
+      const w = Math.min(h / 1.0315, window.innerWidth * 0.95);
+      buddy.style.width = `${w.toFixed(1)}px`;
+      buddy.style.top = `${top.toFixed(1)}px`;
+      buddy.style.left = `${(b.width * 0.5029 - w / 2).toFixed(1)}px`;
+    };
+    layout();
+    // a caixa da palavra muda quando a fonte (Manrope) chega: refaz a conta (a tela final em si não muda)
+    const ro = new ResizeObserver(layout);
+    ro.observe(finale);
+    ro.observe(box);
+    void document.fonts?.ready.then(layout);
+
     let timer = 0;
+    let confettiTimer = 0;
+    const reset = () => {
+      finale.classList.remove('is-party');
+      window.clearTimeout(confettiTimer);
+      for (const el of pieces) el.getAnimations().forEach((a) => a.cancel());
+    };
+    const party = () => {
+      layout();
+      finale.classList.add('is-party');
+      // os confetes saem quando o mascote chega lá em cima (a força do arremesso acompanha o tamanho dele)
+      if (!reduce) confettiTimer = window.setTimeout(() => throwConfetti(pieces, Math.min(1, Math.max(0.45, buddy.offsetWidth / 715))), 420);
+    };
     const io = new IntersectionObserver(
       ([entry]) => {
         window.clearTimeout(timer);
-        if (entry!.isIntersecting) timer = window.setTimeout(() => finale.classList.add('is-party'), 2000);
-        else finale.classList.remove('is-party');
+        if (entry!.isIntersecting) timer = window.setTimeout(party, 2000);
+        else reset();
       },
       { threshold: 0.6 }
     );
     io.observe(finale);
     return () => {
       io.disconnect();
+      ro.disconnect();
       window.clearTimeout(timer);
+      window.clearTimeout(confettiTimer);
     };
   }, []);
   return (
@@ -132,7 +198,7 @@ export function Footer() {
             <span className="finale-buddy-shadow" />
             <img src="/mascote-festa.webp" alt="" width="1300" height="1341" loading="lazy" decoding="async" />
             <span className="finale-confetti">
-              {CONFETTI.map((c, i) => (
+              {Array.from({ length: CONFETTI_COUNT }, (_, i) => (
                 <i key={i} />
               ))}
             </span>
