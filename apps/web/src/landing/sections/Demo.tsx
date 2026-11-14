@@ -1,11 +1,24 @@
-// Demo: monitor 3D com um "vídeo" do sistema em motion design. É uma linha do tempo de 26 s e render(t)
-// é determinístico: qualquer instante pode ser desenhado direto, o que permite pausar e arrastar a barra
-// como num player. O React desenha o markup uma vez; os quadros mexem só em classes/texto pelos refs
-// (re-renderizar a árvore do vídeo 60 vezes por segundo seria o oposto do que esta seção precisa).
+// Demo: monitor 3D com um vídeo do sistema em motion design. A tela do monitor é um vídeo pré-renderizado
+// (decisão 0051): leve e com carregamento rápido, no lugar do HTML animado a 60 quadros por segundo. O
+// player (play, barra, capítulo, tempo) e as bolhas de vidro em volta seguem o tempo do vídeo.
+//
+// O vídeo sai da linha do tempo de 26 s abaixo: render(t) é determinístico e desenha qualquer instante.
+// Ela só roda no modo de captura do web:dev (/?capture=demo): apps/web/scripts/demo-video/capture.mjs
+// avança o relógio quadro a quadro e fotografa só a tela (o que sai dela, como as bolhas, fica de fora).
 import { useEffect, useRef } from 'react';
 import { clamp, ease, put, reduceMotion } from '../motion';
 import { Lede, SplitTitle } from '../parts';
 import { addScrollJob } from '../scroll';
+
+/** Modo de captura do vídeo (só no web:dev): a tela volta a ser o HTML animado, parado, à espera do script. */
+const CAPTURE = import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).get('capture') === 'demo';
+
+/** As versões do vídeo: a larga (a tela de 1000×625) e a compacta do celular (560×350, sem a barra lateral). */
+const VARIANT = { wide: 'demo-1000', compact: 'demo-560' } as const;
+const SOURCES = (name: string) => [
+  { src: `/video/${name}-av1.webm`, type: 'video/webm; codecs="av01.0.08M.10"' },
+  { src: `/video/${name}-h264.mp4`, type: 'video/mp4; codecs="avc1.640028"' },
+];
 
 const T = 26;
 const CHAPTERS: [number, string][] = [
@@ -189,6 +202,47 @@ function startDemo(stage: HTMLElement, controls: HTMLElement): () => void {
     pointCache.clear();
   }
 
+  if (CAPTURE) {
+    // modo de captura: nada anda sozinho. A tela sai do monitor (sem as escalas e o 3D dele) e vai para o
+    // canto da página; quem captura escolhe a versão e chama step(ms) quadro a quadro. As animações e
+    // transições de CSS ficam pausadas e andam junto, exatamente ms por quadro.
+    document.body.appendChild(vid);
+    vid.classList.add('capturing');
+    const owned = new WeakSet<Animation>();
+    const tickAnims = (ms: number) => {
+      for (const a of document.getAnimations()) {
+        if (!owned.has(a)) {
+          owned.add(a);
+          a.pause();
+          continue; // nasceu neste quadro: começa do zero, como no navegador
+        }
+        a.currentTime = (Number(a.currentTime) || 0) + ms;
+      }
+    };
+    let ct = 0;
+    const w = window as unknown as { __demoCapture?: unknown };
+    w.__demoCapture = {
+      duration: T,
+      ready: document.fonts.ready,
+      setCompact(compact: boolean) {
+        vid.classList.toggle('compact', compact);
+        lineKey = '';
+        pointCache.clear();
+        ct = 0;
+        render(0);
+        return { w: vid.offsetWidth, h: vid.offsetHeight };
+      },
+      step(ms: number) {
+        ct += ms / 1000;
+        render(ct % T);
+        tickAnims(ms);
+        return { t: ct };
+      },
+    };
+    render(0);
+    return () => {};
+  }
+
   let vt = reduce ? 14.8 : 0;
   let playing = !reduce;
   let running = false;
@@ -333,10 +387,227 @@ function startDemo(stage: HTMLElement, controls: HTMLElement): () => void {
   return () => offs.forEach((off) => off());
 }
 
+/**
+ * A demo em produção (decisão 0051): a tela é o vídeo pré-renderizado. Mesma entrada do monitor (chega
+ * inclinado com a rolagem e endireita) e mesmo player; o vídeo só baixa quando a seção chega perto da tela
+ * e só toca com o monitor reto, visível e com a aba aberta. As bolhas e o player leem o tempo do vídeo.
+ */
+function startVideo(stage: HTMLElement, controls: HTMLElement): () => void {
+  const reduce = reduceMotion();
+  const $ = <E extends Element = HTMLElement>(id: string) => (stage.querySelector<E>('#' + id) ?? controls.querySelector<E>('#' + id))!;
+  const video = $<HTMLVideoElement>('vidVideo');
+  const mScreen = $('mScreen');
+  const monitor = $('monitor');
+  const play = $('vidPlay');
+  const track = $('vidTrack');
+  const fill = $('vidFill');
+  const chapter = $('vidChapter');
+  const time = $('vidTime');
+  const chips = [$('chipA'), $('chipB'), $('chipC')];
+  const stageBg = stage.querySelector<HTMLElement>('.stage-bg')!;
+  const offs: (() => void)[] = [];
+  video.muted = true; // o React não garante o atributo muted no HTML pré-renderizado, e sem ele não há autoplay
+
+  // a versão pela largura da tela do monitor (a mesma regra de quando a tela era HTML)
+  let variant: keyof typeof VARIANT | null = null;
+  let loaded = false;
+  const pickVariant = (): keyof typeof VARIANT => (mScreen.clientWidth < 520 ? 'compact' : 'wide');
+  function useVariant(next: keyof typeof VARIANT) {
+    if (next === variant) return;
+    const at = video.currentTime;
+    variant = next;
+    video.poster = `/video/${VARIANT[next]}-poster.webp`;
+    if (!loaded) return; // ainda não baixou nada: troca só o poster
+    video.replaceChildren(
+      ...SOURCES(VARIANT[next]).map(({ src, type }) => {
+        const el = document.createElement('source');
+        el.src = src;
+        el.type = type;
+        return el;
+      })
+    );
+    video.load();
+    if (at) video.addEventListener('loadedmetadata', () => (video.currentTime = at), { once: true });
+  }
+  function load() {
+    if (loaded) return;
+    loaded = true;
+    const v = variant ?? pickVariant();
+    variant = null;
+    useVariant(v);
+    if (reduce) video.addEventListener('loadedmetadata', () => (video.currentTime = 14.8), { once: true });
+  }
+  useVariant(pickVariant());
+  const ro = new ResizeObserver(() => useVariant(pickVariant()));
+  ro.observe(mScreen);
+  offs.push(() => ro.disconnect());
+
+  // o player e as bolhas de vidro seguem o tempo do vídeo
+  function chrome(t: number) {
+    put(fill, '--vp', (t / T).toFixed(3));
+    const label = fmtTime(t);
+    if (time.textContent !== label) time.textContent = label;
+    let ch = CHAPTERS[0]![1];
+    for (const [at, name] of CHAPTERS) if (t >= at) ch = name;
+    if (chapter.textContent !== ch) chapter.textContent = ch;
+    const now = String(Math.floor(t));
+    if (track.getAttribute('aria-valuenow') !== now) track.setAttribute('aria-valuenow', now);
+    chips[0]!.classList.toggle('lit', t >= 4.5 && t < 11.2);
+    chips[1]!.classList.toggle('lit', t >= 14.4 && t < 19.8);
+    chips[2]!.classList.toggle('lit', t >= 23.3);
+  }
+
+  let playing = !reduce;
+  let running = false;
+  let visible = false;
+  let last = 0;
+  let raf = 0;
+  let stageTop = 0;
+  let monitorFlat = false;
+  const tilt = { rx: 26, ty: 40, ms: 0.86, e: 0 };
+  function stageTargets() {
+    const vh = window.innerHeight;
+    const e = reduce ? 1 : clamp((vh - (stageTop - window.scrollY)) / (vh * 0.85));
+    return { e, rx: (1 - e) * 26, ty: (1 - e) * 50, ms: 0.84 + e * 0.16 };
+  }
+  function applyTilt(dt: number, g: ReturnType<typeof stageTargets>) {
+    const k = reduce ? 1 : Math.min(1, dt * 7);
+    for (const key of ['rx', 'ty', 'ms', 'e'] as const) tilt[key] += (g[key] - tilt[key]) * k;
+    const flat = tilt.rx < 0.05 && tilt.ty < 0.3 && tilt.ms > 0.9995;
+    monitorFlat = flat;
+    monitor.classList.toggle('flat', flat);
+    put(monitor, 'transform', flat ? 'none' : `perspective(1800px) translateY(${tilt.ty.toFixed(1)}px) rotateX(${tilt.rx.toFixed(2)}deg) scale(${tilt.ms.toFixed(4)})`);
+    const e = tilt.e.toFixed(2);
+    for (const chip of chips) put(chip, '--e', e);
+    put(stageBg, '--e', e);
+  }
+  // toca só com o monitor reto (enquanto ele entra inclinado, a tela fica no primeiro quadro)
+  function syncPlayback() {
+    const should = running && playing && monitorFlat && loaded;
+    if (should && video.paused) void video.play().catch(() => {});
+    else if (!should && !video.paused) video.pause();
+  }
+  function loop(now: number) {
+    if (!running) return;
+    const dt = clamp((now - last) / 1000, 0, 0.1);
+    last = now;
+    applyTilt(dt, stageTargets());
+    syncPlayback();
+    chrome(video.currentTime || 0);
+    raf = requestAnimationFrame(loop);
+  }
+  function setRunning(should: boolean) {
+    if (should === running) return;
+    running = should;
+    if (running) {
+      last = performance.now();
+      raf = requestAnimationFrame(loop);
+    } else {
+      cancelAnimationFrame(raf);
+      syncPlayback();
+    }
+  }
+  function setPlaying(p: boolean) {
+    playing = p;
+    play.classList.toggle('paused', !p);
+    play.setAttribute('aria-label', p ? 'Pausar a demo' : 'Reproduzir a demo');
+    if (p && visible) load();
+    syncPlayback();
+  }
+
+  track.querySelectorAll<HTMLElement>('.vid-tick').forEach((tick) => tick.style.setProperty('--at', tick.dataset.at ?? '0'));
+  setPlaying(playing);
+  chrome(reduce ? 14.8 : 0);
+  offs.push(
+    addScrollJob({
+      measure() {
+        stageTop = stage.getBoundingClientRect().top + window.scrollY;
+      },
+      frame() {},
+    })
+  );
+  stageTop = stage.getBoundingClientRect().top + window.scrollY;
+  applyTilt(1, stageTargets());
+
+  const onPlay = () => {
+    load();
+    setPlaying(!playing);
+  };
+  play.addEventListener('click', onPlay);
+  offs.push(() => play.removeEventListener('click', onPlay));
+  const seekTo = (t: number) => {
+    load();
+    const d = video.duration || T;
+    video.currentTime = clamp(t, 0, d - 0.01);
+    chrome(video.currentTime);
+  };
+  const seek = (e: PointerEvent) => {
+    const r = track.getBoundingClientRect();
+    seekTo(clamp((e.clientX - r.left) / r.width) * T);
+  };
+  const onDown = (e: PointerEvent) => {
+    track.setPointerCapture(e.pointerId);
+    seek(e);
+    const up = () => {
+      track.removeEventListener('pointermove', seek);
+      track.removeEventListener('pointerup', up);
+    };
+    track.addEventListener('pointermove', seek);
+    track.addEventListener('pointerup', up);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      seekTo((video.currentTime || 0) + (e.key === 'ArrowRight' ? 2 : -2));
+      e.preventDefault();
+    } else if (e.key === ' ' || e.key === 'Enter') {
+      onPlay();
+      e.preventDefault();
+    }
+  };
+  track.addEventListener('pointerdown', onDown);
+  track.addEventListener('keydown', onKey);
+  offs.push(() => {
+    track.removeEventListener('pointerdown', onDown);
+    track.removeEventListener('keydown', onKey);
+  });
+
+  // baixa o vídeo quando a seção chega perto da tela; anima só com ela visível e a aba aberta
+  const nearIo = new IntersectionObserver((entries) => entries[0]!.isIntersecting && load(), { rootMargin: '600px 0px' });
+  nearIo.observe(stage);
+  const visIo = new IntersectionObserver((entries) => {
+    visible = entries[0]!.isIntersecting;
+    setRunning(visible && !document.hidden);
+  });
+  visIo.observe(stage);
+  // na primeira vez que a demo aparece de verdade, começa do zero
+  let started = reduce;
+  const startIo = new IntersectionObserver(
+    (entries) => {
+      if (started || !entries[0]!.isIntersecting) return;
+      started = true;
+      if (video.readyState > 0) video.currentTime = 0;
+    },
+    { threshold: 0.35 }
+  );
+  startIo.observe(stage);
+  const onVisibility = () => setRunning(visible && !document.hidden);
+  document.addEventListener('visibilitychange', onVisibility);
+  offs.push(() => {
+    nearIo.disconnect();
+    visIo.disconnect();
+    startIo.disconnect();
+    document.removeEventListener('visibilitychange', onVisibility);
+    setRunning(false);
+    video.pause();
+  });
+
+  return () => offs.forEach((off) => off());
+}
+
 export function Demo() {
   const stageRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => startDemo(stageRef.current!, controlsRef.current!), []);
+  useEffect(() => (CAPTURE ? startDemo : startVideo)(stageRef.current!, controlsRef.current!), []);
 
   return (
     <section className="demo" id="demo" aria-labelledby="demoTitle" data-pause>
@@ -352,6 +623,7 @@ export function Demo() {
         <div className="monitor" id="monitor">
           <div className="m-face">
             <div className="m-screen" id="mScreen">
+              {CAPTURE ? (
               <div className="vid" id="vid" aria-hidden="true">
                 <div className="v-title">
                   <i />
@@ -522,6 +794,9 @@ export function Demo() {
                 <span className="v-click" id="vClick" />
                 <div className="v-fade" id="vFade" />
               </div>
+              ) : (
+                <video className="vid-video" id="vidVideo" muted loop playsInline preload="none" poster={`/video/${VARIANT.wide}-poster.webp`} aria-hidden="true" />
+              )}
               <div className="screen-glare" />
             </div>
           </div>
