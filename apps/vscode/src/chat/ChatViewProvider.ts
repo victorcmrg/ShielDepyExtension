@@ -72,6 +72,10 @@ const FULL_SCAN_RE = /\b(limpa|limpar|escane|escanear|varra|varrer|analis[ae]r?)
  */
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
+  /** O script do painel já mandou "ready": antes disso o VS Code descarta o que for postado. */
+  private viewReady = false;
+  /** Achados pedidos antes do painel ficar pronto (o primeiro "perguntar à IA" abre o chat do zero). */
+  private pendingAttach: FindingAttachment[] = [];
   private turns: Turn[] = [];
   private nextId = 1;
   private inFlight: AbortController | undefined;
@@ -112,8 +116,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message?.type) {
         case 'ready':
+          this.viewReady = true;
           this.post({ type: 'history', turns: this.turns.map(toView) });
           this.postAccess();
+          // os anexos que chegaram antes do painel carregar vão agora, depois do histórico
+          for (const finding of this.pendingAttach.splice(0)) this.post({ type: 'attach', finding });
           break;
         case 'refreshAccess':
           void vscode.commands.executeCommand(CMD.refreshAccess);
@@ -136,10 +143,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       authListener.dispose();
       configListener.dispose();
       this.view = undefined;
+      this.viewReady = false;
     });
   }
 
   private render(webviewView: vscode.WebviewView): void {
+    // HTML novo, script novo: até ele mandar "ready", o que for postado se perde
+    this.viewReady = false;
     const h = (key: Key) => escapeHtml(t(key));
     webviewView.webview.html = renderWebview({
       webview: webviewView.webview,
@@ -181,7 +191,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   /** "Ask AI" na sidebar: não pergunta nada sozinho, só ANEXA o achado na caixa de entrada. */
   attachFinding(finding: FindingAttachment): void {
     vscode.commands.executeCommand(CMD.focusChat).then(
-      () => this.post({ type: 'attach', finding }),
+      () => {
+        // na primeira vez o focusChat cria o painel, mas o script dele ainda não carregou: o anexo
+        // espera o "ready" (antes ele se perdia e era preciso clicar de novo)
+        if (this.view && this.viewReady) this.post({ type: 'attach', finding });
+        else this.pendingAttach.push(finding);
+      },
       (err) => this.log(`[chat] falha ao focar o chat pra anexar achado: ${err}`)
     );
   }
