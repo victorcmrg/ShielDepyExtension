@@ -587,6 +587,31 @@ section { position: relative; }
 @keyframes flip { 0% { opacity: 0; transform: translateY(-8px); } 100% { opacity: 1; transform: none; } }
 @media (max-width: 960px) { .plans { grid-template-columns: 1fr; max-width: 480px; } .plan-for { min-height: 0; } }
 
+/* ---------------- comparativo (entre Segurança e Planos) ---------------- */
+.compare { padding: 110px 24px; }
+.compare .section-head { margin-bottom: 56px; }
+.cmp-group { width: min(1080px, 100%); margin: 0 auto; display: grid; grid-template-columns: minmax(150px, 230px) 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
+.cmp-mascot { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 24px 34px rgba(16, 239, 124, 0.18)); }
+.cmp-names { display: flex; flex-direction: column; gap: 2px; margin-bottom: 18px; }
+.cmp-names h3 { font-size: clamp(22px, 2.6vw, 30px); letter-spacing: -0.02em; color: var(--muted); }
+.cmp-group.is-us .cmp-names h3 { color: var(--ink); }
+.cmp-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; }
+.cmp-list li { display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 1.4; color: var(--ink); }
+.cmp-list li.is-missing { color: var(--muted); }
+.cmp-mark { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; }
+.cmp-mark svg { width: 12px; height: 12px; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.cmp-mark.ok { background: color-mix(in srgb, var(--brand-to) 18%, transparent); }
+.cmp-mark.ok svg { stroke: var(--brand-to); }
+:root:not([data-theme="dark"]) .cmp-mark.ok svg { stroke: #0a8f4a; }
+.cmp-mark.no { background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.cmp-mark.no svg { stroke: var(--muted); }
+.cmp-divider { width: 33.333%; margin: 56px auto; border: 0; border-top: 1px solid var(--line); }
+@media (max-width: 760px) {
+  .cmp-group { grid-template-columns: 1fr; justify-items: start; }
+  .cmp-mascot { width: 150px; }
+  .cmp-list { grid-template-columns: 1fr; }
+}
+
 /* ---------------- chamada final + rodapé ---------------- */
 .closing { padding: 40px 24px 120px; }
 .closing-card {
@@ -599,19 +624,11 @@ section { position: relative; }
 .finale { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 48px clamp(16px, 4vw, 56px) 28px; border-top: 1px solid var(--line); overflow: hidden; isolation: isolate; }
 .finale-anchor { position: absolute; top: 0; left: 0; }
 .finale-glow { position: absolute; left: -10%; right: -10%; bottom: -30%; height: 75%; z-index: -1; pointer-events: none; background: radial-gradient(60% 60% at 50% 100%, rgba(16, 239, 124, 0.22), transparent 70%); }
-.finale-top { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
-.finale-status { margin: 0; display: inline-flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
-.finale-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--brand-to); animation: finale-pulse 2.2s ease-out infinite; }
-@keyframes finale-pulse { from { box-shadow: 0 0 0 0 rgba(16, 239, 124, 0.55); } to { box-shadow: 0 0 0 12px rgba(16, 239, 124, 0); } }
-.finale nav { display: flex; gap: 22px; flex-wrap: wrap; }
-.finale a { color: var(--muted); text-decoration: none; font-size: 14px; transition: color 0.2s ease; }
-.finale a:hover { color: var(--ink); }
 .finale-middle { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
 .finale-lede { margin: 0; max-width: 34ch; font-family: var(--font-display); font-size: clamp(20px, 2.4vw, 30px); line-height: 1.25; letter-spacing: -0.01em; color: var(--ink); }
-.finale-up { font-weight: 600; }
-.finale-word { margin: 0; text-align: center; white-space: nowrap; line-height: 0.8; font-family: var(--font-display); font-weight: 800; letter-spacing: -0.06em; font-size: clamp(64px, 19.5vw, 340px); }
+.finale-word { margin: 0; text-align: center; white-space: nowrap; line-height: 1; font-family: var(--font-display); font-weight: 800; letter-spacing: -0.06em; font-size: clamp(64px, 19.5vw, 340px); }
 .finale-word-fill {
-  display: inline-block; padding: 0 0.04em 0.06em; color: transparent; -webkit-background-clip: text; background-clip: text;
+  display: inline-block; padding: 0.02em 0.06em 0.2em; color: transparent; -webkit-background-clip: text; background-clip: text;
   background-image: linear-gradient(rgba(16, 239, 124, 0.3), rgba(159, 232, 112, 0.25)), var(--tex); background-size: auto, 900px auto; background-position: 0 0, 30% 40%;
   animation: finale-tex 18s ease-in-out infinite alternate;
 }
@@ -622,7 +639,7 @@ section { position: relative; }
 .topbar { transition: transform 0.55s var(--ease); }
 .topbar.is-hidden { transform: translateY(calc(-100% - 24px)); }
 .topbar.is-hidden .nav { pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .finale-word-fill, .finale-dot { animation: none; } .topbar { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .finale-word-fill { animation: none; } .topbar { transition: none; } }
 
 /* ---------------- vidro líquido ----------------
    .lg = peça de vidro. Em todos os navegadores: tinta + desfoque + borda especular + brilho que segue o mouse.

@@ -7,6 +7,7 @@ import { initGlass, initLoops, initPauseOffscreen, initReveal, initSpotlight } f
 import { idle } from './motion';
 import { Bento } from './sections/Bento';
 import { Closing, Footer, TopNav } from './sections/Chrome';
+import { Compare } from './sections/Compare';
 import { Demo } from './sections/Demo';
 import { Hero } from './sections/Hero';
 import { Pricing } from './sections/Pricing';
@@ -45,6 +46,7 @@ export function Landing() {
         <Proof />
         <Bento />
         <Security />
+        <Compare />
         <Pricing />
         <Closing />
       </main>

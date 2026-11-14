@@ -77,23 +77,8 @@ export function Footer() {
       {/* o Enterprise ("Falar com o time") aponta para #contato */}
       <span id="contato" className="finale-anchor" aria-hidden="true" />
       <div className="finale-glow" aria-hidden="true" />
-      <div className="finale-top">
-        <p className="finale-status">
-          <span className="finale-dot" aria-hidden="true" />
-          Todas as ligações verificadas · pronto para o deploy
-        </p>
-        <nav aria-label="Rodapé">
-          <a href="#deploy">Como funciona</a>
-          <a href="#seguranca">Segurança</a>
-          <a href="#planos">Planos</a>
-          <a href="/entrar">Entrar</a>
-        </nav>
-      </div>
       <div className="finale-middle">
-        <p className="finale-lede">Do grafo à prova: cada ligação do seu sistema verificada antes de chegar em produção.</p>
-        <a href="#inicio" className="finale-up">
-          Voltar ao início <span aria-hidden="true">↑</span>
-        </a>
+        <p className="finale-lede">Do grafo à prova, cada ligação do seu sistema verificada antes de chegar em produção.</p>
       </div>
       <p className="finale-word" aria-label="ShielDepy">
         <span className="finale-word-fill" aria-hidden="true">
@@ -102,7 +87,7 @@ export function Footer() {
       </p>
       <div className="finale-bottom">
         <span>
-          © <span id="year" ref={yearRef} /> ShielDepy
+          ADS 4 · <span id="year" ref={yearRef} /> ShielDepy
         </span>
         <span>Colisões provadas antes do deploy.</span>
       </div>
