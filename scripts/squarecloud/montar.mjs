@@ -28,8 +28,10 @@ if (!existsSync(join(WEB_DIST, 'index.html'))) {
 }
 
 mkdirSync(OUT, { recursive: true });
-// troca tudo menos o .git (o clone da branch) e o data/ (o banco, se alguém montar em cima de um em uso)
-for (const name of readdirSync(OUT)) if (name !== '.git' && name !== 'data') rmSync(join(OUT, name), { recursive: true, force: true });
+// troca tudo menos o .git (o clone da branch), o data/ (o banco, se alguém montar em cima de um em uso) e o
+// node_modules (fora do git; poupa reinstalar quando se testa o pacote na máquina)
+const KEEP = new Set(['.git', 'data', 'node_modules']);
+for (const name of readdirSync(OUT)) if (!KEEP.has(name)) rmSync(join(OUT, name), { recursive: true, force: true });
 
 cpSync(join(API, 'src'), join(OUT, 'src'), { recursive: true });
 cpSync(join(API, 'drizzle'), join(OUT, 'drizzle'), { recursive: true });
@@ -56,7 +58,7 @@ const pkg = {
 };
 writeFileSync(join(OUT, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
 
-// a subida: os padrões da Square Cloud (porta 80, produção, o site em public/, o banco em data/) e o
+// a subida: os padrões da Square Cloud (porta 80 em 0.0.0.0, produção, o site em public/, o banco em data/) e o
 // start:prod da API (o admin pelas variáveis de ambiente e o servidor)
 writeFileSync(
   join(OUT, 'start.mjs'),
@@ -66,6 +68,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 process.env.PORT ??= '80';
+process.env.HOST ??= '0.0.0.0';
 process.env.NODE_ENV ??= 'production';
 process.env.SHIELDEPY_STATIC_DIR ??= here('./public');
 process.env.SHIELDEPY_DATA_DIR ??= here('./data');
@@ -80,6 +83,8 @@ writeFileSync(
   [
     'DISPLAY_NAME=ShielDepy',
     'DESCRIPTION=Site e portal do ShielDepy',
+    // o tipo do app não muda depois do primeiro deploy (precisa de um app novo): declarado, não deduzido
+    'RUNTIME=nodejs',
     'MAIN=start.mjs',
     'MEMORY=512',
     'VERSION=recommended',
