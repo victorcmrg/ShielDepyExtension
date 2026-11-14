@@ -1,5 +1,6 @@
 DISPLAY_NAME=ShielDepy
 DESCRIPTION=Site e portal do ShielDepy
+RUNTIME=nodejs
 MAIN=start.mjs
 MEMORY=512
 VERSION=recommended

@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { createHandler } from './app';
 
 const PORT = Number(process.env.PORT) || 3001;
+// Sem HOST, o Node ouve em todas as interfaces (como sempre); hosts como a Square Cloud pedem 0.0.0.0 (0048).
+const HOST = process.env.HOST || undefined;
 const log = (m: string) => console.error(m);
 
 // O site é o build do Vite (React). Em dev quem serve as páginas é o Vite (npm run dev), com proxy pra cá.
@@ -20,8 +22,8 @@ const { database } = await import('./composition');
 log(`[web] banco: ${database.kind === 'postgres' ? 'Postgres (DATABASE_URL)' : 'PGlite local'}`);
 
 const handler = createHandler({ staticDir, log });
-const server = createServer((req, res) => void handler(req, res)).listen(PORT, () => {
-  console.log(`🛡️  ShielDepy web no ar: http://localhost:${PORT}`);
+const server = createServer((req, res) => void handler(req, res)).listen(PORT, HOST, () => {
+  console.log(`🛡️  ShielDepy web no ar: http://${HOST ?? 'localhost'}:${PORT}`);
 });
 
 // O PGlite grava no disco ao fechar: Ctrl+C e o encerramento do deploy fecham o banco antes de sair.
