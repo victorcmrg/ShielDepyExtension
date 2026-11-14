@@ -4,7 +4,7 @@
 const SELECTOR = [
   'button:not(:disabled)', '.button', '.icon-button', '.link-quiet', '.vid-play', '.scroll-cue',
   '.btn-brand', '.btn-ghost', '.btn-danger', '.btn-pill', '.btn-secondary',
-  '.nav .brand', '.nav-links a', '.footer nav a', '.footer .brand',
+  '.nav .brand', '.nav-links a', '.finale nav a', '.finale-up',
 ].join(', ');
 const SKIP = '.billing button, [data-no-magnet]'; // a pílula deslizante do toggle não acompanharia
 

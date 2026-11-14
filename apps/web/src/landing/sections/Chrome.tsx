@@ -8,7 +8,18 @@ export function TopNav() {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const topbar = ref.current!;
-    return addScrollJob({ frame: () => topbar.classList.toggle('scrolled', window.scrollY > 40) });
+    // na tela de finalização (#fim) o menu sobe e some; rolando de volta para cima, ele desce de novo
+    let finaleTop = Infinity;
+    return addScrollJob({
+      measure: () => {
+        const finale = document.getElementById('fim');
+        finaleTop = finale ? finale.getBoundingClientRect().top + window.scrollY : Infinity;
+      },
+      frame: () => {
+        topbar.classList.toggle('scrolled', window.scrollY > 40);
+        topbar.classList.toggle('is-hidden', window.scrollY + window.innerHeight * 0.5 >= finaleTop);
+      },
+    });
   }, []);
 
   return (
@@ -24,6 +35,7 @@ export function TopNav() {
           <a href="#prova">A prova</a>
           <a href="#seguranca">Segurança</a>
           <a href="#planos">Planos</a>
+          <a href="#fim">Footer</a>
         </div>
         <div className="nav-actions">
           <ThemeToggle className="icon-button" />
@@ -53,6 +65,7 @@ export function Closing() {
   );
 }
 
+/** A tela de finalização: o rodapé do tamanho da tela, com o ShielDepy grande (a aba "Footer" do menu). */
 export function Footer() {
   // o ano entra no navegador (o HTML é pré-renderizado no build e não pode congelar o ano de lá)
   const yearRef = useRef<HTMLSpanElement>(null);
@@ -60,21 +73,38 @@ export function Footer() {
     yearRef.current!.textContent = String(new Date().getFullYear());
   }, []);
   return (
-    <footer className="footer" id="contato">
-      <div className="footer-inner">
-        <a href="#inicio" className="brand">
-          <img src="/logo-mark.svg" alt="" width="20" height="20" />
-          <span>ShielDepy</span>
-        </a>
+    <footer className="finale" id="fim" data-pause>
+      {/* o Enterprise ("Falar com o time") aponta para #contato */}
+      <span id="contato" className="finale-anchor" aria-hidden="true" />
+      <div className="finale-glow" aria-hidden="true" />
+      <div className="finale-top">
+        <p className="finale-status">
+          <span className="finale-dot" aria-hidden="true" />
+          Todas as ligações verificadas · pronto para o deploy
+        </p>
         <nav aria-label="Rodapé">
           <a href="#deploy">Como funciona</a>
           <a href="#seguranca">Segurança</a>
           <a href="#planos">Planos</a>
           <a href="/entrar">Entrar</a>
         </nav>
-        <p>
+      </div>
+      <div className="finale-middle">
+        <p className="finale-lede">Do grafo à prova: cada ligação do seu sistema verificada antes de chegar em produção.</p>
+        <a href="#inicio" className="finale-up">
+          Voltar ao início <span aria-hidden="true">↑</span>
+        </a>
+      </div>
+      <p className="finale-word" aria-label="ShielDepy">
+        <span className="finale-word-fill" aria-hidden="true">
+          ShielDepy
+        </span>
+      </p>
+      <div className="finale-bottom">
+        <span>
           © <span id="year" ref={yearRef} /> ShielDepy
-        </p>
+        </span>
+        <span>Colisões provadas antes do deploy.</span>
       </div>
     </footer>
   );
