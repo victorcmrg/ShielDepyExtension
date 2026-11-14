@@ -1,4 +1,5 @@
-﻿# Branch de deploy da Square Cloud
+# Branch de deploy da Square Cloud
 
-Só a landing estática do ShielDepy, gerada de `apps/web` (`npm run build -w @shieldepy/web`, sem o `app.html` do portal).
-Não edite aqui: o código-fonte fica na `main`. Para atualizar, gere o build de novo e substitua estes arquivos.
+A landing do ShielDepy, a encenação do `/entrar` e o pós-login de demonstração (`/demo`, com empresas e
+funcionários de exemplo, sem sistema por trás), como site estático. Gerado por `scripts/squarecloud/montar.mjs`
+na `main` (decisões 0048 e 0049). Não edite aqui: o código-fonte fica na `main`.

@@ -1,0 +1,1 @@
+var e=/^\/(login|device-confirm|projects(\/\d+(\/runs\/\d+)?)?|team|account|plan|admin|demo)(?=$|[?#])/;function t(t,n){e.test(n)?t(n):window.location.assign(n)}export{t};
