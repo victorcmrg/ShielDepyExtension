@@ -1,0 +1,20 @@
+{
+  "_": "Volume de cada som do Entrar em cima do ganho de cada chamada (1 = como era). Lido pelo sfx.ts (encenação ao vivo) e pelo scripts/entrar-video/audio.mjs (a trilha do vídeo). O hum dos cursores fica em 1: o usuário achou o volume dele bom; os outros estavam baixos demais.",
+  "thud-1": 2.4,
+  "thud-2": 2.4,
+  "thud-3": 2.4,
+  "thud-4": 2.4,
+  "thud-5": 2.4,
+  "thud-6": 2.4,
+  "thud-7": 2.4,
+  "thud-big": 2,
+  "whoosh-in": 2.2,
+  "whoosh-out": 2.2,
+  "click": 1.8,
+  "key": 1.8,
+  "blink": 1.8,
+  "pop": 1.8,
+  "wood-drag": 1.7,
+  "hum-1": 1,
+  "hum-2": 1
+}

@@ -18,6 +18,9 @@ const DELAY_MS = Number(process.argv[3] ?? 70);
 const MASTER = 0.32; // o mesmo de sfx.ts
 const here = fileURLToPath(new URL('.', import.meta.url));
 const SFX = resolve(here, '../../public/sfx');
+// o volume de cada som: o mesmo arquivo que o sfx.ts lê (a encenação ao vivo e o vídeo soam iguais)
+const LEVELS = JSON.parse(readFileSync(resolve(here, '../../src/portal/pages/entrar/sfx-levels.json'), 'utf8'));
+const level = (name) => LEVELS[name] ?? 1;
 
 const { cues, wood, frames, fps } = JSON.parse(readFileSync(join(dir, 'cues.json'), 'utf8'));
 const seconds = frames / fps;
@@ -42,7 +45,7 @@ const at = (buf, pos) => {
 for (const c of cues) {
   const buf = load(c.name);
   const o = c.o || {};
-  const gain = o.gain ?? 1;
+  const gain = (o.gain ?? 1) * level(c.name);
   const rate = o.rate ?? 1;
   const start = Math.round(((c.t + DELAY_MS) / 1000) * RATE);
   const off = (o.offset ?? 0) * RATE;
@@ -74,7 +77,7 @@ if (wood.length) {
       while (wi < wood.length && ((wood[wi][0] + DELAY_MS) / 1000) * RATE <= j) target = wood[wi++][1];
       g += (target - g) * k;
       if (g < 1e-4 && target === 0) continue;
-      out[j] += buf[(j - s0) % buf.length] * g * MASTER;
+      out[j] += buf[(j - s0) % buf.length] * g * level('wood-drag') * MASTER;
     }
   }
 }

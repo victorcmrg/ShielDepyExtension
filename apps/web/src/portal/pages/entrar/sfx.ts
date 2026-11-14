@@ -3,6 +3,8 @@
 // carregado uma vez (fetch + decodeAudioData) e tocado com ganho e velocidade próprios; os contínuos
 // (a madeira arrastando) são laços que sobem e descem de volume com o movimento.
 
+import LEVELS from './sfx-levels.json';
+
 /** as batidas de balão (variações de verdade; o tom também varia a cada uma) */
 export const THUDS = ['thud-1', 'thud-2', 'thud-3', 'thud-4', 'thud-5', 'thud-6', 'thud-7'] as const;
 export type SfxName =
@@ -35,6 +37,12 @@ export function step(n: number, base = 1): number {
   const oct = Math.floor(n / 5);
   return base * 2 ** ((PENTA[n % 5]! + 12 * oct) / 12);
 }
+
+/** O volume de cada som sobre o ganho da chamada (sfx-levels.json, o mesmo da trilha do vídeo). */
+const level = (name: SfxName): number => {
+  const v = (LEVELS as Record<string, unknown>)[name];
+  return typeof v === 'number' ? v : 1;
+};
 
 /** O volume de tudo: baixo de propósito (os sons só complementam). */
 export const MASTER = 0.32;
@@ -122,12 +130,13 @@ export function createSfx(base = '/sfx/'): Sfx {
       return ctx.state === 'running';
     },
     play(name, o = {}) {
-      const v = voice(name, o.gain ?? 1, o.rate ?? 1, false);
+      const gain = (o.gain ?? 1) * level(name);
+      const v = voice(name, gain, o.rate ?? 1, false);
       if (!v) return;
       const now = ctx.currentTime;
       v.src.start(now, o.offset ?? 0);
       if (o.dur) {
-        v.g.gain.setValueAtTime(o.gain ?? 1, now + Math.max(0, o.dur - 0.12));
+        v.g.gain.setValueAtTime(gain, now + Math.max(0, o.dur - 0.12));
         v.g.gain.linearRampToValueAtTime(0, now + o.dur);
         v.src.stop(now + o.dur + 0.02);
       }
@@ -143,7 +152,7 @@ export function createSfx(base = '/sfx/'): Sfx {
             v = voice(name, 0, 1, true);
             v?.src.start();
           }
-          if (v) v.g.gain.setTargetAtTime(gain, ctx.currentTime, 0.06);
+          if (v) v.g.gain.setTargetAtTime(gain * level(name), ctx.currentTime, 0.06);
         },
         stop() {
           if (!v) return;
