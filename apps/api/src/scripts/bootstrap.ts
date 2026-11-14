@@ -2,25 +2,28 @@
 // quebrando o ovo-e-galinha (os endpoints /api/admin/* já exigem um usuário
 // vinculado a uma empresa, que só esses mesmos endpoints poderiam criar).
 //
-// Rodar uma vez, depois de definir ADMIN_EMAIL no .env da raiz:
+// Rodar uma vez, depois de definir ADMIN_EMAIL (e, se quiser, ADMIN_INITIAL_PASSWORD) no .env da raiz:
 //   npm run bootstrap -w @shieldepy/api
+// Em produção, o start:prod faz o mesmo sozinho a cada subida (decisão 0048).
 import { companies, database } from '../composition';
-
-const adminEmail = process.env.ADMIN_EMAIL;
-if (!adminEmail) {
-  console.error('defina ADMIN_EMAIL no .env antes de rodar o bootstrap');
-  process.exit(1);
-}
+import { bootstrapAdmin } from './bootstrapAdmin';
 
 try {
-  if (await companies.getAssignment(adminEmail)) {
-    console.log(`${adminEmail} já está atribuído a uma empresa — nada a fazer.`);
+  const r = await bootstrapAdmin(companies, process.env);
+  if (r.status === 'sem-admin') {
+    console.error('defina ADMIN_EMAIL no .env antes de rodar o bootstrap');
+    process.exitCode = 1;
+  } else if (r.status === 'email-invalido') {
+    console.error('ADMIN_EMAIL não tem forma de e-mail');
+    process.exitCode = 1;
+  } else if (r.status === 'senha-curta') {
+    console.error('ADMIN_INITIAL_PASSWORD precisa ter pelo menos 8 caracteres');
+    process.exitCode = 1;
+  } else if (r.status === 'ja-existe') {
+    console.log(`${r.email} já está atribuído a uma empresa — nada a fazer.`);
   } else {
-    const company = await companies.create('ShielDepy (admin)');
-    await companies.setPermission(company.id, 'aiEnabled', true);
-    await companies.assign(adminEmail, company.id, null, 'owner');
-    console.log(`Empresa "${company.name}" criada (id ${company.id}) e ${adminEmail} atribuído, com aiEnabled=true.`);
-    console.log('Entre pela primeira vez usando login social (Google/GitHub) ou peça uma senha inicial via /admin.');
+    console.log(`Empresa "ShielDepy (admin)" criada e ${r.email} atribuído, com aiEnabled=true.`);
+    console.log(r.comSenha ? 'Entre com o e-mail e a senha inicial.' : 'Entre pela primeira vez usando login social (Google/GitHub).');
   }
 } finally {
   // o PGlite só grava no disco ao fechar

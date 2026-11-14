@@ -18,6 +18,7 @@
     "cli": "node apps/cli/bin/shieldepy.js",
     "web": "npm run build -w @shieldepy/web && npm start -w @shieldepy/api",
     "web:dev": "npm run dev -w @shieldepy/web",
+    "squarecloud:montar": "node scripts/squarecloud/montar.mjs",
     "demo": "node scripts/demo/demo.mjs",
     "demo:real": "node --import tsx scripts/demo/preparar-real.ts",
     "real:testar": "node --import tsx scripts/demo/testar-real.ts",
