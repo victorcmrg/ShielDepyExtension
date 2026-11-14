@@ -591,7 +591,9 @@ section { position: relative; }
 .compare { padding: 110px 24px; }
 .compare .section-head { margin-bottom: 56px; }
 .cmp-group { width: min(1080px, 100%); margin: 0 auto; display: grid; grid-template-columns: minmax(150px, 230px) 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
-.cmp-mascot { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 24px 34px rgba(16, 239, 124, 0.18)); }
+/* a sombra preta leve vem de baixo para cima, atrás do mascote e dentro do quadrado da imagem (o PNG é transparente) */
+.cmp-mascot { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; border-radius: 24px; background: linear-gradient(to top, rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0.1) 35%, transparent 70%); }
+:root:not([data-theme="dark"]) .cmp-mascot { background: linear-gradient(to top, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.04) 35%, transparent 70%); }
 .cmp-names { display: flex; flex-direction: column; gap: 2px; margin-bottom: 18px; }
 .cmp-names h3 { font-size: clamp(22px, 2.6vw, 30px); letter-spacing: -0.02em; color: var(--muted); }
 .cmp-group.is-us .cmp-names h3 { color: var(--ink); }
