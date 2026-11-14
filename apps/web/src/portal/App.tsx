@@ -2,6 +2,7 @@
 // admin.
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { DEMO_PORTAL } from './demo/mode';
 import { Shell } from './layout/Shell';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -15,13 +16,29 @@ const Team = lazy(() => import('./pages/Team'));
 const Account = lazy(() => import('./pages/Account'));
 const Plan = lazy(() => import('./pages/Plan'));
 const Admin = lazy(() => import('./pages/Admin'));
+// o pós-login de mentira do site estático, sem API (decisão 0049)
+const Demo = lazy(() => import('./pages/Demo'));
 
 export function App() {
+  // sem API (site estático, decisão 0049): só a encenação e a demonstração; o login vira a encenação e
+  // as telas logadas, a demonstração
+  if (DEMO_PORTAL)
+    return (
+      <Suspense fallback={null}>
+        <Routes>
+          <Route path="/entrar" element={<Entrar />} />
+          <Route path="/demo" element={<Demo />} />
+          <Route path="/login" element={<Navigate to="/entrar" replace />} />
+          <Route path="*" element={<Navigate to="/demo" replace />} />
+        </Routes>
+      </Suspense>
+    );
   return (
     <Suspense fallback={null}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/entrar" element={<Entrar />} />
+        <Route path="/demo" element={<Demo />} />
         <Route path="/device-confirm" element={<DeviceConfirm />} />
         <Route
           path="/projects"

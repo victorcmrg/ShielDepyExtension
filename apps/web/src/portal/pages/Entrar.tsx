@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 
 import { useNavigate } from 'react-router-dom';
 import '../../styles/entrar.css';
 import { postJson } from '../api';
+import { DEMO_PORTAL } from '../demo/mode';
 import { useAuth } from '../auth';
 import { goTo } from '../navigation';
 import { coverStage, pickEntrarVideo, type EntrarVideo } from '../../shared/entrarVideo';
@@ -511,6 +512,12 @@ function FinalLogin({ ghost }: { ghost: boolean }) {
     setBusy(true);
     setError(null);
     try {
+      // site sem API (decisão 0049): o login é de mentira e leva ao painel de demonstração
+      if (DEMO_PORTAL) {
+        await new Promise((r) => setTimeout(r, 450));
+        navigate('/demo');
+        return;
+      }
       const filled = email.trim() !== '' || password !== '';
       const data = filled
         ? await postJson<{ isAdmin?: boolean; home?: string }>('/api/auth/login', { email: email.trim(), password }, 'não foi possível entrar.')
