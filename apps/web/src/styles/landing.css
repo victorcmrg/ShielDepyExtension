@@ -628,11 +628,14 @@ section { position: relative; }
 .closing-card .section-title { margin: 0 auto 30px; max-width: 20ch; }
 /* a tela de finalização (o rodapé do tamanho da tela, aba "Footer" do menu) */
 .finale { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 48px clamp(16px, 4vw, 56px) 28px; border-top: 1px solid var(--line); overflow: hidden; isolation: isolate; }
+/* uma barra de tarefas (48 px) livre no pé da tela final: no PC a barra do sistema pode cobrir o fim da janela;
+   os créditos e a palavra sobem, e o mascote (posicionado pela palavra) mostra esses 48 px a mais do corpo */
+.finale { --taskbar: 48px; padding-bottom: calc(28px + var(--taskbar)); }
 .finale-anchor { position: absolute; top: 0; left: 0; }
 .finale-glow { position: absolute; left: -10%; right: -10%; bottom: -30%; height: 75%; z-index: -1; pointer-events: none; background: radial-gradient(60% 60% at 50% 100%, rgba(16, 239, 124, 0.22), transparent 70%); }
 .finale-middle { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
 .finale-lede { margin: 0; max-width: 34ch; font-family: var(--font-display); font-size: clamp(20px, 2.4vw, 30px); line-height: 1.25; letter-spacing: -0.01em; color: var(--ink); }
-.finale-word { margin: 0; text-align: center; white-space: nowrap; line-height: 1; font-family: var(--font-display); font-weight: 800; letter-spacing: -0.06em; font-size: clamp(64px, 19.5vw, 340px); }
+.finale-word { margin: 0 0 var(--taskbar); text-align: center; white-space: nowrap; line-height: 1; font-family: var(--font-display); font-weight: 800; letter-spacing: -0.06em; font-size: clamp(64px, 19.5vw, 340px); }
 .finale-word-fill {
   display: inline-block; padding: 0.02em 0.06em 0.2em; color: transparent; -webkit-background-clip: text; background-clip: text;
   background-image: linear-gradient(rgba(16, 239, 124, 0.3), rgba(159, 232, 112, 0.25)), var(--tex); background-size: auto, 900px auto; background-position: 0 0, 30% 40%;
@@ -662,7 +665,7 @@ section { position: relative; }
    chegar à mesma altura relativa do desktop, menor (~80% da tela), com o corpo cortado pela borda: 39,7vw é o
    que sobra embaixo da palavra para 62% do mascote (a fonte é 19,5vw e a caixa 1,22em) */
 @media (max-width: 759px) {
-  .finale { justify-content: flex-start; }
+  .finale { justify-content: flex-start; --taskbar: 0px; }
   .finale-bottom { order: 1; }
   .finale-word { order: 2; margin-top: auto; margin-bottom: calc(39.7vw - 28px); }
 }
