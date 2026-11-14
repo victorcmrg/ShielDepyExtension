@@ -1,21 +1,25 @@
-// O comparativo (entre Segurança e Planos, sem aba no menu): em cima, as ferramentas de análise de
-// segurança conhecidas, com o pouco do que o ShielDepy faz que elas também fazem; embaixo, o ShielDepy,
+// O comparativo (entre Segurança e Planos, sem aba no menu): em cima, as ferramentas conhecidas do ramo
+// (código, segurança, observabilidade e caos), com o pouco do que o ShielDepy faz que elas também fazem; embaixo, o ShielDepy,
 // com tudo conferido. Cada grupo tem um mascote quadrado à esquerda e duas colunas de itens.
 import { Lede, SplitTitle } from '../parts';
 
-/** O que o ShielDepy faz. `others`: o que Veracode e Checkmarx também oferecem (análise no editor,
- *  portão no CI e correção sugerida por IA); o resto é próprio do ShielDepy. */
+/** As ferramentas conhecidas do ramo (análise de código, segurança, observabilidade e caos). */
+const OTHERS = ['Veracode', 'Checkmarx', 'SonarQube', 'Snyk', 'Datadog', 'Gremlin'];
+
+/** O que o ShielDepy faz. `others`: o que alguma das ferramentas acima também oferece (somando todas:
+ *  análise no editor, portão no CI e correção sugerida por IA); o resto é próprio do ShielDepy. Cada item
+ *  diz o que é só nosso (ex.: o caos guiado pelo mapa do código, não qualquer teste de caos). */
 const FEATURES: { label: string; others: boolean }[] = [
   { label: 'Análise dentro do editor', others: true },
   { label: 'Portão no CI que barra o merge', others: true },
   { label: 'Correção sugerida por IA', others: true },
-  { label: 'Mapa visual de todas as ligações do sistema', others: false },
+  { label: 'Mapa das ligações do código, função a função', others: false },
   { label: 'Ciclos e colisões entre regras provados', others: false },
-  { label: 'Agentes do caos testando falhas reais', others: false },
-  { label: 'Correção testada numa cópia antes de aplicar', others: false },
-  { label: 'Origem de cada erro mostrada no mapa', others: false },
-  { label: 'Triggers do Postgres lidos em produção', others: false },
-  { label: 'IA local: o código não sai da máquina', others: false },
+  { label: 'Agentes do caos guiados pelo mapa do código', others: false },
+  { label: 'Correção testada numa cópia do grafo antes de aplicar', others: false },
+  { label: 'Origem de cada falha apontada no código, antes do deploy', others: false },
+  { label: 'Triggers do Postgres cruzados com as regras do código', others: false },
+  { label: 'IA local: sugestões sem mandar o código para fora', others: false },
 ];
 
 function Mark({ ok }: { ok: boolean }) {
@@ -55,16 +59,18 @@ export function Compare() {
     <section className="compare" id="comparativo" aria-labelledby="compareTitle" data-pause>
       <div className="section-head center">
         <SplitTitle id="compareTitle" accent="continua." text="Onde os outros param, o ShielDepy continua." />
-        <Lede>As ferramentas de segurança conhecidas olham o código. O ShielDepy olha o sistema inteiro funcionando.</Lede>
+        <Lede>As ferramentas conhecidas olham um pedaço: o código, a produção ou a infraestrutura. O ShielDepy liga tudo isso no mapa do sistema.</Lede>
       </div>
 
       <div className="cmp-group reveal">
         <img className="cmp-mascot" src="/mascote-pensativo.webp" alt="" width="878" height="878" loading="lazy" decoding="async" />
         <div className="cmp-body">
-          <div className="cmp-names">
-            <h3>Veracode</h3>
-            <h3>Checkmarx</h3>
+          <div className="cmp-names is-many">
+            {OTHERS.map((name) => (
+              <h3 key={name}>{name}</h3>
+            ))}
           </div>
+          <p className="cmp-note">Somando o que todas elas cobrem:</p>
           <FeatureColumns all={false} />
         </div>
       </div>
