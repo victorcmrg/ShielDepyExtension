@@ -5,22 +5,23 @@ import { Icon } from '../ui/Icon';
 import { useMe } from '../layout/Shell';
 
 const PLAN = {
-  name: 'Completo',
-  price: 'R$249',
+  name: 'Starter',
+  price: 'US$30',
   cycle: 'por mês',
   renewal: '01/12/2026',
   includes: [
+    '120 rodadas por mês dos agentes do caos',
+    'Chatbot com IA: explicações e correção verificada',
+    'Visualização de erro melhorada, com a origem de cada falha',
     'Projetos, repositórios e pessoas ilimitados',
-    'IA: explicações, chat e correção verificada',
     'Portão no CI para barrar o merge',
-    'Painel com o uso de cada repositório',
   ],
 };
 
 const INVOICES = [
-  { id: 'DEMO-0003', period: 'Novembro de 2026', due: '01/11/2026', amount: 'R$ 249,00', paid: true },
-  { id: 'DEMO-0002', period: 'Outubro de 2026', due: '01/10/2026', amount: 'R$ 249,00', paid: true },
-  { id: 'DEMO-0001', period: 'Setembro de 2026', due: '01/09/2026', amount: 'R$ 249,00', paid: true },
+  { id: 'DEMO-0003', period: 'Novembro de 2026', due: '01/11/2026', amount: 'US$ 30,00', paid: true },
+  { id: 'DEMO-0002', period: 'Outubro de 2026', due: '01/10/2026', amount: 'US$ 30,00', paid: true },
+  { id: 'DEMO-0001', period: 'Setembro de 2026', due: '01/09/2026', amount: 'US$ 30,00', paid: true },
 ];
 
 export default function Plan() {
