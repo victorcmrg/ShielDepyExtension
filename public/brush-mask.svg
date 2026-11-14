@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="100" viewBox="0 0 900 100" preserveAspectRatio="none">
+  <!-- Máscara de "pincelada": terço esquerdo opaco, borda irregular no meio, terço direito transparente.
+       Deslizando a máscara (mask-position 100% → 0%) a palavra é "pintada" da esquerda para a direita. -->
+  <defs>
+    <filter id="rough" x="-10%" y="-50%" width="120%" height="200%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035 0.09" numOctaves="3" seed="6" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="70" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <linearGradient id="fade" x1="0" x2="1">
+      <stop offset="0.3" stop-color="#fff"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.9"/>
+      <stop offset="0.62" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="-60" y="-40" width="1000" height="180" fill="url(#fade)" filter="url(#rough)"/>
+</svg>
