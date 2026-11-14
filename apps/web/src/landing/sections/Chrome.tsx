@@ -66,14 +66,57 @@ export function Closing() {
 }
 
 /** A tela de finalização: o rodapé do tamanho da tela, com o ShielDepy grande (a aba "Footer" do menu). */
+/** Os confetes do mascote: direção, distância, giro e atraso fixos (o HTML é pré-renderizado: nada de
+ *  sorteio no render). Saem para os dois lados, um pouco para cima, e caem. */
+const CONFETTI = Array.from({ length: 15 }, (_, i) => {
+  const side = i % 2 ? 1 : -1;
+  const k = (i * 37) % 15; // espalha sem padrão visível
+  return {
+    dx: side * (170 + k * 26),
+    dy: -(90 + ((i * 53) % 15) * 14),
+    r: side * (200 + k * 34),
+    d: ((i * 29) % 15) * 14,
+    c: ['#12f07a', '#5ef58c', '#b6fbb0', '#2bd96f', '#e9ffe6'][i % 5]!,
+  };
+});
+
 export function Footer() {
   // o ano entra no navegador (o HTML é pré-renderizado no build e não pode congelar o ano de lá)
   const yearRef = useRef<HTMLSpanElement>(null);
+  const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     yearRef.current!.textContent = String(new Date().getFullYear());
   }, []);
+  // a festa do fim: 2 s depois de a tela final ocupar a janela, o mascote pula de baixo (com sombra) e
+  // solta os confetes; saindo da tela, ele volta a se esconder para a próxima chegada
+  useEffect(() => {
+    const finale = ref.current!;
+    // o jeito de cada confete vai pelo JS (a CSP da API não deixa style inline no HTML pré-renderizado)
+    finale.querySelectorAll<HTMLElement>('.finale-confetti i').forEach((el, i) => {
+      const c = CONFETTI[i]!;
+      el.style.setProperty('--dx', `${c.dx}px`);
+      el.style.setProperty('--dy', `${c.dy}px`);
+      el.style.setProperty('--r', `${c.r}deg`);
+      el.style.setProperty('--d', `${c.d}ms`);
+      el.style.setProperty('--c', c.c);
+    });
+    let timer = 0;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        window.clearTimeout(timer);
+        if (entry!.isIntersecting) timer = window.setTimeout(() => finale.classList.add('is-party'), 2000);
+        else finale.classList.remove('is-party');
+      },
+      { threshold: 0.6 }
+    );
+    io.observe(finale);
+    return () => {
+      io.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, []);
   return (
-    <footer className="finale" id="fim" data-pause>
+    <footer className="finale" id="fim" data-pause ref={ref}>
       {/* o Enterprise ("Falar com o time") aponta para #contato */}
       <span id="contato" className="finale-anchor" aria-hidden="true" />
       <div className="finale-glow" aria-hidden="true" />
@@ -81,8 +124,19 @@ export function Footer() {
         <p className="finale-lede">Do grafo à prova, cada ligação do seu sistema verificada antes de chegar em produção.</p>
       </div>
       <p className="finale-word" aria-label="ShielDepy">
-        <span className="finale-word-fill" aria-hidden="true">
-          ShielDepy
+        <span className="finale-word-box">
+          <span className="finale-word-fill" aria-hidden="true">
+            ShielDepy
+          </span>
+          <span className="finale-buddy" aria-hidden="true">
+            <span className="finale-buddy-shadow" />
+            <img src="/mascote-festa.webp" alt="" width="1300" height="1341" loading="lazy" decoding="async" />
+            <span className="finale-confetti">
+              {CONFETTI.map((c, i) => (
+                <i key={i} />
+              ))}
+            </span>
+          </span>
         </span>
       </p>
       <div className="finale-bottom">

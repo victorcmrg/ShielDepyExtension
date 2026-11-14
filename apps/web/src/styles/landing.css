@@ -640,6 +640,35 @@ section { position: relative; }
 }
 @keyframes finale-tex { to { background-position: 0 0, 70% 60%; } }
 :root:not([data-theme="dark"]) .finale-word-fill { background-image: linear-gradient(rgba(3, 66, 30, 0.42), rgba(3, 66, 30, 0.42)), var(--tex); }
+/* a festa do fim: 2 s depois de chegar, o mascote pula de baixo para a frente do "ShielDepy" (posição em
+   frações da caixa da palavra, medidas na referência do usuário), com sombra e confetes */
+.finale-word-box { position: relative; display: inline-block; }
+.finale-buddy { position: absolute; z-index: 1; left: 27.26%; top: 51.72%; width: 46.06%; pointer-events: none; opacity: 0; transform: translateY(115%); }
+.finale-buddy img { position: relative; z-index: 1; display: block; width: 100%; height: auto; }
+.finale-buddy-shadow { position: absolute; z-index: 0; left: -20%; right: -20%; top: -12%; bottom: -8%; opacity: 0; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.32) 55%, transparent); }
+.finale-confetti { position: absolute; z-index: 2; left: 50%; top: 6%; width: 0; height: 0; }
+.finale-confetti i { position: absolute; left: -7px; top: -10px; width: 14px; height: 20px; border-radius: 3px; background: var(--c, #12f07a); opacity: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
+.finale.is-party .finale-buddy { animation: buddy-jump 0.95s forwards; }
+.finale.is-party .finale-buddy-shadow { animation: buddy-shadow 0.8s ease-out 0.2s forwards; }
+.finale.is-party .finale-confetti i { animation: buddy-confetti 2s cubic-bezier(0.2, 0.7, 0.3, 1) calc(0.42s + var(--d, 0ms)) forwards; }
+@keyframes buddy-jump {
+  0% { opacity: 1; transform: translateY(115%); animation-timing-function: cubic-bezier(0.2, 0.75, 0.35, 1); }
+  55% { opacity: 1; transform: translateY(-5%); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  78% { opacity: 1; transform: translateY(1.2%); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes buddy-shadow { to { opacity: 1; } }
+@keyframes buddy-confetti {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(0.5); }
+  45% { opacity: 1; transform: translate(var(--dx), var(--dy)) rotate(var(--r)) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(var(--dx) * 1.25), calc(var(--dy) + 230px)) rotate(calc(var(--r) * 1.8)) scale(0.9); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .finale.is-party .finale-buddy { animation: none; opacity: 1; transform: none; }
+  .finale.is-party .finale-buddy-shadow { animation: none; opacity: 1; }
+  .finale.is-party .finale-confetti i { animation: none; }
+}
 .finale-bottom { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 /* chegando na tela de finalização, o menu sobe e some; rolando para cima, ele volta */
 .topbar { transition: transform 0.55s var(--ease); }
